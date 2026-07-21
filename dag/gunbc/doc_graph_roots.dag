@@ -1,0 +1,10 @@
+module gunbc.doc_graph_roots
+
+import gunbc.plan { Plan, plan_path }
+import gunbc.plan_registry { all_plans }
+
+data doc_graph_roots_note: String = "Registered-plan doc-graph roots, derived — never listed. A registered PlanArtifact IS the document binding: the plan carrier (dag/gunbc/plans/*) is the authority, the md at plan_path is its drift-gated projection, so reachability of that md is a fact of the registration, not of a prose 'bind: <path>' string the seed text-scans out of .dag content (reference-grounding-migration.md: a String reference is an un-checkable edge). This fn is the actual dag reference: the doc-reachability walk (cli_run.rs build_doc_graph_report) takes these as roots via the doc_graph_orphan_count builtin, and doc_graph_admitted_root_count proves the plumbing live by execution (every derived path must name a doc in the universe — a plan whose md is missing reds the witness, counted, never silently dropped). The 'bind:' text-scan lane remains ONLY for hand-authored docs with no carrier; each such row dissolves when its doc migrates into a registered gunbc.plan.Plan row (the invert-hand-maintained pattern)."
+
+fn plan_doc_graph_roots() -> List<String> {
+  map(all_plans, p => plan_path(p: p))
+}

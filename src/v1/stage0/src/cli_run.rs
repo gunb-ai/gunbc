@@ -21088,9 +21088,15 @@ struct DocGraphReport {
     doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
+    admitted_extra_roots: usize,
 }
 
-fn build_doc_graph_report() -> DocGraphReport {
+// `extra_roots` are dag-derived roots (gunbc.doc_graph_roots.plan_doc_graph_roots: a registered
+// PlanArtifact IS the binding for its generated md), passed through the doc_graph_* builtins so
+// the root set is a walked substrate fact, not only the `bind:` text-scan. Admission is counted
+// (admitted_extra_roots), so a derived path naming no doc in the universe is observable — the
+// witness pins admitted == passed, never a silent drop.
+fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     let universe = doc_universe();
     let bind_refs = dag_comment_bind_doc_refs();
 
@@ -21104,6 +21110,14 @@ fn build_doc_graph_report() -> DocGraphReport {
     for b in &bind_refs {
         if universe.contains(b) {
             roots.insert(b.clone());
+        }
+    }
+    let mut admitted_extra_roots = 0usize;
+    for r in extra_roots {
+        let norm = normalize_doc_path(Path::new(r));
+        if universe.contains(&norm) {
+            admitted_extra_roots += 1;
+            roots.insert(norm);
         }
     }
 
@@ -21154,24 +21168,39 @@ fn build_doc_graph_report() -> DocGraphReport {
         doc_count: universe.len(),
         orphans,
         dangling,
+        admitted_extra_roots,
     }
 }
 
-fn doc_graph_report() -> &'static DocGraphReport {
-    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
-    REPORT.get_or_init(build_doc_graph_report)
+// Memo keyed on the declared input (the extra-roots list) — cache-impurity discipline: a
+// roots-blind OnceLock would serve the first caller's report to every later root set.
+fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
+    static CACHE: OnceLock<std::sync::Mutex<HashMap<Vec<String>, std::sync::Arc<DocGraphReport>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    if let Some(r) = guard.get(extra_roots) {
+        return r.clone();
+    }
+    let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    guard.insert(extra_roots.to_vec(), report.clone());
+    report
 }
 
-pub fn doc_graph_orphan_count() -> i64 {
-    doc_graph_report().orphans.len() as i64
+pub fn doc_graph_orphan_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).orphans.len() as i64
+}
+
+pub fn doc_graph_admitted_root_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).admitted_extra_roots as i64
 }
 
 pub fn doc_graph_dangling_link_count() -> i64 {
-    doc_graph_report().dangling.len() as i64
+    doc_graph_report(&[]).dangling.len() as i64
 }
 
 pub fn doc_graph_doc_count() -> i64 {
-    doc_graph_report().doc_count as i64
+    doc_graph_report(&[]).doc_count as i64
 }
 
 // Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
