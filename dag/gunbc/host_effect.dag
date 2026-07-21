@@ -77,16 +77,11 @@ type HostEffectTransport =
   | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
 
 data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
-  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): BootstrapFragment.script and ThinInvocation.argv are medium-as-string scaffolds until bash-emit (#5828) routes fresh-standup bootstrap through emit(intent,Bash) and steady-state thin-run through typed argv dispatch; carrier scaffolds bind the dissolution rows below."
+  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
 }
 
-data bootstrap_fragment_script_carrier_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.fleet_converge_emit",
-    decl_name: "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger",
-    field: WholeDeclaration,
-  }
+data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
+  reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
 }
 
 data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {

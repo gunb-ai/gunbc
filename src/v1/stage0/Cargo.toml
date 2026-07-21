@@ -138,6 +138,10 @@ name = "resolution_divergence_census"
 path = "src/bin/resolution_divergence_census.rs"
 
 [[bin]]
+name = "walk_target_alias_plan"
+path = "src/bin/walk_target_alias_plan.rs"
+
+[[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
 

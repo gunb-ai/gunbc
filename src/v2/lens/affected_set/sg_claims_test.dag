@@ -27,13 +27,6 @@ import v2.test.lens_affected_set.provenance_producer {
   provenance_producer_selectivity_superset_holds
 }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {
   irt1_boundary_prune_receipt_claim_holds()
