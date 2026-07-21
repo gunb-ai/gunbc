@@ -1,17 +1,49 @@
 module std.color
 
 import std.types { Int, String, Bool }
-
-data color_note: String = "Single authority for filed color identity (store-what-was-filed: authors supply hex/sRGB, so Srgb8 is the stored fact; every other space is a DERIVED projection, never dual-stored). Citations: sRGB = IEC 61966-2-1 (normative definition referenced by W3C CSS Color Module Level 4); CIE 1931 XYZ and CIELAB = CIE 15; OKLab/OKLCH = Björn Ottosson 2020, normativized by W3C CSS Color Module Level 4 section 'OKLab' (https://www.w3.org/TR/css-color-4/#ok-lab) carrying the exact conversion algorithms. Layering law: a Palette is REGISTER-INDEPENDENT catalog data; admissibility is checked at the (palette × register) BINDING, never at catalogue admission — the catalogue may legitimately hold palettes a given register refuses. DTCG emission: the W3C Design Tokens Community Group JSON format is a declared future interchange surface; emit lands with the first external consumer (design-register-library.md Phase A), not speculatively."
-
-type Srgb8 {
-  r: Int
-  g: Int
-  b: Int
+import std.measure { Measure, Dimensionless, One, measure_count }
+import std.integer { int_abs, int_max, int_min }
+import std.symbols { SemanticColor }
+import extdeps.color.css_color_4 {
+  RgbMaxChannel, ChannelR, ChannelG, ChannelB,
+  HslHueFromRgbRow,
+  HslRgbSextantRow, HslRgbSextantComponent, ChromaArm, CrossArm, ZeroArm,
+  hsl_hue_from_rgb_row_r, hsl_hue_from_rgb_row_g, hsl_hue_from_rgb_row_b,
+  hsl_rgb_sextant_row_0, hsl_rgb_sextant_row_1, hsl_rgb_sextant_row_2,
+  hsl_rgb_sextant_row_3, hsl_rgb_sextant_row_4, hsl_rgb_sextant_row_5,
 }
 
+data color_note: String = "Single authority for filed color identity (store-what-was-filed: authors supply hex/sRGB, so Srgb8 is the stored fact; every other space is a DERIVED projection, never dual-stored). Citations: sRGB = IEC 61966-2-1; CIE 1931 XYZ / CIELAB = CIE 15; OKLab/OKLCH = Ottosson 2020 via W3C CSS Color Module Level 4. Semantic axis: std.symbols.SemanticColor is the existing abstract role vocabulary (extdeps.render.glyphs SymbolEntry.color); palette swatches BIND to SemanticColor at the theme/status layer later — this catalogue does not mint a second semantic-color axis. Compiler Token/Lexeme (v2 lexing) is unrelated — design vocabulary stays materials/roles/palette. Layering law: Palette is register-independent; admissibility is at (palette × register) binding. DTCG emission: declared future interchange; emit lands with first external consumer."
+
+data srgb8_channel_representation_note: String = "Channels are Int 0..255 filed as sRGB8 bytes. UInt8 (std.integer) is the target carrier once stage0 eval supports Compose channels without the concrete-type-alias emitter landmine; until then srgb8() is the construction wall."
+
+data permyriad_denominator: Int = 10000
+data millidegree_denominator: Int = 1000
+data percent_denominator: Int = 100
+data srgb_byte_denominator: Int = 255
+data fixed_point_half_up_bias: Int = 5000
+data srgb_round_trip_channel_tolerance: Int = 1
+
+type Permyriad = Measure<Dimensionless, One, Int>
+
+fn permyriad(count: Int) -> Permyriad {
+  Measure { count: count }
+}
+
+fn permyriad_count(p: Permyriad) -> Int {
+  measure_count(p)
+}
+
+type Rgb<T> {
+  r: T
+  g: T
+  b: T
+}
+
+type Srgb8 = Rgb<Int>
+
 fn srgb8(r: Int, g: Int, b: Int) -> Srgb8 {
-  Srgb8 { r: r, g: g, b: b }
+  Rgb { r: r, g: g, b: b }
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
@@ -20,10 +52,35 @@ fn srgb8_admissible(c: Srgb8) -> Bool {
     && c.b >= 0 && c.b <= 255
 }
 
+type HueDeg {
+  millideg: Int
+}
+
+fn hue_deg(millideg: Int) -> HueDeg {
+  let span = 360 * millidegree_denominator
+  HueDeg { millideg: ((millideg % span) + span) % span }
+}
+
+fn hue_deg_degrees(h: HueDeg) -> Int {
+  h.millideg / millidegree_denominator
+}
+
+type Percent {
+  count: Int
+}
+
+fn percent(count: Int) -> Percent {
+  Percent { count: count }
+}
+
+fn percent_count(p: Percent) -> Int {
+  p.count
+}
+
 type Hsl {
-  h: Int
-  s: Int
-  l: Int
+  h: HueDeg
+  s: Percent
+  l: Percent
 }
 
 type ColorConversionFrontier
@@ -34,49 +91,144 @@ data color_conversion_frontier: ColorConversionFrontier = OklchStaged {
   trigger: "Exact OKLab/OKLCH requires Float channel math and cube-root; substrate has Float type (std.float) but no cited cbrt kernel in std yet — land when design-register-library.md sect 10 Class 2 (OKLCH reground) fires; HSL projection is live now (integer-friendly, CSS Color 4 sRGB<->HSL)."
 }
 
-fn iabs(v: Int) -> Int {
-  if v < 0 { 0 - v } else { v }
+fn byte_to_permyriad(v: Int) -> Permyriad {
+  permyriad(count: (v * permyriad_denominator) / srgb_byte_denominator)
 }
 
-fn imax(a: Int, b: Int) -> Int {
-  if a > b { a } else { b }
+fn rgb_map_bytes_to_permyriad(rgb: Rgb<Int>) -> Rgb<Permyriad> {
+  Rgb {
+    r: byte_to_permyriad(v: rgb.r),
+    g: byte_to_permyriad(v: rgb.g),
+    b: byte_to_permyriad(v: rgb.b),
+  }
 }
 
-fn imin(a: Int, b: Int) -> Int {
-  if a < b { a } else { b }
+fn rescale_permyriad_to_percent_half_up(p: Permyriad) -> Percent {
+  percent(count: (permyriad_count(p: p) * percent_denominator + fixed_point_half_up_bias) / permyriad_denominator)
 }
 
-fn channel_scaled(v: Int) -> Int {
-  (v * 10000) / 255
+fn permyriad_channel(rgb: Rgb<Permyriad>, ch: RgbMaxChannel) -> Int {
+  match ch {
+    ChannelR => permyriad_count(p: rgb.r)
+    ChannelG => permyriad_count(p: rgb.g)
+    ChannelB => permyriad_count(p: rgb.b)
+  }
 }
 
-fn pct_round_from_scaled(v_scaled: Int) -> Int {
-  (v_scaled * 100 + 5000) / 10000
+fn hue_row_for_max(ch: RgbMaxChannel) -> HslHueFromRgbRow {
+  match ch {
+    ChannelR => hsl_hue_from_rgb_row_r
+    ChannelG => hsl_hue_from_rgb_row_g
+    ChannelB => hsl_hue_from_rgb_row_b
+  }
+}
+
+fn rgb_max_channel(rgb: Rgb<Permyriad>) -> RgbMaxChannel {
+  let rs = permyriad_channel(rgb: rgb, ch: ChannelR)
+  let gs = permyriad_channel(rgb: rgb, ch: ChannelG)
+  let bs = permyriad_channel(rgb: rgb, ch: ChannelB)
+  if rs >= gs && rs >= bs {
+    ChannelR
+  } else if gs >= rs && gs >= bs {
+    ChannelG
+  } else {
+    ChannelB
+  }
 }
 
 fn srgb8_to_hsl(c: Srgb8) -> Hsl {
-  let rs = channel_scaled(v: c.r)
-  let gs = channel_scaled(v: c.g)
-  let bs = channel_scaled(v: c.b)
-  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
-  let minc = imin(a: imin(a: rs, b: gs), b: bs)
+  let scaled = rgb_map_bytes_to_permyriad(rgb: c)
+  let rs = permyriad_channel(rgb: scaled, ch: ChannelR)
+  let gs = permyriad_channel(rgb: scaled, ch: ChannelG)
+  let bs = permyriad_channel(rgb: scaled, ch: ChannelB)
+  let maxc = int_max(a: int_max(a: rs, b: gs), b: bs)
+  let minc = int_min(a: int_min(a: rs, b: gs), b: bs)
   let delta = maxc - minc
   let l_scaled = (maxc + minc) / 2
-  let light_pct = pct_round_from_scaled(v_scaled: l_scaled)
+  let light_pct = rescale_permyriad_to_percent_half_up(p: permyriad(count: l_scaled))
   if delta == 0 {
-    Hsl { h: 0, s: 0, l: light_pct }
+    Hsl { h: hue_deg(millideg: 0), s: percent(count: 0), l: light_pct }
   } else {
-    let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
-    let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
-    let sat_pct = pct_round_from_scaled(v_scaled: sat_scaled)
-    let hue_milli = if maxc == rs {
-      ((gs - bs) * 60000) / delta
-    } else if maxc == gs {
-      (((bs - rs) * 60000) / delta) + 120000
-    } else {
-      (((rs - gs) * 60000) / delta) + 240000
-    }
-    let hue_deg = ((hue_milli % 360000) + 360000) % 360000 / 1000
-    Hsl { h: hue_deg, s: sat_pct, l: light_pct }
+    let denom = permyriad_denominator - int_abs(v: 2 * l_scaled - permyriad_denominator)
+    let sat_scaled = if denom == 0 { 0 } else { (delta * permyriad_denominator) / denom }
+    let sat_pct = rescale_permyriad_to_percent_half_up(p: permyriad(count: sat_scaled))
+    let max_ch = rgb_max_channel(rgb: scaled)
+    let row = hue_row_for_max(ch: max_ch)
+    let numer = permyriad_channel(rgb: scaled, ch: row.positive_channel)
+      - permyriad_channel(rgb: scaled, ch: row.negative_channel)
+    let hue_milli = ((numer * 60 * millidegree_denominator) / delta) + row.offset_millideg
+    Hsl { h: hue_deg(millideg: hue_milli), s: sat_pct, l: light_pct }
   }
+}
+
+fn hsl_component_value(arm: HslRgbSextantComponent, chroma: Int, cross: Int, m: Int) -> Int {
+  match arm {
+    ChromaArm => chroma + m
+    CrossArm => cross + m
+    ZeroArm => m
+  }
+}
+
+fn sextant_row_for_index(sextant: Int) -> HslRgbSextantRow {
+  match sextant {
+    0 => hsl_rgb_sextant_row_0
+    1 => hsl_rgb_sextant_row_1
+    2 => hsl_rgb_sextant_row_2
+    3 => hsl_rgb_sextant_row_3
+    4 => hsl_rgb_sextant_row_4
+    _ => hsl_rgb_sextant_row_5
+  }
+}
+
+fn hsl_to_rgb_permyriad(hsl: Hsl) -> Rgb<Permyriad> {
+  let l = percent_count(p: hsl.l) * 100
+  let s = percent_count(p: hsl.s) * 100
+  let c = ((permyriad_denominator - int_abs(v: 2 * l - permyriad_denominator)) * s) / permyriad_denominator
+  let h_deg = hue_deg_degrees(h: hsl.h)
+  let h2 = ((h_deg % 360) + 360) % 360
+  let t = ((h2 % 120) * permyriad_denominator) / 60
+  let x = (c * (permyriad_denominator - int_abs(v: t - permyriad_denominator))) / permyriad_denominator
+  let m = l - c / 2
+  let sextant = h2 / 60
+  let row = sextant_row_for_index(sextant: sextant)
+  Rgb {
+    r: permyriad(count: hsl_component_value(arm: row.r, chroma: c, cross: x, m: m)),
+    g: permyriad(count: hsl_component_value(arm: row.g, chroma: c, cross: x, m: m)),
+    b: permyriad(count: hsl_component_value(arm: row.b, chroma: c, cross: x, m: m)),
+  }
+}
+
+fn permyriad_to_byte(p: Permyriad) -> Int {
+  (permyriad_count(p: p) * srgb_byte_denominator + fixed_point_half_up_bias) / permyriad_denominator
+}
+
+fn rgb_permyriad_to_srgb8(rgb: Rgb<Permyriad>) -> Srgb8 {
+  Rgb {
+    r: permyriad_to_byte(p: rgb.r),
+    g: permyriad_to_byte(p: rgb.g),
+    b: permyriad_to_byte(p: rgb.b),
+  }
+}
+
+fn hsl_to_srgb8(hsl: Hsl) -> Srgb8 {
+  rgb_permyriad_to_srgb8(rgb: hsl_to_rgb_permyriad(hsl: hsl))
+}
+
+fn srgb8_round_trip_within_tolerance(c: Srgb8) -> Bool {
+  let back = hsl_to_srgb8(hsl: srgb8_to_hsl(c: c))
+  int_abs(v: back.r - c.r) <= srgb_round_trip_channel_tolerance
+    && int_abs(v: back.g - c.g) <= srgb_round_trip_channel_tolerance
+    && int_abs(v: back.b - c.b) <= srgb_round_trip_channel_tolerance
+}
+
+fn hsl_degrees(hsl: Hsl) -> Int {
+  hue_deg_degrees(h: hsl.h)
+}
+
+fn hsl_sat_pct(hsl: Hsl) -> Int {
+  percent_count(p: hsl.s)
+}
+
+fn hsl_light_pct(hsl: Hsl) -> Int {
+  percent_count(p: hsl.l)
 }

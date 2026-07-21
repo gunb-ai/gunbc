@@ -4,7 +4,7 @@ import std.types { Int, String, Bool }
 import std.color { Srgb8, srgb8_admissible }
 import extdeps.external_authority { ExternalAuthority }
 
-data design_palette_note: String = "Palette catalogue machinery (design-register-library.md). A Palette is register-independent catalog data; admissibility against a house register (gunbc.design.register_walls quiet_envelope_hsl, stub until #6927) is checked at the (palette × register) binding, never here. DTCG interchange (W3C Design Tokens Community Group JSON format) is a declared future emission target — emit lands with the first external consumer, not speculatively."
+data design_palette_note: String = "Palette catalogue machinery (design-register-library.md). A Palette is register-independent catalog data; admissibility against a house register is checked at the (palette × register) binding, never here. std.symbols.SemanticColor is the semantic axis palette swatches will bind to at theme/status layer (extdeps.render.glyphs — not wired here). DTCG interchange lands with first external consumer."
 
 type PaletteSwatch {
   name: String

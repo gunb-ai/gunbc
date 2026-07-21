@@ -19,7 +19,7 @@ import extdeps.color.solarized {
   solarized_violet, solarized_blue, solarized_cyan, solarized_green,
 }
 
-data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited palette rows live in extdeps/color/; Palette wrappers here project extdeps rows without re-stating color literals. Register binding (gunbc.design.register_walls quiet_envelope_hsl) is checked at theme level, not at catalogue admission — soft_pastel_v1 violates the quiet envelope by design."
+data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited palette rows live in extdeps/color/; Palette wrappers here project extdeps rows without re-stating color literals. Register binding (quiet_envelope at palette×register) is checked at theme level, not at catalogue admission — soft_pastel_v1 violates the quiet envelope by design."
 
 data soft_pastel_provenance_note: String = "Operator-supplied swatches 2026-07-21 in a soft-pastel game-art style (inspiration only — no upstream spec to cite)."
 

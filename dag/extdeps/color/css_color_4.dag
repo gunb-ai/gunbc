@@ -1,0 +1,117 @@
+module extdeps.color.css_color_4
+
+import std.types { Int, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-color-4/#hsl-to-rgb"
+  }
+}
+
+data css_color_4_note: String = "Cited upstream: W3C CSS Color Module Level 4 — HSL Colors section (hsl-to-rgb and sRGB-to-HSL algorithms). Piecewise structure is table data, not hand-unrolled if-chains."
+
+type RgbMaxChannel = ChannelR | ChannelG | ChannelB
+
+type HslHueFromRgbRow {
+  max_channel: RgbMaxChannel
+  positive_channel: RgbMaxChannel
+  negative_channel: RgbMaxChannel
+  offset_millideg: Int
+}
+
+data hsl_hue_from_rgb_row_r: HslHueFromRgbRow = HslHueFromRgbRow { max_channel: ChannelR, positive_channel: ChannelG, negative_channel: ChannelB, offset_millideg: 0 }
+data hsl_hue_from_rgb_row_g: HslHueFromRgbRow = HslHueFromRgbRow { max_channel: ChannelG, positive_channel: ChannelB, negative_channel: ChannelR, offset_millideg: 120000 }
+data hsl_hue_from_rgb_row_b: HslHueFromRgbRow = HslHueFromRgbRow { max_channel: ChannelB, positive_channel: ChannelR, negative_channel: ChannelG, offset_millideg: 240000 }
+
+data hsl_hue_from_rgb_rows: List<HslHueFromRgbRow> = [
+  hsl_hue_from_rgb_row_r,
+  hsl_hue_from_rgb_row_g,
+  hsl_hue_from_rgb_row_b,
+]
+
+type HslRgbSextantComponent = ChromaArm | CrossArm | ZeroArm
+
+type HslRgbSextantRow {
+  r: HslRgbSextantComponent
+  g: HslRgbSextantComponent
+  b: HslRgbSextantComponent
+}
+
+data hsl_rgb_sextant_row_0: HslRgbSextantRow = HslRgbSextantRow { r: ChromaArm, g: CrossArm, b: ZeroArm }
+data hsl_rgb_sextant_row_1: HslRgbSextantRow = HslRgbSextantRow { r: CrossArm, g: ChromaArm, b: ZeroArm }
+data hsl_rgb_sextant_row_2: HslRgbSextantRow = HslRgbSextantRow { r: ZeroArm, g: ChromaArm, b: CrossArm }
+data hsl_rgb_sextant_row_3: HslRgbSextantRow = HslRgbSextantRow { r: ZeroArm, g: CrossArm, b: ChromaArm }
+data hsl_rgb_sextant_row_4: HslRgbSextantRow = HslRgbSextantRow { r: CrossArm, g: ZeroArm, b: ChromaArm }
+data hsl_rgb_sextant_row_5: HslRgbSextantRow = HslRgbSextantRow { r: ChromaArm, g: ZeroArm, b: CrossArm }
+
+data hsl_rgb_sextant_rows: List<HslRgbSextantRow> = [
+  hsl_rgb_sextant_row_0,
+  hsl_rgb_sextant_row_1,
+  hsl_rgb_sextant_row_2,
+  hsl_rgb_sextant_row_3,
+  hsl_rgb_sextant_row_4,
+  hsl_rgb_sextant_row_5,
+]
+
+fn chroma_arm_count(component: HslRgbSextantComponent) -> Int {
+  match component {
+    ChromaArm => 1
+    CrossArm => 0
+    ZeroArm => 0
+  }
+}
+
+fn cross_arm_count(component: HslRgbSextantComponent) -> Int {
+  match component {
+    ChromaArm => 0
+    CrossArm => 1
+    ZeroArm => 0
+  }
+}
+
+fn zero_arm_count(component: HslRgbSextantComponent) -> Int {
+  match component {
+    ChromaArm => 0
+    CrossArm => 0
+    ZeroArm => 1
+  }
+}
+
+fn count_chroma_arms(row: HslRgbSextantRow) -> Int {
+  let a = chroma_arm_count(component: row.r)
+  let b = chroma_arm_count(component: row.g)
+  let c = chroma_arm_count(component: row.b)
+  a + b + c
+}
+
+fn count_cross_arms(row: HslRgbSextantRow) -> Int {
+  let a = cross_arm_count(component: row.r)
+  let b = cross_arm_count(component: row.g)
+  let c = cross_arm_count(component: row.b)
+  a + b + c
+}
+
+fn count_zero_arms(row: HslRgbSextantRow) -> Int {
+  let a = zero_arm_count(component: row.r)
+  let b = zero_arm_count(component: row.g)
+  let c = zero_arm_count(component: row.b)
+  a + b + c
+}
+
+fn sextant_row_is_cxo_permutation(row: HslRgbSextantRow) -> Bool {
+  count_chroma_arms(row: row) == 1
+    && count_cross_arms(row: row) == 1
+    && count_zero_arms(row: row) == 1
+}
+
+fn all_sextant_rows_are_cxo_permutations() -> Bool {
+  sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_0)
+    && sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_1)
+    && sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_2)
+    && sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_3)
+    && sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_4)
+    && sextant_row_is_cxo_permutation(row: hsl_rgb_sextant_row_5)
+}

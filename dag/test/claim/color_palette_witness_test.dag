@@ -1,8 +1,11 @@
 module test.claim.color_palette_witness
 
 import std.types { Int, String, Bool }
-import std.color { Srgb8, srgb8, srgb8_to_hsl }
-import gunbc.design.register_walls { quiet_envelope_hsl }
+import std.color {
+  Srgb8, srgb8, srgb8_to_hsl, srgb8_round_trip_within_tolerance,
+  hsl_degrees, hsl_sat_pct, hsl_light_pct, hsl_to_srgb8,
+}
+import extdeps.color.css_color_4 { all_sextant_rows_are_cxo_permutations }
 import gunbc.design.palette { palette_admissible }
 import gunbc.design.catalog {
   soft_pastel_v1, soft_pastel_mint, soft_pastel_sky, soft_pastel_cream,
@@ -13,19 +16,27 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data witness_quiet_envelope_dissolve_note: String = "Dissolve-on-#6927-merge: replace witness_register_quiet_envelope_hsl_admits with gunbc.site.tokens quiet_envelope import (design-register-library.md locks dag/gunbc/site/ while #6927 is open)."
+
+fn witness_register_quiet_envelope_hsl_admits(sat_pct: Int, light_pct: Int) -> Bool {
+  !(sat_pct > 45 && light_pct > 68)
+}
+
 fn quiet_envelope_admits_srgb8(c: Srgb8) -> Bool {
   let hsl = srgb8_to_hsl(c: c)
-  quiet_envelope_hsl(sat_pct: hsl.s, light_pct: hsl.l)
+  witness_register_quiet_envelope_hsl_admits(
+    sat_pct: hsl_sat_pct(hsl: hsl),
+    light_pct: hsl_light_pct(hsl: hsl))
 }
 
 fn witness_wood_hsl_projection() -> Bool {
   let hsl = srgb8_to_hsl(c: soft_pastel_wood.color)
-  hsl.h == 35 && hsl.s == 53 && hsl.l == 51
+  hsl_degrees(hsl: hsl) == 35 && hsl_sat_pct(hsl: hsl) == 53 && hsl_light_pct(hsl: hsl) == 51
 }
 
 fn witness_hsl_projection_red_on_wrong_fixture() -> Bool {
   let wrong = srgb8_to_hsl(c: srgb8(r: 196, g: 141, b: 63))
-  !(wrong.h == 36 && wrong.s == 53 && wrong.l == 51)
+  !(hsl_degrees(hsl: wrong) == 36 && hsl_sat_pct(hsl: wrong) == 53 && hsl_light_pct(hsl: wrong) == 51)
 }
 
 fn witness_wood_passes_quiet_envelope() -> Bool {
@@ -41,6 +52,25 @@ fn witness_cream_refused_despite_near_achromatic_oklch() -> Bool {
 }
 
 data cream_hsl_proxy_defect_note: String = "Teaching case: cream (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
+
+fn witness_round_trip_anchors() -> Bool {
+  srgb8_round_trip_within_tolerance(c: srgb8(r: 255, g: 0, b: 0))
+    && srgb8_round_trip_within_tolerance(c: srgb8(r: 0, g: 255, b: 0))
+    && srgb8_round_trip_within_tolerance(c: srgb8(r: 0, g: 0, b: 255))
+    && srgb8_round_trip_within_tolerance(c: srgb8(r: 255, g: 255, b: 255))
+    && srgb8_round_trip_within_tolerance(c: srgb8(r: 0, g: 0, b: 0))
+    && srgb8_round_trip_within_tolerance(c: srgb8(r: 128, g: 128, b: 128))
+}
+
+fn witness_round_trip_red_on_broken_fixture() -> Bool {
+  let c = srgb8(r: 196, g: 141, b: 63)
+  let back = hsl_to_srgb8(hsl: srgb8_to_hsl(c: c))
+  !(back.r == c.r + 2 && back.g == c.g && back.b == c.b)
+}
+
+fn witness_css_sextant_table_permutation() -> Bool {
+  all_sextant_rows_are_cxo_permutations()
+}
 
 fn witness_catalog_entries_admissible() -> Bool {
   catalog_admissible()
@@ -68,4 +98,7 @@ test fn color_palette_catalog_witnesses() -> Bool {
     && witness_wood_passes_quiet_envelope()
     && witness_mint_refused_by_quiet_envelope()
     && witness_cream_refused_despite_near_achromatic_oklch()
+    && witness_round_trip_anchors()
+    && witness_round_trip_red_on_broken_fixture()
+    && witness_css_sextant_table_permutation()
 }
