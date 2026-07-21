@@ -637,6 +637,16 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
   }
 }
 
+data gunbc_falsifier_native_cache_cold_note: String = "Native-cache cold control plan (widen-only, the compile-clean cold-control pattern): exactly the Wet self-host/emit-on-demand receipt batch, run by the falsifier cold-control step with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1 so every .native_ready marker is ignored and the full emit+cargo+run chain executes cold. Can only force MORE work than the warm nightly batch, never less; a warm-poisoned entry (content_verified_on_read=false in extdeps.realization.native_artifact_cache) surfaces here as a divergence between the cold receipt and the warm nightly one."
+
+fn gunbc_falsifier_native_cache_cold_batches() -> List<List<Runnable>> {
+  if falsifier_self_host_wet_batch_enrolled() {
+    [[gunbc_falsifier_self_host_wet_batch()]]
+  } else {
+    []
+  }
+}
+
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
   let probe_enrolled = falsifier_known_red_probe_batch_enrolled()

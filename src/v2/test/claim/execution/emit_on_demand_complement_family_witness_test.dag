@@ -13,6 +13,7 @@ import std.realization { Share, Recompute }
 import std.realize_pack {
   BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
 }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
@@ -56,7 +57,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0]). The content-change alt tree is the swapped-arms fixture — a VALID identity program whose derived native output is True ([0,1,0,0,0]) — so expected_octet is threaded per tree (meet_join pattern); the same fixture doubles as the semantic-mismatch RED control in the equals-claim context."
 
-data complement_family_cache_root: String = "/tmp/gunbc_emit_on_demand_complement"
+data complement_family_cache_root: String = emit_on_demand_family_cache_root(family: "complement")
 data complement_family_emitter: String = "v2.compiler.emit"
 data complement_family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-complement",

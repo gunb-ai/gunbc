@@ -13,6 +13,7 @@ import std.realization { Share, Recompute }
 import std.realize_pack {
   BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
 }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
@@ -60,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: interpreted==native equals_eval (emit_host_meet_join_equals_eval_test.dag — green via dag_node_is_eval_literal_atom complement-root repair, witty-owl-841), native cold/warm receipts, closure_digest key sensitivity, swapped-arms RED."
 
-data meet_join_family_cache_root: String = "/tmp/gunbc_emit_on_demand_meet_join_family"
+data meet_join_family_cache_root: String = emit_on_demand_family_cache_root(family: "meet_join_family")
 data meet_join_family_emitter: String = "v2.compiler.emit"
 data meet_join_family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-meet-join-family",

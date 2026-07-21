@@ -13,6 +13,7 @@ import std.realization { Share, Recompute }
 import std.realize_pack {
   BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
 }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
@@ -76,7 +77,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_match_loop_fold_note: String = "Witness-realization fan-out lane 3 (#6879 kernel extension): emit_host match + loop + fold_closure families end-to-end. P3 per family: (a) interpreted==native agreement via emit_host_*_equals_eval — match, loop, and fold all green (fold un-quarantined 2026-07-20 once the eval walk gained structural closure-arg support: an Arrow TypeNode in runtime-argument position materializes RuntimeClosure instead of refusing, so the closure at transform child 3 of fold_fixture_param_call_body evaluates; the native cached-path witnesses remain a separate leg and are not the agreement oracle); (b) native cached-path octet discrimination; (c) native cold-then-warm with compile_skipped; (d) distinct inferred_tree_digest -> new key -> cold rebuild; (e) wrong-oracle RED via discriminating native octets. Shared pure: store Share/Recompute, realize_pack refusal, interpreter roles bounded."
 
-data family_cache_root: String = "/tmp/gunbc_emit_on_demand_match_loop_fold_family"
+data family_cache_root: String = emit_on_demand_family_cache_root(family: "match_loop_fold_family")
 data family_emitter: String = "v2.compiler.emit"
 data family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-match-loop-fold-family",

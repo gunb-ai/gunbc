@@ -27,6 +27,12 @@ data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_T
 
 data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
 
+data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
+
+data ci_native_cache_root_mkdir_command: String = "mkdir -p \"$RUNNER_TOOL_CACHE/gunbc-native\""
+
+data ci_native_cache_root_echo_command: String = "echo \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native\" >> \"$GITHUB_ENV\""
+
 data ci_selection_control_witness_invoke_command: String = "\"$ROOT/target/release/floor_skip_discovery_witness\""
 
 fn ci_pin_rustup_default_command() -> String {
@@ -82,6 +88,8 @@ fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
       ci_workflow_do(command: ci_isolate_echo_rustup_home_command),
       ci_workflow_do(command: ci_isolate_echo_makeflags_command),
       ci_workflow_do(command: ci_isolate_cargo_build_jobs_command(build_jobs_count: build_jobs_count)),
+      ci_workflow_do(command: ci_native_cache_root_mkdir_command),
+      ci_workflow_do(command: ci_native_cache_root_echo_command),
       ci_workflow_do(command: ci_sccache_provider_shell_injection())
     ],
     on_failure: FailFast

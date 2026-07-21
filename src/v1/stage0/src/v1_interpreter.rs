@@ -7009,7 +7009,38 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
 /// materialize a workspace from resolved `{path, text}` rows, run the build argvs then the
 /// run argv with typed argv (no shell), and return exit/stdout/stderr/build-log as data.
 /// Wet-mode only — hermetic execution refuses instead of mocking (no fabricated receipt).
+/// The effects flip (build_transport_admission.dag: the intrinsic "runs only on an
+/// Admitted verdict"): host builds are admitted by the modeled build_workspace_grant
+/// envelope, not by execution mode — the verdict is path containment, mode-independent,
+/// so the same law holds hermetic and wet. Anything but Admitted is a typed refusal;
+/// the per-file escape guard below stays as the realization-side belt.
+fn require_admitted_transport(
+    admission_arg: Option<&Value>,
+    ctx: &InterpContext,
+    intrinsic: &str,
+) -> InterpResult<()> {
+    match admission_arg {
+        Some(Value::Variant { variant_name, .. }) if ctx.sym_eq(*variant_name, "Admitted") => {
+            Ok(())
+        }
+        Some(Value::Variant { variant_name, .. }) => Err(InterpError::TypeError {
+            msg: format!(
+                "{intrinsic} refuses: transport not admitted (verdict {}, expected Admitted \
+                 from build_transport_admissible)",
+                ctx.resolve(*variant_name)
+            ),
+        }),
+        _ => Err(InterpError::TypeError {
+            msg: format!(
+                "{intrinsic} refuses: missing admission verdict (EffectAdmission required; \
+                 route through run_host_process_admitted)"
+            ),
+        }),
+    }
+}
+
 fn eval_emit_host_run_transport_builtin(
+    admission_arg: Option<&Value>,
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
@@ -7017,13 +7048,7 @@ fn eval_emit_host_run_transport_builtin(
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::TypeError {
-            msg: "hermetic mode: emit_host_run_transport refuses host process execution \
-                  (no mock arm; run wet or record a fixture)"
-                .to_string(),
-        });
-    }
+    require_admitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
 
     let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
         msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
@@ -7157,6 +7182,7 @@ fn eval_emit_host_run_transport_builtin(
 /// this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
 fn eval_emit_host_run_transport_cached_builtin(
+    admission_arg: Option<&Value>,
     workspace_dir_arg: Option<&Value>,
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
@@ -7165,13 +7191,7 @@ fn eval_emit_host_run_transport_cached_builtin(
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::TypeError {
-            msg: "hermetic mode: emit_host_run_transport_cached refuses host process execution \
-                  (no mock arm; run wet or record a fixture)"
-                .to_string(),
-        });
-    }
+    require_admitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
 
     let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
         InterpError::TypeError {
@@ -7275,6 +7295,20 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
+    // Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
+    // precedent): the root is WHERE the cache lives, never WHAT identifies an
+    // artifact — the content-hash path component stays the key. Opt-in; only the
+    // declared /tmp/gunbc_ scratch prefix is rebased, so an arbitrary caller path
+    // never silently moves.
+    let workspace_dir = match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
+        Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
+            Some(rest) if rest.starts_with("gunbc_") => {
+                format!("{}/{}", root.trim_end_matches('/'), rest)
+            }
+            _ => workspace_dir,
+        },
+        _ => workspace_dir,
+    };
     let workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
@@ -7299,7 +7333,22 @@ fn emit_host_run_transport_cached_in_workspace(
     use std::path::Component;
 
     let ready_marker = workspace.join(".native_ready");
-    let compile_skipped = ready_marker.exists();
+    // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
+    // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
+    // pattern). Not an escape hatch: no value of the env makes the run do less.
+    let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let compile_skipped = !cold_control && ready_marker.exists();
+    eprintln!(
+        "[native-cache] key={} compile_skipped={} cold_control={}",
+        workspace
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "?".to_string()),
+        compile_skipped,
+        cold_control
+    );
 
     let transport_result = |phase: &str,
                             success: bool,
@@ -8055,6 +8104,7 @@ fn eval_builtin_inner(
             positional.first().copied(),
             positional.get(1).copied(),
             positional.get(2).copied(),
+            positional.get(3).copied(),
             ctx,
         )?)),
 
@@ -8063,6 +8113,7 @@ fn eval_builtin_inner(
             positional.get(1).copied(),
             positional.get(2).copied(),
             positional.get(3).copied(),
+            positional.get(4).copied(),
             ctx,
         )?)),
 
@@ -9958,6 +10009,67 @@ mod shell_completion_trace_tests {
             "target read must refuse as non-commit-deterministic"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod emit_host_admission_flip_test {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{require_admitted_transport, ExecutionMode, InterpContext, Value};
+
+    fn ctx_in(mode: ExecutionMode) -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), mode)
+    }
+
+    fn verdict(ctx: &InterpContext, variant: &str) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("EffectAdmission"),
+            variant_name: ctx.sym(variant),
+            fields: Rc::new(vec![]),
+        }
+    }
+
+    /// The flip: an Admitted verdict runs in EVERY mode — hermetic included — because
+    /// the law is path containment, not a mode bit. The old blanket is_hermetic()
+    /// refusal is gone; this is its replacement's discriminating input.
+    #[test]
+    fn admitted_passes_in_hermetic_mode() {
+        let ctx = ctx_in(ExecutionMode::Hermetic);
+        let v = verdict(&ctx, "Admitted");
+        assert!(require_admitted_transport(Some(&v), &ctx, "emit_host_run_transport").is_ok());
+    }
+
+    #[test]
+    fn outside_grant_refuses_typed_in_every_mode() {
+        for mode in [ExecutionMode::Hermetic, ExecutionMode::Wet] {
+            let ctx = ctx_in(mode);
+            let v = verdict(&ctx, "EffectOutsideGrant");
+            let err = require_admitted_transport(Some(&v), &ctx, "emit_host_run_transport")
+                .expect_err("outside-grant transport must refuse");
+            let msg = format!("{err:?}");
+            assert!(msg.contains("not admitted"), "typed refusal names the cause: {msg}");
+            assert!(msg.contains("EffectOutsideGrant"), "refusal locates the verdict: {msg}");
+        }
+    }
+
+    #[test]
+    fn missing_verdict_refuses() {
+        let ctx = ctx_in(ExecutionMode::Wet);
+        let err = require_admitted_transport(None, &ctx, "emit_host_run_transport_cached")
+            .expect_err("missing admission must refuse");
+        assert!(format!("{err:?}").contains("missing admission verdict"));
     }
 }
 
