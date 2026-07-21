@@ -4915,6 +4915,15 @@ pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
 }
 
+/// Test witness for the sample-once cap: exposes the same accessor runtime
+/// call sites use, so a test can observe that repeated calls against one
+/// `index` return the identical value even as the underlying signal moves —
+/// the property the 2026-07-21 fleet OOM fix depends on.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
+    typed_module_cache_cap(index)
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -5242,28 +5251,70 @@ const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
 
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-pub fn typed_module_cache_max_entries() -> usize {
+/// One derivation of the typed-cache entry cap: env override, else the host
+/// budget divided by the per-entry estimate. Returns `(cap, source_label,
+/// degraded)` — `degraded` is true exactly when the budget did not come from
+/// a private cgroup `memory.max`/`memory.high` (i.e. it fell through to the
+/// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
+/// all and the ceiling was used). Pure and side-effect-free: callers decide
+/// how often to invoke it and whether to log the degraded case.
+fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
-                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+                return (
+                    n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL),
+                    "env override GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES".to_string(),
+                    false,
+                );
             }
             // Zero override is invalid — fall through to derived cap.
         }
         // Malformed override — fall through to derived cap (fail-closed).
     }
-    let (budget, _) = crate::memory_governor::read_host_budget_bytes();
-    budget
+    let (budget, source_label) = crate::memory_governor::read_host_budget_bytes();
+    let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
+    let cap = budget
         .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
         .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
         .clamp(
             TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
             TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
-        )
+        );
+    (cap, source_label, degraded)
+}
+
+/// Host-budget-derived cap on `typed_module_cache` entries for the private
+/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
+///
+/// This is the pure, un-cached derivation — kept for direct env-override
+/// tests. Runtime call sites must go through `typed_module_cache_cap`
+/// instead, which samples this exactly once per index lifetime; re-deriving
+/// from a live host-shared signal on every insert was the 2026-07-21 fleet
+/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
+pub fn typed_module_cache_max_entries() -> usize {
+    typed_module_cache_cap_derivation().0
+}
+
+/// The typed-cache cap for `index`, sampled exactly ONCE for this index's
+/// lifetime (a run-start fact, never re-read per insert). On first call, if
+/// the budget source is degraded (no private cgroup limit found), emits a
+/// typed, counted `[floor-drain] degraded_budget_source` diagnostic — an
+/// honesty arm, not a widened failure: the cap still derives from whatever
+/// source was found, it is simply named so the degraded case is observable
+/// and prioritizable rather than silent.
+fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
+    *index.typed_module_cache_cap.get_or_init(|| {
+        let (cap, source, degraded) = typed_module_cache_cap_derivation();
+        if degraded {
+            eprintln!(
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+            );
+        }
+        cap
+    })
 }
 
 pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
@@ -5341,7 +5392,11 @@ fn emit_floor_drain_group_line(
     );
 }
 
-fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot) {
+fn emit_floor_drain_receipt(
+    index: &MultiEntryIndex,
+    total_groups: usize,
+    peaks: &IndexRetentionSnapshot,
+) {
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
@@ -5355,7 +5410,7 @@ fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot)
             .peak_rss_bytes
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
-        typed_module_cache_max_entries(),
+        typed_module_cache_cap(index),
     );
 }
 
@@ -5368,7 +5423,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
     if index.cross_worker_store.is_some() {
         return;
     }
-    let cap = typed_module_cache_max_entries();
+    let cap = typed_module_cache_cap(index);
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -12658,7 +12713,7 @@ pub fn run_discovery_corpus_with_options(
                     drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
                     drain_prev = snap;
                 }
-                emit_floor_drain_receipt(total_groups, &drain_peaks);
+                emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
                 return Ok(attach_deferred_discovery_rows(
                     merge_discovery_summaries(summaries),
                     deferred_rows,
