@@ -43,8 +43,10 @@ cd "$ROOT"
 
 # --- The fixture: a repr-clean (no String/Symbol, no generic-in-signature)
 #     provider + a namespace CONSUMER that references it cross-module without
-#     importing it. Must live under the workspace root (repo_relative_path). ---
-FIX="$ROOT/.witness_namespace_import_closure"
+#     importing it. Must live under the workspace root (repo_relative_path); we
+#     put it under target/ (already gitignored) so a mid-run auto-commit can
+#     never capture it and .gitignore (a generated artifact) needs no hand-edit. ---
+FIX="$ROOT/target/witness_namespace_import_closure"
 rm -rf "$FIX"; mkdir -p "$FIX/witness/pilot"
 cat > "$FIX/witness/pilot/emit_provider.dag" <<'DAG'
 module witness.pilot.emit_provider
