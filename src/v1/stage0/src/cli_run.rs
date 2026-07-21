@@ -17253,7 +17253,7 @@ fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
     }
 }
 
-type ModuleItemIndex = HashMap<(String, String), Rc<Node>>;
+type ModuleItemIndex = HashMap<(String, String), Arc<Node>>;
 
 fn build_module_item_index(ctx: &v1_interpreter::InterpContext) -> ModuleItemIndex {
     let source_indices = ctx.source_indices.clone();
@@ -17306,15 +17306,15 @@ fn fn_binding_from_sig(owner_module: &str, name: &str, sig: &ResolvedFuncSig) ->
     FnBindingRef {
         owner_module: owner_module.to_string(),
         qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(&anchor) as usize,
+        node_ptr: Arc::as_ptr(&anchor) as usize,
     }
 }
 
-fn fn_binding_from_node(owner_module: &str, name: &str, node: &Rc<Node>) -> FnBindingRef {
+fn fn_binding_from_node(owner_module: &str, name: &str, node: &Arc<Node>) -> FnBindingRef {
     FnBindingRef {
         owner_module: owner_module.to_string(),
         qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(node) as usize,
+        node_ptr: Arc::as_ptr(node) as usize,
     }
 }
 
@@ -17335,13 +17335,13 @@ pub fn symbol_index_lexical_lookup_v1(
     index: &SymbolIndex,
     position: &str,
     name: &str,
-) -> Option<(String, Rc<Node>, usize)> {
+) -> Option<(String, Arc<Node>, usize)> {
     let mut pos = position.to_string();
     let mut steps = 0usize;
     loop {
         steps += 1;
         let qn = module_path_to_qualified_path(&pos, name);
-        if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
+        if let Some(node) = symbol_index_lookup(Arc::new(index.clone()), qn) {
             return Some((pos, node, steps));
         }
         if pos.is_empty() {
@@ -17372,7 +17372,7 @@ pub fn containment_resolve_fn_v1_for_module(
             return ContainmentResolve::Hit {
                 owner_module: owner.clone(),
                 qualified_path: module_path_to_qualified_path(&owner, name),
-                node_ptr: Rc::as_ptr(&node) as usize,
+                node_ptr: Arc::as_ptr(&node) as usize,
                 via: ContainmentResolveVia::Lexical,
                 lexical_steps: steps,
             };
@@ -17387,7 +17387,7 @@ pub fn containment_resolve_fn_v1_for_module(
                 return ContainmentResolve::Hit {
                     owner_module: owner.clone(),
                     qualified_path: module_path_to_qualified_path(&owner, name),
-                    node_ptr: Rc::as_ptr(&binding.resolved) as usize,
+                    node_ptr: Arc::as_ptr(&binding.resolved) as usize,
                     via: ContainmentResolveVia::GlobalUnique,
                     lexical_steps: 0,
                 };
@@ -17402,9 +17402,9 @@ pub fn containment_resolve_fn_v1_for_module(
 }
 
 fn collect_bare_call_sites(
-    node: &Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut Vec<(String, Rc<Node>)>,
+    node: &Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    out: &mut Vec<(String, Arc<Node>)>,
 ) {
     match &*node.expr_data {
         ExprData::ExprCall { .. } => {
