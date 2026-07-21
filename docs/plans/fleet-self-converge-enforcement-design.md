@@ -176,11 +176,11 @@ type HostManagementProfile {
 
 This is the #6096 "mutate-then-read" failure: `systemctl show` reads the manager's property store, not kernel cgroup truth. **Under this design, an unfixed timer would re-assert the lie every cadence; the CI observer would certify it fleet-green.**
 
-**Required before fleet-green accept gates (Phase 1 deliverable, may parallel timer install):**
+**Required before fleet-green accept gates** (slice fix Phase 0; kernel read-back Phase 3 — timer install may proceed earlier but must not green without both):
 
-1. **Fix the slice name** — `gunbc_runner_slot_unit_placeholder` → escaped unit id `system-actions\x2drunner.slice` (or derive from `extdeps.os.systemd` slice naming authority).
-2. **Migrate stale decoy artifacts** — remove/reconcile `/etc/systemd/system.control/system-actions-runner.slice.d/` and the 2025-05-28 hand drop-in on each host (one-shot membership apply).
-3. **Kernel-grounded read-back** — fleet-green verdicts for cap knobs must use cgroup-fs reads (`/sys/fs/cgroup/.../memory.max`), not `systemctl show` alone. `2-live-read-seam` is the long-term home; a **minimal slice-cap slice** is a **hard gate for Phase 4**, not optional polish.
+1. **Fix the slice name** *(Phase 0)* — `gunbc_runner_slot_unit_placeholder` → escaped unit id `system-actions\x2drunner.slice` (or derive from `extdeps.os.systemd` slice naming authority).
+2. **Migrate stale decoy artifacts** *(Phase 0)* — remove/reconcile `/etc/systemd/system.control/system-actions-runner.slice.d/` and the 2025-05-28 hand drop-in on each host (one-shot membership apply).
+3. **Kernel-grounded read-back** *(Phase 3)* — fleet-green verdicts for cap knobs must use cgroup-fs reads (`/sys/fs/cgroup/.../memory.max`), not `systemctl show` alone. `2-live-read-seam` is the long-term home; a **minimal slice-cap slice** is a **hard gate for Phase 3**, not optional polish.
 
 **Distinction (review finding 1):** timer install may proceed with `ReadAbsent` per-knob fail-closed semantics, but **trusting the observer** requires kernel-grounded reads — fleet-green without (3) is a §5 false-green.
 
