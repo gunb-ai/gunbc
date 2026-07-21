@@ -1,5 +1,4 @@
 module v2.lens.simulated_relationship
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 

@@ -1,5 +1,4 @@
 module v2.lens.structural_similarity
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 

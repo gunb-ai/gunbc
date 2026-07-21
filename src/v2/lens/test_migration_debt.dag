@@ -1,5 +1,4 @@
 module v2.lens.test_migration_debt
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
