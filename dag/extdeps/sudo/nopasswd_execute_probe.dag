@@ -1,0 +1,19 @@
+module extdeps.sudo.nopasswd_execute_probe
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+data sudo_nopasswd_execute_probe_note: String = "Non-interactive sudo execute probe: sudo -n <command_path> <check_argv>. Interface shape only — argv transport is realized in gunbc.host_effect_deploy_access_probe_script, never as a shell string in intent."
+
+type SudoNopasswdExecuteProbeShape {
+  command_path: NonEmptyStr
+  check_argv: NonEmptyStr
+}

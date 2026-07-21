@@ -74,6 +74,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  content_hash,
   fold_node,
   node_rebuild,
   node_subtree_count,
@@ -99,6 +100,7 @@ import v2.std.compilers.target_model {
   TargetTypeExprRecord,
   TargetTypeExprSum,
   TargetCollectionRealization,
+  TargetTextCarrier,
   TargetRepresentationChoice,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
@@ -1362,6 +1364,39 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
   )
 }
 
+fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_element),
+    f: fn(element_carrier) {
+      bind_outcome(
+        o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_emitted),
+        f: fn(emitted) {
+          Accepted {
+            value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
+            diagnostics: None
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<TargetTextCarrier>> {
+  bind_outcome(
+    o: conj_optional_named_child(parent: bundle, edge_name: ^target_collection_row_field_text_carrier),
+    f: fn(opt) {
+      match opt {
+        Present { value: node } =>
+          bind_outcome(
+            o: target_text_carrier_from_node(node: node),
+            f: fn(tc) { Accepted { value: optional_present(value: tc), diagnostics: None } }
+          )
+        Absent => Accepted { value: optional_absent(), diagnostics: None }
+      }
+    }
+  )
+}
+
 fn target_collection_realization_from_bundle(
   bundle: Node
 ) -> Outcome<TargetCollectionRealization> {
@@ -1390,15 +1425,21 @@ fn target_collection_realization_from_bundle(
                           bind_outcome(
                             o: target_collection_fallback_from_node(node: fallback_node),
                             f: fn(fallback_diagnostic) {
-                              Accepted {
-                                value: TargetCollectionRealization {
-                                  source_carrier: source_carrier,
-                                  primary: primary,
-                                  alternatives: alternatives,
-                                  fallback_diagnostic: fallback_diagnostic
-                                },
-                                diagnostics: None
-                              }
+                              bind_outcome(
+                                o: target_text_carrier_optional_from_bundle(bundle: bundle),
+                                f: fn(text_carrier) {
+                                  Accepted {
+                                    value: TargetCollectionRealization {
+                                      source_carrier: source_carrier,
+                                      primary: primary,
+                                      alternatives: alternatives,
+                                      fallback_diagnostic: fallback_diagnostic,
+                                      text_carrier: text_carrier
+                                    },
+                                    diagnostics: None
+                                  }
+                                }
+                              )
                             }
                           )
                         }
@@ -1508,44 +1549,62 @@ fn project_free_monoid_collection_type_node(
       bind_outcome(
         o: free_monoid_collection_realization_from_target(target: target),
         f: fn(row) {
-          match target_collection_select_choice(
-            primary: row.primary,
-            alternatives: row.alternatives,
-            elem: elem
-          ) {
-            Present { value: choice } =>
-              bind_outcome(
-                o: translate_type_expression_project(node: elem, target: target, projection: projection),
-                f: fn(elem_projected) {
-                  bind_outcome(
-                    o: translate_apply_use_site_ownership_to_projected_type(
-                      projected: elem_projected,
-                      source_carrier: elem,
-                      target: target,
-                      use_site: OwnershipAtBindingProjection
-                    ),
-                    f: fn(elem_storage) {
-                      Accepted {
-                        value: target_type_expr_instantiation_emitted(
-                          form: choice.form.apply,
-                          head: target_type_expr_atom_emitted(
-                            form: projection.atom_form,
-                            identity: choice.form.apply.surface
-                          ),
-                          args: Cons { head: elem_storage, tail: Empty }
-                        ),
-                        diagnostics: None
-                      }
-                    }
-                  )
-                }
-              )
-            Absent => outcome_rejected(row.fallback_diagnostic)
+          match row.text_carrier {
+            Present { value: text_carrier } =>
+              if content_hash(n: elem) == content_hash(n: text_carrier.element_carrier) {
+                Accepted { value: text_carrier.emitted_type_node, diagnostics: None }
+              } else {
+                project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
+              }
+            Absent =>
+              project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
           }
         }
       )
     Absent =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn project_free_monoid_via_vec_choice(
+  row: TargetCollectionRealization,
+  elem: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_select_choice(
+    primary: row.primary,
+    alternatives: row.alternatives,
+    elem: elem
+  ) {
+    Present { value: choice } =>
+      bind_outcome(
+        o: translate_type_expression_project(node: elem, target: target, projection: projection),
+        f: fn(elem_projected) {
+          bind_outcome(
+            o: translate_apply_use_site_ownership_to_projected_type(
+              projected: elem_projected,
+              source_carrier: elem,
+              target: target,
+              use_site: OwnershipAtBindingProjection
+            ),
+            f: fn(elem_storage) {
+              Accepted {
+                value: target_type_expr_instantiation_emitted(
+                  form: choice.form.apply,
+                  head: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: choice.form.apply.surface
+                  ),
+                  args: Cons { head: elem_storage, tail: Empty }
+                ),
+                diagnostics: None
+              }
+            }
+          )
+        }
+      )
+    Absent => outcome_rejected(row.fallback_diagnostic)
   }
 }
 type TypeExprHeadTail {

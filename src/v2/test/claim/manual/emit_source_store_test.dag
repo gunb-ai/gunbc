@@ -12,7 +12,8 @@ import std.materialization_ladder {
 }
 import std.artifact_store { ArtifactKey, artifact_key_hash, store_over_provider, StoreReady, StoreRefusedEviction, ArtifactStore }
 import extdeps.realization.artifact_store_fs {
-  artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss,
+  artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
+  ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -50,21 +51,31 @@ test fn emit_source_store_cold_then_warm_holds() -> Bool {
   let key = p3_key(emitter: "v2.compiler.emit")
   let source = fresh_emit_source()
   let emitted_nonempty = (source == "") == false
-  let put_ok = artifact_fs_put(store_root: emit_store_root, key: key, payload: source)
+  let put_ok = match artifact_fs_put(store_root: emit_store_root, key: key, payload: source) {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
   let served = match artifact_fs_get(store_root: emit_store_root, key: key) {
     ArtifactFsHit { payload: p } => p
     ArtifactFsMiss { path: _ } => ""
+    ArtifactFsRefused { verb: v, target: t, frame: f } => ""
   }
   emitted_nonempty && put_ok && served == source && served == fresh_emit_source()
 }
 
 test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
   let key = p3_key(emitter: "v2.compiler.emit")
-  let put_ok = artifact_fs_put(store_root: emit_store_root, key: key, payload: fresh_emit_source())
+  let put_ok = match artifact_fs_put(store_root: emit_store_root, key: key, payload: fresh_emit_source()) {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
   let mutated = p3_key(emitter: "v2.compiler.emit-vNEXT")
   let miss = match artifact_fs_get(store_root: emit_store_root, key: mutated) {
     ArtifactFsHit { payload: _ } => false
     ArtifactFsMiss { path: _ } => true
+    ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   put_ok && miss && (key == mutated) == false
 }

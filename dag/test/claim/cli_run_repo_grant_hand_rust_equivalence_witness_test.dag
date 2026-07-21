@@ -1,0 +1,89 @@
+module test.claim.cli_run_repo_grant_hand_rust_equivalence_witness
+
+import gunbc.cli_run_repo_grant_scaffold {
+  cli_run_repo_grant_hand_rust_scaffold,
+  cli_run_repo_grant_dissolve_trigger,
+  cli_run_repo_grant_receipt_plan_anchor,
+  cli_run_repo_grant_equivalence_test_contained,
+  cli_run_repo_grant_equivalence_test_absolute_outside,
+  cli_run_repo_grant_equivalence_test_parent_segment,
+}
+import gunbc.cli_run_repo_grant {
+  cli_run_repo_write_admissible,
+  cli_run_repo_read_admissible,
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool, String }
+import std.effect_grant { EffectAdmission, Admitted, EffectOutsideGrant }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cli_run_repo_grant_hand_rust_equivalence_note: String = "Pins the HAND-RUST repo_relative_path gate (src/v1/stage0/src/cli_run.rs) against gunbc.cli_run_repo_grant on the SAME fixture spellings — parallel-representation drift guard until Chunk F dissolves the Rust gate. The .dag side asserts admit_effect verdicts; the Rust side is proven by cli_run.rs cli_run_repo_grant_equivalence_tests (named discriminators below). Both must agree: contained rel admits, absolute-outside refuses, parent-segment refuses."
+
+data fixture_contained_rel: String = "dag/std/effect_grant.dag"
+data fixture_escaping_rel: String = "../outside.dag"
+data fixture_absolute_outside: String = "/etc/passwd"
+
+fn dag_admits(rel: String) -> Bool {
+  match cli_run_repo_write_admissible(rel: rel) {
+    Admitted { via_root: r } => true
+    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+  }
+}
+
+fn dag_refuses(rel: String) -> Bool {
+  match cli_run_repo_write_admissible(rel: rel) {
+    Admitted { via_root: r } => false
+    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+  }
+}
+
+test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match cli_run_repo_grant_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool {
+  string_contains(s: cli_run_repo_grant_dissolve_trigger, pattern: "Chunk F")
+    && string_contains(s: cli_run_repo_grant_dissolve_trigger, pattern: "cli-run-reconcile-defork")
+    && string_contains(s: cli_run_repo_grant_dissolve_trigger, pattern: "5-dissolve-patches")
+}
+
+test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
+  dag_admits(rel: fixture_contained_rel)
+    && match cli_run_repo_read_admissible(rel: fixture_contained_rel) {
+      Admitted { via_root: r } => true
+      EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    }
+}
+
+test fn cli_run_repo_grant_equivalence_dag_escaping_refuses_holds() -> Bool {
+  dag_refuses(rel: fixture_escaping_rel)
+    && dag_refuses(rel: fixture_escaping_rel)
+}
+
+test fn cli_run_repo_grant_equivalence_dag_absolute_outside_refuses_holds() -> Bool {
+  dag_refuses(rel: fixture_absolute_outside)
+}
+
+test fn cli_run_repo_grant_equivalence_rust_tests_named() -> Bool {
+  string_contains(
+    s: cli_run_repo_grant_equivalence_test_contained,
+    pattern: "contained_admits"
+  ) &&
+    string_contains(
+      s: cli_run_repo_grant_equivalence_test_absolute_outside,
+      pattern: "absolute_outside_refuses"
+    ) &&
+    string_contains(
+      s: cli_run_repo_grant_equivalence_test_parent_segment,
+      pattern: "parent_segment_refuses"
+    ) &&
+    string_contains(
+      s: cli_run_repo_grant_receipt_plan_anchor,
+      pattern: "cli-run-reconcile-defork"
+    )
+}

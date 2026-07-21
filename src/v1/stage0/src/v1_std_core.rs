@@ -240,6 +240,7 @@ pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
     InternalExprError,
+    CensusHeadsBodyStripped,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3954,6 +3955,8 @@ pub struct ParseRecoveryError;
 pub struct SemanticExprError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InternalExprError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CensusHeadsBodyStripped;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Not;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

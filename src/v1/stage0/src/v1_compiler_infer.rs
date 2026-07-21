@@ -134,7 +134,9 @@ use crate::v1_std_core::ExprData::{
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
     ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
-use crate::v1_std_core::ExprErrorKind::{InternalExprError, ParseRecoveryError, SemanticExprError};
+use crate::v1_std_core::ExprErrorKind::{
+    CensusHeadsBodyStripped, InternalExprError, ParseRecoveryError, SemanticExprError,
+};
 use crate::v1_std_core::FieldAccessStyle::{
     EnumAccessor, OptionalUnwrap, StoredField, TupleFirst, TupleSecond,
 };
@@ -3075,9 +3077,17 @@ pub fn infer_expr(
             }
             ExprData::ExprError { kind, message, .. } => {
                 let span = texpr.span.clone();
+                let diagnostics = match kind.clone() {
+                    ExprErrorKind::CensusHeadsBodyStripped => Rc::new(vec![inference_error(
+                        message.clone(),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    )]),
+                    _ => Rc::new(vec![]),
+                };
                 Rc::new(InferResult {
                     typed: make_expr_error_node(kind.clone(), message.clone(), span.clone()),
-                    diagnostics: Rc::new(vec![]),
+                    diagnostics: diagnostics.clone(),
                 })
             }
             ExprData::ExprVar {
