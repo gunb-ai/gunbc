@@ -25,7 +25,7 @@ import gunbc.tools.bmc_onboard {
   boot_override_body,
   reset_body,
 }
-import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.workflow_escalation {
   WorkflowApprovalState,
   workflow_destructive_step_refusal_reason,
@@ -91,7 +91,7 @@ func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: Network
 {
-  let plan = new_altra_onboarding_plan
+  let plan = srv3_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 

@@ -1,7 +1,7 @@
 module gunbc.tools.bmc_onboard_validate
 
 import extdeps.bmc.http
-import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import std.types { NonEmptyStr, Secret }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -9,7 +9,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 func bmc_onboard_validate() -> ProcessExit
   uses net: Network
 {
-  let bmc_host = new_altra_onboarding_plan.bmc.host
+  let bmc_host = srv3_onboarding_plan.bmc.host
 
   root_resp = redfish.Http.GetServiceRoot(bmc_host: bmc_host)
   if root_resp.success == false {
@@ -18,8 +18,8 @@ func bmc_onboard_validate() -> ProcessExit
 
   system_resp = redfish.Http.GetSystem(
     bmc_host: bmc_host,
-    username: new_altra_onboarding_plan.factory_login.username,
-    password: new_altra_onboarding_plan.factory_login.published_password as Secret
+    username: srv3_onboarding_plan.factory_login.username,
+    password: srv3_onboarding_plan.factory_login.published_password as Secret
   )
 
   return if system_resp.success { ExitSuccess } else { exit_failure(reason: system_resp.body) }

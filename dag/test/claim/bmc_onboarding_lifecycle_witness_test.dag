@@ -30,7 +30,8 @@ import gunbc.bmc_onboarding {
   bmc_lifecycle_length,
   bmc_plan_steady_state_phase,
   bmc_plan_steady_state_posture,
-  new_altra_onboarding_plan,
+  srv3_onboarding_plan,
+  srv4_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
@@ -96,9 +97,9 @@ test fn bmc_lifecycle_fold_is_complete_and_monotone() -> Bool {
 }
 
 test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
-  let steady = bmc_plan_steady_state_phase(plan: new_altra_onboarding_plan)
+  let steady = bmc_plan_steady_state_phase(plan: srv3_onboarding_plan)
   (steady == FabricJoined)
-    && posture_is_keyless(p: bmc_plan_steady_state_posture(plan: new_altra_onboarding_plan))
+    && posture_is_keyless(p: bmc_plan_steady_state_posture(plan: srv3_onboarding_plan))
     && !string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "credentials_json")
     && string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "id-token: write")
 }
@@ -179,14 +180,14 @@ test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
   transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
 }
 
-test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
-  new_altra_onboarding_plan.bmc.host == "192.168.1.192"
-    && phase_tag(p: new_altra_onboarding_plan.start_phase) == 0
-    && match new_altra_onboarding_plan.rotated_credential {
+test fn srv3_plan_starts_factory_default_at_192() -> Bool {
+  srv3_onboarding_plan.bmc.host == "192.168.1.192"
+    && phase_tag(p: srv3_onboarding_plan.start_phase) == 0
+    && match srv3_onboarding_plan.rotated_credential {
       Stored { secret_name: s } => s == "bmc-srv3-admin"
       Chained { steps: _ } => false
     }
-    && match new_altra_onboarding_plan.os_target {
+    && match srv3_onboarding_plan.os_target {
       UbuntuOs { distro: d } =>
         match d {
           NobleNumbat2404Lts => true
@@ -194,10 +195,30 @@ test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
       WindowsOs { distro: _ } => false
       MacosOs { distro: _ } => false
     }
-    && redfish_boot_target_wire(t: new_altra_onboarding_plan.os_install_boot_target) == "Cd"
+    && redfish_boot_target_wire(t: srv3_onboarding_plan.os_install_boot_target) == "Cd"
     && redfish_boot_target_wire(t: BootTargetCd) == "Cd"
-    && redfish_account_role_wire(role: new_altra_onboarding_plan.rotated_account_role) == "Administrator"
+    && redfish_account_role_wire(role: srv3_onboarding_plan.rotated_account_role) == "Administrator"
     && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
+}
+
+test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
+  srv4_onboarding_plan.bmc.host == "192.168.1.195"
+    && !(srv4_onboarding_plan.bmc.host == srv3_onboarding_plan.bmc.host)
+    && phase_tag(p: srv4_onboarding_plan.start_phase) == 0
+    && match srv4_onboarding_plan.rotated_credential {
+      Stored { secret_name: s } => s == "bmc-srv4-admin"
+      Chained { steps: _ } => false
+    }
+    && match srv4_onboarding_plan.os_target {
+      UbuntuOs { distro: d } =>
+        match d {
+          NobleNumbat2404Lts => true
+        }
+      WindowsOs { distro: _ } => false
+      MacosOs { distro: _ } => false
+    }
+    && redfish_boot_target_wire(t: srv4_onboarding_plan.os_install_boot_target) == "Cd"
+    && redfish_account_role_wire(role: srv4_onboarding_plan.rotated_account_role) == "Administrator"
 }
 
 test fn credential_probe_maps_to_correct_phase() -> Bool {

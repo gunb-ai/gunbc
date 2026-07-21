@@ -20,6 +20,7 @@ import product.placement_supply { HostIdentity }
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
 data operator_host_srv3: HostIdentity = "srv3"
+data operator_host_srv4: HostIdentity = "srv4"
 
 data operator_lan_segment: NetworkSegment = NetworkSegment {
   cidr: "192.168.1.0/24",
@@ -79,6 +80,14 @@ data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-bmc",
+  host: Present { value: operator_host_srv4 },
+  address: "192.168.1.195",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
@@ -117,6 +126,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,
+    srv4_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
   ],

@@ -5,13 +5,19 @@ import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.gcp { GcpProjectId }
-import extdeps.shell
 import gunbc.bmc_onboarding {
-  new_altra_onboarding_plan,
+  BmcOnboardingPlan,
+  srv3_onboarding_plan,
+  srv4_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
   CredentialStateUnknown,
+}
+import gunbc.auth.access_token_source {
+  AccessTokenSource,
+  GcloudPrintToken,
+  resolve_access_token,
 }
 import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
@@ -40,7 +46,7 @@ data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
   }
 }
 
-data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
+data bmc_secrets_gcp_project: GcpProjectId = "gunbai-secrets"
 
 data bmc_credential_bytes: ByteSize = byte_size(20)
 
@@ -73,10 +79,10 @@ fn gcp_secret_full_name(project: String, secret_id: String) -> String {
   concat("projects/", concat(project, concat("/secrets/", secret_id)))
 }
 
-fn onboarding_secret_id() -> NonEmptyStr {
-  match new_altra_onboarding_plan.rotated_credential {
+fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr {
+  match plan.rotated_credential {
     Stored { secret_name: sn } => sn
-    Chained { steps: _ } => "bmc-srv3-admin" as NonEmptyStr
+    Chained { steps: _ } => plan.bmc.host
   }
 }
 
@@ -88,10 +94,9 @@ fn write_netrc(host: String, account: String, password: String) -> Bool {
   Filesystem.Write(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
 }
 
-func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
+func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> ProcessExit
   uses net: Network
 {
-  let plan = new_altra_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
@@ -125,35 +130,34 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
   }
 }
 
-func bmc_store_and_rotate(credential: Secret) -> ProcessExit
+func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret) -> ProcessExit
   uses net: Network
 {
   let payload_b64 = credential as String
-  let secret_id = onboarding_secret_id()
+  let secret_id = onboarding_secret_id(plan: plan)
 
-  auth = shell.GCloud.AuthPrintAccessToken()
+  let token = resolve_access_token(source: token_source)
   stored = gcp.SecretManager.AddVersion(
-    access_token: auth.access_token,
-    secret_name: gcp_secret_full_name(project: srv3_gcp_project, secret_id: secret_id),
+    access_token: token,
+    secret_name: gcp_secret_full_name(project: bmc_secrets_gcp_project, secret_id: secret_id),
     payload_b64: payload_b64
   )
   readback = gcp.SecretManager.AccessVersion(
-    access_token: auth.access_token,
-    project_id: srv3_gcp_project,
+    access_token: token,
+    project_id: bmc_secrets_gcp_project,
     secret: secret_id,
     version: "latest"
   )
   if readback.data_b64 != payload_b64 {
-    return exit_failure(reason: concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out srv3); stored version ", stored.name))
+    return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
   }
 
-  return bmc_rotate_credential(new_credential: credential)
+  return bmc_rotate_credential(plan: plan, new_credential: credential)
 }
 
-func bmc_assimilate_srv3_credential() -> ProcessExit
+func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
   uses net: Network
 {
-  let plan = new_altra_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
@@ -170,13 +174,12 @@ func bmc_assimilate_srv3_credential() -> ProcessExit
     return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
   }
 
-  return bmc_store_and_rotate(credential: mint_bmc_credential())
+  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
 }
 
-func bmc_probe_credential_phase() -> BmcCredentialProbeResult
+func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
   uses net: Network
 {
-  let plan = new_altra_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
@@ -189,11 +192,11 @@ func bmc_probe_credential_phase() -> BmcCredentialProbeResult
     return FactoryCredentialActive
   }
 
-  auth = shell.GCloud.AuthPrintAccessToken()
+  let token = resolve_access_token(source: token_source)
   secret_resp = gcp.SecretManager.AccessVersion(
-    access_token: auth.access_token,
-    project_id: srv3_gcp_project,
-    secret: onboarding_secret_id(),
+    access_token: token,
+    project_id: bmc_secrets_gcp_project,
+    secret: onboarding_secret_id(plan: plan),
     version: "latest"
   )
   rotated_verify = redfish.Http.GetSystem(
@@ -208,19 +211,37 @@ func bmc_probe_credential_phase() -> BmcCredentialProbeResult
   }
 }
 
-func bmc_converge_credential_idempotent() -> ProcessExit
+func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
   uses net: Network
 {
-  root_resp = redfish.Http.GetServiceRoot(bmc_host: new_altra_onboarding_plan.bmc.host)
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
   if root_resp.success == false {
     return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
   }
 
-  probe = bmc_probe_credential_phase()
+  probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
   match probe {
-    FactoryCredentialActive => return bmc_store_and_rotate(credential: mint_bmc_credential())
+    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
     RotatedCredentialActive => return ExitSuccess
     CredentialStateUnknown { reason: r } =>
       return exit_failure(reason: concat("credential converge: unknown phase: ", r))
   }
+}
+
+func srv3_probe_credential_phase() -> BmcCredentialProbeResult
+  uses net: Network
+{
+  bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+}
+
+func srv3_converge_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+}
+
+func srv4_converge_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
 }

@@ -29,6 +29,7 @@ data package_nbdkit: NonEmptyStr = "nbdkit"
 data package_socat: NonEmptyStr = "socat"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"
+data package_google_cloud_cli: NonEmptyStr = "google-cloud-cli"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 

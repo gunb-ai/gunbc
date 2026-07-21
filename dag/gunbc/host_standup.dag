@@ -196,7 +196,7 @@ data host_standup_spine: List<HostStandupStep> = [
     label: "prefix:bmc-credential-converge",
     authorities: [
       decl_ref(module_path: "gunbc.bmc_onboarding", decl_name: "bmc_credential_probe_to_phase"),
-      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential_idempotent"),
+      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
     ],
     effect_policy: OneShotIdempotent
   ),
@@ -318,7 +318,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:bmc-credential-converge",
     modeling: "modeled",
-    authority_or_interim: "gunbc.bmc_onboarding.bmc_credential_probe_to_phase + gunbc.tools.bmc_onboard.bmc_converge_credential_idempotent (#5949 idempotent probe)"
+    authority_or_interim: "gunbc.bmc_onboarding.bmc_credential_probe_to_phase + gunbc.tools.bmc_onboard.bmc_converge_credential (per-host; srv3_converge_credential / srv4_converge_credential entries)"
   },
   GapLedgerRow {
     phase_label: "prefix:os-install-mechanism",
