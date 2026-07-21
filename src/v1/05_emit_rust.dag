@@ -823,7 +823,15 @@ fn type_var_in_fn_generic_scope(id: String, generic_param_names: List<String>) -
   generic_param_names |> any(g => g == id)
 }
 
+fn type_atom_looks_like_generic_parameter(name: String) -> Bool {
+  string_length(s: name) == 1 && substring(s: name, start: 0, end: 1) >= "A" && substring(s: name, start: 0, end: 1) <= "Z"
+}
+
 fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let leaf_name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count == 0 && leaf_name != "" && type_atom_looks_like_generic_parameter(name: leaf_name) {
+    if !type_var_in_fn_generic_scope(id: leaf_name, generic_param_names: generic_param_names) { return true }
+  }
   if n.inferred != none {
     match n.inferred.value {
       TypeVariable { id: tv } =>
@@ -2088,7 +2096,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
-  let prelude = emit_prelude(imported_names: prelude_imported_names)
+  let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
@@ -3572,21 +3580,22 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   concat(free_monoid, char_line, non_empty_str, int_line, partial_function, memory, one)
 }
 
-fn emit_prelude(imported_names: List<String>) -> String {
+fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) -> String {
   let base = concat(
     "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
+  let witness_locally_defined = rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Witness")
   let has_witness = imported_names |> any(n => n == "Witness")
   let has_holds = imported_names |> any(n => n == "Holds")
   let has_violates = imported_names |> any(n => n == "Violates")
-  let witness_line = if has_witness || has_holds || has_violates {
+  let witness_line = if witness_locally_defined || has_witness || has_holds || has_violates {
     ""
   } else {
     "\nuse crate::v1_rt::Witness;"
   }
-  let variant_line = if has_holds && has_violates {
+  let variant_line = if witness_locally_defined || (has_holds && has_violates) {
     ""
   } else if has_holds {
     "\nuse crate::v1_rt::Witness::Violates;"
@@ -5273,6 +5282,20 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
+fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String {
+  if string_contains(s: name, pattern: ".") {
+    let leaf = qualified_last_segment(name: name)
+    match map_get(registry, leaf) {
+      Present { value: info } =>
+        concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+      Absent =>
+        emit_ident(name: name, target: Rust)
+    }
+  } else {
+    emit_ident(name: name, target: Rust)
+  }
+}
+
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
@@ -5303,7 +5326,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_ident(name: name, target: Rust)
+              let ident = emit_value_ref_ident(name: name, registry: registry)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -5315,7 +5338,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_ident(name: name, target: Rust)
+            let ident = emit_value_ref_ident(name: name, registry: registry)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -5357,9 +5380,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Present { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(to_snake(name: n), "()") }
-                else { emit_ident(name: n, target: Rust) }
+                else { emit_value_ref_ident(name: n, registry: registry) }
               Absent =>
-                emit_ident(name: n, target: Rust)
+                emit_value_ref_ident(name: n, registry: registry)
             }
         }
       }
@@ -6188,6 +6211,8 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
               let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
               if param_is_type_var || param_is_error {
+                none
+              } else if type_node_has_unbound_type_variable(n: param_type, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
                 none
               } else {
                 Present { value: render_rust_type(n: param_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
