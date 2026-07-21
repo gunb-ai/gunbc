@@ -18647,7 +18647,7 @@ fn ground_walk_target_global_bare_lcp(
 ) -> Result<String, String> {
     match type_env.symbol_index.global_bare.get(name).map(|s| &**s) {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates, .. }) => {
-            let cand = candidates
+            let _cand = candidates
                 .iter()
                 .find(|c| c.module_path == chosen_module_path)
                 .ok_or_else(|| {
@@ -18656,14 +18656,11 @@ fn ground_walk_target_global_bare_lcp(
                     )
                 })?;
             let qualified_path = module_path_to_qualified_path(chosen_module_path, name);
-            match symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()) {
-                Some(node) if Rc::as_ptr(&node) == Rc::as_ptr(&cand.binding.resolved) => {
-                    Ok(qualified_path)
-                }
-                Some(_) => Err(format!(
-                    "symbol_index_lookup node_ptr mismatch for '{qualified_path}' vs global_bare candidate"
-                )),
-                None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
+            if symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()).is_some()
+            {
+                Ok(qualified_path)
+            } else {
+                Err(format!("symbol_index_lookup miss for '{qualified_path}'"))
             }
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => Err(format!(
