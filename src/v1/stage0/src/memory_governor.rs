@@ -22,7 +22,10 @@
 //! No-swap regimes degrade honestly: an absent `memory.swap.current` makes the swap check
 //! inert (`None`, never a fabricated zero) while current + PSI carry the decision. The
 //! budget chain is env override > tightest cgroup `memory.high` > tightest `memory.max` >
-//! `/proc/meminfo` MemAvailable > MemTotal — on uncapped hosts MemAvailable precedes
+//! min(MemAvailable, declared runner-slot `memory.high`) > MemTotal — on uncapped hosts
+//! MemAvailable alone is capped at the declared slot throttle line (15 GiB from
+//! `gunbc.runner_slot_allocation`; srv3 2026-07-21 exit-137: uncapped MemAvailable ~35 GiB
+//! let batch-2 retention reach ~38 GiB before OOM-kill). MemAvailable still precedes
 //! MemTotal because the kernel's availability estimate excludes the co-tenant baseline
 //! (run 29180195694: a MemTotal budget let demand reach physical RAM and starve the
 //! runner agent). No readable cgroup at all leaves the creep checks inert — the window
@@ -885,13 +888,34 @@ impl Drop for AdmittedSlot {
 // ---- shared cgroup sensor primitives (single authority; the executor's heartbeat and
 // ---- measurement lines consume these same readers) ----
 
-/// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
+/// `gunbc_runner_slot_desired().memory_high` = `byte_size(16106127360)`; corroborated by
+/// `gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live`, which derives from
+/// the same row and forbids a duplicate literal):
+/// uncapped-host MemAvailable cap for `read_host_budget_bytes`. When no cgroup limit
+/// binds, raw MemAvailable must not be the sole budget — uncapped hosts let the floor
+/// reach physical RAM and OOM-kill (runs 29180195694, srv3 2026-07-21 exit-137).
+/// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
+/// (self-host frontier row for `memory_governor` cgroup-budget readers).
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
+
+/// Cap an uncapped-host MemAvailable sample at the declared runner-slot throttle
+/// line. Returns `(budget, capped)` where `capped` is true when `avail` exceeded
+/// the declaration.
+pub fn uncapped_host_budget_from_mem_available(avail: u64) -> (u64, bool) {
+    if avail > DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES {
+        (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, true)
+    } else {
+        (avail, false)
+    }
+}
+
 /// The host memory budget in bytes to admit against: env override -> cgroup
-/// memory.high -> memory.max -> /proc/meminfo MemAvailable -> MemTotal, with a
-/// readable source label. Single authority shared by the MemoryGovernor (which
-/// SCHEDULES against it) and the P4 realize advisory (which PREDICTS against it) —
-/// the advisory must price against the same budget the governor uses, never a
-/// partial re-read (§3 single authority).
+/// memory.high -> memory.max -> min(MemAvailable, declared runner-slot memory.high)
+/// -> MemTotal, with a readable source label. Single authority shared by the
+/// MemoryGovernor (which SCHEDULES against it) and the P4 realize advisory (which
+/// PREDICTS against it) — the advisory must price against the same budget the
+/// governor uses, never a partial re-read (§3 single authority).
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     if let Some(b) = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
         .ok()
@@ -912,9 +936,16 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         );
     }
     if let Some(avail) = mem_available_bytes() {
-        // The kernel's own availability estimate excludes the co-tenant baseline
-        // (runner agent, system services) that MemTotal would hand to the floor.
-        return (Some(avail), "/proc/meminfo MemAvailable".to_string());
+        let (budget, capped) = uncapped_host_budget_from_mem_available(avail);
+        let source = if capped {
+            format!(
+                "min(MemAvailable, declared runner-slot memory.high {} bytes)",
+                DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES
+            )
+        } else {
+            "/proc/meminfo MemAvailable".to_string()
+        };
+        return (Some(budget), source);
     }
     (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
 }
@@ -1049,6 +1080,16 @@ mod tests {
             events_high: Some(0),
             events_oom_kill: Some(0),
         }
+    }
+
+    #[test]
+    fn uncapped_host_budget_caps_mem_available_at_declared_runner_slot_high() {
+        let (budget, capped) = uncapped_host_budget_from_mem_available(35_161_423_872);
+        assert_eq!(budget, DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES);
+        assert!(capped);
+        let (small, capped_small) = uncapped_host_budget_from_mem_available(8_000_000_000);
+        assert_eq!(small, 8_000_000_000);
+        assert!(!capped_small);
     }
 
     #[test]
