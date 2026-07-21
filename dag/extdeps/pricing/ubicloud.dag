@@ -1,15 +1,14 @@
 module extdeps.pricing.ubicloud
 
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import std.currency { CurrencyCode, Usd }
-import std.measure {
-  ByteSize,
-  byte_size,
-  HardwareThreadCount,
-  hardware_thread_count,
-  MoneyPerMinute,
-  money_amount_micro,
+import extdeps.cloud.ubicloud {
+  UbicloudRunnerCatalogRow,
+  ubicloud_standard_2_catalog,
+  ubicloud_standard_16_catalog,
+  ubicloud_standard_2_arm_catalog,
+  ubicloud_standard_16_arm_catalog,
 }
+import std.currency { Usd }
+import std.measure { MoneyPerMinute, money_amount_micro }
 import std.types { NonEmptyStr, List }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -22,26 +21,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner prices live-fetched 2026-07-21 from Ubicloud pricing docs (anchor above). Premium x64 is the default tier for new users (standard deprecated June 2026 per vendor). arm64 single-price column cited from the same page."
+data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner prices live-fetched 2026-07-21 from Ubicloud pricing docs (anchor above). Premium x64 is the default tier for new users (standard deprecated June 2026 per vendor). arm64 single-price column cited from the same page. Hardware facts project from extdeps.cloud.ubicloud catalog rows — not re-stated here."
 
 type UbicloudRunnerPricingTier = PremiumX64 | StandardX64 | Arm64
 
 type UbicloudRunnerPriceRow {
-  runs_on_label: NonEmptyStr
+  catalog: UbicloudRunnerCatalogRow
   tier: UbicloudRunnerPricingTier
-  vcpus: HardwareThreadCount
-  memory_bytes: ByteSize
-  cpu_architecture: Architecture
   per_minute: MoneyPerMinute
   pricing_citation: NonEmptyStr
 }
 
 data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  runs_on_label: "ubicloud-standard-2",
+  catalog: ubicloud_standard_2_catalog,
   tier: PremiumX64,
-  vcpus: hardware_thread_count(2),
-  memory_bytes: byte_size(8000000000),
-  cpu_architecture: X86_64,
   per_minute: MoneyPerMinute {
     amount: money_amount_micro(count: 1600),
     currency: Usd,
@@ -50,11 +43,8 @@ data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerP
 }
 
 data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  runs_on_label: "ubicloud-standard-16",
+  catalog: ubicloud_standard_16_catalog,
   tier: PremiumX64,
-  vcpus: hardware_thread_count(16),
-  memory_bytes: byte_size(64000000000),
-  cpu_architecture: X86_64,
   per_minute: MoneyPerMinute {
     amount: money_amount_micro(count: 12800),
     currency: Usd,
@@ -63,11 +53,8 @@ data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunner
 }
 
 data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  runs_on_label: "ubicloud-standard-2-arm",
+  catalog: ubicloud_standard_2_arm_catalog,
   tier: Arm64,
-  vcpus: hardware_thread_count(2),
-  memory_bytes: byte_size(6000000000),
-  cpu_architecture: Aarch64,
   per_minute: MoneyPerMinute {
     amount: money_amount_micro(count: 1000),
     currency: Usd,
@@ -76,11 +63,8 @@ data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPrice
 }
 
 data ubicloud_arm_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  runs_on_label: "ubicloud-standard-16-arm",
+  catalog: ubicloud_standard_16_arm_catalog,
   tier: Arm64,
-  vcpus: hardware_thread_count(16),
-  memory_bytes: byte_size(48000000000),
-  cpu_architecture: Aarch64,
   per_minute: MoneyPerMinute {
     amount: money_amount_micro(count: 8000),
     currency: Usd,
