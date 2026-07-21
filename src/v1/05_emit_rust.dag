@@ -3367,7 +3367,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         }
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
-        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         let merged_specific = unique_strings(items: concat(specific_names, synth_for_module))
         emit_specific_import_block(
           import_module: import_module,
@@ -3426,8 +3426,15 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
-fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
-  let mod_filename = module_to_filename(name: import_module)
+data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).
+
+The predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.
+
+`name_in_transitive_export_surface` is the existing authority for that question (get_exported_names counts specific-import names as exports, which is exactly re-export), so this reuses it rather than minting a second reachability rule. Routing needs no change: graph_type_import_module_filename already groups emitted use-lines by the type's DEFINING module, so admitting the candidate yields a braced use-line against crate::extdeps_cache_catalog_io on its own.
+
+KNOWN RESIDUE, deliberately not fixed here: a field whose type is generic (`evidence: List<CacheEvidence>`) still misses, because build_field_type_map (04_emit_info.dag) stores only the type node's HEAD name — `List` — so `CacheEvidence` is absent from field_type_map entirely and no string-level test can recover it. That needs the resolved field-type NODE TREE (head + type-argument children), a separate increment; it is a distinct axis from this one, not a weaker version of it."
+
+fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
     |> filter(item => is_data_def_item(item: item))
     |> flat_map(item => {
@@ -3442,7 +3449,7 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
           Present { value: summary } =>
             map_values(summary.field_type_map) |> filter(field_type =>
               field_type != ""
-              && has_physical_type_def_in_module_filename(rhs_name: field_type, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+              && name_in_transitive_export_surface(name: field_type, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
               && match map_get(type_summaries, field_type) {
                 Present { value: ft } =>
                   match ft.repr {

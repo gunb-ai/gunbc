@@ -8334,6 +8334,7 @@ pub fn emit_imports(
                                         supplement_items.clone(),
                                         emit_info.type_summaries.clone(),
                                         import_module.clone(),
+                                        export_sets.clone(),
                                         typed_modules.clone(),
                                         source_indices.clone(),
                                         module_index.clone(),
@@ -8481,82 +8482,89 @@ pub fn node_tree_references_type_name(
     })
 }
 
+pub fn data_field_struct_import_provider_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).\n\nThe predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.\n\n`name_in_transitive_export_surface` is the existing authority for that question (get_exported_names counts specific-import names as exports, which is exactly re-export), so this reuses it rather than minting a second reachability rule. Routing needs no change: graph_type_import_module_filename already groups emitted use-lines by the type's DEFINING module, so admitting the candidate yields a braced use-line against crate::extdeps_cache_catalog_io on its own.\n\nKNOWN RESIDUE, deliberately not fixed here: a field whose type is generic (`evidence: List<CacheEvidence>`) still misses, because build_field_type_map (04_emit_info.dag) stores only the type node's HEAD name — `List` — so `CacheEvidence` is absent from field_type_map entirely and no string-level test can recover it. That needs the resolved field-type NODE TREE (head + type-argument children), a separate increment; it is a distinct axis from this one, not a weaker version of it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn module_data_field_struct_import_names(
     items: Rc<Vec<Rc<Node>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     import_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
-    {
-        let mod_filename = module_to_filename(import_module.clone());
-        unique_strings(Rc::new({
+    unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for item in Rc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
-                let mut __result = Vec::new();
-                for item in items.clone().iter().cloned() {
-                    if is_data_def_item(item.clone()) {
-                        __result.push(item);
-                    }
+            for item in items.clone().iter().cloned() {
+                if is_data_def_item(item.clone()) {
+                    __result.push(item);
                 }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.extend(
-                    (*{
-                        let type_name = match item.type_annotation.clone() {
-                            Some(ta) => authored_name_at(source_indices.clone(), ta.clone()),
-                            None => "".to_string(),
-                        };
-                        if (type_name.clone() == "".to_string()) {
-                            Rc::new(vec![])
-                        } else {
-                            match v1_rt::map_get(&type_summaries, type_name.clone()) {
-                                Some(summary) => Rc::new({
-                                    let mut __result = Vec::new();
-                                    for field_type in
-                                        Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
-                                            .iter()
-                                            .cloned()
-                                    {
-                                        if (((field_type.clone() != "".to_string())
-                                            && has_physical_type_def_in_module_filename(
-                                                field_type.clone(),
-                                                mod_filename.clone(),
-                                                typed_modules.clone(),
-                                                source_indices.clone(),
-                                                module_index.clone(),
-                                            ))
-                                            && match v1_rt::map_get(
-                                                &type_summaries,
-                                                field_type.clone(),
-                                            ) {
-                                                Some(ft) => match (*ft.repr.clone()).clone() {
-                                                    TypeRepr::StructRepr => true,
-                                                    _ => false,
-                                                },
-                                                None => false,
-                                            })
-                                        {
-                                            __result.push(field_type);
-                                        }
-                                    }
-                                    __result
-                                }),
-                                None => Rc::new(vec![]),
-                            }
-                        }
-                    })
-                    .iter()
-                    .cloned(),
-                );
             }
             __result
-        }))
-    }
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*{
+                    let type_name = match item.type_annotation.clone() {
+                        Some(ta) => authored_name_at(source_indices.clone(), ta.clone()),
+                        None => "".to_string(),
+                    };
+                    if (type_name.clone() == "".to_string()) {
+                        Rc::new(vec![])
+                    } else {
+                        match v1_rt::map_get(&type_summaries, type_name.clone()) {
+                            Some(summary) => Rc::new({
+                                let mut __result = Vec::new();
+                                for field_type in
+                                    Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                                        .iter()
+                                        .cloned()
+                                {
+                                    if (((field_type.clone() != "".to_string())
+                                        && name_in_transitive_export_surface(
+                                            field_type.clone(),
+                                            import_module.clone(),
+                                            Rc::new(vec![]),
+                                            export_sets.clone(),
+                                            typed_modules.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        ))
+                                        && match v1_rt::map_get(&type_summaries, field_type.clone())
+                                        {
+                                            Some(ft) => match (*ft.repr.clone()).clone() {
+                                                TypeRepr::StructRepr => true,
+                                                _ => false,
+                                            },
+                                            None => false,
+                                        })
+                                    {
+                                        __result.push(field_type);
+                                    }
+                                }
+                                __result
+                            }),
+                            None => Rc::new(vec![]),
+                        }
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    }))
 }
 
 pub fn typed_closure_includes_module_filename(
