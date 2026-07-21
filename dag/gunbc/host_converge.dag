@@ -27,7 +27,8 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slot_oom_pressure_kill }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_oom_policy { gunbc_runner_slot_oom_pressure_kill, gunbc_runner_slot_oom_pressure_limit }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import extdeps.os.systemd {
@@ -446,7 +447,8 @@ fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
-  let oom_auto = managed_oom_action_value(a: gunbc_runner_slot_desired().managed_oom_memory_pressure)
+  let kill_value = managed_oom_action_value(a: gunbc_runner_slot_desired().managed_oom_memory_pressure)
+  let pct = to_string(percent_count(p: gunbc_runner_slot_oom_pressure_limit()))
   [
     slice_numeric_knob(
       slice: RunnerSlice,
@@ -495,8 +497,19 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
       target: SliceProperty {
         unit: gunbc_runner_unit_template,
         property: oomd_managed_oom_memory_pressure_property,
-        apply_value: oom_auto,
-        expected_effective: oom_auto,
+        apply_value: kill_value,
+        expected_effective: kill_value,
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_oom_pressure_limit_pct",
+      desired: pct,
+      target: SliceProperty {
+        unit: gunbc_runner_unit_template,
+        property: oomd_managed_oom_memory_pressure_limit_property,
+        apply_value: concat(pct, "%"),
+        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_runner_slot_oom_pressure_limit())),
       }
     ),
     slice_numeric_knob(

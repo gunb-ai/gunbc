@@ -1,0 +1,73 @@
+module gunbc.runner_slot_oom_policy
+
+import std.types { NonEmptyStr, Bool }
+import std.measure { Percent, percent, percent_count, Second, second }
+import std.disposition { Disposition, Terminal }
+import extdeps.os.oomd {
+  UnitManagedOomPolicy,
+  ManagedOomAction,
+  ManagedOomKill,
+  ManagedOomAuto,
+  managed_oom_action_value,
+}
+
+data gunbc_runner_slot_unit_template: NonEmptyStr = "actions-runner@.service"
+
+data gunbc_runner_slot_psi_healthy_peak_authority: Disposition = Terminal {
+  reason: "Measured healthy per-slot PSI at legitimate ~14G peaks on srv1 runner slots (operator fleet diagnosis 2026-07-21): 0.5-0.8% memory.pressure some avg10 while resident stays under memory.high. PROVISIONAL for srv1 until Brief 2 compile_pool lands (PR 7019): compile RSS currently escapes per-slot caps via dead-slot cgroup misplacement, so srv1 per-slot PSI is not yet a trustworthy compile signal. Authority for threshold grounding uses the integer ceiling percent(1) as the modeled healthy high-water (0.8% measured rounds up). Ground thresholds on srv3 for compile-heavy specimens until srv1 pool fix lands."
+}
+
+data gunbc_runner_slot_psi_crawl_authority: Disposition = Terminal {
+  reason: "Measured crawl per-slot PSI on srv3-03 (operator fleet diagnosis 2026-07-21): ~4% memory.pressure some avg10 while pinned at memory.high+MemorySwapMax ceilings — 14.49M memory.high throttle events, 15G resident + 31G swapped, oom_kill=1. This is the hours-scale swap crawl the thrash-not-fail policy refuses: pressure-kill must fire BEFORE the slot spends hours in reclaim. GLOBAL host PSI reads near zero while a single slot is pinned, so the kill trigger must be per-slot ManagedOOMMemoryPressure on actions-runner@, not a host-level knob."
+}
+
+data gunbc_runner_slot_psi_healthy_peak_percent_high: Percent = percent(1)
+
+data gunbc_runner_slot_psi_crawl_observed_percent: Percent = percent(4)
+
+data gunbc_runner_slot_oom_pressure_limit_margin_percent: Percent = percent(1)
+
+fn gunbc_runner_slot_oom_pressure_limit() -> Percent {
+  let healthy = percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high)
+  let margin = percent_count(p: gunbc_runner_slot_oom_pressure_limit_margin_percent)
+  percent(healthy + margin)
+}
+
+fn gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: Percent) -> Bool {
+  percent_count(p: observed_psi) >= percent_count(p: gunbc_runner_slot_oom_pressure_limit())
+}
+
+fn gunbc_runner_slot_psi_healthy_peak_would_not_trigger() -> Bool {
+  !gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_healthy_peak_percent_high)
+}
+
+fn gunbc_runner_slot_psi_crawl_would_trigger() -> Bool {
+  gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_crawl_observed_percent)
+}
+
+fn gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl() -> Bool {
+  percent_count(p: gunbc_runner_slot_oom_pressure_limit()) > percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high)
+    && percent_count(p: gunbc_runner_slot_oom_pressure_limit()) < percent_count(p: gunbc_runner_slot_psi_crawl_observed_percent)
+}
+
+data gunbc_runner_slot_oom_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
+  scope_unit: gunbc_runner_slot_unit_template,
+  managed_oom_swap: ManagedOomKill,
+  managed_oom_memory_pressure: ManagedOomKill,
+  managed_oom_memory_pressure_limit: gunbc_runner_slot_oom_pressure_limit(),
+  managed_oom_memory_pressure_duration: second(20),
+}
+
+fn gunbc_runner_slot_oom_pressure_kill() -> Bool {
+  match gunbc_runner_slot_oom_policy.managed_oom_memory_pressure {
+    ManagedOomKill => true
+    ManagedOomAuto => false
+  }
+}
+
+fn gunbc_runner_slot_thrash_not_fail_policy_holds() -> Bool {
+  gunbc_runner_slot_oom_pressure_kill()
+    && gunbc_runner_slot_psi_healthy_peak_would_not_trigger()
+    && gunbc_runner_slot_psi_crawl_would_trigger()
+    && gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl()
+}

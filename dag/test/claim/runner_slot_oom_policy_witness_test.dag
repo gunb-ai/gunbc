@@ -1,0 +1,54 @@
+module test.claim.runner_slot_oom_policy_witness
+
+import gunbc.runner_slot_oom_policy {
+  gunbc_runner_slot_thrash_not_fail_policy_holds,
+  gunbc_runner_slot_oom_pressure_kill,
+  gunbc_runner_slot_oom_pressure_limit,
+  gunbc_runner_slot_psi_triggers_pressure_kill,
+  gunbc_runner_slot_psi_healthy_peak_percent_high,
+  gunbc_runner_slot_psi_crawl_observed_percent,
+  gunbc_runner_slot_psi_healthy_peak_would_not_trigger,
+  gunbc_runner_slot_psi_crawl_would_trigger,
+  gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl,
+}
+import std.measure { percent, percent_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn runner_slot_oom_policy_thrash_not_fail_holds() -> Bool {
+  gunbc_runner_slot_thrash_not_fail_policy_holds()
+}
+
+test fn runner_slot_oom_policy_pressure_kill_enabled() -> Bool {
+  gunbc_runner_slot_oom_pressure_kill()
+}
+
+test fn runner_slot_oom_policy_healthy_peak_psi_below_limit() -> Bool {
+  gunbc_runner_slot_psi_healthy_peak_would_not_trigger()
+}
+
+test fn runner_slot_oom_policy_crawl_psi_above_limit() -> Bool {
+  gunbc_runner_slot_psi_crawl_would_trigger()
+}
+
+test fn runner_slot_oom_policy_limit_grounded_between_measurements() -> Bool {
+  gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl()
+}
+
+test fn runner_slot_oom_policy_RED_limit_at_crawl_would_miss_healthy_discrimination() -> Bool {
+  !gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_healthy_peak_percent_high)
+    && gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_crawl_observed_percent)
+}
+
+test fn runner_slot_oom_policy_RED_zero_limit_would_false_positive_healthy() -> Bool {
+  percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high) >= percent_count(p: percent(0))
+}
+
+test fn runner_slot_oom_policy_RED_limit_above_crawl_would_never_kill() -> Bool {
+  percent_count(p: gunbc_runner_slot_psi_crawl_observed_percent) < percent_count(p: percent(5))
+}
+
+test fn runner_slot_oom_policy_RED_kill_disabled_breaks_thrash_not_fail() -> Bool {
+  gunbc_runner_slot_thrash_not_fail_policy_holds() && gunbc_runner_slot_oom_pressure_kill()
+}

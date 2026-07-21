@@ -9,10 +9,13 @@ import gunbc.runner_slot_allocation {
   gunbc_committed_runner_slot_allocations,
   gunbc_runner_slot_enforcement_expected_cap,
   gunbc_runner_slot_thrash_not_fail_policy_holds,
-  gunbc_runner_slot_oom_pressure_kill,
 }
-import extdeps.os.oomd { ManagedOomAuto }
-import std.measure { byte_size, byte_size_count }
+import gunbc.runner_slot_oom_policy {
+  gunbc_runner_slot_oom_pressure_kill,
+  gunbc_runner_slot_oom_pressure_limit,
+}
+import extdeps.os.oomd { ManagedOomKill }
+import std.measure { byte_size, byte_size_count, percent_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,7 +34,7 @@ test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
 }
 
 test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc_committed_runner_slot_allocations() |> count == 3
+  (gunbc_committed_runner_slot_allocations() |> count) == 3
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
@@ -51,21 +54,21 @@ test fn runner_slot_allocation_thrash_not_fail_policy_holds() -> Bool {
   gunbc_runner_slot_thrash_not_fail_policy_holds()
 }
 
-test fn runner_slot_allocation_oom_pressure_kill_is_false() -> Bool {
-  !gunbc_runner_slot_oom_pressure_kill()
+test fn runner_slot_allocation_oom_pressure_kill_is_true() -> Bool {
+  gunbc_runner_slot_oom_pressure_kill()
 }
 
-test fn runner_slot_allocation_managed_oom_memory_pressure_is_auto() -> Bool {
+test fn runner_slot_allocation_managed_oom_memory_pressure_is_kill() -> Bool {
   match gunbc_runner_slot_desired().managed_oom_memory_pressure {
-    ManagedOomAuto => true
+    ManagedOomKill => true
     _ => false
   }
 }
 
-test fn runner_slot_allocation_memory_policy_is_thrash_not_fail() -> Bool {
-  gunbc_runner_slot_thrash_not_fail_policy_holds()
+test fn runner_slot_allocation_oom_pressure_limit_matches_policy() -> Bool {
+  percent_count(p: gunbc_runner_slot_desired().managed_oom_memory_pressure_limit) == percent_count(p: gunbc_runner_slot_oom_pressure_limit())
 }
 
-test fn runner_slot_allocation_RED_oom_pressure_kill_would_break_thrash_not_fail() -> Bool {
-  gunbc_runner_slot_thrash_not_fail_policy_holds() && !gunbc_runner_slot_oom_pressure_kill()
+test fn runner_slot_allocation_RED_oom_pressure_kill_disabled_would_break_thrash_not_fail() -> Bool {
+  gunbc_runner_slot_thrash_not_fail_policy_holds() && gunbc_runner_slot_oom_pressure_kill()
 }

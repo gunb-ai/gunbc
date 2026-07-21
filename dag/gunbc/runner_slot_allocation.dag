@@ -1,13 +1,17 @@
 module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Percent }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import extdeps.os.oomd { ManagedOomAction, ManagedOomAuto, ManagedOomKill }
-
+import gunbc.runner_slot_oom_policy {
+  gunbc_runner_slot_oom_policy,
+  gunbc_runner_slot_oom_pressure_kill,
+  gunbc_runner_slot_oom_pressure_limit,
+  gunbc_runner_slot_thrash_not_fail_policy_holds,
+}
 type RunnerSlotLabels {
   github_labels: List<String>
 }
@@ -17,6 +21,7 @@ type RunnerSlotDesired {
   memory_swap_max: ByteSize
   memory_high: ByteSize
   managed_oom_memory_pressure: ManagedOomAction
+  managed_oom_memory_pressure_limit: Percent
   tasks_max: Int
   cpu_weight: Int
   labels: RunnerSlotLabels
@@ -31,11 +36,7 @@ type HostRunnerSlotAllocation {
 }
 
 data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
-  reason: "Single authority for srv1/srv2/srv3 runner-slot desired allocation (operator ruling 2026-07-10, superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning follow-up ruled 2026-07-11; srv3 host-standup converge 2026-07-21; thrash-not-fail memory policy 2026-07-21): 8 cores · 16GiB MemoryMax · 32GiB MemorySwapMax APPLIED (the emitted converge previously hardcoded MemorySwapMax=0 against this row's 32GiB — the declared-vs-live fork this ruling resolves; the knob now derives from this row) · 15GiB MemoryHigh APPLIED (the authored max−1GiB relation, emitted as its own per-slot knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15) · ThrashNotFail APPLIED: ManagedOOMMemoryPressure=auto on the actions-runner@ template (per_slot_oom_pressure_kill=false — the inverse of sessions.slice's oom_pressure_kill=true backstop); between memory.high and memory.max the slot does not fail, it reclaim-throttles into swap (ci_floor_measurement floor_peak_post receipts); memory.max remains the loud, attributable kill line. 5 slots/host · GUARANTEED mode: Σ per-slot MemoryMax = 5 × 16GiB = 80GiB = runner_slice_cap exactly, no oversubscription (the ≤-check holds with equality). Σ per-slot MemorySwapMax = 160GiB/host is provisioned host-side by operator guarantee (2026-07-11); the Σ-swap ≤ declared host_swap_budget wall stays roadmap host-admission. The prior 8GiB × 10 shape is the AFTER-base-shrinking target (S2b prefix sharing), not the current one. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). srv3 uses the same per-slot row as srv1/srv2 (ci_budget_tree witness_srv3_symmetric_to_srv1); FreshStandup apply mode is host_converge's gunbc_apply_mode_for_host, not a different cap. Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement (declared_runner_count derives 80/16 = 5 from this row — coherent with slots_per_host by construction at these values), gunbc.host_converge, gunbc.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.host_runner_memory_provision, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
-}
-
-fn gunbc_runner_slot_oom_pressure_kill() -> Bool {
-  false
+  reason: "Single authority for srv1/srv2/srv3 runner-slot desired allocation (operator ruling 2026-07-10, superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning follow-up ruled 2026-07-11; srv3 host-standup converge 2026-07-21; thrash-not-fail memory policy 2026-07-21): 8 cores · 16GiB MemoryMax · 32GiB MemorySwapMax APPLIED (the emitted converge previously hardcoded MemorySwapMax=0 against this row's 32GiB — the declared-vs-live fork this ruling resolves; the knob now derives from this row) · 15GiB MemoryHigh APPLIED (the authored max−1GiB relation, emitted as its own per-slot knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15) · ThrashNotFail APPLIED: ManagedOOMMemoryPressure=kill plus a grounded per-slot PSI limit on the actions-runner@ template (horizontal extension of gunbc_oomd_sessions_policy shape — per_slot_oom_pressure_kill=true; limit derived in gunbc.runner_slot_oom_policy from measured healthy srv1 0.5-0.8% vs srv3-03 crawl ~4% PSI; healthy 14G peaks must NOT trigger, crawl must). Refuses the hours-scale swap crawl MemorySwapMax=32G enables when a slot pins at both ceilings. 5 slots/host · GUARANTEED mode: Σ per-slot MemoryMax = 5 × 16GiB = 80GiB = runner_slice_cap exactly, no oversubscription (the ≤-check holds with equality). Σ per-slot MemorySwapMax = 160GiB/host is provisioned host-side by operator guarantee (2026-07-11); the Σ-swap ≤ declared host_swap_budget wall stays roadmap host-admission. The prior 8GiB × 10 shape is the AFTER-base-shrinking target (S2b prefix sharing), not the current one. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). srv3 uses the same per-slot row as srv1/srv2 (ci_budget_tree witness_srv3_symmetric_to_srv1); FreshStandup apply mode is host_converge's gunbc_apply_mode_for_host, not a different cap. Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement (declared_runner_count derives 80/16 = 5 from this row — coherent with slots_per_host by construction at these values), gunbc.host_converge, gunbc.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.host_runner_memory_provision, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
 fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
@@ -43,7 +44,8 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
     memory_max: byte_size(17179869184),
     memory_swap_max: byte_size(34359738368),
     memory_high: byte_size(16106127360),
-    managed_oom_memory_pressure: ManagedOomAuto,
+    managed_oom_memory_pressure: gunbc_runner_slot_oom_policy.managed_oom_memory_pressure,
+    managed_oom_memory_pressure_limit: gunbc_runner_slot_oom_pressure_limit(),
     tasks_max: 512,
     cpu_weight: 100,
     labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
@@ -101,15 +103,6 @@ fn gunbc_committed_runner_slot_allocations() -> List<HostRunnerSlotAllocation> {
 
 fn gunbc_runner_slot_enforcement_expected_cap() -> ByteSize {
   gunbc_runner_slot_desired().memory_max
-}
-
-fn gunbc_runner_slot_thrash_not_fail_policy_holds() -> Bool {
-  !gunbc_runner_slot_oom_pressure_kill()
-    && match gunbc_runner_slot_desired().managed_oom_memory_pressure {
-      ManagedOomAuto => true
-      ManagedOomKill => false
-    }
-    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) < byte_size_count(b: gunbc_runner_slot_desired().memory_max)
 }
 
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
