@@ -18,6 +18,7 @@ import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
   live_deploy_systemd_unit_for,
+  live_deploy_tree_sync_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
@@ -116,13 +117,13 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "rsync -a --delete --exclude /target --exclude /.git ./ /opt/gunbc/gunbc/")
-    && string_contains(s: sh, pattern: "rsync -a ./.git/ /opt/gunbc/gunbc/.git/")
-    && !string_contains(s: sh, pattern: "--delete ./.git/")
-    && !string_contains(s: sh, pattern: "--exclude /target ./ ")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0755 target/release/gunbc /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "chown -R briansrls:briansrls /opt/gunbc/gunbc")
-    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/gunbc")
+    && string_contains(s: sh, pattern: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\"")
+    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" /etc/gunbc-tree-sync.env")
+    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" /etc/systemd/system/gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: "sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc")
+    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg 8080")
@@ -131,15 +132,38 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the five granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+
+fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
+  let apply = expected_live_deploy_apply_script()
+  let retract = expected_live_deploy_retract_script()
+  let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
+  !string_contains(s: apply, pattern: "chown")
+    && !string_contains(s: retract, pattern: "chown")
+    && !string_contains(s: apply, pattern: "rmdir")
+    && !string_contains(s: retract, pattern: "rmdir")
+    && !string_contains(s: apply, pattern: "rsync -a ")
+    && !string_contains(s: apply, pattern: "\nrsync")
+    && !string_contains(s: retract, pattern: "rsync")
+    && string_contains(s: unit, pattern: "Type=oneshot")
+    && string_contains(s: unit, pattern: "User=briansrls")
+    && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
+    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/")
+    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/")
+    && !string_contains(s: unit, pattern: "rsync -a")
+    && string_contains(s: apply, pattern: unit)
+}
+
 fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "rmdir /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "rm -rf /opt/gunbc/gunbc")
+    && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "sudo -n rm -rf /opt/gunbc/gunbc")
     && !string_contains(s: sh, pattern: "rm -rf /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env")
     && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "apt-get remove")
@@ -283,6 +307,7 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_tailnet_url_absent_not_fabricated()
     && witness_dependency_ensure_is_idempotent()
     && witness_apply_script_contains_systemd_and_tailscale()
+    && witness_scripts_stay_within_ci_runner_grants()
     && witness_retract_script_owned_only()
     && witness_apply_script_has_no_node_server()
     && witness_apply_script_has_no_frozen_page()
