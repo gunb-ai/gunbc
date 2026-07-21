@@ -28,6 +28,8 @@ data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella pri
 
 data wedge_runner_vcpus_are_hardware_threads_note: String = "Hosted-runner vcpus and server cpu.catalog.threads are both counted as hardware threads (SMT siblings), not physical cores — required for per-thread cost allocation."
 
+data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator are explicitly declared WedgeAssumptions inputs (refuses ExchangeRateUnknown on zero denominator), not cited extdeps facts. dissolve-on: extdeps.forex authority + MoneyRate<From,To> carrier when a second FX consumer appears."
+
 type WedgeAssumptions {
   runner_utilization_bp: BasisPoint
   amortization_months: AmortizationMonths
