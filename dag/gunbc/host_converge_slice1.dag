@@ -348,7 +348,7 @@ type HostConvergeSlice1UnitOutcome
   | HostConvergeSlice1UnitUsageGuardRefused { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
 
 type HostConvergeSlice1HostResult
-  = HostConvergeSlice1HostConverged { host: HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
+  = HostConvergeSlice1HostEnumerated { host: HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
   | HostConvergeSlice1HostRefused { reason: String }
   | HostConvergeSlice1HostEnumerationMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
 
@@ -447,7 +447,7 @@ fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String)
           match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
             Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
             _ =>
-              HostConvergeSlice1HostConverged {
+              HostConvergeSlice1HostEnumerated {
                 host: host,
                 outcomes: map(units, u => host_converge_slice1_converge_unit(host: host, unit: u, knob: knob)),
               }
@@ -525,7 +525,7 @@ fn host_converge_slice1_unit_outcome_to_legacy_result(outcome: HostConvergeSlice
 
 fn host_converge_slice1_host_result_applied_count(result: HostConvergeSlice1HostResult) -> Int {
   match result {
-    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+    HostConvergeSlice1HostEnumerated { host: _, outcomes: os } =>
       fold(os, init: 0, f: fn(acc, o) {
         match host_converge_slice1_unit_outcome_to_legacy_result(o) {
           HostConvergeSlice1Converged { applied_knobs: n, receipt: _ } => acc + n
@@ -538,7 +538,7 @@ fn host_converge_slice1_host_result_applied_count(result: HostConvergeSlice1Host
 
 fn host_converge_slice1_host_result_all_valid(result: HostConvergeSlice1HostResult) -> Bool {
   match result {
-    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+    HostConvergeSlice1HostEnumerated { host: _, outcomes: os } =>
       length(os) > 0
         && fold(os, init: true, f: fn(acc, o) {
           acc
@@ -561,7 +561,7 @@ fn host_converge_slice1_host_result_refusal_reason(result: HostConvergeSlice1Hos
           concat(concat(" declared_count=", to_string(m.declared_count)), concat(" observed_count=", to_string(length(m.observed_units)))),
         ),
       }
-    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+    HostConvergeSlice1HostEnumerated { host: _, outcomes: os } =>
       fold(os, init: none, f: fn(acc, o) {
         match acc {
           Present { value: _ } => acc
