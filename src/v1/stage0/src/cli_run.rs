@@ -4785,6 +4785,17 @@ pub struct MultiEntryIndex {
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
     typed_cache_evictions: Cell<u64>,
+    /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
+    /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
+    /// when no private cgroup memory limit is discoverable) on every insert was the
+    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// across every co-resident session, and each eviction's recompute-on-miss
+    /// added the exact memory pressure the cap exists to relieve — a thrashing
+    /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
+    /// so index construction stays free of the governor read for callers that
+    /// never touch the typed cache.
+    typed_module_cache_cap: std::cell::OnceCell<usize>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4914,6 +4925,7 @@ fn new_multi_entry_index_shell(
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
+        typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
