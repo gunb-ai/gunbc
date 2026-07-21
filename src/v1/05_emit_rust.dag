@@ -1904,6 +1904,170 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
   )
 }
 
+type RefUseProvider {
+  provider: String
+  name: String
+}
+
+# Bounded type-expression name walk (name + generic-arg children/params only).
+# Used for `inferred` (resolved) type nodes -- a fn's return type lives in
+# `inferred`, not `children`. Bounded (no inferred/body recursion) so it reads
+# the type reference and its generic args without descending into the referenced
+# type's own definition (which would over-collect the whole provider module).
+fn collect_type_expr_names(rt: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_names = concat(
+    if rt.name != "" { [rt.name] } else { [] },
+    if rt.ident_span != none { [authored_name_at(source_indices: source_indices, node: rt)] } else { [] }
+  )
+  concat(
+    self_names,
+    concat(
+      rt.children |> flat_map(c => collect_type_expr_names(rt: c, source_indices: source_indices)),
+      rt.params |> flat_map(c => collect_type_expr_names(rt: c, source_indices: source_indices))
+    )
+  )
+}
+
+fn collect_referenced_names_from_inferred(inferred: InferredNode?, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  match inferred {
+    Present { value: Resolved { node: rt } } => collect_type_expr_names(rt: rt, source_indices: source_indices)
+    _ => []
+  }
+}
+
+# Deep referenced-name collector across ALL inductive sub-node fields, not just
+# `children`: type references live in `type_annotation`/`params`/`inferred`,
+# constructor/value references in `body`. A children-only walk
+# (collect_type_names_from_node) misses them, so the reference-derived use pass
+# would wire nothing. Over-collection (definition names, locals) is harmless --
+# the SVN + cross-module-registry filter in reference_derived_use_lines removes
+# anything already in scope. All fields walked are registered
+# `compiler_inductive_fields` for Node, so this is structural descent.
+fn collect_referenced_names_deep(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_names = concat(
+    if n.name != "" { [n.name] } else { [] },
+    if n.ident_span != none { [authored_name_at(source_indices: source_indices, node: n)] } else { [] }
+  )
+  let list_field_names = concat(
+    concat(
+      n.children |> flat_map(c => collect_referenced_names_deep(n: c, source_indices: source_indices)),
+      n.params |> flat_map(c => collect_referenced_names_deep(n: c, source_indices: source_indices))
+    ),
+    concat(
+      n.uses |> flat_map(c => collect_referenced_names_deep(n: c, source_indices: source_indices)),
+      n.properties |> flat_map(c => collect_referenced_names_deep(n: c, source_indices: source_indices))
+    )
+  )
+  let opt_field_names = concat(
+    concat(
+      match n.type_annotation { Present { value: t } => collect_referenced_names_deep(n: t, source_indices: source_indices)  Absent => [] },
+      match n.body { Present { value: b } => collect_referenced_names_deep(n: b, source_indices: source_indices)  Absent => [] }
+    ),
+    concat(
+      match n.transport { Present { value: t } => collect_referenced_names_deep(n: t, source_indices: source_indices)  Absent => [] },
+      collect_referenced_names_from_inferred(inferred: n.inferred, source_indices: source_indices)
+    )
+  )
+  concat(self_names, concat(list_field_names, opt_field_names))
+}
+
+# Names a use-line binds, extracted from an emitted import line: the segment
+# after the final `::`, with `{}`/`;`/`*` stripped, split on `,`. Covers
+# `use crate::m::X;`, `use crate::m::{A, B};` and the `pub use` variants;
+# wildcards contribute nothing. Keeps the reference-derived pass a true no-op for
+# any name the prelude/import block already provides (drift-safety + no E0252
+# duplicate against the runtime prelude) and dedups the direct-emit fallback.
+fn imported_names_in_use_line(line: String) -> List<String> {
+  if contains(line, "use ") == false {
+    []
+  } else {
+    let after = match (line |> split(delimiter: "::")) |> last {
+      Present { value: s } => s
+      Absent => ""
+    }
+    let cleaned = replace(replace(replace(replace(after, "{", ""), "}", ""), ";", ""), "*", "")
+    cleaned |> split(delimiter: ",") |> map(s => trim(s)) |> filter(s => s != "")
+  }
+}
+
+# One field-type expansion round: an anonymous nested record literal (`io: {..}`)
+# is emitted with the type NAME of its target field, which is a field type of the
+# enclosing record's declaration and never appears in source text. So union the
+# referenced set with the referenced-names of each referenced type's declaration.
+# Applied twice (below) to cover two-level nesting; SVN-filtered afterward so
+# over-collection is harmless.
+fn expand_field_types_once(names: List<String>, type_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  unique_strings(items: concat(
+    names,
+    names |> flat_map(name =>
+      match map_get(type_decl_items, name) {
+        Present { value: decl } => collect_referenced_names_deep(n: decl, source_indices: source_indices)
+        Absent => []
+      }
+    )
+  ))
+}
+
+# Reference-derived use-lines (emit_import_closure_root, §5).
+#
+# The import-derived block (emit_imports) wires a use-line only for names in an
+# authored `import ... { name }` list. Namespace-only resolution (#6848) lets a
+# module reference a cross-module name WITHOUT importing it, so those references
+# got NO use-line and the emitter merely advised `UnlistedImportUse`
+# (is_error_diagnostic = false) -- a §5 fail-open: the ref is KNOWN yet the
+# use-line is declined, producing invalid Rust (E0422/E0433/E0425). This derives
+# the missing use-lines from the reference set (the same closure that pulls the
+# provider modules in). Zero-drift: `source_visible_names` already holds locals +
+# kernel + imported specific-names + type-params, so a module whose references
+# are all visible adds nothing; empty SVN mirrors the resolver's mask guard.
+fn reference_derived_use_lines(items: List<Node>, this_module_name: String, source_visible_names: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  if map_is_empty(m: source_visible_names) {
+    []
+  } else {
+    let direct = unique_strings(items: items |> flat_map(item => collect_referenced_names_deep(n: item, source_indices: source_indices)))
+    let referenced = expand_field_types_once(
+      names: expand_field_types_once(names: direct, type_decl_items: emit_info.type_decl_items, source_indices: source_indices),
+      type_decl_items: emit_info.type_decl_items,
+      source_indices: source_indices
+    )
+    let already = already_imported_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
+    let pairs = referenced |> flat_map(name =>
+      if emit_map_has(m: source_visible_names, key: name) {
+        []
+      } else if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
+        []
+      } else {
+        match map_get(registry, name) {
+          Present { value: info } =>
+            if info.module_name != this_module_name { [RefUseProvider { provider: info.module_name, name: name }] } else { [] }
+          Absent => []
+        }
+      }
+    )
+    let providers = unique_strings(items: pairs |> map(p => p.provider))
+    providers |> flat_map(provider =>
+      let names = pairs |> filter(p => p.provider == provider) |> map(p => p.name)
+      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
+      let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
+      # §5: never silently drop. emit_specific_import_block's re-export /
+      # physical-home classification declines some legitimately-referenced
+      # top-level items; wire those directly (arm (c): provably-correct, the name
+      # resolved via registry to `provider`). Variants resolve through their
+      # enum's path, not a direct `use`, so they are excluded; genuinely
+      # unresolvable names never reach here (they fail the registry lookup above).
+      let fallback = names |> flat_map(nm =>
+        if (emitted_here |> any(e => e == nm)) || is_known_variant(type_summaries: emit_info.type_summaries, name: nm) {
+          []
+        } else {
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+        }
+      )
+      concat(block_lines, fallback)
+    )
+  }
+}
+
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
@@ -1945,7 +2109,12 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   } else {
     []
   }
-  let merged_imports = dedupe_rust_import_lines(lines: concat(dag_import_lines, carrier_import_lines)) |> join(separator: "\n")
+  let already_imported_names = concat(
+    prelude_imported_names,
+    concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
+  )
+  let reference_use_lines = reference_derived_use_lines(items: typed_module.items, this_module_name: authored_name(env: scope.type_env, node: m), source_visible_names: scope.type_env.source_visible_names, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
