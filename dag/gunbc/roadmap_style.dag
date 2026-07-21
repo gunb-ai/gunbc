@@ -2,15 +2,22 @@ module gunbc.roadmap_style
 
 import gunbc.site.tokens {
   BuildRule, StaticRule, CssDecl, decl, role_decl, css_block,
-  serialize_rules, theme_root_css,
+  serialize_rules, theme_root_css, reduced_motion_block,
   day_theme, night_theme,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
   FigureRole, FocusRole, BoundaryRole,
 }
+import gunbc.site.moodboard { figure_rules }
+import gunbc.roadmap_interaction { roadmap_behavior_rules, roadmap_behaviors }
 
-data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of gunbc.site.tokens — the design-library lift's own justification bar (a layer earns extraction when its second consumer arrives). Day atlas is the base projection (an operational tool read in daylight), night via prefers-color-scheme — same Theme rows as the public site, zero new colors. The old hand-hex stylesheet (traffic-light status chips, #0969da links, #2da44e progress bar) is deleted: status is conveyed by the state WORD plus quiet material differences — done recedes to text-dim, review carries a brass BORDER mark (brass is never a text material — review finding 2: day brass is 3.96:1, clears the 3:1 graphical bar, fails the 4.5:1 text bar); the progress bar fill is the figure role (progress = derived fact, lit). This dissolves the css_rule props-as-String scaffold that lived here (css_rule_props_scaffold): the stylesheet is now typed CssDecl rows on the shared BuildRule machinery."
+data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of gunbc.site.tokens — the design-library lift's own justification bar (a layer earns extraction when its second consumer arrives). Day atlas is the base projection (an operational tool read in daylight), night via prefers-color-scheme — same Theme rows as the public site, zero new colors. The old hand-hex stylesheet (traffic-light status chips, #0969da links, #2da44e progress bar) is deleted: status is conveyed by the state WORD plus quiet material differences — done recedes to text-dim, review carries a brass BORDER mark (brass is never a text material — review finding 2: day brass is 3.96:1, clears the 3:1 graphical bar, fails the 4.5:1 text bar); the progress bar fill is the figure role (progress = derived fact, lit). This dissolves the css_rule props-as-String scaffold that lived here (css_rule_props_scaffold): the stylesheet is now typed CssDecl rows on the shared BuildRule machinery. Figure-class styling (.mark-point/.mark-sink/.mark-edge and friends) is IMPORTED from moodboard.figure_rules — the single authority for figure role rows, accent_study precedent — never re-minted here (review 40756); roadmap_rules() is the full serialized set (instance rules + figure rules) so the unthemed-color census and the brass-never-text check see exactly what the page ships."
 
 fn roadmap_rules() -> List<BuildRule> {
+  concat(roadmap_instance_rules(),
+    concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
+}
+
+fn roadmap_instance_rules() -> List<BuildRule> {
   [
     StaticRule { selector: "*", decls: [
       decl(prop: "box-sizing", value: "border-box"),
@@ -28,6 +35,13 @@ fn roadmap_rules() -> List<BuildRule> {
       decl(prop: "padding", value: "12px 24px"),
       decl(prop: "border-bottom", value: "1px solid var(--border)"),
       role_decl(prop: "background", r: SurfaceRole),
+      decl(prop: "display", value: "flex"),
+      decl(prop: "align-items", value: "center"),
+      decl(prop: "gap", value: "12px"),
+    ] },
+    StaticRule { selector: ".mark", decls: [
+      decl(prop: "height", value: "24px"),
+      decl(prop: "display", value: "block"),
     ] },
     StaticRule { selector: "h1", decls: [
       decl(prop: "font-size", value: "18px"),
@@ -238,9 +252,6 @@ fn roadmap_rules() -> List<BuildRule> {
       decl(prop: "margin-left", value: "6px"),
       decl(prop: "cursor", value: "pointer"),
     ] },
-    StaticRule { selector: ".dispatch-btn:hover", decls: [
-      decl(prop: "border-color", value: "var(--focus)"),
-    ] },
   ]
 }
 
@@ -248,5 +259,6 @@ fn roadmap_css() -> String {
   join([
     theme_root_css(base: day_theme, alternate: night_theme),
     serialize_rules(rules: roadmap_rules()),
+    reduced_motion_block(rules: roadmap_rules()),
   ], "\n")
 }
