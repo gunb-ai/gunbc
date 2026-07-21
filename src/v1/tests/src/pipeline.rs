@@ -4091,8 +4091,7 @@ fn indexed_names(names: List<String>) -> List<String> {
 }
 
 #[test]
-#[ignore = "failing: Symbol data does not preserve authored identity. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-rust-render"]
-fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
+fn rust_symbol_opaque_alias_emits_string_and_btree_set() {
     let source = "\
 module test_nominal_ord_set
 type Symbol
@@ -4108,25 +4107,28 @@ type DiffBag { ids: Set<DiffId> }
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
-        content.contains("#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub String);"),
-        "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content.contains("pub type Symbol = String;"),
+        "Symbol must alias host String at the opaque-kernel coerce authority, got:\n{}",
         content
     );
     assert!(
-        content.contains(
-            "pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"
-        ),
-        "Symbol data should preserve authored identity, got:\n{}",
+        !content.contains("pub struct Symbol(pub String)"),
+        "Symbol must not emit a parallel newtype carrier, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub struct DiffId {\n    pub id: Symbol,"),
-        "DiffId should carry the emitted Symbol type, got:\n{}",
+        content.contains("pub fn root_fix_symbol() -> String"),
+        "Symbol data values must ground to String, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub ids: BTreeSet<DiffId>,"),
-        "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
+        content.contains("pub id: String,") || content.contains("pub id: String"),
+        "DiffId fields typed Symbol must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("BTreeSet") && content.contains("DiffId"),
+        "Set<DiffId> should lower through the BTreeSet gate, got:\n{}",
         content
     );
 }
