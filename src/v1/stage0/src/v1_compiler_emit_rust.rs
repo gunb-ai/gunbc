@@ -380,10 +380,11 @@ pub fn render_rust_type_without_applied_binding(
                             ) {
                                 "_".to_string()
                             } else {
-                                if (((tn.clone() == "String".to_string())
-                                    && ((n.children.clone().len() as i64) == 0))
-                                    && corpus_repr_is_faithful(corpus_repr.clone()))
-                                {
+                                if is_host_text_carrier_type(
+                                    n.clone(),
+                                    source_indices.clone(),
+                                    corpus_repr.clone(),
+                                ) {
                                     rust_carrier_optional_wrap(
                                         n.clone(),
                                         render_rust_text_carrier(shared_types.clone()),
@@ -434,8 +435,8 @@ pub fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -
 
 pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
     render_rust_shared_type_if_needed(
-        "FreeMonoid".to_string(),
-        "FreeMonoid<Char>".to_string(),
+        "String".to_string(),
+        "String".to_string(),
         shared_types.clone(),
     )
 }
@@ -444,17 +445,7 @@ pub fn emit_rust_host_to_dag_string_via_seam(
     host_expr: String,
     corpus_repr: RustCorpusRepr,
 ) -> String {
-    if corpus_repr_is_faithful(corpus_repr.clone()) {
-        v1_rt::concat(
-            v1_rt::concat(
-                "crate::v2_std_text::host_string_text_from_rust_host(".to_string(),
-                host_expr.clone(),
-            ),
-            ")".to_string(),
-        )
-    } else {
-        host_expr.clone()
-    }
+    host_expr
 }
 
 pub fn emit_rust_map_literal_key(
@@ -500,17 +491,7 @@ pub fn emit_rust_dag_string_to_host_via_seam(
     dag_expr: String,
     corpus_repr: RustCorpusRepr,
 ) -> String {
-    if corpus_repr_is_faithful(corpus_repr.clone()) {
-        v1_rt::concat(
-            v1_rt::concat(
-                "crate::v2_std_text::host_string_text_to_rust_host(".to_string(),
-                dag_expr.clone(),
-            ),
-            ")".to_string(),
-        )
-    } else {
-        dag_expr.clone()
-    }
+    dag_expr
 }
 
 pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
@@ -641,21 +622,16 @@ pub fn is_host_text_carrier_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    if !corpus_repr_is_host(corpus_repr.clone()) {
-        false
-    } else {
-        {
-            let nm = authored_name_at(source_indices.clone(), n.clone());
-            if (nm.clone() == "String".to_string()) {
-                true
+    {
+        let nm = authored_name_at(source_indices.clone(), n.clone());
+        if (nm.clone() == "String".to_string()) {
+            true
+        } else {
+            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
+                (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
+                    == "Char".to_string())
             } else {
-                if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string()))
-                {
-                    (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
-                        == "Char".to_string())
-                } else {
-                    false
-                }
+                false
             }
         }
     }
@@ -675,21 +651,12 @@ pub fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String
     if ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string())) {
         "Witness".to_string()
     } else {
-        if ((name.clone() == "String".to_string()) && corpus_repr_is_faithful(corpus_repr.clone()))
-        {
-            "FreeMonoid<Char>".to_string()
-        } else {
-            coerce_primitive_type(RenderTarget::Rust, name.clone())
-        }
+        coerce_primitive_type(RenderTarget::Rust, name.clone())
     }
 }
 
 pub fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
-    if ((name.clone() == "String".to_string()) && corpus_repr_is_faithful(corpus_repr.clone())) {
-        "FreeMonoid".to_string()
-    } else {
-        rust_named_type_base(name.clone(), corpus_repr.clone())
-    }
+    rust_named_type_base(name.clone(), corpus_repr.clone())
 }
 
 pub fn rust_normalize_witness_type_text(rendered: String) -> String {
@@ -1215,11 +1182,14 @@ pub fn render_rust_decl_type(
                 {
                     to_pascal(name.clone())
                 } else {
-                    if (((((n.connective.clone() == Connective::NoConnective)
+                    if ((((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) == 0))
                         && (applied_prop.clone() == None))
-                        && (name.clone() == "String".to_string()))
-                        && corpus_repr_is_faithful(corpus_repr.clone()))
+                        && is_host_text_carrier_type(
+                            n.clone(),
+                            source_indices.clone(),
+                            corpus_repr.clone(),
+                        ))
                     {
                         rust_carrier_optional_wrap(
                             n.clone(),
@@ -1502,10 +1472,9 @@ pub fn render_rust_fn_sig_type(
             );
         }
         let name = authored_name_at(source_indices.clone(), n.clone());
-        if ((((n.connective.clone() == Connective::NoConnective)
+        if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
-            && (name.clone() == "String".to_string()))
-            && corpus_repr_is_faithful(corpus_repr.clone()))
+            && is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()))
         {
             rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
         } else {
@@ -1721,9 +1690,11 @@ pub fn render_rust_alias_rhs_type(
                 match rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) {
                     Some(host) => host.clone(),
                     None => {
-                        if ((name.clone() == "String".to_string())
-                            && corpus_repr_is_faithful(corpus_repr.clone()))
-                        {
+                        if is_host_text_carrier_type(
+                            n.clone(),
+                            source_indices.clone(),
+                            corpus_repr.clone(),
+                        ) {
                             rust_carrier_optional_wrap(
                                 n.clone(),
                                 render_rust_text_carrier(shared_types.clone()),

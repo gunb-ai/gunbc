@@ -222,7 +222,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     let tn = authored_name_at(source_indices: source_indices, node: n)
     if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
       "_"
-    } else if tn == "String" && n.children |> count == 0 && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    } else if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -248,15 +248,11 @@ fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bo
   corpus_repr_is_host(corpus_repr: corpus_repr) && name == "FreeMonoid"
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
-  render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Char>", shared_types: shared_types)
+  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
 }
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
-  } else {
-    host_expr
-  }
+  host_expr
 }
 
 fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool, corpus_repr: RustCorpusRepr) -> String {
@@ -285,11 +281,7 @@ fn map_literal_key_is_string(map_type_node: Node, source_indices: Map<String, Ne
 }
 
 fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
-  } else {
-    dag_expr
-  }
+  dag_expr
 }
 
 fn rust_host_string_seam_fn_emit(name: String) -> String? {
@@ -408,17 +400,13 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 }
 
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
-  if !corpus_repr_is_host(corpus_repr: corpus_repr) {
-    false
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  if nm == "String" {
+    true
+  } else if nm == "FreeMonoid" || nm == "List" {
+    rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
   } else {
-    let nm = authored_name_at(source_indices: source_indices, node: n)
-    if nm == "String" {
-      true
-    } else if nm == "FreeMonoid" || nm == "List" {
-      rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
-    } else {
-      false
-    }
+    false
   }
 }
 
@@ -432,19 +420,13 @@ fn rust_seed_host_freemonoid_empty(carrier_name: String, corpus_repr: RustCorpus
 fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
-  } else if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    "FreeMonoid<Char>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
   }
 }
 
 fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
-  if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    "FreeMonoid"
-  } else {
-    rust_named_type_base(name: name, corpus_repr: corpus_repr)
-  }
+  rust_named_type_base(name: name, corpus_repr: corpus_repr)
 }
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
@@ -613,7 +595,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
-      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
@@ -705,7 +687,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+  if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
@@ -767,7 +749,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent =>
-    if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
