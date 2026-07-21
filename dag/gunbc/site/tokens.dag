@@ -1,0 +1,21 @@
+module gunbc.site.tokens
+
+data tokens_quiet_envelope_note: String = "Glare envelope (operator seventh pass, 2026-07-20): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together. This minimal module exports only the envelope law for palette×register binding witnesses; full theme machinery lands with gunb.ai site subsumption (#6927)."
+
+type AreaClass
+  = PointArea
+  | HairlineArea
+  | TextArea
+  | FieldArea
+
+type Material {
+  name: String
+  hue: Int
+  sat_pct: Int
+  light_pct: Int
+  area: AreaClass
+}
+
+fn quiet_envelope(m: Material) -> Bool {
+  !(m.sat_pct > 45 && m.light_pct > 68)
+}

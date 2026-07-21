@@ -1,0 +1,42 @@
+module extdeps.color.okabe_ito
+
+import std.types { Int, String }
+import std.color { Srgb8, srgb8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data okabe_ito_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "jfly.uni-koeln.de/color/"
+  }
+}
+
+data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21)."
+
+data okabe_ito_version: String = "2008"
+
+type OkabeItoSwatchRow {
+  name: String
+  color: Srgb8
+}
+
+data okabe_ito_orange: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "orange", color: srgb8(r: 230, g: 159, b: 0) }
+data okabe_ito_sky_blue: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "sky_blue", color: srgb8(r: 86, g: 180, b: 233) }
+data okabe_ito_bluish_green: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "bluish_green", color: srgb8(r: 0, g: 158, b: 115) }
+data okabe_ito_yellow: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "yellow", color: srgb8(r: 240, g: 228, b: 66) }
+data okabe_ito_blue: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "blue", color: srgb8(r: 0, g: 114, b: 178) }
+data okabe_ito_vermillion: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "vermillion", color: srgb8(r: 213, g: 94, b: 0) }
+data okabe_ito_reddish_purple: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "reddish_purple", color: srgb8(r: 204, g: 121, b: 167) }
+data okabe_ito_black: OkabeItoSwatchRow = OkabeItoSwatchRow { name: "black", color: srgb8(r: 0, g: 0, b: 0) }
+
+data okabe_ito_swatches: List<OkabeItoSwatchRow> = [
+  okabe_ito_orange,
+  okabe_ito_sky_blue,
+  okabe_ito_bluish_green,
+  okabe_ito_yellow,
+  okabe_ito_blue,
+  okabe_ito_vermillion,
+  okabe_ito_reddish_purple,
+  okabe_ito_black,
+]

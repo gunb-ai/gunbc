@@ -1,0 +1,89 @@
+module gunbc.design.catalog
+
+import std.types { Int, String, Bool }
+import std.color { Srgb8, srgb8 }
+import gunbc.design.palette {
+  Palette, PaletteSwatch, PaletteProvenance, Cited, HouseAuthored,
+  palette_admissible,
+}
+import extdeps.color.okabe_ito {
+  okabe_ito_swatches, okabe_ito_authority, okabe_ito_version,
+  okabe_ito_orange, okabe_ito_sky_blue, okabe_ito_bluish_green, okabe_ito_yellow,
+  okabe_ito_blue, okabe_ito_vermillion, okabe_ito_reddish_purple, okabe_ito_black,
+}
+import extdeps.color.solarized {
+  solarized_swatches, solarized_authority, solarized_version,
+  solarized_base03, solarized_base02, solarized_base01, solarized_base00,
+  solarized_base0, solarized_base1, solarized_base2, solarized_base3,
+  solarized_yellow, solarized_orange, solarized_red, solarized_magenta,
+  solarized_violet, solarized_blue, solarized_cyan, solarized_green,
+}
+
+data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited palette rows live in extdeps/color/; Palette wrappers here project extdeps rows without re-stating color literals. Register binding (e.g. gunbc.site quiet_envelope) is checked at theme level, not at catalogue admission — soft_pastel_v1 violates the quiet envelope by design."
+
+data soft_pastel_provenance_note: String = "Operator-supplied swatches 2026-07-21 in a soft-pastel game-art style (inspiration only — no upstream spec to cite)."
+
+data soft_pastel_mint: PaletteSwatch = PaletteSwatch { name: "mint", color: srgb8(r: 157, g: 255, b: 176) }
+data soft_pastel_sky: PaletteSwatch = PaletteSwatch { name: "sky", color: srgb8(r: 129, g: 241, b: 247) }
+data soft_pastel_cream: PaletteSwatch = PaletteSwatch { name: "cream", color: srgb8(r: 255, g: 255, b: 250) }
+data soft_pastel_wood: PaletteSwatch = PaletteSwatch { name: "wood", color: srgb8(r: 196, g: 141, b: 63) }
+data soft_pastel_butter: PaletteSwatch = PaletteSwatch { name: "butter", color: srgb8(r: 255, g: 245, b: 99) }
+
+data okabe_ito: Palette = Palette {
+  name: "okabe-ito",
+  provenance: Cited { authority: okabe_ito_authority, version: okabe_ito_version },
+  swatches: [
+    PaletteSwatch { name: okabe_ito_orange.name, color: okabe_ito_orange.color },
+    PaletteSwatch { name: okabe_ito_sky_blue.name, color: okabe_ito_sky_blue.color },
+    PaletteSwatch { name: okabe_ito_bluish_green.name, color: okabe_ito_bluish_green.color },
+    PaletteSwatch { name: okabe_ito_yellow.name, color: okabe_ito_yellow.color },
+    PaletteSwatch { name: okabe_ito_blue.name, color: okabe_ito_blue.color },
+    PaletteSwatch { name: okabe_ito_vermillion.name, color: okabe_ito_vermillion.color },
+    PaletteSwatch { name: okabe_ito_reddish_purple.name, color: okabe_ito_reddish_purple.color },
+    PaletteSwatch { name: okabe_ito_black.name, color: okabe_ito_black.color },
+  ],
+}
+
+data solarized: Palette = Palette {
+  name: "solarized",
+  provenance: Cited { authority: solarized_authority, version: solarized_version },
+  swatches: [
+    PaletteSwatch { name: solarized_base03.name, color: solarized_base03.color },
+    PaletteSwatch { name: solarized_base02.name, color: solarized_base02.color },
+    PaletteSwatch { name: solarized_base01.name, color: solarized_base01.color },
+    PaletteSwatch { name: solarized_base00.name, color: solarized_base00.color },
+    PaletteSwatch { name: solarized_base0.name, color: solarized_base0.color },
+    PaletteSwatch { name: solarized_base1.name, color: solarized_base1.color },
+    PaletteSwatch { name: solarized_base2.name, color: solarized_base2.color },
+    PaletteSwatch { name: solarized_base3.name, color: solarized_base3.color },
+    PaletteSwatch { name: solarized_yellow.name, color: solarized_yellow.color },
+    PaletteSwatch { name: solarized_orange.name, color: solarized_orange.color },
+    PaletteSwatch { name: solarized_red.name, color: solarized_red.color },
+    PaletteSwatch { name: solarized_magenta.name, color: solarized_magenta.color },
+    PaletteSwatch { name: solarized_violet.name, color: solarized_violet.color },
+    PaletteSwatch { name: solarized_blue.name, color: solarized_blue.color },
+    PaletteSwatch { name: solarized_cyan.name, color: solarized_cyan.color },
+    PaletteSwatch { name: solarized_green.name, color: solarized_green.color },
+  ],
+}
+
+data soft_pastel_v1: Palette = Palette {
+  name: "soft_pastel_v1",
+  provenance: HouseAuthored { date: "2026-07-21", note: soft_pastel_provenance_note },
+  swatches: [
+    soft_pastel_mint,
+    soft_pastel_sky,
+    soft_pastel_cream,
+    soft_pastel_wood,
+    soft_pastel_butter,
+  ],
+}
+
+data palette_catalog: List<Palette> = [okabe_ito, solarized, soft_pastel_v1]
+
+fn catalog_admissible() -> Bool {
+  palette_catalog.length() == 3
+    && all(palette_catalog, p => palette_admissible(p: p))
+    && okabe_ito_swatches.length() == 8
+    && solarized_swatches.length() == 16
+}

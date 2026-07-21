@@ -1,0 +1,27 @@
+module gunbc.design.palette
+
+import std.types { Int, String, Bool }
+import std.color { Srgb8, srgb8_admissible }
+import extdeps.external_authority { ExternalAuthority }
+
+data design_palette_note: String = "Palette catalogue machinery (design-register-library.md). A Palette is register-independent catalog data; admissibility against a house register (e.g. gunbc.site quiet_envelope) is checked at the (palette × register) binding, never here. DTCG interchange (W3C Design Tokens Community Group JSON format) is a declared future emission target — emit lands with the first external consumer, not speculatively."
+
+type PaletteSwatch {
+  name: String
+  color: Srgb8
+}
+
+type PaletteProvenance
+  = Cited { authority: ExternalAuthority, version: String }
+  | HouseAuthored { date: String, note: String }
+
+type Palette {
+  name: String
+  provenance: PaletteProvenance
+  swatches: List<PaletteSwatch>
+}
+
+fn palette_admissible(p: Palette) -> Bool {
+  p.swatches.length() > 0
+    && all(p.swatches, sw => srgb8_admissible(c: sw.color))
+}

@@ -1,0 +1,82 @@
+module test.claim.color_palette_witness
+
+import std.types { Int, String, Bool }
+import std.color { Srgb8, srgb8, srgb8_to_hsl }
+import gunbc.site.tokens { Material, FieldArea, quiet_envelope }
+import gunbc.design.palette { palette_admissible }
+import gunbc.design.catalog {
+  soft_pastel_v1, soft_pastel_mint, soft_pastel_sky, soft_pastel_cream,
+  soft_pastel_wood, soft_pastel_butter, palette_catalog, catalog_admissible,
+}
+import extdeps.color.okabe_ito { okabe_ito }
+import extdeps.color.solarized { solarized }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn material_from_srgb8(c: Srgb8) -> Material {
+  let hsl = srgb8_to_hsl(c: c)
+  Material {
+    name: "witness",
+    hue: hsl.h,
+    sat_pct: hsl.s,
+    light_pct: hsl.l,
+    area: FieldArea,
+  }
+}
+
+fn quiet_envelope_admits_srgb8(c: Srgb8) -> Bool {
+  quiet_envelope(m: material_from_srgb8(c: c))
+}
+
+fn witness_wood_hsl_projection() -> Bool {
+  let hsl = srgb8_to_hsl(c: soft_pastel_wood.color)
+  hsl.h == 35 && hsl.s == 53 && hsl.l == 51
+}
+
+fn witness_hsl_projection_red_on_wrong_fixture() -> Bool {
+  let wrong = srgb8_to_hsl(c: srgb8(r: 196, g: 141, b: 63))
+  !(wrong.h == 36 && wrong.s == 53 && wrong.l == 51)
+}
+
+fn witness_wood_passes_quiet_envelope() -> Bool {
+  quiet_envelope_admits_srgb8(c: soft_pastel_wood.color)
+}
+
+fn witness_mint_refused_by_quiet_envelope() -> Bool {
+  !quiet_envelope_admits_srgb8(c: soft_pastel_mint.color)
+}
+
+fn witness_cream_refused_despite_near_achromatic_oklch() -> Bool {
+  !quiet_envelope_admits_srgb8(c: soft_pastel_cream.color)
+}
+
+data cream_hsl_proxy_defect_note: String = "Teaching case: cream (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
+
+fn witness_catalog_entries_admissible() -> Bool {
+  catalog_admissible()
+    && palette_admissible(p: okabe_ito)
+    && palette_admissible(p: solarized)
+    && palette_admissible(p: soft_pastel_v1)
+    && okabe_ito.swatches.length() == 8
+    && solarized.swatches.length() == 16
+    && soft_pastel_v1.swatches.length() == 5
+}
+
+fn witness_cited_hex_pins() -> Bool {
+  soft_pastel_mint.color.r == 157 && soft_pastel_mint.color.g == 255 && soft_pastel_mint.color.b == 176
+    && soft_pastel_sky.color.r == 129 && soft_pastel_sky.color.g == 241 && soft_pastel_sky.color.b == 247
+    && soft_pastel_cream.color.r == 255 && soft_pastel_cream.color.g == 255 && soft_pastel_cream.color.b == 250
+    && soft_pastel_wood.color.r == 196 && soft_pastel_wood.color.g == 141 && soft_pastel_wood.color.b == 63
+    && soft_pastel_butter.color.r == 255 && soft_pastel_butter.color.g == 245 && soft_pastel_butter.color.b == 99
+}
+
+test fn color_palette_catalog_witnesses() -> Bool {
+  witness_catalog_entries_admissible()
+    && witness_cited_hex_pins()
+    && witness_wood_hsl_projection()
+    && witness_hsl_projection_red_on_wrong_fixture()
+    && witness_wood_passes_quiet_envelope()
+    && witness_mint_refused_by_quiet_envelope()
+    && witness_cream_refused_despite_near_achromatic_oklch()
+}

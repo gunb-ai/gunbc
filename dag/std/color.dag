@@ -1,0 +1,82 @@
+module std.color
+
+import std.types { Int, String, Bool }
+
+data color_note: String = "Single authority for filed color identity (store-what-was-filed: authors supply hex/sRGB, so Srgb8 is the stored fact; every other space is a DERIVED projection, never dual-stored). Citations: sRGB = IEC 61966-2-1 (normative definition referenced by W3C CSS Color Module Level 4); CIE 1931 XYZ and CIELAB = CIE 15; OKLab/OKLCH = Björn Ottosson 2020, normativized by W3C CSS Color Module Level 4 section 'OKLab' (https://www.w3.org/TR/css-color-4/#ok-lab) carrying the exact conversion algorithms. Layering law: a Palette is REGISTER-INDEPENDENT catalog data; admissibility is checked at the (palette × register) BINDING, never at catalogue admission — the catalogue may legitimately hold palettes a given register refuses. DTCG emission: the W3C Design Tokens Community Group JSON format is a declared future interchange surface; emit lands with the first external consumer (design-register-library.md Phase A), not speculatively."
+
+type Srgb8 {
+  r: Int
+  g: Int
+  b: Int
+}
+
+fn srgb8(r: Int, g: Int, b: Int) -> Srgb8 {
+  Srgb8 { r: r, g: g, b: b }
+}
+
+fn srgb8_admissible(c: Srgb8) -> Bool {
+  c.r >= 0 && c.r <= 255
+    && c.g >= 0 && c.g <= 255
+    && c.b >= 0 && c.b <= 255
+}
+
+type Hsl {
+  h: Int
+  s: Int
+  l: Int
+}
+
+type ColorConversionFrontier
+  = HslLive
+  | OklchStaged { trigger: String }
+
+data color_conversion_frontier: ColorConversionFrontier = OklchStaged {
+  trigger: "Exact OKLab/OKLCH requires Float channel math and cube-root; substrate has Float type (std.float) but no cited cbrt kernel in std yet — land when design-register-library.md sect 10 Class 2 (OKLCH reground) fires; HSL projection is live now (integer-friendly, CSS Color 4 sRGB<->HSL)."
+}
+
+fn iabs(v: Int) -> Int {
+  if v < 0 { 0 - v } else { v }
+}
+
+fn imax(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn imin(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn channel_scaled(v: Int) -> Int {
+  (v * 10000) / 255
+}
+
+fn pct_round_from_scaled(v_scaled: Int) -> Int {
+  (v_scaled * 100 + 5000) / 10000
+}
+
+fn srgb8_to_hsl(c: Srgb8) -> Hsl {
+  let rs = channel_scaled(v: c.r)
+  let gs = channel_scaled(v: c.g)
+  let bs = channel_scaled(v: c.b)
+  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
+  let minc = imin(a: imin(a: rs, b: gs), b: bs)
+  let delta = maxc - minc
+  let l_scaled = (maxc + minc) / 2
+  let light_pct = pct_round_from_scaled(v_scaled: l_scaled)
+  if delta == 0 {
+    Hsl { h: 0, s: 0, l: light_pct }
+  } else {
+    let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
+    let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
+    let sat_pct = pct_round_from_scaled(v_scaled: sat_scaled)
+    let hue_scaled = if maxc == rs {
+      ((gs - bs) * 600000) / delta
+    } else if maxc == gs {
+      (((bs - rs) * 600000) / delta) + 120000
+    } else {
+      (((rs - gs) * 600000) / delta) + 240000
+    }
+    let hue_deg = ((hue_scaled % 360000) + 360000) % 360000 / 1000
+    Hsl { h: hue_deg, s: sat_pct, l: light_pct }
+  }
+}
