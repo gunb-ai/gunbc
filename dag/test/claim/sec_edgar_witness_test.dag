@@ -1,0 +1,91 @@
+module test.claim.sec_edgar_witness
+
+import extdeps.sec.facts {
+  derive_gross_margin_ratio_from_facts,
+  filed_amount,
+  filed_gross_profit_matches_revenue_minus_cost,
+  gross_margin_ratio_in_band,
+  usd_whole_dollars,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_fy2026_cost_of_revenue,
+  gitlab_fy2026_gross_profit,
+  gitlab_fy2026_revenue,
+}
+import extdeps.sec.issuer.gitlab { gitlab_cik }
+import extdeps.sec.edgar { cik_padded_digits }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gitlab_fy2026_gross_margin_ratio_low: Float = 0.8735
+
+data gitlab_fy2026_gross_margin_ratio_high: Float = 0.8737
+
+fn w_gitlab_filed_facts_internal_consistency() -> Bool {
+  match filed_amount(fact: gitlab_fy2026_revenue) {
+    Present { value: revenue } =>
+      match filed_amount(fact: gitlab_fy2026_cost_of_revenue) {
+        Present { value: cost } =>
+          match filed_amount(fact: gitlab_fy2026_gross_profit) {
+            Present { value: gross_profit } =>
+              filed_gross_profit_matches_revenue_minus_cost(
+                revenue: revenue,
+                cost_of_revenue: cost,
+                gross_profit: gross_profit
+              )
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_gitlab_gross_margin_derivation_matches_filed_facts() -> Bool {
+  match derive_gross_margin_ratio_from_facts(
+    revenue: gitlab_fy2026_revenue,
+    gross_profit: gitlab_fy2026_gross_profit
+  ) {
+    Present { value: ratio } =>
+      gross_margin_ratio_in_band(
+        ratio: ratio,
+        low: gitlab_fy2026_gross_margin_ratio_low,
+        high: gitlab_fy2026_gross_margin_ratio_high
+      )
+    _ => false
+  }
+}
+
+fn w_gitlab_gross_margin_red_on_perturbed_gross_profit() -> Bool {
+  match filed_amount(fact: gitlab_fy2026_revenue) {
+    Present { value: revenue } =>
+      match filed_amount(fact: gitlab_fy2026_cost_of_revenue) {
+        Present { value: cost } =>
+          match filed_amount(fact: gitlab_fy2026_gross_profit) {
+            Present { value: gross_profit } =>
+              !filed_gross_profit_matches_revenue_minus_cost(
+                revenue: revenue,
+                cost_of_revenue: cost,
+                gross_profit: usd_whole_dollars(
+                  count: usd_whole_dollars_count(gross_profit) + 1
+                )
+              )
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_gitlab_cik_verified_on_edgar() -> Bool {
+  cik_padded_digits(cik: gitlab_cik) == "0001653482"
+}
+
+test fn sec_edgar_gitlab_gross_margin_witness() -> Bool {
+  w_gitlab_cik_verified_on_edgar()
+    && w_gitlab_filed_facts_internal_consistency()
+    && w_gitlab_gross_margin_derivation_matches_filed_facts()
+    && w_gitlab_gross_margin_red_on_perturbed_gross_profit()
+}

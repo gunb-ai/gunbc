@@ -134,6 +134,10 @@ name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
 
 [[bin]]
+name = "resolution_divergence_census"
+path = "src/bin/resolution_divergence_census.rs"
+
+[[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
 
