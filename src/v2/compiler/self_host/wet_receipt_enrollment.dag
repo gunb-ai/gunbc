@@ -28,8 +28,38 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     f: "self_host_logic_behavioral_receipt_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
+    f: "emit_on_demand_kernel_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
+    f: "emit_on_demand_field_access_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    f: "emit_on_demand_complement_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
+    f: "emit_on_demand_match_loop_fold_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    f: "emit_on_demand_meet_join_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    f: "emit_on_demand_variant_construct_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    f: "emit_on_demand_classical_not_ingested_family_witnesses"
   )
 ]
+
+data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand family aggregates (9 witness families: add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) enroll on this nightly Wet cadence 2026-07-21: each emits real Rust, cargo-builds under the admitted build_workspace_grant envelope, runs the native binary, and compares against the interpreted oracle. Enrolled after the 2026-07-20 regression proved the class was invisible to CI (test/claim/execution/ excluded from hermetic discovery AND offline roster - the enrolled-but-never-run coverage-by-illusion class): the sorted_fields interner-order bug broke all 9 families' wet legs and nothing red-ed. This cadence is the rot-detector. Per-PR stays hermetic; the full CI-on-v2 cutover (P6) additionally needs the is_hermetic blanket refusal in emit_host_run_transport replaced by the Admitted verdict (effect-grants seam) plus the content-keyed result store so builds amortize."
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = [
   SelfHostWetReceiptBinding {
