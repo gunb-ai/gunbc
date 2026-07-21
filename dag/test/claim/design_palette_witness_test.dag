@@ -1,0 +1,88 @@
+module test.claim.design_palette_witness
+
+import std.types { Int, String, Bool }
+import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible }
+import extdeps.accessibility.wcag_contrast {
+  srgb8_contrast_ratio_x100, srgb8_contrast_at_least,
+  wcag_aa_normal_text_hundredths, wcag_aaa_normal_text_hundredths,
+}
+import gunbc.design.palette {
+  Swatch, SwatchSet, PairingGrade, TextAaa, TextAa, LargeTextOrGraphicsAa, DecorationOnly,
+  grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
+  set_text_capable, swatch_set_admissible, swatch_paint,
+}
+import gunbc.design.catalog {
+  island_pastel, island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam,
+  palette_catalog, catalog_admissible,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_catalog_admissible() -> Bool {
+  catalog_admissible() && swatch_set_admissible(s: island_pastel)
+}
+
+fn witness_hex_serialization_matches_authored() -> Bool {
+  swatch_paint(sw: island_mint) == "#9dffb0"
+    && swatch_paint(sw: island_aqua) == "#81f1f7"
+    && swatch_paint(sw: island_ivory) == "#fffffa"
+    && swatch_paint(sw: island_camel) == "#c48d3f"
+    && swatch_paint(sw: island_butter) == "#fff563"
+    && swatch_paint(sw: island_loam) == "#724d15"
+}
+
+fn witness_pairing_matrix_total() -> Bool {
+  graded_pairings(s: island_pastel).length() == 30
+}
+
+fn witness_camel_ivory_near_miss() -> Bool {
+  let r = srgb8_contrast_ratio_x100(a: island_camel.color, b: island_ivory.color)
+  r >= 280 && r < 300
+    && grade_rank(g: grade_of_contrast(contrast_x100: r)) == 0
+}
+
+fn authored_five() -> SwatchSet {
+  SwatchSet {
+    name: "island-pastel-authored",
+    provenance: island_pastel.provenance,
+    swatches: fold(island_pastel.swatches, init: [], f: (acc, sw) =>
+      if sw.name == "loam" { acc } else { concat(acc, [sw]) }),
+  }
+}
+
+fn witness_authored_set_has_no_text_pairing() -> Bool {
+  let five = authored_five()
+  five.swatches.length() == 5
+    && !set_text_capable(s: five)
+    && pairings_at_least(s: five, min_rank: 1).length() == 0
+}
+
+fn witness_loam_carries_text_capability() -> Bool {
+  set_text_capable(s: island_pastel)
+    && srgb8_contrast_at_least(a: island_loam.color, b: island_mint.color, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && srgb8_contrast_at_least(a: island_loam.color, b: island_aqua.color, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && srgb8_contrast_at_least(a: island_loam.color, b: island_butter.color, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && srgb8_contrast_at_least(a: island_loam.color, b: island_ivory.color, threshold_hundredths: wcag_aaa_normal_text_hundredths)
+    && pairings_at_least(s: island_pastel, min_rank: 2).length() == 8
+}
+
+fn witness_grade_kernel_discriminates() -> Bool {
+  let black = Srgb8 { r: 0, g: 0, b: 0 }
+  let white = Srgb8 { r: 255, g: 255, b: 255 }
+  srgb8_contrast_ratio_x100(a: black, b: white) == 2100
+    && grade_rank(g: grade_of_contrast(contrast_x100: 2100)) == 3
+    && srgb8_contrast_ratio_x100(a: island_mint.color, b: island_mint.color) == 100
+    && grade_rank(g: grade_of_contrast(contrast_x100: 100)) == 0
+    && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
+}
+
+test fn design_palette_catalog_keystone_holds() -> Bool {
+  witness_catalog_admissible()
+    && witness_hex_serialization_matches_authored()
+    && witness_pairing_matrix_total()
+    && witness_camel_ivory_near_miss()
+    && witness_authored_set_has_no_text_pairing()
+    && witness_loam_carries_text_capability()
+    && witness_grade_kernel_discriminates()
+}
