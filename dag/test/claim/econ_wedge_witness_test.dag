@@ -1,7 +1,10 @@
 module test.claim.econ_wedge_witness
 
 import extdeps.cpu.amd { ryzen_5_3600_catalog }
-import extdeps.pricing.github_actions { github_actions_linux_2core_price }
+import extdeps.pricing.github_actions {
+  GithubActionsRunnerPriceRow,
+  github_actions_linux_2core_price,
+}
 import extdeps.pricing.hetzner_dedicated {
   HetznerDedicatedServerPriceRow,
   hetzner_ax41_1_ltd_price,
@@ -28,8 +31,10 @@ import extdeps.sec.issuer.rollins_facts {
 import gunbc.econ.knowable_wedge {
   AssumptionsUnknown,
   FloorCurrencyMismatch,
+  FloorExceedsUmbrella,
   KnowableWedgeComputed,
   KnowableWedgeRefused,
+  RunnerThreadCountUnknown,
   UtilizationUnknown,
   WedgeAssumptions,
   WedgeAssumptionsDeclared,
@@ -47,6 +52,7 @@ import std.currency { Eur, Usd }
 import std.measure {
   MoneyPerMinute,
   MoneyPerMonth,
+  hardware_thread_count,
   hardware_thread_count_value,
   money_amount_micro,
   money_per_minute_micros,
@@ -106,6 +112,27 @@ data github_hetzner_wedge_floor_usd_per_minute: MoneyPerMinute = MoneyPerMinute 
 data github_hetzner_wedge_spread_usd_per_minute: MoneyPerMinute = MoneyPerMinute {
   amount: money_amount_micro(count: 5763),
   currency: Usd,
+}
+
+data github_tiny_umbrella_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: github_actions_linux_2core_price.vcpus,
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 1),
+    currency: Usd,
+  },
+  pricing_citation: "witness-fixture#floor-exceeds-umbrella",
+}
+
+data github_zero_vcpu_runner_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: hardware_thread_count(0),
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
+  per_minute: github_actions_linux_2core_price.per_minute,
+  pricing_citation: "witness-fixture#runner-thread-count-unknown",
 }
 
 fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
@@ -242,6 +269,32 @@ fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool {
   }
 }
 
+fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_tiny_umbrella_fixture,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: FloorExceedsUmbrella } => true
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_zero_vcpu_runner_fixture,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: RunnerThreadCountUnknown } => true
+    _ => false
+  }
+}
+
 test fn econ_wedge_witness_holds() -> Bool {
   w_gitlab_gross_margin_envelope_derived_from_filed_components()
     && w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit()
@@ -252,4 +305,6 @@ test fn econ_wedge_witness_holds() -> Bool {
     && w_github_hetzner_knowable_wedge_red_on_unknown_assumptions()
     && w_github_hetzner_knowable_wedge_red_on_zero_utilization()
     && w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch()
+    && w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella()
+    && w_github_hetzner_knowable_wedge_red_on_zero_runner_threads()
 }

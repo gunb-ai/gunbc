@@ -46,6 +46,11 @@ type KnowableWedgeRefusalCause
   | RunnerVcpuUnitMismatch
   | UmbrellaCurrencyMismatch
   | FloorCurrencyMismatch
+  | FloorExceedsUmbrella
+
+type RunnerCostFloorResult
+  = RunnerCostFloorDerived { floor: MoneyPerMinute }
+  | RunnerCostFloorRefused { cause: KnowableWedgeRefusalCause }
 
 type KnowableWedgeDerived {
   umbrella_per_minute: MoneyPerMinute
@@ -122,23 +127,23 @@ fn derive_runner_cost_floor_per_minute_usd(
   row: HetznerDedicatedServerPriceRow,
   runner_vcpus: HardwareThreadCount,
   assumptions: WedgeAssumptions,
-) -> MoneyPerMinute? {
+) -> RunnerCostFloorResult {
   if assumptions.runner_utilization_bp <= 0 {
-    none
+    RunnerCostFloorRefused { cause: UtilizationUnknown }
   } else if assumptions.amortization_months <= 0 {
-    none
+    RunnerCostFloorRefused { cause: AmortizationUnknown }
   } else if assumptions.eur_to_usd_denominator <= 0 {
-    none
+    RunnerCostFloorRefused { cause: ExchangeRateUnknown }
   } else if !assumptions.runner_vcpus_are_hardware_threads {
-    none
+    RunnerCostFloorRefused { cause: RunnerVcpuUnitMismatch }
   } else {
     let server_vcpus = hetzner_dedicated_server_threads(row: row)
     let server_count = hardware_thread_count_value(t: server_vcpus)
     let runner_count = hardware_thread_count_value(t: runner_vcpus)
     if server_count <= 0 {
-      none
+      RunnerCostFloorRefused { cause: ServerThreadCountUnknown }
     } else if runner_count <= 0 {
-      none
+      RunnerCostFloorRefused { cause: RunnerThreadCountUnknown }
     } else {
       match derive_monthly_eur_with_amortization(
         row: row,
@@ -158,13 +163,17 @@ fn derive_runner_cost_floor_per_minute_usd(
             ),
             currency: Eur,
           }
-          convert_money_per_minute_eur_to_usd(
+          match convert_money_per_minute_eur_to_usd(
             eur: utilized_runner_eur,
             numerator: assumptions.eur_to_usd_numerator,
             denominator: assumptions.eur_to_usd_denominator,
-          )
+          ) {
+            Present { value: floor_usd } =>
+              RunnerCostFloorDerived { floor: floor_usd }
+            _ => RunnerCostFloorRefused { cause: ExchangeRateUnknown }
+          }
         }
-        _ => none
+        _ => RunnerCostFloorRefused { cause: AmortizationUnknown }
       }
     }
   }
@@ -196,7 +205,7 @@ fn derive_github_hetzner_ci_minute_wedge(
                   runner_vcpus: umbrella_row.vcpus,
                   assumptions: assumptions,
                 ) {
-                  Present { value: floor_usd } => {
+                  RunnerCostFloorDerived { floor: floor_usd } => {
                     match subtract_money_per_minute_usd(
                       umbrella: umbrella_row.per_minute,
                       floor: floor_usd,
@@ -210,11 +219,11 @@ fn derive_github_hetzner_ci_minute_wedge(
                           }
                         }
                       _ =>
-                        KnowableWedgeRefused { cause: ServerThreadCountUnknown }
+                        KnowableWedgeRefused { cause: FloorExceedsUmbrella }
                     }
                   }
-                  _ =>
-                    KnowableWedgeRefused { cause: ServerThreadCountUnknown }
+                  RunnerCostFloorRefused { cause: cause } =>
+                    KnowableWedgeRefused { cause: cause }
                 }
               }
               Usd => KnowableWedgeRefused { cause: FloorCurrencyMismatch }
