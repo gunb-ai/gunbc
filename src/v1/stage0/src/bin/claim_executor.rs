@@ -19,9 +19,9 @@ use v1_compiler::cli_run::{
     TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
-    binding_cap_cgroup_dir, binding_high_cgroup_dir, leaf_cgroup_dir, mem_total_bytes,
-    memory_events_field, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
-    AdmittedSlot, MemoryGovernor,
+    binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
+    leaf_cgroup_dir, mem_total_bytes, memory_events_field, memory_pressure_some_avg10,
+    read_cgroup_raw, read_cgroup_u64, AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -1786,6 +1786,13 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+fn plan_schedules_floor_walk(plan_function: &str) -> bool {
+    matches!(
+        plan_function,
+        "gunbc_ci_floor_batches" | "gunbc_ci_plan_artifact_batches" | "gunbc_falsifier_batches"
+    )
+}
+
 fn run_perturb_check(
     source_roots: &[String],
     plan_entry: &str,
@@ -2148,6 +2155,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             .map(|n| n.get())
             .unwrap_or(1),
     ));
+    if plan_schedules_floor_walk(&plan_function) {
+        if let Some(msg) = floor_budget_below_minimum_footprint(governor.budget_bytes()) {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
     phase_mark("memory governor armed; starting batch walk");
     spawn_floor_memory_heartbeat();
 
