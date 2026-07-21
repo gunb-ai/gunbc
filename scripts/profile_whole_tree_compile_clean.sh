@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
-# DIAGNOSTIC ONLY — profile whole-tree compile-clean (locate, don't fix).
-# See docs/plans/compile-clean-whole-tree-time-diagnosis.md
+# SCAFFOLD — dissolve-on: substrate-emitted compile-clean phase timings (realization_measurement_loop
+# carrier / floor receipt resolve-split on the via-index path) retire this bash runner; until then
+# it is the reproducible receipt entrypoint documented in
+# docs/plans/compile-clean-whole-tree-time-diagnosis.md.
+# dissolve-on: gunbc bash-emit capability (#5828 / ROADMAP shell-emission) realizes profile
+# orchestration through host_effect_apply transport handlers instead of hand-rolled bash.
+#
+# Profile whole-tree compile-clean (locate, don't fix).
+# Profile receipt: docs/plans/compile-clean-whole-tree-time-diagnosis.md
+#
+# Usage:
+#   ./scripts/profile_whole_tree_compile_clean.sh              # build + histogram + floor receipt
+#   ./scripts/profile_whole_tree_compile_clean.sh histogram    # histogram path only
+#   ./scripts/profile_whole_tree_compile_clean.sh floor main   # floor receipt path only
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
