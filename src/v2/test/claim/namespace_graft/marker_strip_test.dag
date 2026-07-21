@@ -1,0 +1,179 @@
+module v2.test.claim.namespace_graft.marker_strip_test
+
+import std.algebra { Cons, Empty }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.std.algebra { fold_list_node }
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted }
+import v2.std.logic { Bool }
+import v2.std.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_strip_provenance_marker,
+  qualified_name_from_graft_spine
+}
+import v2.std.node { Atom, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_snoc
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data marker_strip_note: String = "Discriminating witness (operator ruling msg_0f14dee1): stripping ^dag_surface_module provenance shell must not change symbol_index fill semantics — position/extent/QN live only on the Named containment spine. Resolve comparison lands after resolve dissolve (commits 4-5); this witness pins fill/census path first."
+
+fn ms_sym_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ms_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) { ms_sym_node(sym: sym) }
+  )
+}
+
+fn ms_pre_graft_module_root(
+  qn: QualifiedName,
+  body_edges: List<Edge>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_named_edge(
+          name: ^dag_surface_module_header_qualified_name,
+          target: ms_qn_spine(segments: qn)
+        )
+      ],
+      body_edges
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data ms_module_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "v2.test.namespace_graft.marker"
+)
+
+data ms_pre_graft_root: Node = ms_pre_graft_module_root(
+  qn: ms_module_qn,
+  body_edges: [
+    Edge {
+      label: Named { name: ^MsPilotType },
+      target: Node {
+        kind: TypeNode { connective: Disj },
+        children: [
+          Edge {
+            label: Named { name: ^MsYes },
+            target: ms_sym_node(sym: ^MsYes)
+          },
+          Edge {
+            label: Named { name: ^MsNo },
+            target: ms_sym_node(sym: ^MsNo)
+          }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ]
+)
+
+data ms_grafted_root: Node = match module_header_containment_graft(root: ms_pre_graft_root) {
+  Accepted { value: grafted, diagnostics: _ } => grafted
+  Rejected { diagnostics: _ } => ms_pre_graft_root
+}
+
+data ms_stripped_root: Node = namespace_graft_strip_provenance_marker(root: ms_grafted_root)
+
+fn ms_fill_index(root: Node, module_qn: QualifiedName) -> SymbolIndex {
+  symbol_index_fill_containment_node(
+    index: empty_symbol_index(),
+    path: module_qn,
+    node: root
+  )
+}
+
+fn ms_lookup_pair_eq(
+  marked: SymbolIndex,
+  stripped: SymbolIndex,
+  path: QualifiedName
+) -> Bool {
+  match symbol_index_lookup(index: marked, qualified_path: path) {
+    Present { value: marked_node } =>
+      match symbol_index_lookup(index: stripped, qualified_path: path) {
+        Present { value: stripped_node } => marked_node == stripped_node
+        Absent => false
+      }
+    Absent =>
+      match symbol_index_lookup(index: stripped, qualified_path: path) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+fn ms_marker_strip_fill_equivalent_holds() -> Bool {
+  match qualified_name_from_graft_spine(root: ms_grafted_root) {
+    Accepted { value: module_qn, diagnostics: _ } => {
+      let marked = ms_fill_index(root: ms_grafted_root, module_qn: module_qn)
+      let stripped = ms_fill_index(root: ms_stripped_root, module_qn: module_qn)
+      let type_path = qualified_name_snoc(qn: module_qn, segment: ^MsPilotType)
+      let yes_path = qualified_name_snoc(qn: type_path, segment: ^MsYes)
+      let no_path = qualified_name_snoc(qn: type_path, segment: ^MsNo)
+      ms_lookup_pair_eq(marked: marked, stripped: stripped, path: type_path)
+        && ms_lookup_pair_eq(marked: marked, stripped: stripped, path: yes_path)
+        && ms_lookup_pair_eq(marked: marked, stripped: stripped, path: no_path)
+        && match symbol_index_lexical_lookup(
+          index: marked,
+          position: module_qn,
+          name: ^MsYes
+        ) {
+          Present { value: _ } =>
+            match symbol_index_lexical_lookup(
+              index: stripped,
+              position: module_qn,
+              name: ^MsYes
+            ) {
+              Present { value: _ } => true
+              Absent => false
+            }
+          Absent => false
+        }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn namespace_graft_marker_strip_fill_equivalent_holds() -> Bool {
+  ms_marker_strip_fill_equivalent_holds()
+}
+
+data claim_namespace_graft_marker_strip_fill_equivalent: TestClaim = EqualsClaim {
+  label: "namespace_graft: stripping provenance marker leaves symbol_index fill unchanged",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ms_sym_node(sym: ^ms_bool_true),
+  rhs: ms_sym_node(
+    sym: if ms_marker_strip_fill_equivalent_holds() {
+      ^ms_bool_true
+    } else {
+      ^ms_bool_false
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
