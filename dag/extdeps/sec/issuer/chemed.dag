@@ -1,0 +1,33 @@
+module extdeps.sec.issuer.chemed
+
+import extdeps.sec.types {
+  Cik,
+  IssuerCatalogRow,
+  Nyse,
+  StockTicker,
+}
+import extdeps.vendor.chemed { chemed }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0000019584"
+  }
+}
+
+data chemed_cik_digits: NonEmptyStr = "19584"
+
+data chemed_cik: Cik = Cik { digits: chemed_cik_digits }
+
+data chemed_ticker: StockTicker = StockTicker { symbol: "CHE" }
+
+data chemed_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+  cik: chemed_cik,
+  legal_name: "Chemed Corporation",
+  primary_ticker: chemed_ticker,
+  exchange: Nyse,
+  vendor: chemed,
+}

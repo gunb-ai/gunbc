@@ -1,0 +1,135 @@
+module gunbc.ci_deploy_access_observe
+
+import std.types { NonEmptyStr, Bool, List }
+import std.access { AccessDecision, decision_meet }
+import gunbc.host_effect { HostEffect, ShellCommand, ReadEffectivePosixPrincipal, SudoNopasswdExecuteProbe }
+import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
+import v2.std.orchestration { FailFast }
+import v2.std.algebra { list_snoc_item, fold_list }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+  PrivilegedCommand,
+  deploy_access_check,
+  deploy_access_read_principal_effect,
+  deploy_access_sudo_probe_effect,
+  deploy_target_proof_from_access,
+}
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostObservation,
+  deploy_target_host_check,
+  deploy_target_host_check_observed,
+}
+import gunbc.host_effect_realize { deploy_access_check_observed }
+
+fn deploy_access_privileged_probe_step(cmd: PrivilegedCommand) -> EffectPlanStep<HostEffect> {
+  Do { effect: deploy_access_sudo_probe_effect(cmd: cmd) }
+}
+
+fn deploy_access_preflight_probe_steps(access: DeployAccess) -> List<EffectPlanStep<HostEffect>> {
+  let whoami_step = Do { effect: deploy_access_read_principal_effect() }
+  let with_whoami = list_snoc_item(xs: [], item: whoami_step)
+  fold_list(
+    xs: access.privileged_commands,
+    empty: with_whoami,
+    cons: (acc, cmd) => list_snoc_item(xs: acc, item: deploy_access_privileged_probe_step(cmd: cmd))
+  )
+}
+
+fn deploy_access_preflight_plan(access: DeployAccess) -> EffectPlan<HostEffect> {
+  EffectPlan {
+    steps: deploy_access_preflight_probe_steps(access: access),
+    on_failure: FailFast,
+  }
+}
+
+fn deploy_access_preflight_plan_step_effect(step: EffectPlanStep<HostEffect>) -> HostEffect? {
+  match step {
+    Do { effect: e } => Present { value: e }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _ } => Absent
+    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+    Let { name: _, value: _ } => Absent
+    Call { callee: _, args: _ } => Absent
+  }
+}
+
+fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
+  match effect {
+    ReadEffectivePosixPrincipal { read: _ } => true
+    SudoNopasswdExecuteProbe { probe: _ } => true
+    ShellCommand { script: _ } => false
+    RedfishAction { action: _ } => false
+    ConvergePlan { policy: _ } => false
+    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => false
+    OsInstallActuatorToolchainEnsure {} => false
+    ProvisionBuildCache { catalog_id: _ } => false
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => false
+    Srv3InstallReconcileObserve { include_git_meta: _ } => false
+    DurableApprovalGrantRecord => false
+    DurableApprovalGrantRead => false
+    Srv3InstallMediaFetch => false
+    Srv3SeededInstallMediaRemaster => false
+    Srv3SeededInstallMediaToolchainEnsure => false
+    Srv3SolConsoleCapture => false
+    Srv3BmcwebSessionLogin => false
+    Srv3BmcwebTokenExtract => false
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => false
+    Srv3BootOnceReadBackSleep => false
+    Srv3ReceiptEmit { lines: _ } => false
+  }
+}
+
+fn deploy_access_preflight_plan_uses_typed_probes(plan: EffectPlan<HostEffect>) -> Bool {
+  fold_list(
+    xs: plan.steps,
+    empty: true,
+    cons: (acc, step) =>
+      if !acc {
+        false
+      } else {
+        match deploy_access_preflight_plan_step_effect(step: step) {
+          Present { value: effect } => deploy_access_effect_is_typed_probe(effect: effect)
+          Absent => false
+        }
+      }
+  )
+}
+
+fn deploy_access_preflight_plan_first_effect(plan: EffectPlan<HostEffect>) -> HostEffect? {
+  fold_list(
+    xs: plan.steps,
+    empty: Absent,
+    cons: (acc, step) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => deploy_access_preflight_plan_step_effect(step: step)
+      }
+  )
+}
+
+fn deploy_mutation_gate_observed(access: DeployAccess) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = deploy_target_host_check_observed(proof: proof)
+  let access_decision = deploy_access_check_observed(access: access)
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_mutation_gate(
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?,
+  fixture_host: DeployTargetHostObservation?
+) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = match fixture_host {
+    Present { value: obs } => deploy_target_host_check(proof: proof, observed: obs)
+    Absent => deploy_target_host_check_observed(proof: proof)
+  }
+  let access_decision = match fixture_actor {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent => deploy_access_check_observed(access: access)
+  }
+  decision_meet(a: host_decision, b: access_decision)
+}
