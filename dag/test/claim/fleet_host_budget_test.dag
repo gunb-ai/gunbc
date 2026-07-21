@@ -227,13 +227,13 @@ fn witness_host_conserves_exactly() -> Bool {
 
 fn witness_tree_conserves() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
-  let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice)
+  let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice, compile_pool: byte_size(0))
   node_conserves(node: tree)
 }
 
 fn witness_overcommit_tree_refused() -> Bool {
   let bloated_slice = byte_size(byte_size_count(b: host_125gib()))
-  let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: bloated_slice)
+  let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: bloated_slice, compile_pool: byte_size(0))
   !node_conserves(node: tree)
 }
 
