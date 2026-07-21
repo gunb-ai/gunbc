@@ -5273,6 +5273,9 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
         // Malformed override — fall through to derived cap (fail-closed).
     }
     let (budget, source_label) = crate::memory_governor::read_host_budget_bytes();
+    // String-scan of read_host_budget_bytes' label — acceptable while that fn returns
+    // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
+    // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
     let cap = budget
         .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
