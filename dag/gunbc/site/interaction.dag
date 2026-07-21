@@ -2,7 +2,7 @@ module gunbc.site.interaction
 
 import gunbc.site.tokens { TimingToken, respond_fast, reveal_deliberate }
 
-data interaction_note: String = "Layer 3: the closed interaction vocabulary (design section 4l). Verbs x Responses x TimingToken, held as rows. The coverage law is a countable fold: every interactive element must carry a response row for every verb it declares — a dead hover is a LOCATED gap, not a review vibe."
+data interaction_note: String = "Layer 3: the closed interaction vocabulary (design section 4l). Verbs x Responses x TimingToken, held as rows. The coverage law is a countable fold: every interactive element must carry a response row for every verb it declares — a dead hover is a LOCATED gap, not a review vibe. Dispatch added 2026-07-21 (Phase-B second-site event, manager-signed): the roadmap dashboard's belt click — the sanctioned closed-enum extension at the trigger the design-register library names, never an ad-hoc string; its realization is the visual press receipt (CSS layer) while the belt receipt itself is the served effect (belt B, serving layer, not this vocabulary's concern)."
 
 type InteractionVerb
   = Approach
@@ -10,6 +10,7 @@ type InteractionVerb
   | StepBack
   | Copy
   | Traverse
+  | Dispatch
 
 type Response
   = Brighten
@@ -24,6 +25,7 @@ fn verb_key(v: InteractionVerb) -> String {
     StepBack => "step-back"
     Copy => "copy"
     Traverse => "traverse"
+    Dispatch => "dispatch"
   }
 }
 
