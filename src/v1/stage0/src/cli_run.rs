@@ -17393,6 +17393,57 @@ mod reference_edge_producer_tests {
     }
 }
 
+#[cfg(test)]
+mod pool_heads_oracle_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// Local oracle for #6956: dump reference_resolution_facts + pool qualified-fill
+    /// SymbolIndex digests (run with `--nocapture`, compare branch vs main).
+    #[test]
+    fn pool_heads_materialization_oracle_dump() {
+        let roots = vec![
+            workspace_root().join("src/v2").to_string_lossy().into_owned(),
+            workspace_root().join("dag").to_string_lossy().into_owned(),
+        ];
+        let ref_edges = reference_resolution_facts(&roots, &roots, &[]);
+        let mut ref_rows: Vec<String> = ref_edges
+            .iter()
+            .map(|e| format!("{}|{}|{:?}", e.path, e.target_module, e.resolution))
+            .collect();
+        ref_rows.sort();
+        let ref_digest = v1_rt::bytes_identity_hash(ref_rows.join("\n").as_bytes());
+
+        let index = build_multi_entry_index(&roots);
+        let fill = pool_qualified_fill(&index).expect("qualified fill");
+        let qkeys: BTreeSet<String> = fill.entries.keys().cloned().collect();
+        let bare_keys: BTreeSet<String> = fill.global_bare.keys().cloned().collect();
+        let svc_keys: BTreeSet<String> = fill.services.keys().cloned().collect();
+        let sym_digest = v1_rt::bytes_identity_hash(
+            format!(
+                "entries={}\n{}\nbare={}\n{}\nservices={}\n{}",
+                qkeys.len(),
+                qkeys.into_iter().collect::<Vec<_>>().join("\n"),
+                bare_keys.len(),
+                bare_keys.into_iter().collect::<Vec<_>>().join("\n"),
+                svc_keys.len(),
+                svc_keys.into_iter().collect::<Vec<_>>().join("\n"),
+            )
+            .as_bytes(),
+        );
+
+        println!(
+            "POOL_HEADS_ORACLE reference_edge_count={} reference_digest={} symbol_index_digest={} qualified_entries={} global_bare={} services={}",
+            ref_edges.len(),
+            ref_digest,
+            sym_digest,
+            fill.entries.len(),
+            fill.global_bare.len(),
+            fill.services.len(),
+        );
+    }
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
