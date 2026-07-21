@@ -18661,7 +18661,9 @@ pub fn resolution_divergence_census_live(
 /// baseline means the frontier starts at zero, not a tuned threshold). Single
 /// authority consumed by both the CLI binary's exit code and the Rust
 /// discriminating-RED oracle (§2 — one decision, not two).
-pub fn resolution_divergence_silent_pick_refusal(census: &ResolutionDivergenceCensus) -> Option<String> {
+pub fn resolution_divergence_silent_pick_refusal(
+    census: &ResolutionDivergenceCensus,
+) -> Option<String> {
     let total = census.silent_pick_global_bare_lcp
         + census.silent_pick_global_bare_lcp_tie
         + census.silent_pick_fn_parent_first_hit;
@@ -19094,9 +19096,10 @@ fn caller() -> Bool {
     }
 
     fn silent_pick_fixture_root(tag: &str) -> std::path::PathBuf {
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-resdiv-silentpick-{tag}-{}", std::process::id()))
+        super::process_workspace_root().join("target").join(format!(
+            "gunbc-resdiv-silentpick-{tag}-{}",
+            std::process::id()
+        ))
     }
 
     /// Two sibling modules each declare `shared_pick`; the leaf imports one *named*
