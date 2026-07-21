@@ -66,3 +66,7 @@
 ```
 
 Machine-readable: `docs/probes/curated_cargo_frontier_probe_sweep.tsv`
+
+## Related probe receipts
+
+- [Emitter residual site map (post-#6981)](emitter_residual_site_map_2026-07-21.md) — crisp-fox-839 class-1/2/3 map to `05_emit_rust.dag` / `04_emit_info.dag` sites (MAP ONLY).
