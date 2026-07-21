@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_method
 
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_emit_rust::type_variable_node;
 pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

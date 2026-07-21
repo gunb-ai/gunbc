@@ -8,6 +8,7 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_emit_rust::is_type_variable;
 pub use crate::v1_compiler_infer_env::{
     authored_name, env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,

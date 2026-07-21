@@ -158,7 +158,6 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-// RDBG unlisted_type_names=[] ref_use_lines=[]
 
 pub fn render_rust_applied_via_emit_info(
     n: Rc<Node>,
@@ -4776,25 +4775,9 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
-        let rdbg_line = v1_rt::concat(
-            "// RDBG unlisted_type_names=[".to_string(),
-            v1_rt::concat(
-                unlisted_type_names.clone().join(&",".to_string()),
-                v1_rt::concat(
-                    "] ref_use_lines=[".to_string(),
-                    v1_rt::concat(
-                        reference_use_lines.clone().join(&" | ".to_string()),
-                        "]".to_string(),
-                    ),
-                ),
-            ),
-        );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
-            v1_rt::concat(
-                Rc::new(vec![rdbg_line.clone()]),
-                reference_use_lines.clone(),
-            ),
+            reference_use_lines.clone(),
         ))
         .join(&"\n".to_string());
         let imports_section = if (merged_imports.clone() == "".to_string()) {

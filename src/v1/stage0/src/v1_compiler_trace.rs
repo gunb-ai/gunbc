@@ -4,6 +4,7 @@
 use self::TraceEvent::*;
 use self::TraceFilter::*;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

@@ -13,6 +13,8 @@ pub use crate::std_algebra::{
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::v1_compiler_emit_rust::is_type_variable;
+pub use crate::v1_compiler_infer::is_witness_type_name;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };

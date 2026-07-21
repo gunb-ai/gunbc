@@ -26,6 +26,7 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
+pub use crate::v1_compiler_emit_rust::{is_type_variable, type_variable_node};
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::Witness;

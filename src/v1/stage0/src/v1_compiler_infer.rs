@@ -36,6 +36,7 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
+pub use crate::v1_compiler_emit_rust::{is_type_variable, type_variable_node};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -117,6 +118,7 @@ pub use crate::v1_compiler_infer_types::{
     resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
     template_return_has_variables, template_return_is_receiver_self,
 };
+pub use crate::v1_compiler_resolve::map_has;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
