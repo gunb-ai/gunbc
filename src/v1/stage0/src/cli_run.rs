@@ -24413,3 +24413,6 @@ mod compile_clean_loader_closure_fork_regression {
         );
     }
 }
+
+#[path = "census_exclude_derive.rs"]
+pub mod census_exclude_derive;

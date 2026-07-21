@@ -1,9 +1,3 @@
-# Provisional acceptance-oracle pin (fierce-heron-512 / exclusion single-authority reconciliation)
-# Source: stern-newt-142 target/census-receipts/census_extra_excludes.txt
-# Relay: sunny-wolf-225 dashboard msg_a2c72a3d (host read @ worktree HEAD 7476f2523e)
-# Protocol: converge-census-excludes.sh, 4 iterations, 27 seeds -> 83 module paths
-# Authority: stern-newt in-tree copy wins if this relay diverges
-# Usage: acceptance oracle derived_exclude_closure(tip) set-eq these paths (fail-closed on any delta)
 src/v2/lens/cost/copied_port_derivation_test.dag
 src/v2/lens/vacuity_test.dag
 dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag
