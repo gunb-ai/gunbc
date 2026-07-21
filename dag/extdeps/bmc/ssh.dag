@@ -29,5 +29,8 @@ service bmc.Ssh {
       0 => Unit
       nonzero => String "bmc scp put failed"
     }
+    mock_response {
+      0 => { success: true } "hermetic bmc.Ssh.PutFile success"
+    }
   }
 }
