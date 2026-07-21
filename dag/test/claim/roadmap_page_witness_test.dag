@@ -37,6 +37,18 @@ fn witness_authority_differs_from_empty() -> Bool {
   !(authority_page_html() == empty_doc_html())
 }
 
+fn witness_authority_shows_three_gate_progress() -> Bool {
+  let authority = authority_page_html()
+  let empty = empty_doc_html()
+  string_contains(s: authority, pattern: "class=\"three-gate-progress\"")
+    && string_contains(s: authority, pattern: "v1-delete bar: three gates")
+    && !string_contains(s: empty, pattern: "class=\"three-gate-progress\"")
+    && string_contains(s: authority, pattern: "Gate 1 — the emitter re-emits itself")
+    && string_contains(s: authority, pattern: "Gate 3 — verification ledger green by execution")
+    && !string_contains(s: authority, pattern: "Cutover and delete")
+    && !string_contains(s: authority, pattern: "std_dup-gated modules")
+}
+
 fn depth_chain_html(fuel: Int) -> String {
   let parent = gunbc.roadmap_authority.authored(id: "p", done: false, content: "parent-node")
   let child = gunbc.roadmap_authority.authored(id: "c", done: false, content: "child-node-title")
@@ -112,6 +124,7 @@ test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
     && witness_authority_differs_from_empty()
+    && witness_authority_shows_three_gate_progress()
     && witness_depth_cap_fails_honest()
     && witness_bold_title_renders_strong()
     && witness_open_node_doc_emits_button_and_script()
