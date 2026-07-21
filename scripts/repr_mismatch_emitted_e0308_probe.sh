@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# SCAFFOLD — one-shot investigative probe (bright-lynx-868 World-B disposition, 2026-07-21).
+# Produces dated docs/probes/*.tsv receipts only; no gate role, no CI wiring, no fail-open.
+# dissolve-on: modeled repr-mismatch measurement transport in .dag / bash-emit #5828 when
+# HostNative text-carrier grounding lands and this histogram path becomes a recurring witness.
+#
 # Measure E0308 on EMITTED .rs output (not committed seed lib).
 # Paths:
 #   namespace = gunbc compile --entry with reference-derived closure (warm-lark Rule-1;

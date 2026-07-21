@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
+# SCAFFOLD — one-shot investigative probe (bright-lynx-868 World-B disposition, 2026-07-21).
+# Produces dated docs/probes/*.tsv receipts only; no gate role, no CI wiring, no fail-open.
+# dissolve-on: modeled repr-mismatch measurement transport in .dag / bash-emit #5828 when
+# HostNative text-carrier grounding lands and this histogram path becomes a recurring witness.
+#
 # Discriminating E0308 measurement for emit_representation_mismatch (#6959).
-# Compares CSSL/FaithfulFreeMonoid isolated probe vs HostNative whole-tree seed check.
+# Compares CSSL/FaithfulFreeMonoid isolated probe vs emitted-output namespace path.
 # Usage: repr_mismatch_e0308_discriminant.sh [module.dag]
 set -euo pipefail
 
