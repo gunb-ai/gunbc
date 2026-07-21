@@ -86,7 +86,7 @@ fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if grant_is_write(g: g) {
+    if verb_eq(a: g.verb, b: Write) {
       write_grant_isolated(g: g) && grants_all_write_isolated(grants: rest)
     } else {
       grants_all_write_isolated(grants: rest)
@@ -100,7 +100,7 @@ fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if grant_is_read(g: g) {
+    if verb_eq(a: g.verb, b: Read) {
       read_grant_intersects_live_tree(g: g) || grants_any_read_intersects_live_tree(grants: rest)
     } else {
       grants_any_read_intersects_live_tree(grants: rest)
