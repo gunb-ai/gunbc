@@ -4910,15 +4910,6 @@ fn typed_module_content_key(
     ))
 }
 
-fn typed_result_to_arc(
-    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Arc<v1_compiler_infer::TypecheckModuleResult> {
-    match Rc::try_unwrap(result) {
-        Ok(inner) => Arc::new(inner),
-        Err(rc) => Arc::new((*rc).clone()),
-    }
-}
-
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
 /// module per reconcile; the interface is a pure projection of the typed result).
 fn note_interface_hash(
@@ -4965,9 +4956,9 @@ fn check_index_module_source_identity(
 fn index_insert_typed(
     index: &MultiEntryIndex,
     typed_key: String,
-    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
+    result: Arc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Arc<v1_compiler_infer::TypecheckModuleResult>, String> {
-    let arc = typed_result_to_arc(result);
+    let arc = result;
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
