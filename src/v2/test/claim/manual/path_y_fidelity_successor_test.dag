@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn path_y_core_expr() -> Expression {
   LogicalOr {
     left: LogicalOr {
-      left: FunctionCall {
+      left: extdeps.github.expressions.FunctionCall {
         function: HashFiles,
         args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
       },
