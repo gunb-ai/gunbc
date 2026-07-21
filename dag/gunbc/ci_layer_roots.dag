@@ -84,7 +84,8 @@ data witness_exclusion_substrings: List<String> = [
   "srv3_seeded_install_media_real_execution_witness_test.dag",
   "http_client_get_real_execution_witness_test.dag",
   "roadmap_belt_actuate_witness_test.dag",
-  "host_build_cache_provision_real_execution_witness_test.dag"
+  "host_build_cache_provision_real_execution_witness_test.dag",
+  "resolution_divergence_silent_pick_gate_witness_test.dag"
 ]
 
 data witness_admission_offline_exclusion_substrings: List<String> = [
