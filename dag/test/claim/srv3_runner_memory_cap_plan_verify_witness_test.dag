@@ -1,5 +1,33 @@
 module test.claim.srv3_runner_memory_cap_plan_verify_witness
 
+import std.measure { byte_size_count }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  RunnerUnitMemoryLiveRead,
+  runner_unit_live_read_typed,
+}
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+}
+import gunbc.host_runner_memory_cap_plan_emit {
+  expected_runner_memory_cap_apply_sheet,
+  runner_memory_cap_plan_emit_claims_nothing,
+}
+import gunbc.host_runner_memory_cap_verify {
+  RunnerMemoryCapVerifyObserved,
+  runner_memory_cap_verify_receipt_from_read,
+  runner_memory_cap_verify_receipt_converged,
+}
+import gunbc.fleet_converge_cli {
+  converge_cli_receipt_from_memory_cap_verify,
+  converge_cli_receipt_line,
+  converge_cli_routes_to_memory_cap_verify,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

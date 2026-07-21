@@ -1,5 +1,60 @@
 module test.claim.srv3_runner_memory_converge_witness
 
+import std.measure { byte_size, byte_size_count, percent_count }
+import extdeps.os.systemd {
+  systemd_memory_max_property,
+  systemd_memory_high_property,
+}
+import extdeps.os.oomd {
+  oomd_managed_oom_memory_pressure_property,
+  oomd_managed_oom_memory_pressure_limit_property,
+  oomd_managed_oom_memory_pressure_duration_property,
+  oomd_managed_value_kill,
+  managed_oom_pressure_duration_apply_value,
+  managed_oom_pressure_limit_show_value,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.runner_slot_allocation {
+  gunbc_committed_host_runner_slot_allocation,
+  gunbc_runner_slot_desired,
+}
+import gunbc.runner_slot_oom_policy {
+  gunbc_runner_slot_oom_pressure_limit,
+  gunbc_runner_slot_oom_pressure_duration,
+}
+import gunbc.runner_unit_live_read {
+  gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
+}
+import gunbc.host_standup { host_standup_fleet_converge_policy }
+import gunbc.host_converge {
+  HostConverge,
+  ConvergeKnob,
+  GunbcSlice,
+  RunnerSlice,
+  SessionsSlice,
+  PerSlotMemoryCap,
+  SliceProperty,
+  Drifted,
+  VerdictConverged,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_unit_template,
+  converge_apply_mode_label,
+  gunbc_apply_mode_for_host,
+  legacy_converge_knob,
+  runner_instance_glob,
+}
+import gunbc.host_converge_slice1 {
+  host_converge_from_policy,
+  converge_knob_by_name,
+}
+import gunbc.host_runner_memory_provision {
+  runner_memory_host_converge,
+  runner_memory_cap_readback_verdict,
+  provision_runner_memory_caps_routes_through_host_effect_apply,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
