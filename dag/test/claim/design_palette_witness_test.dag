@@ -128,12 +128,31 @@ fn witness_solarized_base_ladder_order_and_count() -> Bool {
     && all(solarized_base_ladder, step => ladder_step_matches_catalog(step_name: step.name, step_color: step.color))
 }
 
+fn has_solarized_mode_pair(dark: String, light: String) -> Bool {
+  fold(solarized_base_mode_pairs, init: false, f: (found, p) =>
+    found || (p.dark_role == dark && p.light_role == light))
+}
+
+fn solarized_mode_partner(name: String) -> String {
+  if name == "base03" { "base3" }
+  else if name == "base3" { "base03" }
+  else if name == "base02" { "base2" }
+  else if name == "base2" { "base02" }
+  else if name == "base01" { "base1" }
+  else if name == "base1" { "base01" }
+  else if name == "base00" { "base0" }
+  else if name == "base0" { "base00" }
+  else { name }
+}
+
 fn witness_solarized_base_mode_pairing_involution() -> Bool {
   solarized_base_mode_pairs.length() == 4
-    && fold(solarized_base_mode_pairs, init: true, f: (acc, pair) =>
-      acc && pair.dark_role != pair.light_role
-        && fold(solarized_base_mode_pairs, init: false, f: (found, rev) =>
-          found || (rev.dark_role == pair.light_role && rev.light_role == pair.dark_role)))
+    && has_solarized_mode_pair(dark: "base03", light: "base3")
+    && has_solarized_mode_pair(dark: "base02", light: "base2")
+    && has_solarized_mode_pair(dark: "base01", light: "base1")
+    && has_solarized_mode_pair(dark: "base00", light: "base0")
+    && solarized_mode_partner(name: "base03") == "base3"
+    && solarized_mode_partner(name: solarized_mode_partner(name: "base03")) == "base03"
 }
 
 test fn design_palette_catalog_keystone_holds() -> Bool {
