@@ -7,9 +7,8 @@ import gunbc.design.palette { palette_admissible }
 import gunbc.design.catalog {
   soft_pastel_v1, soft_pastel_mint, soft_pastel_sky, soft_pastel_cream,
   soft_pastel_wood, soft_pastel_butter, palette_catalog, catalog_admissible,
+  okabe_ito, solarized,
 }
-import extdeps.color.okabe_ito { okabe_ito }
-import extdeps.color.solarized { solarized }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
