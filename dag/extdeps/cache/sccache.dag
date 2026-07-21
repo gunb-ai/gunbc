@@ -40,6 +40,10 @@ data sccache_local_id: CacheInterfaceId = "sccache_local"
 
 data sccache_server_process_model_doc: String = "sccache is a client/server tool: the client auto-spawns a server on first use if none is listening, the server survives the client that spawned it, and CACHE MISSES ARE COMPILED BY THE SERVER — rustc runs as a CHILD OF THE SERVER PROCESS, not of the invoking client. Consequence (load-bearing for host budgeting): the server's cgroup IS the cgroup every cache-miss compile on the host executes in, so a server that was lazily spawned inside some job's cgroup makes that job's memory caps bound EVERY subsequent compile on the host, including compiles issued by other jobs. SCCACHE_IDLE_TIMEOUT=0 disables the idle shutdown, so such a mis-placed server survives indefinitely."
 
+data sccache_server_port_doc: String = "The sccache SERVER listens on a TCP port on loopback, configured by SCCACHE_SERVER_PORT (default 4226). This is the only precise way to identify the server process: the sccache BINARY is also the client, so when it is used as RUSTC_WRAPPER every in-flight compile has a process named 'sccache' too. Selecting by process name alone cannot distinguish server from client and would read a transient client's cgroup."
+
+data sccache_server_default_port: Int = 4226
+
 type SccacheServerSpawn
   = ClientAutoSpawned
   | UnitStarted
@@ -75,6 +79,13 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
       evidence: VendorCitation {
         source: "sccache server performs the compilation on a cache miss; the compiler subprocess is a child of the server"
         url: "https://github.com/mozilla/sccache/blob/main/docs/Architecture.md"
+      }
+    },
+    {
+      field: "server_port"
+      evidence: VendorCitation {
+        source: "SCCACHE_SERVER_PORT sets the port the sccache server listens on; defaults to 4226"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md"
       }
     },
   ]
