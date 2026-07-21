@@ -26,8 +26,7 @@ fn ctrl_build_mode() -> String {
 }
 
 fn verify_order(path: &str) -> Result<(), String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("read {path}: {e}"))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
     let mut rows = 0usize;
     for line in content.lines() {
         if line.is_empty() || line.starts_with('#') {
