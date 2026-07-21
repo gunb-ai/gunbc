@@ -1,6 +1,5 @@
 module v2.test.parse.alias_decl_parse
 
-import v2.std.algebra { fold }
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.node { Node }
