@@ -21,7 +21,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
 }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4, operator_lan_segment }
 import gunbc.fleet_ssh_access { fleet_authorized_keys }
 import product.placement_supply { HostIdentity }
 import product.network_topology { NetworkSegment }
@@ -145,6 +145,29 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
   identity: srv3_autoinstall_identity,
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  install_openssh_server: true,
+  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_password_auth: false,
+  storage_policy: StoragePolicyDirectLayout,
+}
+
+data srv4_console_password_hash: NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
+
+data srv4_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
+  hostname: operator_host_srv4,
+  username: "ubuntu",
+  realname: "gunbc fleet node srv4",
+  hashed_password: srv4_console_password_hash,
+}
+
+data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudLocal,
+  fully_automated: true,
+  target_distribution: NobleNumbat2404Lts,
+  identity: srv4_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
