@@ -5,7 +5,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { any, contains, fold_list, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
@@ -30,7 +30,7 @@ type ModuleDependencyEdge {
   target_declared: Bool
 }
 
-data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live delegates to import_resolution_facts_live (host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
 
 data reference_derived_edge_source_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -41,7 +41,7 @@ data reference_derived_edge_source_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_live census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — import_resolution_facts_live remains live. Name suffix _pending_reference_producer marks that the body is still import-backed (interim stand-in), not parsed-tree reference-derived yet. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
+data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_from_parsed_corpus census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — dependency_resolution_facts_live already unions strict-tier host reference_resolution_facts with import_resolution_facts_live; this scaffold is the import-only stand-in for the terminal reference-only swap. Name suffix _pending_reference_producer marks that the body is still import-backed (interim stand-in), not parsed-tree reference-derived yet. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -52,6 +52,50 @@ fn import_resolution_facts_live(
     pool_roots: pool_roots,
     importer_roots: importer_roots,
     exclude_substrings: exclude_substrings
+  )
+}
+
+fn reference_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  reference_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn import_resolution_fact_eq(a: ImportResolutionFact, b: ImportResolutionFact) -> Bool {
+  a.path == b.path && a.import_module == b.import_module && a.target_declared == b.target_declared
+}
+
+fn add_unseen_import_fact(
+  acc: List<ImportResolutionFact>,
+  item: ImportResolutionFact
+) -> List<ImportResolutionFact> {
+  if contains(xs: acc, item: item, eq: import_resolution_fact_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn dedup_import_resolution_facts(edges: List<ImportResolutionFact>) -> List<ImportResolutionFact> {
+  fold_list(
+    xs: edges,
+    empty: Empty,
+    cons: fn(acc, edge) { add_unseen_import_fact(acc: acc, item: edge) }
+  )
+}
+
+fn union_import_resolution_fact_lists(
+  import_edges: List<ImportResolutionFact>,
+  reference_edges: List<ImportResolutionFact>
+) -> List<ImportResolutionFact> {
+  dedup_import_resolution_facts(
+    edges: list_append(left: reference_edges, right: import_edges)
   )
 }
 
@@ -83,10 +127,17 @@ fn dependency_resolution_facts_live(
   exclude_substrings: List<String>
 ) -> List<ModuleDependencyEdge> {
   dependency_edges_from_import_facts(
-    edges: import_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: importer_roots,
-      exclude_substrings: exclude_substrings
+    edges: union_import_resolution_fact_lists(
+      import_edges: import_resolution_facts_live(
+        pool_roots: pool_roots,
+        importer_roots: importer_roots,
+        exclude_substrings: exclude_substrings
+      ),
+      reference_edges: reference_resolution_facts_live(
+        pool_roots: pool_roots,
+        importer_roots: importer_roots,
+        exclude_substrings: exclude_substrings
+      )
     )
   )
 }
@@ -348,8 +399,6 @@ fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
 }
 
 data edgeless_entry_has_no_special_arm_note: String = "There is deliberately NO edgeless-entry arm here, and the one this branch briefly carried (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added after the import strip and now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't compute the affected set -> rerun the entire suite'. It answered affected=true for every entry with no outgoing edges, which after the strip was ~530 claim modules, silently and uncounted — so the deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor instead of as a diagnostic. It also was not answering an unknown: dependency_closure seeds with the entry itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own file is touched' is a real answer. The two states that arm conflated are split on the host twin (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges falls through to the closure; a producer that could not read or parse the file returns a typed AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one."
-
-data dag_surface_edge_source_lag_note: String = "HONEST DIVERGENCE, not a fork to reconcile by editing this file: the host twin now unions strict-tier (Qualified + UniqueBare) reference-derived edges onto the import edges, so it answers precisely for import-less files. This surface cannot yet, because reference_resolution_facts is not registered as a .dag builtin beside import_resolution_facts — so dependency_resolution_facts_live has nothing to swap its body to, which is exactly the swap dependency_edge_source_migration_note designates. Until that registration lands this surface under-selects for stripped entries relative to the host. It is NOT the live CI path (the compile-clean gate and the floor both run the host realization), and the divergence is bounded to entries the host now answers better. Dissolve-on: register the builtin, swap dependency_resolution_facts_live's body, delete this note. Do not paper over the gap by re-adding a widen arm — that trades a bounded, named lag for an unbounded silent one."
 
 fn entry_affected_by_touched_paths_excluding(
   entry_path: String,
