@@ -186,6 +186,7 @@ fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_memory_high_knob_name())
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_kill_knob_name())
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_limit_knob_name())
+        && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_duration_knob_name())
     Absent => false
   }
 }
