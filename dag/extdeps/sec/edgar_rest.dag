@@ -1,0 +1,72 @@
+module extdeps.sec.edgar_rest
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import extdeps.sec.edgar {
+  CompanyConceptResponse,
+  CompanyFactsResponse,
+  EdgarErrorEnvelope,
+  edgar_data_api_base,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/edgar/sec-api-documentation"
+  }
+}
+
+data edgar_rest_path_binding_note: String = "Path templates interpolate operation inputs by name (the current `transport rest` machinery). Upstream requires CIK##########.json segments — derive `cik_path_segment` via extdeps.sec.edgar.cik_url_segment(cik) at the call site; the helper is the single authority for zero-padding and the CIK prefix, not a second transport fork."
+
+service sec.Edgar {
+  config {
+    endpoint: edgar_data_api_base
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation GetCompanyFacts {
+    input {
+      cik_path_segment: NonEmptyStr
+    }
+    output {
+      entity_name: String from "entityName"
+      cik: String from "cik"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/api/xbrl/companyfacts/\{cik_path_segment\}.json"
+    }
+    response {
+      200 => CompanyFactsResponse
+      404 => EdgarErrorEnvelope
+      5xx => EdgarErrorEnvelope
+    }
+  }
+
+  operation GetCompanyConcept {
+    input {
+      cik_path_segment: NonEmptyStr
+      taxonomy: NonEmptyStr
+      concept_tag: NonEmptyStr
+    }
+    output {
+      entity_name: String from "entityName"
+      label: String from "label"
+      taxonomy: String from "taxonomy"
+      tag: String from "tag"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/api/xbrl/companyconcept/\{cik_path_segment\}/\{taxonomy\}/\{concept_tag\}.json"
+    }
+    response {
+      200 => CompanyConceptResponse
+      404 => EdgarErrorEnvelope
+      5xx => EdgarErrorEnvelope
+    }
+  }
+}

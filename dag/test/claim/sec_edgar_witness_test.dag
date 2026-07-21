@@ -1,0 +1,79 @@
+module test.claim.sec_edgar_witness
+
+import extdeps.sec.edgar { cik_url_segment, cik_padded_digits }
+import extdeps.sec.types {
+  AnnualReport,
+  QuarterlyReport,
+  UsGaap,
+  XbrlConceptRef,
+  filing_form_wire,
+  parse_filing_form,
+  parse_xbrl_taxonomy,
+  xbrl_taxonomy_wire,
+}
+import extdeps.sec.issuer.gitlab {
+  gitlab_cik,
+  gitlab_issuer_catalog,
+  gitlab_ticker,
+}
+import extdeps.vendor.gitlab { gitlab }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_gitlab_cik_pads_to_ten_digits() -> Bool {
+  cik_padded_digits(cik: gitlab_cik) == "0001653482"
+}
+
+fn w_gitlab_cik_url_segment_matches_edgar_api() -> Bool {
+  cik_url_segment(cik: gitlab_cik) == "CIK0001653482"
+}
+
+fn w_gitlab_issuer_catalog_grounds_cik_and_ticker() -> Bool {
+  gitlab_issuer_catalog.cik == gitlab_cik
+    && gitlab_issuer_catalog.primary_ticker == gitlab_ticker
+    && gitlab_issuer_catalog.vendor == gitlab
+}
+
+fn w_filing_form_10k_10q_are_distinct() -> Bool {
+  filing_form_wire(form: AnnualReport) == "10-K"
+    && filing_form_wire(form: QuarterlyReport) == "10-Q"
+    && filing_form_wire(form: AnnualReport) != filing_form_wire(form: QuarterlyReport)
+}
+
+fn w_filing_form_parse_round_trips_10k_10q() -> Bool {
+  match parse_filing_form(raw: "10-K") {
+    Present { value: AnnualReport } =>
+      match parse_filing_form(raw: "10-Q") {
+        Present { value: QuarterlyReport } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_xbrl_taxonomy_us_gaap_wire() -> Bool {
+  xbrl_taxonomy_wire(taxonomy: UsGaap) == "us-gaap"
+    && match parse_xbrl_taxonomy(raw: "us-gaap") {
+      Present { value: UsGaap } => true
+      _ => false
+    }
+}
+
+fn w_gitlab_revenue_concept_ref() -> Bool {
+  let concept = XbrlConceptRef {
+    taxonomy: UsGaap,
+    tag: "RevenueFromContractWithCustomerExcludingAssessedTax",
+  }
+  concept.taxonomy == UsGaap
+    && concept.tag == "RevenueFromContractWithCustomerExcludingAssessedTax"
+}
+
+test fn sec_edgar_witnesses() -> Bool {
+  w_gitlab_cik_pads_to_ten_digits()
+    && w_gitlab_cik_url_segment_matches_edgar_api()
+    && w_gitlab_issuer_catalog_grounds_cik_and_ticker()
+    && w_filing_form_10k_10q_are_distinct()
+    && w_filing_form_parse_round_trips_10k_10q()
+    && w_xbrl_taxonomy_us_gaap_wire()
+    && w_gitlab_revenue_concept_ref()
+}
