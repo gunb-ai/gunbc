@@ -19104,8 +19104,10 @@ fn use_ambig(x: AmbigType) -> Int {
         assert_eq!(
             rows.len(),
             1,
-            "expected one deduped AmbigType row for consumer module, plan rows={:?}",
-            plan.rows
+            "expected one deduped AmbigType row for consumer module, plan rows={:?} refused={:?} events={}",
+            plan.rows,
+            plan.refused,
+            plan.global_bare_lcp_events
         );
         let row = rows[0];
         assert!(
