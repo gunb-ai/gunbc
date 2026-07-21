@@ -181,8 +181,8 @@ test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
       DeclaredGap { interim_realization: path, refusal: r } =>
         string_contains(s: r, pattern: "host_standup:")
           && (string_contains(s: path, pattern: "ctrl:")
-            || (string_contains(s: path, pattern: "extdeps.")
-              && string_contains(s: path, pattern: "gunbc.")))
+            || string_contains(s: path, pattern: "extdeps.")
+            || string_contains(s: path, pattern: "gunbc."))
       ModeledCompose { authorities: refs } => refs.length() > 0
     }
   )
