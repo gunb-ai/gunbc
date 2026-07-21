@@ -10,7 +10,8 @@ use crate::helpers::workspace_root;
 use v1_compiler::cli_run::{
     self, build_multi_entry_index, index_retention_snapshot, make_eval_context,
     resolve_entry_graph, resolve_entry_with_index, run_claim, typed_cache_evictions_for_test,
-    typed_module_cache_len_for_test, typed_module_cache_max_entries, ClaimOutcome,
+    typed_module_cache_cap_for_test, typed_module_cache_len_for_test,
+    typed_module_cache_max_entries, ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -142,6 +143,69 @@ fn typed_module_cache_entry_cap_evicts_with_counted_receipt() {
 
     std::env::remove_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES");
     let _ = fs::remove_dir_all(&dir);
+}
+
+/// 2026-07-21 fleet OOM fix: `typed_module_cache_cap` samples the host budget
+/// exactly ONCE per index lifetime — a run-start fact, never re-read per
+/// insert. This is the by-execution witness that the sampled-once accessor
+/// is actually stable: change the "signal" (here, the env-override probe,
+/// standing in for the live host-shared MemAvailable reading that moved
+/// mid-run pre-fix) after the index has sampled its cap once, and confirm
+/// the sampled cap does not follow it.
+#[test]
+fn typed_module_cache_cap_sampled_once_per_index_stays_stable_despite_signal_drift() {
+    let _lock = CAP_ENV_MUTEX.lock().expect("cap env mutex");
+    std::env::set_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES", "150");
+    let index = build_multi_entry_index(&[]);
+
+    let first = typed_module_cache_cap_for_test(&index);
+    assert_eq!(
+        first, 150,
+        "index must sample the cap that was live at first use"
+    );
+
+    // Simulate the host signal moving mid-run (this is exactly the class of
+    // motion `/proc/meminfo MemAvailable` exhibited under co-tenant pressure
+    // in the 2026-07-21 incident).
+    std::env::set_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES", "3000");
+    let second = typed_module_cache_cap_for_test(&index);
+    assert_eq!(
+        second, first,
+        "cap must stay fixed for this index's lifetime even as the underlying signal moves"
+    );
+
+    std::env::remove_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES");
+}
+
+/// RED control: reproduces the pre-fix defect shape. The un-cached, pure
+/// derivation (`typed_module_cache_max_entries`, still used by direct
+/// env-override tests above and kept for that purpose) DOES track a moving
+/// signal on every call — that tracking, invoked from every cache insert,
+/// is the mechanism that produced the eviction storm (cap 294→227 across
+/// 2300+ evictions, `claim_executor` exit 137). This test asserts the old
+/// call pattern's oscillation is real and observable, so it stays a live
+/// discriminator: were `typed_module_cache_cap` ever accidentally reverted
+/// to call the uncached function per-insert, this divergence-producing
+/// signal motion is what would resume driving it.
+#[test]
+fn uncached_derivation_tracks_moving_signal_the_sampled_once_accessor_must_not() {
+    let _lock = CAP_ENV_MUTEX.lock().expect("cap env mutex");
+    std::env::set_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES", "300");
+    let readings: Vec<usize> = ["300", "227", "294", "204", "325"]
+        .iter()
+        .map(|v| {
+            std::env::set_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES", v);
+            typed_module_cache_max_entries()
+        })
+        .collect();
+    assert_eq!(
+        readings,
+        vec![300, 227, 294, 204, 325],
+        "uncached derivation must track every signal move — this is the storm mechanism the \
+         sampled-once accessor exists to eliminate at runtime call sites"
+    );
+
+    std::env::remove_var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES");
 }
 
 #[test]
