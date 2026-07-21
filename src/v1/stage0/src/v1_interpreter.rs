@@ -7311,7 +7311,10 @@ fn emit_host_run_transport_cached_in_workspace(
      -> Value {
         Value::Record {
             type_name: ctx.sym("EmitHostTransportResult"),
-            fields: Rc::new(vec![
+            // fields_get is a binary search by Symbol id, so a multi-field record
+            // MUST be sorted at construction; declaration order is interning-order-
+            // dependent and broke .success lookups when #6904 shifted interning.
+            fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
@@ -7335,7 +7338,7 @@ fn emit_host_run_transport_cached_in_workspace(
                     ),
                 ),
                 (ctx.sym("build_log"), list_value(build_log)),
-            ]),
+            ])),
         }
     };
 
@@ -7489,7 +7492,10 @@ fn emit_host_run_transport_in_workspace(
      -> Value {
         Value::Record {
             type_name: ctx.sym("EmitHostTransportResult"),
-            fields: Rc::new(vec![
+            // fields_get is a binary search by Symbol id, so a multi-field record
+            // MUST be sorted at construction; declaration order is interning-order-
+            // dependent and broke .success lookups when #6904 shifted interning.
+            fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
@@ -7513,7 +7519,7 @@ fn emit_host_run_transport_in_workspace(
                     ),
                 ),
                 (ctx.sym("build_log"), list_value(build_log)),
-            ]),
+            ])),
         }
     };
 
