@@ -6495,19 +6495,6 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
-    // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
-    // whole tree; policy gates lookup, never fill"): the base below is the entry's
-    // closure census plus the whole-pool QUALIFIED underlay; each module that
-    // actually typechecks additionally gets its OWN tree's bare census underlaid
-    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
-    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
-        std::collections::HashMap::new();
-
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -6531,6 +6518,25 @@ fn reconcile_with_typed_cache(
     )? {
         return Ok(assembled);
     }
+    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
+    // built once, order-independent, over the whole graph before any module typechecks — see
+    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
+    // whole tree; policy gates lookup, never fill"): the base below is the entry's
+    // closure census plus the whole-pool QUALIFIED underlay; each module that
+    // actually typechecks additionally gets its OWN tree's bare census underlaid
+    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
+    // composed lazily per root in `tree_symbol_index_memo`.
+    //
+    // Built AFTER the all-cache-hits shortcut (fix axis 2b,
+    // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
+    // consumes no symbol index, so an all-hits entry — the warm single-process case,
+    // and any cold child whose closure fully hits the typed/cross-process caches —
+    // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
+    // misses reach the build below exactly as before.
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
+        std::collections::HashMap::new();
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
