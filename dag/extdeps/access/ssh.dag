@@ -1,0 +1,38 @@
+module extdeps.access.ssh
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT"
+  }
+}
+
+type SshKeyAlgorithm
+  = Ed25519
+  | Rsa
+  | EcdsaP256
+
+fn ssh_key_algorithm_token(a: SshKeyAlgorithm) -> NonEmptyStr {
+  match a {
+    Ed25519 => "ssh-ed25519"
+    Rsa => "ssh-rsa"
+    EcdsaP256 => "ecdsa-sha2-nistp256"
+  }
+}
+
+type SshPublicKey {
+  algorithm: SshKeyAlgorithm
+  material: NonEmptyStr
+  comment: String
+}
+
+fn ssh_public_key_line(k: SshPublicKey) -> String {
+  concat(
+    concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "),
+    concat(k.material as String, concat(" ", k.comment)),
+  )
+}

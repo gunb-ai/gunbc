@@ -1,0 +1,48 @@
+module gunbc.fleet_ssh_access
+
+import std.types { List, NonEmptyStr }
+import extdeps.access.ssh { SshPublicKey, Ed25519 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
+
+data fleet_ssh_secrets_project: GcpProjectId = "gunbai-secrets"
+
+
+data operator_macbook_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
+  comment: "macbook-m4",
+}
+
+data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
+  comment: "fleet-automation@gunbc",
+}
+
+data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_ssh_secrets_project,
+  secret: "fleet-automation-ssh-key" as NonEmptyStr,
+  version: "latest",
+  hash_state: HashPending,
+}
+
+type SshAccessPrincipal {
+  posix_account: FleetPosixAccountKey
+  public_key: SshPublicKey
+}
+
+data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
+  posix_account: FleetAccountOperator,
+  public_key: operator_macbook_ssh_key,
+}
+
+data fleet_authorized_keys: List<SshPublicKey> = [
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+]
+
+fn fleet_host_authorized_keys() -> List<SshPublicKey> {
+  fleet_authorized_keys
+}
