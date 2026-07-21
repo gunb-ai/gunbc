@@ -15,10 +15,12 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
-    lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
-    GlobalBareLookupState, SymbolIndex,
+    lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
+    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_lookup::global_bare_callable_node;
+use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -26,6 +28,7 @@ use crate::v1_compiler_resolve;
 use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
+use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
@@ -17647,6 +17650,13 @@ pub enum ResolutionDivergenceBucket {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NeitherBoundSubclass {
+    BuiltinOrIntrinsic,
+    LocalOrParam,
+    GenuinelyUnbound,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolutionDivergenceSite {
     pub calling_module: String,
     pub caller_fn: String,
@@ -17654,6 +17664,35 @@ pub struct ResolutionDivergenceSite {
     pub call_file: String,
     pub call_span_start: i64,
     pub bucket: ResolutionDivergenceBucket,
+    pub containment_via: Option<ContainmentResolveVia>,
+    pub import_owner_module: Option<String>,
+    pub containment_owner_module: Option<String>,
+    pub neither_bound_subclass: Option<NeitherBoundSubclass>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgreeGlobalUniqueOwnerRow {
+    pub calling_module: String,
+    pub caller_fn: String,
+    pub callee: String,
+    pub call_file: String,
+    pub call_span_start: i64,
+    pub import_owner_module: String,
+    pub containment_owner_module: String,
+    pub owners_agree: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportUnresolvedInferCrossCheckRow {
+    pub calling_module: String,
+    pub caller_fn: String,
+    pub callee: String,
+    pub call_file: String,
+    pub call_span_start: i64,
+    pub containment_via: ContainmentResolveVia,
+    pub walk_binding: FnBindingRef,
+    pub infer_binding: Option<FnBindingRef>,
+    pub walk_infer_agree: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -17678,6 +17717,21 @@ pub struct ResolutionDivergenceCensus {
     pub diverge_rows: Vec<ResolutionDivergenceSite>,
     pub containment_ambiguous_rows: Vec<ResolutionDivergenceSite>,
     pub containment_unresolved_rows: Vec<ResolutionDivergenceSite>,
+    pub import_unresolved_rows: Vec<ResolutionDivergenceSite>,
+    pub neither_bound_rows: Vec<ResolutionDivergenceSite>,
+    pub agree_global_unique_owner_rows: Vec<AgreeGlobalUniqueOwnerRow>,
+    pub import_unresolved_infer_cross_check_rows: Vec<ImportUnresolvedInferCrossCheckRow>,
+    pub import_unresolved_infer_agree: usize,
+    pub import_unresolved_infer_mismatch: usize,
+    pub neither_bound_builtin_or_intrinsic: usize,
+    pub neither_bound_local_or_param: usize,
+    pub neither_bound_genuinely_unbound: usize,
+    pub silent_pick_global_bare_lcp: usize,
+    pub silent_pick_global_bare_lcp_tie: usize,
+    pub silent_pick_fn_parent_first_hit: usize,
+    pub silent_pick_global_bare_lcp_rows: Vec<crate::v1_rt::GlobalBareLcpPickSite>,
+    pub silent_pick_global_bare_lcp_tie_rows: Vec<crate::v1_rt::GlobalBareLcpTieSite>,
+    pub silent_pick_fn_parent_first_hit_rows: Vec<crate::v1_rt::FnParentFirstHitSite>,
     pub cost_shape: ResolutionDivergenceCostShape,
 }
 
@@ -17903,6 +17957,73 @@ fn bindings_agree(import: &FnBindingRef, containment: &FnBindingRef) -> bool {
     import.node_ptr == containment.node_ptr || import.qualified_path == containment.qualified_path
 }
 
+fn containment_owner_and_via(
+    containment: &ContainmentResolve,
+) -> (Option<String>, Option<ContainmentResolveVia>) {
+    match containment {
+        ContainmentResolve::Hit {
+            owner_module, via, ..
+        } => (Some(owner_module.clone()), Some(via.clone())),
+        ContainmentResolve::Ambiguous | ContainmentResolve::Unresolved => (None, None),
+    }
+}
+
+fn infer_fn_binding_at_site(
+    type_env: Rc<TypeEnv>,
+    module_path: &str,
+    callee: &str,
+    item_index: &ModuleItemIndex,
+) -> Option<FnBindingRef> {
+    if let Some(node) = global_bare_callable_node(type_env.clone(), callee.to_string()) {
+        return Some(fn_binding_from_node(module_path, callee, &node));
+    }
+    if let Some(binding) = lookup_binding_by_name(type_env, callee.to_string()) {
+        if is_fn_like_binding(&binding.resolved, module_path, callee, Some(item_index)) {
+            return Some(fn_binding_from_node(module_path, callee, &binding.resolved));
+        }
+    }
+    None
+}
+
+fn classify_neither_bound_subclass(
+    callee: &str,
+    func_env: &ResolvedFuncEnv,
+    caller_item: &Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> NeitherBoundSubclass {
+    if infer_builtin_call_type(callee.to_string()).is_some() {
+        return NeitherBoundSubclass::BuiltinOrIntrinsic;
+    }
+    if func_env.local.contains_key(callee) {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    if v1_rt::map_get(&type_env.str_bindings, callee.to_string()).is_some() {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    for param in caller_item.params.iter() {
+        if param_node_name_at(param.clone(), source_indices.clone()) == callee {
+            return NeitherBoundSubclass::LocalOrParam;
+        }
+    }
+    if lookup_type_by_name(type_env, callee.to_string()).is_some() {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    NeitherBoundSubclass::GenuinelyUnbound
+}
+
+fn merge_silent_pick_telemetry(
+    census: &mut ResolutionDivergenceCensus,
+    telemetry: SilentPickTelemetry,
+) {
+    census.silent_pick_global_bare_lcp = telemetry.global_bare_lcp_picks.len();
+    census.silent_pick_global_bare_lcp_tie = telemetry.global_bare_lcp_ties.len();
+    census.silent_pick_fn_parent_first_hit = telemetry.fn_parent_first_hits.len();
+    census.silent_pick_global_bare_lcp_rows = telemetry.global_bare_lcp_picks;
+    census.silent_pick_global_bare_lcp_tie_rows = telemetry.global_bare_lcp_ties;
+    census.silent_pick_fn_parent_first_hit_rows = telemetry.fn_parent_first_hits;
+}
+
 fn bucket_site(
     import_binding: Option<FnBindingRef>,
     containment: ContainmentResolve,
@@ -18015,7 +18136,48 @@ pub fn resolution_divergence_census_from_ctx(
                     }
                 }
 
-                let bucket = bucket_site(import_binding, containment);
+                let import_owner = import_chain_owner(&func_env, &callee);
+                let (containment_owner_module, containment_via) =
+                    containment_owner_and_via(&containment);
+                let bucket = bucket_site(import_binding, containment.clone());
+
+                if let ContainmentResolve::Hit {
+                    via: ContainmentResolveVia::GlobalUnique,
+                    ..
+                } = &containment
+                {
+                    if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        if let (Some(import_owner), Some(containment_owner)) =
+                            (import_owner.clone(), containment_owner_module.clone())
+                        {
+                            out.agree_global_unique_owner_rows
+                                .push(AgreeGlobalUniqueOwnerRow {
+                                    calling_module: module_path.clone(),
+                                    caller_fn: caller_fn.clone(),
+                                    callee: callee.clone(),
+                                    call_file: call_node.span.file.clone(),
+                                    call_span_start: call_node.span.start,
+                                    import_owner_module: import_owner.clone(),
+                                    containment_owner_module: containment_owner.clone(),
+                                    owners_agree: import_owner == containment_owner,
+                                });
+                        }
+                    }
+                }
+
+                let neither_bound_subclass =
+                    if matches!(bucket, ResolutionDivergenceBucket::NeitherBound) {
+                        Some(classify_neither_bound_subclass(
+                            &callee,
+                            func_env.as_ref(),
+                            item,
+                            tm.type_env.clone(),
+                            source_indices.clone(),
+                        ))
+                    } else {
+                        None
+                    };
+
                 let site = ResolutionDivergenceSite {
                     calling_module: module_path.clone(),
                     caller_fn: caller_fn.clone(),
@@ -18023,6 +18185,23 @@ pub fn resolution_divergence_census_from_ctx(
                     call_file: call_node.span.file.clone(),
                     call_span_start: call_node.span.start,
                     bucket: bucket.clone(),
+                    containment_via: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        None
+                    } else {
+                        containment_via.clone()
+                    },
+                    import_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        None
+                    } else {
+                        import_owner.clone()
+                    },
+                    containment_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree)
+                    {
+                        None
+                    } else {
+                        containment_owner_module.clone()
+                    },
+                    neither_bound_subclass: neither_bound_subclass.clone(),
                 };
                 match bucket {
                     ResolutionDivergenceBucket::Agree => out.agree += 1,
@@ -18038,10 +18217,58 @@ pub fn resolution_divergence_census_from_ctx(
                         out.containment_unresolved += 1;
                         out.containment_unresolved_rows.push(site);
                     }
-                    ResolutionDivergenceBucket::ImportUnresolved { .. } => {
-                        out.import_unresolved += 1
+                    ResolutionDivergenceBucket::ImportUnresolved {
+                        containment_binding,
+                    } => {
+                        out.import_unresolved += 1;
+                        out.import_unresolved_rows.push(site.clone());
+                        let infer_binding = infer_fn_binding_at_site(
+                            tm.type_env.clone(),
+                            &module_path,
+                            &callee,
+                            &item_index,
+                        );
+                        let walk_infer_agree = infer_binding
+                            .as_ref()
+                            .map(|infer| bindings_agree(infer, &containment_binding))
+                            .unwrap_or(false);
+                        if walk_infer_agree {
+                            out.import_unresolved_infer_agree += 1;
+                        } else {
+                            out.import_unresolved_infer_mismatch += 1;
+                        }
+                        if let ContainmentResolve::Hit { via, .. } = &containment {
+                            out.import_unresolved_infer_cross_check_rows.push(
+                                ImportUnresolvedInferCrossCheckRow {
+                                    calling_module: module_path.clone(),
+                                    caller_fn: caller_fn.clone(),
+                                    callee: callee.clone(),
+                                    call_file: call_node.span.file.clone(),
+                                    call_span_start: call_node.span.start,
+                                    containment_via: via.clone(),
+                                    walk_binding: containment_binding,
+                                    infer_binding,
+                                    walk_infer_agree,
+                                },
+                            );
+                        }
                     }
-                    ResolutionDivergenceBucket::NeitherBound => out.neither_bound += 1,
+                    ResolutionDivergenceBucket::NeitherBound => {
+                        out.neither_bound += 1;
+                        out.neither_bound_rows.push(site.clone());
+                        match neither_bound_subclass {
+                            Some(NeitherBoundSubclass::BuiltinOrIntrinsic) => {
+                                out.neither_bound_builtin_or_intrinsic += 1
+                            }
+                            Some(NeitherBoundSubclass::LocalOrParam) => {
+                                out.neither_bound_local_or_param += 1
+                            }
+                            Some(NeitherBoundSubclass::GenuinelyUnbound) => {
+                                out.neither_bound_genuinely_unbound += 1
+                            }
+                            None => {}
+                        }
+                    }
                 }
             }
         }
@@ -18062,19 +18289,23 @@ pub fn resolution_divergence_census_live(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<ResolutionDivergenceCensus, String> {
+    crate::v1_rt::resolution_silent_pick_enable();
+    let resolve_result = whole_tree_resolved_ctx(
+        source_roots,
+        exclude_substrings,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let WholeTreeCtx {
         ctx,
         modules_resolved,
         modules_excluded,
         ..
-    } = whole_tree_resolved_ctx(
-        source_roots,
-        exclude_substrings,
-        v1_interpreter::ExecutionMode::Wet,
-    )?;
+    } = resolve_result?;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = modules_excluded;
+    merge_silent_pick_telemetry(&mut census, silent_picks);
     Ok(census)
 }
 
@@ -18113,6 +18344,32 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         census.neither_bound
     ));
     lines.push(format!(
+        "[resolution-divergence-census] neither_bound_subclass builtin_or_intrinsic={} local_or_param={} genuinely_unbound={}",
+        census.neither_bound_builtin_or_intrinsic,
+        census.neither_bound_local_or_param,
+        census.neither_bound_genuinely_unbound,
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] silent_pick global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}",
+        census.silent_pick_global_bare_lcp,
+        census.silent_pick_global_bare_lcp_tie,
+        census.silent_pick_fn_parent_first_hit,
+    ));
+    let agree_global_unique_owner_mismatch = census
+        .agree_global_unique_owner_rows
+        .iter()
+        .filter(|row| !row.owners_agree)
+        .count();
+    lines.push(format!(
+        "[resolution-divergence-census] agree_global_unique_owner_rows={} owner_mismatch={}",
+        census.agree_global_unique_owner_rows.len(),
+        agree_global_unique_owner_mismatch,
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] import_unresolved_infer_cross_check agree={} mismatch={}",
+        census.import_unresolved_infer_agree, census.import_unresolved_infer_mismatch,
+    ));
+    lines.push(format!(
         "[resolution-divergence-census] cost_shape hits={} lexical_only={} global_unique={} lexical_steps_histogram={:?}",
         census.cost_shape.containment_hits,
         census.cost_shape.lexical_only_hits,
@@ -18127,12 +18384,16 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         {
             lines.push(format!(
                 "DIVERGE\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
+                 via={}\timport_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
                 import_binding.node_ptr,
@@ -18146,12 +18407,16 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         if let ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding } = &site.bucket {
             lines.push(format!(
                 "CONTAINMENT_AMBIGUOUS\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({})",
+                 via={}\timport_chain={} ({})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
             ));
@@ -18161,18 +18426,134 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } = &site.bucket {
             lines.push(format!(
                 "CONTAINMENT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({})",
+                 via={}\timport_chain={} ({})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
             ));
         }
     }
+    for site in &census.import_unresolved_rows {
+        if let ResolutionDivergenceBucket::ImportUnresolved {
+            containment_binding,
+        } = &site.bucket
+        {
+            lines.push(format!(
+                "IMPORT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+                 via={}\tcontainment={} ({})",
+                site.calling_module,
+                site.caller_fn,
+                site.callee,
+                site.call_file,
+                site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
+                containment_binding.owner_module,
+                containment_binding.qualified_path,
+            ));
+        }
+    }
+    for site in &census.neither_bound_rows {
+        lines.push(format!(
+            "NEITHER_BOUND\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\tsubclass={}",
+            site.calling_module,
+            site.caller_fn,
+            site.callee,
+            site.call_file,
+            site.call_span_start,
+            site.neither_bound_subclass
+                .as_ref()
+                .map(neither_bound_subclass_label)
+                .unwrap_or("unknown"),
+        ));
+    }
+    for row in census
+        .agree_global_unique_owner_rows
+        .iter()
+        .filter(|row| !row.owners_agree)
+    {
+        lines.push(format!(
+            "AGREE_GLOBAL_UNIQUE_OWNER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+             import_owner={}\tcontainment_owner={}",
+            row.calling_module,
+            row.caller_fn,
+            row.callee,
+            row.call_file,
+            row.call_span_start,
+            row.import_owner_module,
+            row.containment_owner_module,
+        ));
+    }
+    for row in census
+        .import_unresolved_infer_cross_check_rows
+        .iter()
+        .filter(|row| !row.walk_infer_agree)
+    {
+        lines.push(format!(
+            "IMPORT_UNRESOLVED_INFER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+             via={}\twalk={} ({} ptr={})\tinfer={}",
+            row.calling_module,
+            row.caller_fn,
+            row.callee,
+            row.call_file,
+            row.call_span_start,
+            containment_via_label(&row.containment_via),
+            row.walk_binding.owner_module,
+            row.walk_binding.qualified_path,
+            row.walk_binding.node_ptr,
+            row.infer_binding
+                .as_ref()
+                .map(|b| format!("{} ({})", b.qualified_path, b.node_ptr))
+                .unwrap_or_else(|| "none".to_string()),
+        ));
+    }
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        lines.push(format!(
+            "SILENT_PICK_GLOBAL_BARE_LCP\tmodule={}\tname={}\tcandidates={}\tchosen_module={}",
+            row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
+        ));
+    }
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        lines.push(format!(
+            "SILENT_PICK_GLOBAL_BARE_LCP_TIE\tmodule={}\tname={}\tcandidates={}",
+            row.env_module_path, row.name, row.candidate_count,
+        ));
+    }
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        lines.push(format!(
+            "SILENT_PICK_FN_PARENT_FIRST_HIT\tmodule={}\tname={}\tparent_matches={}\tchosen_parent={}",
+            row.env_module_path,
+            row.name,
+            row.parent_match_count,
+            row.chosen_parent_module,
+        ));
+    }
     lines.join("\n")
+}
+
+fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
+    match via {
+        ContainmentResolveVia::Lexical => "lexical",
+        ContainmentResolveVia::GlobalUnique => "global_unique",
+    }
+}
+
+fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str {
+    match subclass {
+        NeitherBoundSubclass::BuiltinOrIntrinsic => "builtin_or_intrinsic",
+        NeitherBoundSubclass::LocalOrParam => "local_or_param",
+        NeitherBoundSubclass::GenuinelyUnbound => "genuinely_unbound",
+    }
 }
 
 #[cfg(test)]
