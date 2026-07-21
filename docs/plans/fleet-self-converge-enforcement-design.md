@@ -267,9 +267,9 @@ policy_hash: ContentHash?      // desired policy content hash at evaluation time
 observed_at: LogicalTime?      // ISO-8601 in serialized line; staleness gate input
 ```
 
-### srv3 receipt collection — Phase 4 blocker (decide before accept gate)
+### srv3 receipt collection — Phase 1 decision (gates Phase 3 observer)
 
-srv3 is `LocalOnly` in steady-state (timer runs locally) but has **no tailnet**. Journal-over-tailnet-SSH-from-srv1 **cannot** collect srv3 receipts. Phase 4 fleet-green is **unsatisfiable** until one path is chosen:
+srv3 is `LocalOnly` in steady-state (timer runs locally) but has **no tailnet**. Journal-over-tailnet-SSH-from-srv1 **cannot** collect srv3 receipts. The **Phase 3** CI fleet-green observer is **unsatisfiable** until one path is chosen — so the path must be **signed in Phase 1**, not deferred to Phase 3 implementation or Phase 4 closeout.
 
 | Option | Mechanism | Tradeoff |
 |---|---|---|
@@ -287,23 +287,33 @@ srv3 is `LocalOnly` in steady-state (timer runs locally) but has **no tailnet**.
 |---|---|---|
 | Emit drift | verify-only | `fleet_converge_emit_test` + per-host unit/timer goldens match committed files |
 | Receipt collection | read-only | Fetch last receipt per host from `receipt_sink` within staleness bound |
-| Fleet-green assert | verify-only | Every host with timer installed has `verdict=converged`, **kernel-grounded** cap read-back where applicable, `observed_at` within staleness bound |
-| Reachability census | verify-only | Hosts without timer are **listed** with reason (`HandStoodUp` interim, `BmcOnly`-only, etc.) — counted frontier |
+| Fleet-green assert | verify-only | Every `fleet_intent_known_hosts` member has `timer_installed` + fresh receipt + (Phase 3+) kernel-grounded cap read-back; any host without a timer is a **typed refusal**, not a counted frontier |
+| Enforcement census | verify-only | Hosts explicitly exempt from timer (e.g. pre-`OsInstalled` BMC-only) are **listed** with a typed `EnforcementExempt` reason — never silently skipped |
 
 ### Fleet-green definition
 
+**Enrollment rule:** every host in `fleet_intent_known_hosts` is in the enforcement set unless it carries an explicit `EnforcementExempt { reason }` row in `HostManagementProfile` (today: **none** — srv1/srv2/srv3 are all live and must be enforced). A host without `timer_installed` and without `EnforcementExempt` ⇒ fleet-green **refuses** (`TimerNotInstalled { host }`), never passes as a silent frontier.
+
 ```
 fleet_green(receipts, profiles, cgroup_reads, now) =
-  ∀ h ∈ hosts where timer_installed(h) :
-    ∃ r ∈ receipts where r.host = h
-      ∧ r.verdict = Converged
-      ∧ age(r.observed_at, now) ≤ staleness_bound
-      ∧ cap_knobs_kernel_grounded(h, cgroup_reads)   // decoy-slice gate
+  ∀ h ∈ fleet_intent_known_hosts :
+    match enforcement_status(h, profiles) {
+      EnforcementExempt { reason: _ } => true   // listed in census, not in receipt set
+      EnforcementRequired =>
+        timer_installed(h)
+        ∧ ∃ r ∈ receipts where r.host = h
+          ∧ r.verdict = Converged
+          ∧ age(r.observed_at, now) ≤ staleness_bound
+          ∧ cap_knobs_kernel_grounded(h, cgroup_reads)   // Phase 3+ gate (decoy-slice)
+    }
 ```
 
+**Phase split:** Phase 2 fleet-green checks may omit `cap_knobs_kernel_grounded` (timer + receipt only). Phase 3 adds the kernel cross-check — the decoy-slice gate is **observer-blocking in Phase 3**, not Phase 2.
+
 RED controls:
-- Hand-edit a managed cap → next timer run restores + receipt shows `applied > 0` + cgroup read matches
+- Hand-edit a managed cap → next timer run restores + receipt shows `applied > 0` + cgroup read matches (Phase 3+)
 - Stop timer on srv2 → CI fleet-green fails on staleness within one cadence window
+- Known host with no timer and no `EnforcementExempt` → `TimerNotInstalled` refusal (cannot green)
 - Decoy slice present → fleet-green **refuses** even if receipt says converged
 
 ### What CI explicitly does NOT do
@@ -387,7 +397,7 @@ srv1/srv2/srv3 timer install in **Phase 2** (srv3 via LAN interim). Receipt coll
 - Operator GO: srv1, srv2 (tailnet apply), **srv3 (LAN apply — priority host given melt history)**
 - First real receipts in journal + landing file
 
-**Accept (T4/T5):** timer active on all three; receipt parsed via `--grep converge-receipt`; hand-edit cap on srv3 → next run corrects (kernel read-back).
+**Accept (T4/T5):** timer active on all three; receipt parsed via `--grep converge-receipt`; hand-edit cap on srv3 → next timer run shows `applied > 0` in receipt (kernel cgroup proof deferred to Phase 3).
 
 ### Phase 3 — Kernel-grounded observer + CI fleet-green
 
@@ -468,7 +478,7 @@ A host is **homogeneous** when ALL hold (T4/T5 per `fleet-acceptance-criteria.md
 | 2 srv3 row wrong | **Fixed** — `HandStoodUp`, LAN interim, Phase 2 includes srv3 now |
 | 3 `Persistent=true` on monotonic timer | **Fixed** — Option A/B split; `RandomizedDelaySec` for jitter |
 | 4 Grammar migration | **Fixed** — append-only k=v rule; landing file stores line verbatim |
-| 5 srv3 collection unsatisfiable | **Fixed** — Phase 1 decision required; Option B interim / A steady-state |
+| 5 srv3 collection unsatisfiable | **Fixed** — Phase 1 signs collection path; Phase 3 observer blocked until path exists (heading corrected from "Phase 4 blocker") |
 | 6 Non-goals / melt-proof | **Fixed** — explicit non-goals table |
 | Minor (ssh_host, journalctl, bin path, identity) | **Fixed** in place |
 
