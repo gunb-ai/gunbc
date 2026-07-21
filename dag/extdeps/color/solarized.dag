@@ -5,11 +5,15 @@ import extdeps.color.srgb { Srgb8, CitedColorRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data solarized_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "ethanschoonover.com/solarized/"
   }
+}
+
+fn solarized_authority() -> ExternalAuthority {
+  extdeps_external_authority_anchor
 }
 
 data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; sRGB hex values filed as Srgb8. Structure rows: base luminance ladder (base03 darkest .. base3 lightest) and dark/light BASE mode reassignment involution (base03<->base3, base02<->base2, base01<->base1, base00<->base0 — the pairing Schoonover documents for syntax/background roles). Canonical L*a*b rows land with the OKLCH reground lane."

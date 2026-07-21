@@ -1,21 +1,34 @@
 set -euo pipefail
 # GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=srv1
-# Principal: ROOT (actions-runner User=root). rsync/chown run bare and REQUIRE it;
-# sudo -n stays on the historical grant-set ops (apt-get, install, systemctl, tailscale),
-# redundant under root, load-bearing for a future unprivileged principal.
+# Principal: UNPRIVILEGED ci-runner (fleet_posix_accounts FleetAccountCiRunner) — every host
+# mutation rides its five sudo -n grants (apt-get, install, systemctl, tailscale, rm);
+# the tree syncs AS the service user via gunbc-tree-sync.service (owner writes its own tree).
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
 if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi
 if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi
 sudo -n install -d -m 0755 /opt/gunbc
-rsync -a --delete --exclude /target --exclude /.git ./ /opt/gunbc/gunbc/
-rsync -a ./.git/ /opt/gunbc/gunbc/.git/
-chown -R briansrls:briansrls /opt/gunbc/gunbc
+sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/gunbc
+printf 'GUNBC_TREE_SRC=%s\n' "$PWD" > "$_gunbc_stage/gunbc-tree-sync.env"
+sudo -n install -m 0644 "$_gunbc_stage/gunbc-tree-sync.env" /etc/gunbc-tree-sync.env
+cat > "$_gunbc_stage/gunbc-tree-sync.service" <<'GUNBC_TREE_SYNC_EOF'
+[Unit]
+Description=gunbc source tree sync (service-user-principal rsync from CI runner checkout)
+
+[Service]
+Type=oneshot
+User=briansrls
+Group=briansrls
+EnvironmentFile=/etc/gunbc-tree-sync.env
+ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git "${GUNBC_TREE_SRC}/" /opt/gunbc/gunbc/
+ExecStart=/usr/bin/rsync -rlpt "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
+GUNBC_TREE_SYNC_EOF
+sudo -n install -m 0644 "$_gunbc_stage/gunbc-tree-sync.service" /etc/systemd/system/gunbc-tree-sync.service
+sudo -n systemctl daemon-reload
+sudo -n systemctl restart gunbc-tree-sync.service
 sudo -n install -d -m 0755 /opt/gunbc/bin
-sudo -n install -m 0755 target/release/gunbc /opt/gunbc/bin/gunbc
-chown -R briansrls:briansrls /opt/gunbc/bin
-sudo -n install -d -m 0755 /opt/gunbc/dispatch-worktrees
-chown -R briansrls:briansrls /opt/gunbc/dispatch-worktrees
+sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc
+sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees
 cat > "$_gunbc_stage/gunbc-roadmap.service" <<'GUNBC_UNIT_EOF'
 [Unit]
 Description=gunbc roadmap HTTP server (gunbc serve)

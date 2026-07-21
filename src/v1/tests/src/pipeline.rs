@@ -1413,6 +1413,149 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
 }
 
 #[test]
+fn entry_closure_sources_memo_reuses_name_derived_walk() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, entry_closure_sources_len_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("first resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "first resolve must memo the entry closure"
+    );
+    resolve_entry_with_index(&index, &entry).expect("second resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "second resolve must not re-run the bare-reference fixpoint walk"
+    );
+}
+
+#[test]
+fn reconcile_defer_builds_pool_qualified_fill_on_typed_cache_miss() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "fresh index must not pre-build qualified fill"
+    );
+    resolve_entry_with_index(&index, &entry).expect("cold miss resolve");
+    assert!(
+        pool_qualified_fill_initialized_for_test(&index),
+        "cache-miss reconcile must build qualified fill after the short-circuit probe"
+    );
+}
+
+#[test]
+fn reconcile_defer_skips_pool_qualified_fill_on_full_typed_cache_hit() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test,
+        reset_pool_qualified_fill_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("cold warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "test setup: qualified fill cleared while typed cache remains warm"
+    );
+    resolve_entry_with_index(&index, &entry).expect("hot all-hit resolve");
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "all-cache-hit reconcile must not consult or build pool_qualified_fill"
+    );
+}
+
+#[test]
+fn reconcile_defer_hot_hit_matches_cold_oracle() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, make_eval_context, reset_pool_qualified_fill_for_test,
+        resolve_entry_graph, resolve_entry_with_index, run_claim,
+    };
+    use v1_compiler::v1_interpreter::ExecutionMode;
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let function = "doc_graph_has_no_orphan_docs";
+
+    let (cold_graph, cold_si) = resolve_entry_graph(&roots, &entry).expect("cold oracle");
+    let cold_ctx = make_eval_context(&cold_graph, cold_si, ExecutionMode::Wet);
+    let cold = run_claim(&cold_ctx, function);
+
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    let (hot_graph, hot_si) = resolve_entry_with_index(&index, &entry).expect("hot hit");
+    let hot_ctx = make_eval_context(&hot_graph, hot_si, ExecutionMode::Wet);
+    let hot = run_claim(&hot_ctx, function);
+
+    assert_eq!(
+        cold, hot,
+        "deferral must not change witness outcome on the all-hit path (cold={cold:?}, hot={hot:?})"
+    );
+}
+
+#[test]
 fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
     use v1_compiler::cli_run::{
         census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
