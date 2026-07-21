@@ -116,35 +116,42 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
         None => {
-            let scan = env.parents.clone().iter().cloned().fold(
-                ParentSigScan::default(),
-                |mut acc: ParentSigScan, p: Rc<ResolvedFuncEnv>| {
-                    if let Some(sig) = v1_rt::map_get(&p.local.clone(), name.clone()) {
-                        acc.match_count += 1;
-                        if acc.first_parent.is_none() {
-                            acc.first_parent = Some(p.name.clone());
+            if crate::resolution_silent_pick_telemetry::is_enabled() {
+                let scan = env.parents.clone().iter().cloned().fold(
+                    ParentSigScan::default(),
+                    |mut acc: ParentSigScan, p: Rc<ResolvedFuncEnv>| {
+                        if let Some(sig) = v1_rt::map_get(&p.local.clone(), name.clone()) {
+                            acc.match_count += 1;
+                            if acc.first_parent.is_none() {
+                                acc.first_parent = Some(p.name.clone());
+                            }
+                            if acc.sig.is_none() {
+                                acc.sig = Some(sig);
+                            }
                         }
-                        if acc.sig.is_none() {
-                            acc.sig = Some(sig);
-                        }
+                        acc
+                    },
+                );
+                if scan.match_count >= 2 && scan.sig.is_some() {
+                    if let Some(chosen_parent) = scan.first_parent.clone() {
+                        crate::resolution_silent_pick_telemetry::record_fn_parent_first_hit(
+                            env.name.clone(),
+                            name.clone(),
+                            scan.match_count,
+                            chosen_parent,
+                        );
                     }
-                    acc
-                },
-            );
-            if crate::resolution_silent_pick_telemetry::is_enabled()
-                && scan.match_count >= 2
-                && scan.sig.is_some()
-            {
-                if let Some(chosen_parent) = scan.first_parent.clone() {
-                    crate::resolution_silent_pick_telemetry::record_fn_parent_first_hit(
-                        env.name.clone(),
-                        name.clone(),
-                        scan.match_count,
-                        chosen_parent,
-                    );
                 }
+                scan.sig
+            } else {
+                env.parents.clone().iter().cloned().fold(
+                    none_resolved_sig(),
+                    |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc {
+                        Some(sig) => Some(sig),
+                        None => v1_rt::map_get(&p.local.clone(), name.clone()),
+                    },
+                )
             }
-            scan.sig
         }
     }
 }
