@@ -1,0 +1,122 @@
+module test.claim.sec_edgar_rollins_chemed_witness
+
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  derive_gross_margin_ratio_from_facts,
+  filed_amount,
+  gross_margin_ratio_in_band,
+  usd_whole_dollars,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.rollins_facts {
+  rollins_fy2025_operating_income,
+  rollins_fy2025_revenue,
+}
+import extdeps.sec.issuer.rollins { rollins_cik }
+import extdeps.sec.issuer.chemed_facts {
+  chemed_fy2025_operating_income,
+  chemed_fy2025_revenue,
+}
+import extdeps.sec.issuer.chemed { chemed_cik }
+import extdeps.sec.edgar { cik_padded_digits }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sec_edgar_witness_note: String = "Rollins and Chemed both tag a CostOfGoodsAndService variant instead of GrossProfit on their FY2025 10-Ks (see rollins_facts / chemed_facts provenance notes), so the profitability witness here derives OPERATING margin (OperatingIncomeLoss / revenue) rather than gross margin. derive_gross_margin_ratio_from_facts is reused as-is — the ratio math (profit / revenue, revenue > 0) is agnostic to which profit line is passed in; no new facts.dag function is needed for this."
+
+data rollins_fy2025_operating_margin_ratio_low: Float = 0.1930
+
+data rollins_fy2025_operating_margin_ratio_high: Float = 0.1931
+
+data chemed_fy2025_operating_margin_ratio_low: Float = 0.1336
+
+data chemed_fy2025_operating_margin_ratio_high: Float = 0.1337
+
+fn w_rollins_cik_verified_on_edgar() -> Bool {
+  cik_padded_digits(cik: rollins_cik) == "0000084839"
+}
+
+fn w_chemed_cik_verified_on_edgar() -> Bool {
+  cik_padded_digits(cik: chemed_cik) == "0000019584"
+}
+
+fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
+  match derive_gross_margin_ratio_from_facts(
+    revenue: rollins_fy2025_revenue,
+    gross_profit: rollins_fy2025_operating_income
+  ) {
+    Present { value: ratio } =>
+      gross_margin_ratio_in_band(
+        ratio: ratio,
+        low: rollins_fy2025_operating_margin_ratio_low,
+        high: rollins_fy2025_operating_margin_ratio_high
+      )
+    _ => false
+  }
+}
+
+fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
+  match derive_gross_margin_ratio_from_facts(
+    revenue: chemed_fy2025_revenue,
+    gross_profit: chemed_fy2025_operating_income
+  ) {
+    Present { value: ratio } =>
+      gross_margin_ratio_in_band(
+        ratio: ratio,
+        low: chemed_fy2025_operating_margin_ratio_low,
+        high: chemed_fy2025_operating_margin_ratio_high
+      )
+    _ => false
+  }
+}
+
+fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
+  match filed_amount(fact: rollins_fy2025_operating_income) {
+    Present { value: oi } => {
+      let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
+      match derive_gross_margin_ratio_from_facts(
+        revenue: rollins_fy2025_revenue,
+        gross_profit: FiledMonetaryFact { element: rollins_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: rollins_fy2025_operating_income.citation }
+      ) {
+        Present { value: ratio } =>
+          !gross_margin_ratio_in_band(
+            ratio: ratio,
+            low: rollins_fy2025_operating_margin_ratio_low,
+            high: rollins_fy2025_operating_margin_ratio_high
+          )
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
+  match filed_amount(fact: chemed_fy2025_operating_income) {
+    Present { value: oi } => {
+      let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
+      match derive_gross_margin_ratio_from_facts(
+        revenue: chemed_fy2025_revenue,
+        gross_profit: FiledMonetaryFact { element: chemed_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: chemed_fy2025_operating_income.citation }
+      ) {
+        Present { value: ratio } =>
+          !gross_margin_ratio_in_band(
+            ratio: ratio,
+            low: chemed_fy2025_operating_margin_ratio_low,
+            high: chemed_fy2025_operating_margin_ratio_high
+          )
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+test fn sec_edgar_rollins_chemed_operating_margin_witness() -> Bool {
+  w_rollins_cik_verified_on_edgar()
+    && w_chemed_cik_verified_on_edgar()
+    && w_rollins_operating_margin_derivation_matches_filed_facts()
+    && w_chemed_operating_margin_derivation_matches_filed_facts()
+    && w_rollins_operating_margin_red_on_perturbed_operating_income()
+    && w_chemed_operating_margin_red_on_perturbed_operating_income()
+}
