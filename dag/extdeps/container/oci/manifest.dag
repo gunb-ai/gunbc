@@ -1,22 +1,5 @@
 module extdeps.container.oci.manifest
 
-import extdeps.container.oci.descriptor {
-  OciDescriptor,
-  DescriptorAccepted,
-  DescriptorRejected,
-  DescriptorRejectReason,
-  accept_descriptor,
-}
-import extdeps.container.oci.media_types {
-  media_type_oci_image_config_v1,
-  media_type_oci_image_manifest_v1,
-  oci_image_schema_version,
-}
-import extdeps.container.oci.types { OciMediaType }
-import std.types { Bool }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

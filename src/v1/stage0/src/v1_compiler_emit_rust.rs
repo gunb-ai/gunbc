@@ -106,7 +106,7 @@ use crate::v1_std_core::AlgebraFieldKind::*;
 use crate::v1_std_core::BinOp::*;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::InternalError;
+use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -3911,6 +3911,32 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
     }
 }
 
+pub fn group_unlisted_type_names(
+    diags: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    diags.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
+            .diagnostic
+            .clone())
+        .clone()
+        {
+            CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
+                let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
+                    Some(v) => v.clone(),
+                    None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    en.module_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
+                )
+            }
+            _ => acc.clone(),
+        },
+    )
+}
+
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let has_v1_seed = corpus_has_v1_seed_source_indices(typed.modules.clone());
@@ -3987,6 +4013,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
+        let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -4000,6 +4027,16 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     export_sets.clone(),
                     typed.modules.clone(),
                     module_index.clone(),
+                    match v1_rt::map_get(
+                        &unlisted_type_names_by_module,
+                        authored_name_at(
+                            tm.type_env.clone().source_indices.clone(),
+                            tm.module.clone(),
+                        ),
+                    ) {
+                        Some(v) => v.clone(),
+                        None => Rc::new(vec![]),
+                    },
                 ));
             }
             __result
@@ -4326,6 +4363,7 @@ pub fn emit_module(
             export_sets.clone(),
             Rc::new(vec![typed_module.clone()]),
             module_index.clone(),
+            Rc::new(vec![]),
         )
     }
 }
@@ -4355,6 +4393,395 @@ pub fn build_module_export_sets(
     )
 }
 
+pub fn record_lit_ref_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => {
+            let tn_list = match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                Some(t) => {
+                    if (t.clone() != "".to_string()) {
+                        Rc::new(vec![t.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                None => Rc::new(vec![]),
+            };
+            let pe_list = match pe.clone() {
+                Some(p) => {
+                    if (p.clone() != "".to_string()) {
+                        Rc::new(vec![p.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                None => Rc::new(vec![]),
+            };
+            v1_rt::concat(tn_list.clone(), pe_list.clone())
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn collect_value_ref_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_name = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: bk, ..
+            } => match bk.clone().as_deref().cloned() {
+                Some(VarBindingKind::FunctionValueBinding) => {
+                    let nm = authored_name_at(source_indices.clone(), n.clone());
+                    if (nm.clone() != "".to_string()) {
+                        Rc::new(vec![nm.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                _ => Rc::new(vec![]),
+            },
+            ExprData::ExprCall { .. } => {
+                let nm = authored_name_at(source_indices.clone(), n.clone());
+                if (nm.clone() != "".to_string()) {
+                    Rc::new(vec![nm.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                record_lit_ref_names(n.clone(), source_indices.clone())
+            }
+            _ => Rc::new(vec![]),
+        };
+        let list_fields = v1_rt::concat(
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.uses.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.properties.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+        );
+        let opt_fields = v1_rt::concat(
+            match n.body.clone() {
+                Some(b) => collect_value_ref_names(b.clone(), source_indices.clone()),
+                None => Rc::new(vec![]),
+            },
+            v1_rt::concat(
+                match n.transport.clone() {
+                    Some(t) => collect_value_ref_names(t.clone(), source_indices.clone()),
+                    None => Rc::new(vec![]),
+                },
+                match n.type_annotation.clone() {
+                    Some(t) => collect_value_ref_names(t.clone(), source_indices.clone()),
+                    None => Rc::new(vec![]),
+                },
+            ),
+        );
+        v1_rt::concat(
+            self_name.clone(),
+            v1_rt::concat(list_fields.clone(), opt_fields.clone()),
+        )
+    })
+}
+
+pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
+    if (v1_rt::contains(line.clone(), "use ".to_string()) == false) {
+        Rc::new(vec![])
+    } else {
+        {
+            let after = match Rc::new(
+                line.clone()
+                    .split(&"::".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .last()
+            .cloned()
+            {
+                Some(s) => s.clone(),
+                None => "".to_string(),
+            };
+            let cleaned = v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(after.clone(), "{".to_string(), "".to_string()),
+                        "}".to_string(),
+                        "".to_string(),
+                    ),
+                    ";".to_string(),
+                    "".to_string(),
+                ),
+                "*".to_string(),
+                "".to_string(),
+            );
+            Rc::new({
+                let mut __result = Vec::new();
+                for s in Rc::new({
+                    let mut __result = Vec::new();
+                    for s in Rc::new(
+                        cleaned
+                            .clone()
+                            .split(&",".to_string())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(v1_rt::trim(s.clone()));
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (s.clone() != "".to_string()) {
+                        __result.push(s);
+                    }
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn reference_derived_use_lines_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_derived_use_lines(
+    items: Rc<Vec<Rc<Node>>>,
+    unlisted_type_names: Rc<Vec<String>>,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    local_type_names: Rc<Vec<String>>,
+    already_imported_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<String>> {
+    {
+        let value_names = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_value_ref_names(item.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        }));
+        let candidates = unique_strings(v1_rt::concat(
+            unlisted_type_names.clone(),
+            value_names.clone(),
+        ));
+        let already = already_imported_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc, nm.clone(), true)
+            },
+        );
+        let unlisted = Rc::new({
+            let mut __result = Vec::new();
+            for name in candidates.clone().iter().cloned() {
+                __result.extend(
+                    (*if (emit_map_has(already.clone(), name.clone())
+                        || is_kernel_type(name.clone()))
+                    {
+                        Rc::new(vec![])
+                    } else {
+                        match v1_rt::map_get(&registry, name.clone()) {
+                            Some(info) => {
+                                if (info.module_name.clone() != this_module_name.clone()) {
+                                    Rc::new(vec![name.clone()])
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                            None => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let providers = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for name in unlisted.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&registry, name.clone()) {
+                        Some(info) => Rc::new(vec![info.module_name.clone()]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
+        Rc::new({
+            let mut __result = Vec::new();
+            for provider in providers.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let names = Rc::new({
+                            let mut __result = Vec::new();
+                            for name in unlisted.clone().iter().cloned() {
+                                if match v1_rt::map_get(&registry, name.clone()) {
+                                    Some(info) => (info.module_name.clone() == provider.clone()),
+                                    None => false,
+                                } {
+                                    __result.push(name);
+                                }
+                            }
+                            __result
+                        });
+                        let block = emit_specific_import_block(
+                            provider.clone(),
+                            module_to_filename(provider.clone()),
+                            names.clone(),
+                            emit_info.clone(),
+                            registry.clone(),
+                            local_type_names.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        );
+                        let block_lines = if (block.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(
+                                block
+                                    .clone()
+                                    .split(&"\n".to_string())
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<_>>(),
+                            )
+                        };
+                        let emitted_here = Rc::new({
+                            let mut __result = Vec::new();
+                            for l in block_lines.clone().iter().cloned() {
+                                __result.extend(
+                                    (*imported_names_in_use_line(l.clone())).iter().cloned(),
+                                );
+                            }
+                            __result
+                        });
+                        let fallback = Rc::new({
+                            let mut __result = Vec::new();
+                            for nm in names.clone().iter().cloned() {
+                                __result.extend(
+                                    (*if ({
+                                        let mut __found = false;
+                                        for e in emitted_here.clone().iter().cloned() {
+                                            if (e.clone() == nm.clone()) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } || is_known_variant(
+                                        emit_info.type_summaries.clone(),
+                                        nm.clone(),
+                                    )) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new(vec![v1_rt::concat(
+                                            rust_visibility_prefix(),
+                                            v1_rt::concat(
+                                                "use crate::".to_string(),
+                                                v1_rt::concat(
+                                                    module_to_filename(provider.clone()),
+                                                    v1_rt::concat(
+                                                        "::".to_string(),
+                                                        v1_rt::concat(
+                                                            emit_import_name(
+                                                                nm.clone(),
+                                                                registry.clone(),
+                                                            ),
+                                                            ";".to_string(),
+                                                        ),
+                                                    ),
+                                                ),
+                                            ),
+                                        )])
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        });
+                        v1_rt::concat(block_lines.clone(), fallback.clone())
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -4365,6 +4792,7 @@ pub fn emit_module_full(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
+    unlisted_type_names: Rc<Vec<String>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -4464,9 +4892,51 @@ pub fn emit_module_full(
         } else {
             Rc::new(vec![])
         };
+        let already_imported_names = v1_rt::concat(
+            prelude_imported_names.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for l in v1_rt::concat(
+                    dag_import_lines.clone(),
+                    v1_rt::concat(
+                        carrier_import_lines.clone(),
+                        Rc::new(
+                            prelude
+                                .clone()
+                                .split(&"\n".to_string())
+                                .map(|s| s.to_string())
+                                .collect::<Vec<_>>(),
+                        ),
+                    ),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.extend((*imported_names_in_use_line(l.clone())).iter().cloned());
+                }
+                __result
+            }),
+        );
+        let reference_use_lines = if ((module_imports(m.clone()).len() as i64) == 0) {
+            reference_derived_use_lines(
+                typed_module.items.clone(),
+                unlisted_type_names.clone(),
+                authored_name(scope.type_env.clone(), m.clone()),
+                registry.clone(),
+                emit_info.clone(),
+                local_type_names.clone(),
+                already_imported_names.clone(),
+                export_sets.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            )
+        } else {
+            Rc::new(vec![])
+        };
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
-            dag_import_lines.clone(),
-            carrier_import_lines.clone(),
+            v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
+            reference_use_lines.clone(),
         ))
         .join(&"\n".to_string());
         let imports_section = if (merged_imports.clone() == "".to_string()) {

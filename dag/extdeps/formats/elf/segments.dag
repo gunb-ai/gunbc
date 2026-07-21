@@ -1,23 +1,5 @@
 module extdeps.formats.elf.segments
 
-import extdeps.formats.elf.primitives {
-  ElfSegmentType,
-  elf64_phdr_size,
-  pf_r,
-  pf_w,
-  pf_x,
-  pt_load,
-  pt_null,
-}
-import extdeps.formats.elf.types {
-  read_u32_le_in_bounds,
-  read_u64_le_in_bounds,
-}
-import std.exec_format { LoadSegment, SegmentPermission }
-import std.types { Bool }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -61,16 +61,53 @@ fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFu
   dedup.out
 }
 
+type ParentSigScan {
+  sig: ResolvedFuncSig?
+  match_count: Int
+  first_parent: String?
+}
+
+fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+  let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
+    match map_get(p.local, name) {
+      Present { value: sig } =>
+        ParentSigScan {
+          sig: if acc.sig != none { acc.sig } else { Present { value: sig } },
+          match_count: acc.match_count + 1,
+          first_parent: if acc.first_parent != none { acc.first_parent } else { Present { value: p.name } }
+        }
+      Absent => acc
+    }
+  )
+  if scan.match_count >= 2 && scan.sig != none {
+    match scan.first_parent {
+      Present { value: chosen_parent } =>
+        resolution_silent_pick_record_fn_parent_first_hit(
+          env_module_path: env.name,
+          name: name,
+          parent_match_count: scan.match_count,
+          chosen_parent_module: chosen_parent
+        )
+      Absent => {}
+    }
+  }
+  scan.sig
+}
+
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
   match map_get(env.local, name) {
     Present { value: sig } => Present { value: sig }
     Absent =>
-      fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
-        match acc {
-          Present { value: sig } => Present { value: sig }
-          Absent => map_get(p.local, name)
-        }
-      )
+      if resolution_silent_pick_is_enabled() {
+        lookup_resolved_sig_with_telemetry(env: env, name: name)
+      } else {
+        fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
+          match acc {
+            Present { value: sig } => Present { value: sig }
+            Absent => map_get(p.local, name)
+          }
+        )
+      }
   }
 }
 
