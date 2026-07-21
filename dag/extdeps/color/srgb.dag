@@ -1,6 +1,7 @@
 module extdeps.color.srgb
 
 import std.types { Int, String, Bool }
+import std.measure { Percent, percent, percent_count, percent_from_bounded_int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -17,6 +18,11 @@ type Srgb8 {
   r: Int
   g: Int
   b: Int
+}
+
+type CitedColorRow {
+  name: String
+  color: Srgb8
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
@@ -68,6 +74,70 @@ fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
 
 fn iabs(v: Int) -> Int {
   if v < 0 { 0 - v } else { v }
+}
+
+fn imax(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn imin(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+data hsl_note: String = "Hsl fields: h = hue in degrees [0, 360); s and l are std.measure.Percent [0, 100]. Projected from Srgb8 via CSS Color 4 integer algorithm. OKLCH reground: design-register-library.md sect 10 Class 2 / ColorConversionFrontier."
+
+type ColorConversionFrontier
+  = HslLive
+  | OklchStaged { trigger: String }
+
+data color_conversion_frontier: ColorConversionFrontier = OklchStaged {
+  trigger: "Exact OKLab/OKLCH requires Float channel math and cube-root; land when design-register-library.md sect 10 Class 2 fires; HSL projection is live now (integer-friendly, CSS Color 4 sRGB<->HSL)."
+}
+
+type Hsl {
+  h: Int
+  s: Percent
+  l: Percent
+}
+
+fn quiet_envelope_hsl(sat: Percent, light: Percent) -> Bool {
+  !(percent_count(p: sat) > 45 && percent_count(p: light) > 68)
+}
+
+fn quiet_envelope_srgb8(c: Srgb8) -> Bool {
+  let hsl = srgb8_to_hsl(c: c)
+  quiet_envelope_hsl(sat: hsl.s, light: hsl.l)
+}
+
+fn pct_round_from_scaled(v_scaled: Int) -> Int {
+  (v_scaled * 100 + 5000) / 10000
+}
+
+fn srgb8_to_hsl(c: Srgb8) -> Hsl {
+  let rs = (c.r * 10000) / 255
+  let gs = (c.g * 10000) / 255
+  let bs = (c.b * 10000) / 255
+  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
+  let minc = imin(a: imin(a: rs, b: gs), b: bs)
+  let delta = maxc - minc
+  let l_scaled = (maxc + minc) / 2
+  let light_pct = percent_from_bounded_int(v: pct_round_from_scaled(v_scaled: l_scaled))
+  if delta == 0 {
+    Hsl { h: 0, s: percent(0), l: light_pct }
+  } else {
+    let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
+    let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
+    let sat_pct = percent_from_bounded_int(v: pct_round_from_scaled(v_scaled: sat_scaled))
+    let hue_milli = if maxc == rs {
+      ((gs - bs) * 60000) / delta
+    } else if maxc == gs {
+      (((bs - rs) * 60000) / delta) + 120000
+    } else {
+      (((rs - gs) * 60000) / delta) + 240000
+    }
+    let hue_deg = ((hue_milli % 360000) + 360000) % 360000 / 1000
+    Hsl { h: hue_deg, s: sat_pct, l: light_pct }
+  }
 }
 
 fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {

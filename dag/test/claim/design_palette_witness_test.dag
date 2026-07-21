@@ -1,7 +1,8 @@
 module test.claim.design_palette_witness
 
 import std.types { Int, String, Bool }
-import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible }
+import std.measure { percent, percent_count }
+import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl }
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100, srgb8_contrast_at_least,
   wcag_aa_normal_text_hundredths, wcag_aaa_normal_text_hundredths,
@@ -9,10 +10,12 @@ import extdeps.accessibility.wcag_contrast {
 import gunbc.design.palette {
   Swatch, SwatchSet, PairingGrade, TextAaa, TextAa, LargeTextOrGraphicsAa, DecorationOnly,
   grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
-  set_text_capable, swatch_set_admissible, swatch_paint,
+  set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
+  quiet_envelope_admits_swatch,
 }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam,
+  okabe_ito, solarized,
   palette_catalog, catalog_admissible,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -20,7 +23,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_catalog_admissible() -> Bool {
-  catalog_admissible() && swatch_set_admissible(s: island_pastel)
+  catalog_admissible()
+    && swatch_set_admissible(s: island_pastel)
+    && swatch_set_admissible(s: okabe_ito)
+    && swatch_set_admissible(s: solarized)
 }
 
 fn witness_hex_serialization_matches_authored() -> Bool {
@@ -46,14 +52,14 @@ fn authored_five() -> SwatchSet {
   SwatchSet {
     name: "island-pastel-authored",
     provenance: island_pastel.provenance,
-    swatches: fold(island_pastel.swatches, init: [], f: (acc, sw) =>
-      if sw.name == "loam" { acc } else { concat(acc, [sw]) }),
+    members: fold(island_pastel.members, init: [], f: (acc, m) =>
+      if m.swatch.name == "loam" { acc } else { concat(acc, [m]) }),
   }
 }
 
 fn witness_authored_set_has_no_text_pairing() -> Bool {
   let five = authored_five()
-  five.swatches.length() == 5
+  swatches_of(s: five).length() == 5
     && !set_text_capable(s: five)
     && pairings_at_least(s: five, min_rank: 1).length() == 0
 }
@@ -77,6 +83,38 @@ fn witness_grade_kernel_discriminates() -> Bool {
     && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
 }
 
+fn witness_camel_hsl_projection() -> Bool {
+  let hsl = srgb8_to_hsl(c: island_camel.color)
+  hsl.h == 35
+    && percent_count(p: hsl.s) == 53
+    && percent_count(p: hsl.l) == 51
+}
+
+fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
+  let hsl = srgb8_to_hsl(c: island_camel.color)
+  !(hsl.h == 36 && percent_count(p: hsl.s) == 53 && percent_count(p: hsl.l) == 51)
+}
+
+fn witness_camel_passes_quiet_envelope() -> Bool {
+  quiet_envelope_admits_swatch(sw: island_camel)
+}
+
+fn witness_mint_refused_by_quiet_envelope() -> Bool {
+  !quiet_envelope_admits_swatch(sw: island_mint)
+}
+
+fn witness_ivory_refused_despite_near_achromatic_oklch() -> Bool {
+  !quiet_envelope_admits_swatch(sw: island_ivory)
+}
+
+data ivory_hsl_proxy_defect_note: String = "Teaching case: ivory (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
+
+fn witness_cited_palette_counts() -> Bool {
+  swatches_of(s: okabe_ito).length() == 8
+    && swatches_of(s: solarized).length() == 16
+    && palette_catalog.length() == 3
+}
+
 test fn design_palette_catalog_keystone_holds() -> Bool {
   witness_catalog_admissible()
     && witness_hex_serialization_matches_authored()
@@ -85,4 +123,10 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_authored_set_has_no_text_pairing()
     && witness_loam_carries_text_capability()
     && witness_grade_kernel_discriminates()
+    && witness_camel_hsl_projection()
+    && witness_hsl_projection_red_on_off_by_one_hue()
+    && witness_camel_passes_quiet_envelope()
+    && witness_mint_refused_by_quiet_envelope()
+    && witness_ivory_refused_despite_near_achromatic_oklch()
+    && witness_cited_palette_counts()
 }

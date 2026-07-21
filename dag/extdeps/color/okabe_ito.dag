@@ -1,7 +1,7 @@
 module extdeps.color.okabe_ito
 
-import std.types { Int, String }
-import std.color { Srgb8, PaletteSwatch, srgb8 }
+import std.types { Int, String, Bool }
+import extdeps.color.srgb { Srgb8, CitedColorRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -12,26 +12,26 @@ data okabe_ito_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21)."
+data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21). Set-level law: all eight swatches are mutually distinguishable under simulated deuteranopia/protanopia/tritanopia (the upstream CUD claim — witness pins distinguishability at the catalogue layer)."
 
 data okabe_ito_version: String = "2008"
 
-data okabe_ito_orange: PaletteSwatch = PaletteSwatch { name: "orange", color: srgb8(r: 230, g: 159, b: 0) }
-data okabe_ito_sky_blue: PaletteSwatch = PaletteSwatch { name: "sky_blue", color: srgb8(r: 86, g: 180, b: 233) }
-data okabe_ito_bluish_green: PaletteSwatch = PaletteSwatch { name: "bluish_green", color: srgb8(r: 0, g: 158, b: 115) }
-data okabe_ito_yellow: PaletteSwatch = PaletteSwatch { name: "yellow", color: srgb8(r: 240, g: 228, b: 66) }
-data okabe_ito_blue: PaletteSwatch = PaletteSwatch { name: "blue", color: srgb8(r: 0, g: 114, b: 178) }
-data okabe_ito_vermillion: PaletteSwatch = PaletteSwatch { name: "vermillion", color: srgb8(r: 213, g: 94, b: 0) }
-data okabe_ito_reddish_purple: PaletteSwatch = PaletteSwatch { name: "reddish_purple", color: srgb8(r: 204, g: 121, b: 167) }
-data okabe_ito_black: PaletteSwatch = PaletteSwatch { name: "black", color: srgb8(r: 0, g: 0, b: 0) }
+data okabe_ito_orange: Srgb8 = Srgb8 { r: 230, g: 159, b: 0 }
+data okabe_ito_sky_blue: Srgb8 = Srgb8 { r: 86, g: 180, b: 233 }
+data okabe_ito_bluish_green: Srgb8 = Srgb8 { r: 0, g: 158, b: 115 }
+data okabe_ito_yellow: Srgb8 = Srgb8 { r: 240, g: 228, b: 66 }
+data okabe_ito_blue: Srgb8 = Srgb8 { r: 0, g: 114, b: 178 }
+data okabe_ito_vermillion: Srgb8 = Srgb8 { r: 213, g: 94, b: 0 }
+data okabe_ito_reddish_purple: Srgb8 = Srgb8 { r: 204, g: 121, b: 167 }
+data okabe_ito_black: Srgb8 = Srgb8 { r: 0, g: 0, b: 0 }
 
-data okabe_ito_swatches: List<PaletteSwatch> = [
-  okabe_ito_orange,
-  okabe_ito_sky_blue,
-  okabe_ito_bluish_green,
-  okabe_ito_yellow,
-  okabe_ito_blue,
-  okabe_ito_vermillion,
-  okabe_ito_reddish_purple,
-  okabe_ito_black,
+data okabe_ito_swatches: List<CitedColorRow> = [
+  CitedColorRow { name: "orange", color: okabe_ito_orange },
+  CitedColorRow { name: "sky_blue", color: okabe_ito_sky_blue },
+  CitedColorRow { name: "bluish_green", color: okabe_ito_bluish_green },
+  CitedColorRow { name: "yellow", color: okabe_ito_yellow },
+  CitedColorRow { name: "blue", color: okabe_ito_blue },
+  CitedColorRow { name: "vermillion", color: okabe_ito_vermillion },
+  CitedColorRow { name: "reddish_purple", color: okabe_ito_reddish_purple },
+  CitedColorRow { name: "black", color: okabe_ito_black },
 ]
