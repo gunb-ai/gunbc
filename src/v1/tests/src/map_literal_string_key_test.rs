@@ -39,17 +39,17 @@ fn non_string_key_is_left_as_literal() {
 }
 
 #[test]
-fn faithful_repr_routes_owned_key_through_the_text_seam() {
-    // Under the faithful FreeMonoid repr the key still becomes an owned String first,
-    // then crosses the host->dag text seam (which consumes a `String`).
+fn faithful_repr_grounds_string_key_to_owned_native_string() {
+    // Gate-1 text-carrier grounding: both corpus reprs emit native `String` keys
+    // (no host->dag text seam after FreeMonoid<Char> was dissolved).
     let out = emit_rust_map_literal_key(
         "alpha".to_string(),
         true,
         RustCorpusRepr::FaithfulFreeMonoid,
     );
     assert_eq!(
-        out, "crate::v2_std_text::host_string_text_from_rust_host(\"alpha\".to_string())",
-        "faithful repr must hand the seam an owned String"
+        out, "\"alpha\".to_string()",
+        "faithful repr must ground String keys to owned native String"
     );
 }
 
