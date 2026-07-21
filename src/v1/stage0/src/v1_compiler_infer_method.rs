@@ -411,6 +411,11 @@ pub fn builtin_function_registry() -> Arc<HashMap<String, Arc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "reference_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "module_declaration_facts".to_string(),
             list_of_type_variable("module_declaration_fact_elem".to_string()),
         );
