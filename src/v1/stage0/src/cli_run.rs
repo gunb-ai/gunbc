@@ -18826,6 +18826,7 @@ pub fn walk_target_alias_plan_from_census(
         fn_parent_first_hit_events: census.silent_pick_fn_parent_first_hit,
         modules_resolved: census.modules_resolved,
         modules_excluded: census.modules_excluded,
+        source_scope_label: String::new(),
     }
 }
 
@@ -18868,8 +18869,14 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
         .count();
     let mut lines = vec![
         format!(
-            "[walk-target-alias-plan] scope=dag+src/v2 modules_resolved={} modules_excluded={}",
-            plan.modules_resolved, plan.modules_excluded
+            "[walk-target-alias-plan] scope={} modules_resolved={} modules_excluded={}",
+            if plan.source_scope_label.is_empty() {
+                "unknown".to_string()
+            } else {
+                plan.source_scope_label.clone()
+            },
+            plan.modules_resolved,
+            plan.modules_excluded
         ),
         format!(
             "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} fn_parent_first_hit_events={} unique_rows={} refused={}",
@@ -19108,6 +19115,11 @@ fn use_ambig(x: AmbigType) -> Int {
             "fixture must trigger global_bare_lcp silent pick, got events={}",
             plan.global_bare_lcp_events
         );
+        assert!(
+            plan.source_scope_label.contains("dag/std"),
+            "scope label must reflect actual source roots, got {}",
+            plan.source_scope_label
+        );
         let rows: Vec<_> = plan
             .rows
             .iter()
@@ -19158,6 +19170,116 @@ fn use_ambig(x: AmbigType) -> Int {
                     && r.key.binding == "AmbigType"
             })
             .expect("replay plan must contain consumer AmbigType row");
+        assert_eq!(
+            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
+            "oracle: replay qualified_path must match plan snapshot"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Planted fn_parent_first_hit silent pick: nested modules both define `helper`, leaf calls bare.
+    #[test]
+    fn walk_target_alias_plan_positive_control_fn_parent_first_hit() {
+        use super::{
+            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
+            WalkTargetAliasPlanClass,
+        };
+
+        let ws = super::process_workspace_root();
+        let fixture = walk_target_alias_plan_fixture_root();
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "grand.dag",
+            r#"module test.aliasplan.a
+
+import std.types { Bool }
+
+fn helper(x: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "parent.dag",
+            r#"module test.aliasplan.b
+
+import std.types { Bool }
+
+fn helper(x: Bool, y: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "leaf.dag",
+            r#"module test.aliasplan.use
+
+import std.types { Bool }
+import test.aliasplan.a { }
+import test.aliasplan.b { }
+
+fn caller() -> Bool {
+  return helper(False)
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
+        assert!(
+            plan.fn_parent_first_hit_events >= 1,
+            "fixture must trigger fn_parent_first_hit silent pick, got events={}",
+            plan.fn_parent_first_hit_events
+        );
+        let rows: Vec<_> = plan
+            .rows
+            .iter()
+            .filter(|r| {
+                r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit
+                    && r.key.declaring_module == "test.aliasplan.use"
+                    && r.key.binding == "helper"
+            })
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "expected one deduped helper row for leaf module, plan rows={:?} refused={:?}",
+            plan.rows,
+            plan.refused
+        );
+        let row = rows[0];
+        assert!(
+            row.walk_verified,
+            "walk target must verify via symbol_index, row={row:?}"
+        );
+        assert!(
+            row.pre_flip_qualified_path == "test.aliasplan.a.helper"
+                || row.pre_flip_qualified_path == "test.aliasplan.b.helper",
+            "oracle must bind to an imported parent helper declaration, got {}",
+            row.pre_flip_qualified_path
+        );
+        assert_eq!(
+            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
+            "walk_target and pre_flip_qn must agree"
+        );
+
+        crate::v1_rt::resolution_silent_pick_enable();
+        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
+        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
+        super::merge_silent_pick_telemetry(&mut census, silent_picks);
+        let replay = walk_target_alias_plan_from_census(&ctx, &census);
+        let replay_row = replay
+            .rows
+            .iter()
+            .find(|r| r.key.declaring_module == "test.aliasplan.use" && r.key.binding == "helper")
+            .expect("replay plan must contain leaf helper row");
         assert_eq!(
             replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
             "oracle: replay qualified_path must match plan snapshot"
