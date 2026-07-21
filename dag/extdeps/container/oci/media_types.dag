@@ -1,16 +1,5 @@
 module extdeps.container.oci.media_types
 
-import extdeps.container.oci.types {
-  OciMediaType,
-  OciImageManifestV1,
-  OciImageConfigV1,
-  OciImageLayerV1TarGzip,
-  OciImageIndexV1,
-  OciDescriptorV1,
-}
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

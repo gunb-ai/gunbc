@@ -1,20 +1,5 @@
 module extdeps.cpu.machine_shape
 
-import std.machine_shape {
-  DomainId,
-  LevelId,
-  MachineShape,
-  ExecutionDomain,
-  MemoryLevel,
-  MemoryShape,
-  MachineShapeConstruction,
-  MachineShapeOk,
-  execution_shape_independent_lanes,
-}
-import extdeps.cpu.types { CpuModelCatalogRow }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
