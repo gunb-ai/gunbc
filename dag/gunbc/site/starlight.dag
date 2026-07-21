@@ -1,0 +1,77 @@
+module gunbc.site.starlight
+
+import gunbc.site.tokens { Material, PointArea, HairlineArea, chroma_admissible }
+
+data starlight_note: String = "Grounding for the accent decision (ninth pass, 2026-07-21): the night accent IS starlight, so its admissible hues are the perceived colors of real stellar classes — the Morgan-Keenan classification (O B A F G K M, hot blue-white to cool orange-red), rendered under the glare envelope. The framework contains NO green class: a blackbody spectrum peaked in green also emits enough red and blue that human vision sums the mix to white — there are no green stars. So green cannot be a starlight accent BY PHYSICS, not by taste; green enters the register as MATERIAL instead (verdigris patina on the instrument, hairline family). The brand-color question dissolves into a stellar-class choice: a cited framework row, not a marketing hex (DESIGN section 1: reduce convention to necessity). Perceived-color approximations are drawn under the envelope; the M class is itself pruned by the envelope at lit brightness (see the witness) — the discipline edits the framework's usable subset, honestly."
+
+type StellarClass {
+  letter: String
+  perceived: String
+  figure: Material
+}
+
+fn cap100(v: Int) -> Int {
+  if v > 100 { 100 } else { v }
+}
+
+fn floor0(v: Int) -> Int {
+  if v < 0 { 0 } else { v }
+}
+
+fn lit_variant(m: Material) -> Material {
+  Material {
+    name: concat(m.name, "-lit"),
+    hue: m.hue,
+    sat_pct: cap100(v: m.sat_pct + 8),
+    light_pct: cap100(v: m.light_pct + 9),
+    area: PointArea,
+  }
+}
+
+fn edge_variant(m: Material) -> Material {
+  Material {
+    name: concat(m.name, "-edge"),
+    hue: m.hue,
+    sat_pct: floor0(v: m.sat_pct - 12),
+    light_pct: 64,
+    area: HairlineArea,
+  }
+}
+
+data o_class: StellarClass = StellarClass { letter: "O", perceived: "blue-white", figure: Material { name: "o-starlight", hue: 228, sat_pct: 26, light_pct: 88, area: PointArea } }
+
+data b_class: StellarClass = StellarClass { letter: "B", perceived: "blue-white", figure: Material { name: "b-starlight", hue: 226, sat_pct: 20, light_pct: 89, area: PointArea } }
+
+data a_class: StellarClass = StellarClass { letter: "A", perceived: "white", figure: Material { name: "a-starlight", hue: 222, sat_pct: 12, light_pct: 91, area: PointArea } }
+
+data f_class: StellarClass = StellarClass { letter: "F", perceived: "yellow-white", figure: Material { name: "f-starlight", hue: 50, sat_pct: 14, light_pct: 90, area: PointArea } }
+
+data g_class: StellarClass = StellarClass { letter: "G", perceived: "yellow — the Sun", figure: Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
+
+data k_class: StellarClass = StellarClass { letter: "K", perceived: "orange", figure: Material { name: "k-starlight", hue: 33, sat_pct: 34, light_pct: 81, area: PointArea } }
+
+data m_class: StellarClass = StellarClass { letter: "M", perceived: "orange-red", figure: Material { name: "m-starlight", hue: 15, sat_pct: 42, light_pct: 66, area: PointArea } }
+
+data mk_classes: List<StellarClass> = [o_class, b_class, a_class, f_class, g_class, k_class, m_class]
+
+data study_candidates: List<StellarClass> = [o_class, a_class, g_class, k_class]
+
+data verdigris_patina: Material = Material { name: "verdigris-patina", hue: 165, sat_pct: 28, light_pct: 52, area: HairlineArea }
+
+fn hue_is_green(hue: Int) -> Bool {
+  hue >= 90 && hue <= 170
+}
+
+fn no_green_stellar_class(classes: List<StellarClass>) -> Bool {
+  all(classes, c => !hue_is_green(hue: c.figure.hue))
+}
+
+fn candidate_admissible(c: StellarClass) -> Bool {
+  chroma_admissible(m: c.figure)
+    && chroma_admissible(m: lit_variant(m: c.figure))
+    && chroma_admissible(m: edge_variant(m: c.figure))
+}
+
+fn candidates_admissible(cs: List<StellarClass>) -> Bool {
+  all(cs, c => candidate_admissible(c: c))
+}

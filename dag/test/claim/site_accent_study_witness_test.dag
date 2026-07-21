@@ -1,0 +1,56 @@
+module test.claim.site_accent_study_witness
+
+import gunbc.site.tokens { chroma_admissible, warm_starlight }
+import gunbc.site.starlight {
+  mk_classes, study_candidates, m_class, g_class,
+  lit_variant, edge_variant, no_green_stellar_class, hue_is_green,
+  candidates_admissible, verdigris_patina,
+}
+import gunbc.site.accent_study { accent_study_html, accent_study_preconditions_hold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_candidates_admissible() -> Bool {
+  accent_study_preconditions_hold()
+    && candidates_admissible(cs: study_candidates)
+}
+
+fn witness_no_green_star_exists_in_framework() -> Bool {
+  no_green_stellar_class(classes: mk_classes)
+    && hue_is_green(hue: verdigris_patina.hue)
+}
+
+fn witness_envelope_prunes_m_class_at_lit() -> Bool {
+  chroma_admissible(m: m_class.figure)
+    && !chroma_admissible(m: lit_variant(m: m_class.figure))
+}
+
+fn witness_g_class_is_the_live_night_figure() -> Bool {
+  g_class.figure.hue == warm_starlight.hue
+    && g_class.figure.sat_pct == warm_starlight.sat_pct
+    && g_class.figure.light_pct == warm_starlight.light_pct
+}
+
+fn witness_study_page_emits() -> Bool {
+  let h = accent_study_html()
+  starts_with(s: h, prefix: "<!DOCTYPE html>")
+    && string_contains(s: h, pattern: "starlight accent study")
+    && string_contains(s: h, pattern: "O — blue-white")
+    && string_contains(s: h, pattern: "A — white")
+    && string_contains(s: h, pattern: "G — yellow — the Sun")
+    && string_contains(s: h, pattern: "K — orange")
+    && string_contains(s: h, pattern: "green enters as material, never as starlight")
+    && string_contains(s: h, pattern: "the day atlas — indigo ink on paper")
+    && !string_contains(s: h, pattern: "M — orange-red")
+    && !string_contains(s: h, pattern: "hsl(194 88%")
+    && !string_contains(s: h, pattern: "EMIT REJECTED")
+}
+
+test fn accent_study_keystone_holds() -> Bool {
+  witness_candidates_admissible()
+    && witness_no_green_star_exists_in_framework()
+    && witness_envelope_prunes_m_class_at_lit()
+    && witness_g_class_is_the_live_night_figure()
+    && witness_study_page_emits()
+}
