@@ -3914,8 +3914,7 @@ fn collect_both_closure_module_names_for_entry(
     entry_path: &str,
     out: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let (graph, source_indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
+    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
     collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
     Ok(())
 }
