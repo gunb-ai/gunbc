@@ -38,11 +38,13 @@ fn witness_service_not_ready_reason_is_located() -> Bool {
     endpoint: roadmap_site_health_path,
     waited: second(count: 1),
     last_probe: "connection refused",
+    unit_diagnosis: "Active: failed (Result: exit-code)",
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
     && string_contains(s: reason, pattern: "/healthz")
     && string_contains(s: reason, pattern: "connection refused")
+    && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
 fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {

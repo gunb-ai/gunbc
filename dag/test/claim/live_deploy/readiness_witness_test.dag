@@ -201,9 +201,11 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
     last_probe: "connection refused",
+    unit_diagnosis: "Active: failed (Result: exit-code)",
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
+    && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
 test fn live_deploy_readiness_witnesses() -> Bool {

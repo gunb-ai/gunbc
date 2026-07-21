@@ -32,11 +32,14 @@ type ServiceNotReady {
   endpoint: NonEmptyStr
   waited: Second
   last_probe: String
+  unit_diagnosis: String
 }
+
+data live_deploy_service_ready_unit_diagnosis_note: String = "unit_diagnosis carries the UNIT's own account of itself (systemctl status: Active state, main-PID exit code, recent journal lines), captured once when the poll bound is exhausted. It is a SEPARATE fact from last_probe and must not be folded into it: last_probe is what the health endpoint said (a curl-level observation from outside), unit_diagnosis is what the service said (a process-level observation from inside). Conflating them is the state-space conflation DESIGN 3 names -- 'the endpoint refused connection' and 'the process exited 1 while compiling' are different states whose remedies differ, and only the second locates the defect. Motivating incident: the srv1 deploy refused with ServiceNotReady on every run from belt B's merge (PR 6940) onward, and because the refusal carried only the curl exit the cause stayed unlocated for the whole window -- the line stopped, typed, but nobody could see WHY. gunbc serve has four distinct exit paths (source load, blocking diagnostics, no graph, bind failure) and the probe alone cannot tell them apart."
 
 data live_deploy_roadmap_unit_expected_startup: Second = second(count: 30)
 
-data live_deploy_service_ready_poll_bound_reason: String = "Conservative default for gunbc-roadmap.service cold-start after systemctl restart (node HTTP bind + localhost healthz); revisit if false ServiceNotReady observed in production."
+data live_deploy_service_ready_poll_bound_reason: String = "Cold-start bound for gunbc-roadmap.service after systemctl restart. The startup SHAPE changed at belt B (PR 6940) and this rationale was corrected with it: the unit is no longer the former Node HTTP server, which bound its socket almost immediately. gunbc serve loads its source roots and COMPILES the .dag graph to a resolved form, and binds the port only after that compile succeeds, so readiness is gated on compile time rather than on process spawn -- and a compile that fails exits before any bind, which presents to the probe as connection-refused for the entire bound, indistinguishable from slow. Measured on the roadmap_serve entry (green-by-execution control, 2026-07-21): 92 sources resolved, analyses-done at 3.3s, then listening and healthz OK. The bound stays 30s, which that measurement supports with wide margin. If a REAL srv1 cold start is ever observed above it, raise it as its own decision carrying its own receipt -- never to make a failing probe pass, which would be the absorbing fallback DESIGN 5 forbids."
 
 data live_deploy_service_ready_poll_bound: Second = live_deploy_roadmap_unit_expected_startup
 
@@ -61,12 +64,15 @@ fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
   concat(
     concat(
       concat(
-        concat("ServiceNotReady unit=", refusal.unit as String),
-        concat(" endpoint=", refusal.endpoint as String)
+        concat(
+          concat("ServiceNotReady unit=", refusal.unit as String),
+          concat(" endpoint=", refusal.endpoint as String)
+        ),
+        concat(" waited_s=", to_string(second_count(s: refusal.waited)))
       ),
-      concat(" waited_s=", to_string(second_count(s: refusal.waited)))
+      concat(" last_probe=", refusal.last_probe)
     ),
-    concat(" last_probe=", refusal.last_probe)
+    concat(" unit_diagnosis=", refusal.unit_diagnosis)
   )
 }
 
@@ -90,11 +96,14 @@ fn live_deploy_service_ready_poll_cadence_seconds() -> Second {
   live_deploy_service_ready_poll_cadence
 }
 
-fn service_not_ready_refusal_at_poll_bound(last_probe: String) -> ServiceNotReady {
+fn service_not_ready_refusal_at_poll_bound(last_probe: String, unit_diagnosis: String) -> ServiceNotReady {
   ServiceNotReady {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
     last_probe: last_probe,
+    unit_diagnosis: unit_diagnosis,
   }
 }
+
+data live_deploy_unit_diagnosis_unavailable: String = "unit diagnosis unavailable"
