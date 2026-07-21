@@ -1,6 +1,9 @@
 module v2.compiler.symbol_index_fill
 
-import v2.std.namespace_graft { qualified_name_from_module_node_graft_aware }
+import v2.std.namespace_graft {
+  namespace_graft_parse_projection_edge,
+  qualified_name_from_module_node_graft_aware
+}
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -20,12 +23,6 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
   }
 }
 
-fn symbol_index_parse_projection_edge(name: Symbol) -> Bool {
-  (name == ^grammar_production_identity_node_projection)
-    || (name == ^grammar_production_captured_node_projection)
-    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
-}
-
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -33,7 +30,7 @@ fn symbol_index_fill_containment_edge(
 ) -> SymbolIndex {
   match edge.label {
     Named { name: sym } =>
-      if symbol_index_parse_projection_edge(name: sym) {
+      if namespace_graft_parse_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
