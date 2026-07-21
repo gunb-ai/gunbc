@@ -1,6 +1,5 @@
 module extdeps.pricing.ubicloud
 
-import extdeps.pricing.types { MoneyPerMinute }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import std.currency { CurrencyCode, Usd }
 import std.measure {
@@ -8,6 +7,7 @@ import std.measure {
   byte_size,
   HardwareThreadCount,
   hardware_thread_count,
+  MoneyPerMinute,
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
@@ -46,7 +46,7 @@ data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerP
     amount: money_amount_micro(count: 1600),
     currency: Usd,
   },
-  pricing_citation: "ubicloud pricing: Premium Linux x64 2 vCPU $0.0016/min",
+  pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-2",
 }
 
 data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
@@ -59,7 +59,7 @@ data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunner
     amount: money_amount_micro(count: 12800),
     currency: Usd,
   },
-  pricing_citation: "ubicloud pricing: Premium Linux x64 16 vCPU $0.0128/min",
+  pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-16",
 }
 
 data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
@@ -72,7 +72,7 @@ data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPrice
     amount: money_amount_micro(count: 1000),
     currency: Usd,
   },
-  pricing_citation: "ubicloud pricing: Linux arm64 2 vCPU $0.0010/min",
+  pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-2-arm",
 }
 
 data ubicloud_arm_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
@@ -85,7 +85,7 @@ data ubicloud_arm_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPric
     amount: money_amount_micro(count: 8000),
     currency: Usd,
   },
-  pricing_citation: "ubicloud pricing: Linux arm64 16 vCPU $0.0080/min",
+  pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-16-arm",
 }
 
 fn ubicloud_runner_price_catalog() -> List<UbicloudRunnerPriceRow> {

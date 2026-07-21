@@ -6,18 +6,19 @@ import extdeps.pricing.hetzner_dedicated {
   hetzner_ax41_1_ltd_price,
   hetzner_dedicated_setup_fee_micros,
 }
-import extdeps.pricing.types {
+import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
+import std.currency { Usd }
+import std.measure {
   MoneyPerMinute,
-  hours_per_billing_month,
+  billing_month_as_hours,
+  hour_count,
+  money_amount_micro,
   money_per_hour_micros,
   money_per_minute_micros,
   money_per_month_micros,
   per_hour_equivalent_from_per_minute,
   per_hour_equivalent_from_per_month,
 }
-import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
-import std.currency { Usd }
-import std.measure { money_amount_micro }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,7 +37,7 @@ fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool {
 }
 
 fn witness_ubicloud_premium_2core_undercuts_github_2core_per_minute() -> Bool {
-  money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) < money_per_minute_micros(q: github_actions_linux_2core_price.per_minute)
+  money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) > money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
     && money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) == 1600
     && money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) == 6000
 }
@@ -48,7 +49,7 @@ fn witness_hetzner_ax41_monthly_matches_cited_price() -> Bool {
 
 fn witness_hetzner_ax41_hourly_equivalent_derived() -> Bool {
   let derived = per_hour_equivalent_from_per_month(q: hetzner_ax41_1_ltd_price.monthly)
-  money_per_hour_micros(q: derived) == 57300000 / hours_per_billing_month
+  money_per_hour_micros(q: derived) == 57300000 / hour_count(h: billing_month_as_hours)
 }
 
 data wrong_github_2core_per_minute_fixture: MoneyPerMinute = MoneyPerMinute {

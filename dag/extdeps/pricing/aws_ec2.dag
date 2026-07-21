@@ -1,11 +1,11 @@
 module extdeps.pricing.aws_ec2
 
 import extdeps.cloud.cloud { AwsRegion, UsEast1 }
-import extdeps.pricing.types { MoneyPerHour }
-import std.currency { CurrencyCode, Usd }
+import std.currency { Usd }
 import std.measure {
   HardwareThreadCount,
   hardware_thread_count,
+  MoneyPerHour,
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
@@ -42,7 +42,7 @@ data aws_ec2_m7a_medium_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceR
     amount: money_amount_micro(count: 57960),
     currency: Usd,
   },
-  pricing_citation: "Price List API 2026-07-21: $0.05796/hr On Demand Linux m7a.medium us-east-1",
+  pricing_citation: "ec2-price-list-api#us-east-1/m7a.medium",
 }
 
 data aws_ec2_m7a_large_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
@@ -54,7 +54,7 @@ data aws_ec2_m7a_large_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRo
     amount: money_amount_micro(count: 115920),
     currency: Usd,
   },
-  pricing_citation: "Price List API 2026-07-21: $0.11592/hr On Demand Linux m7a.large us-east-1",
+  pricing_citation: "ec2-price-list-api#us-east-1/m7a.large",
 }
 
 data aws_ec2_m7a_xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
@@ -66,7 +66,7 @@ data aws_ec2_m7a_xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceR
     amount: money_amount_micro(count: 231840),
     currency: Usd,
   },
-  pricing_citation: "Price List API 2026-07-21: $0.23184/hr On Demand Linux m7a.xlarge us-east-1",
+  pricing_citation: "ec2-price-list-api#us-east-1/m7a.xlarge",
 }
 
 data aws_ec2_m7a_2xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
@@ -78,7 +78,7 @@ data aws_ec2_m7a_2xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPrice
     amount: money_amount_micro(count: 463680),
     currency: Usd,
   },
-  pricing_citation: "Price List API 2026-07-21: $0.46368/hr On Demand Linux m7a.2xlarge us-east-1",
+  pricing_citation: "ec2-price-list-api#us-east-1/m7a.2xlarge",
 }
 
 data aws_ec2_m7a_4xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
@@ -90,7 +90,7 @@ data aws_ec2_m7a_4xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPrice
     amount: money_amount_micro(count: 927360),
     currency: Usd,
   },
-  pricing_citation: "Price List API 2026-07-21: $0.92736/hr On Demand Linux m7a.4xlarge us-east-1",
+  pricing_citation: "ec2-price-list-api#us-east-1/m7a.4xlarge",
 }
 
 fn aws_ec2_m7a_on_demand_catalog() -> List<AwsEc2OnDemandPriceRow> {

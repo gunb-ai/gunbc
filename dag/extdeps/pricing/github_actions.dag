@@ -1,11 +1,11 @@
 module extdeps.pricing.github_actions
 
-import extdeps.pricing.types { MoneyPerMinute }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import std.currency { CurrencyCode, Usd }
 import std.measure {
   HardwareThreadCount,
   hardware_thread_count,
+  MoneyPerMinute,
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
@@ -48,7 +48,7 @@ data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubAction
     amount: money_amount_micro(count: 2000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 1-core (x64) $0.002/min",
+  pricing_citation: "actions-runner-pricing#actions_linux_slim",
 }
 
 data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
@@ -60,7 +60,7 @@ data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActio
     amount: money_amount_micro(count: 6000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 2-core (x64) $0.006/min",
+  pricing_citation: "actions-runner-pricing#actions_linux",
 }
 
 data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
@@ -72,7 +72,7 @@ data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubA
     amount: money_amount_micro(count: 5000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 2-core (arm64) $0.005/min",
+  pricing_citation: "actions-runner-pricing#actions_linux_arm",
 }
 
 data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
@@ -84,7 +84,7 @@ data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActio
     amount: money_amount_micro(count: 12000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 4-core $0.012/min",
+  pricing_citation: "actions-runner-pricing#linux_4_core",
 }
 
 data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
@@ -96,7 +96,7 @@ data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActio
     amount: money_amount_micro(count: 22000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 8-core $0.022/min",
+  pricing_citation: "actions-runner-pricing#linux_8_core",
 }
 
 data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
@@ -108,7 +108,7 @@ data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActi
     amount: money_amount_micro(count: 42000),
     currency: Usd,
   },
-  pricing_citation: "actions-runner-pricing: Linux 16-core $0.042/min",
+  pricing_citation: "actions-runner-pricing#linux_16_core",
 }
 
 fn github_actions_runner_price_catalog() -> List<GithubActionsRunnerPriceRow> {

@@ -1,11 +1,11 @@
 module extdeps.pricing.hetzner_dedicated
 
-import extdeps.pricing.types { MoneyPerMonth }
 import std.currency { CurrencyCode, Eur }
 import std.measure {
   ByteSize,
   byte_size,
   MoneyAmountMicro,
+  MoneyPerMonth,
   money_amount_micro,
   money_amount_micro_count,
 }
@@ -54,7 +54,7 @@ data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
   },
   setup_fee: money_amount_micro(count: 0),
   currency: Eur,
-  pricing_citation: "GE-D9256 Limited offerings: AX41-1-LTD €57.30/mo excl. VAT, €0.00 setup",
+  pricing_citation: "GE-D9256#AX41-1-LTD",
 }
 
 data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
@@ -69,7 +69,7 @@ data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
   },
   setup_fee: money_amount_micro(count: 39000000),
   currency: Eur,
-  pricing_citation: "GE-D9256 Limited offerings: AX42-1-LTD €77.30/mo excl. VAT, €39.00 setup",
+  pricing_citation: "GE-D9256#AX42-1-LTD",
 }
 
 data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
@@ -84,7 +84,7 @@ data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServ
   },
   setup_fee: money_amount_micro(count: 49000000),
   currency: Eur,
-  pricing_citation: "GE-D9256 Falkenstein/Helsinki: AX42-1 €97.30/mo excl. VAT, €49.00 setup",
+  pricing_citation: "GE-D9256#AX42-1",
 }
 
 data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
@@ -99,7 +99,7 @@ data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicate
   },
   setup_fee: money_amount_micro(count: 39000000),
   currency: Eur,
-  pricing_citation: "GE-D9256 Limited offerings: AX102-1-LTD €157.30/mo excl. VAT, €39.00 setup",
+  pricing_citation: "GE-D9256#AX102-1-LTD",
 }
 
 fn hetzner_dedicated_price_catalog() -> List<HetznerDedicatedServerPriceRow> {
