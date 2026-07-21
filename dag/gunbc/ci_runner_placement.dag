@@ -203,29 +203,29 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
             total: acc.total,
           }
         CompilePoolDerived { bytes: compile_pool } =>
-      if host_allocation_conserves(
-        host: host_ram,
-        overhead: overhead,
-        headroom: headroom,
-        runner_pool: gunbc_runner_pool_budget,
-        session_pool: byte_size(0),
-        compile_pool: compile_pool
-      ) {
-        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
-        DeploymentAccumulator {
-          deployments: concat(acc.deployments, [dep]),
-          unsound_reason: acc.unsound_reason,
-          any_unfit: acc.any_unfit || (dep.runner_count == 0),
-          total: acc.total + dep.runner_count,
+        if host_allocation_conserves(
+          host: host_ram,
+          overhead: overhead,
+          headroom: headroom,
+          runner_pool: gunbc_runner_pool_budget,
+          session_pool: byte_size(0),
+          compile_pool: compile_pool
+        ) {
+          let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+          DeploymentAccumulator {
+            deployments: concat(acc.deployments, [dep]),
+            unsound_reason: acc.unsound_reason,
+            any_unfit: acc.any_unfit || (dep.runner_count == 0),
+            total: acc.total + dep.runner_count,
+          }
+        } else {
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
         }
-      } else {
-        DeploymentAccumulator {
-          deployments: acc.deployments,
-          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
-          any_unfit: acc.any_unfit,
-          total: acc.total,
-        }
-      }
       }
     }
   }
