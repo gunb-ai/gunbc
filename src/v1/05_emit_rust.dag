@@ -22,7 +22,7 @@ import v1.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   MatchPattern, field_binding_pattern,
-  TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
+  TextFile, ErrorNode, make_error_node, InternalError, UnlistedImportUse, SourceSpan,
   resource_use_resource,
   BinOp, AlgebraFieldKind,
   UnaryOpKind, StringPart, Text, Interpolation,
@@ -1756,7 +1756,14 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index))
+  let unlisted_type_names_by_module = typed.diagnostics |> fold(init: empty_map(), f: (acc, en) =>
+    match en.diagnostic {
+      UnlistedImportUse { name: nm, span: _ } =>
+        let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
+        map_insert(acc, en.module_name, concat(existing, [nm]))
+      _ => acc
+    })
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -1892,7 +1899,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
   let module_index = build_module_index(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index)
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -1904,7 +1911,104 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
   )
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> TextFile {
+fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_name = match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match bk {
+        Present { value: FunctionValueBinding } =>
+          let nm = authored_name_at(source_indices: source_indices, node: n)
+          if nm != "" { [nm] } else { [] }
+        _ => []
+      }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let nm = authored_name_at(source_indices: source_indices, node: n)
+      if nm != "" { [nm] } else { [] }
+    _ => []
+  }
+  let list_fields = concat(
+    concat(
+      n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices)),
+      n.params |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices))
+    ),
+    concat(
+      n.uses |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices)),
+      n.properties |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices))
+    )
+  )
+  let opt_fields = concat(
+    match n.body { Present { value: b } => collect_value_ref_names(n: b, source_indices: source_indices)  Absent => [] },
+    concat(
+      match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices)  Absent => [] },
+      match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices)  Absent => [] }
+    )
+  )
+  concat(self_name, concat(list_fields, opt_fields))
+}
+
+fn imported_names_in_use_line(line: String) -> List<String> {
+  if contains(line, "use ") == false {
+    []
+  } else {
+    let after = match (line |> split(delimiter: "::")) |> last {
+      Present { value: s } => s
+      Absent => ""
+    }
+    let cleaned = replace(replace(replace(replace(after, "{", ""), "}", ""), ";", ""), "*", "")
+    cleaned |> split(delimiter: ",") |> map(s => trim(s)) |> filter(s => s != "")
+  }
+}
+
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied the SVN mask; (2) VALUE refs (fn/data, FunctionValueBinding + ExprCall callee names, which the type-position resolver never flags) come from collect_value_ref_names, a NARROW value-position walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names). The union is SVN-filtered (a visible name — imported seed module — is skipped, so a fully-imported module adds nothing: the zero-drift property), kernel/already-imported filtered (no E0252 against the runtime prelude), cross-module registry-resolved, then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line."
+
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, source_visible_names: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  if map_is_empty(m: source_visible_names) {
+    []
+  } else {
+    let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
+    let candidates = unique_strings(items: concat(unlisted_type_names, value_names))
+    let already = already_imported_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
+    let unlisted = candidates |> flat_map(name =>
+      if emit_map_has(m: source_visible_names, key: name) {
+        []
+      } else if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
+        []
+      } else {
+        match map_get(registry, name) {
+          Present { value: info } =>
+            if info.module_name != this_module_name { [name] } else { [] }
+          Absent => []
+        }
+      }
+    )
+    let providers = unique_strings(items: unlisted |> flat_map(name =>
+      match map_get(registry, name) {
+        Present { value: info } => [info.module_name]
+        Absent => []
+      }
+    ))
+    providers |> flat_map(provider =>
+      let names = unlisted |> filter(name =>
+        match map_get(registry, name) {
+          Present { value: info } => info.module_name == provider
+          Absent => false
+        }
+      )
+      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
+      let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
+      let fallback = names |> flat_map(nm =>
+        if (emitted_here |> any(e => e == nm)) || is_known_variant(type_summaries: emit_info.type_summaries, name: nm) {
+          []
+        } else {
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+        }
+      )
+      concat(block_lines, fallback)
+    )
+  }
+}
+
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -1945,7 +2049,12 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   } else {
     []
   }
-  let merged_imports = dedupe_rust_import_lines(lines: concat(dag_import_lines, carrier_import_lines)) |> join(separator: "\n")
+  let already_imported_names = concat(
+    prelude_imported_names,
+    concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
+  )
+  let reference_use_lines = reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), source_visible_names: scope.type_env.source_visible_names, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
