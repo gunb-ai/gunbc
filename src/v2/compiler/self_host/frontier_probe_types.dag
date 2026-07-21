@@ -77,7 +77,15 @@ data gate_a_flip_probe_witness_std_dup_reason: Symbol = ^gate_a_flip_probe_witne
 
 data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
 
-data gate_a_flip_probe_wave_note: String = "Gate-A re-probe 2026-07-19 (calm-boar-697, post-#6859+#6868 on integration/sharp-bee-290): CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh per candidate. GREEN: none (baseline 6 unchanged). REFUSALS (SeedRetained, execution-measured): 00_compile/materialization_carriers/program_assembly/source_authority → gate_a_flip_probe_unresolved_compiler_error (4-module bucket); 01_tokenize/04_infer/program_partition → gate_a_flip_probe_witness_std_dup (3-module std_dup harness bucket — #6868 Ord fix cleared btree_set_ord for 04_infer/program_partition). Receipt: docs/probes/gate_a_reprobe_2026-07-19.tsv."
+data curated_cargo_probe_namespace_qualified_rust_emit_reason: Symbol = ^curated_cargo_probe_namespace_qualified_rust_emit
+
+data curated_cargo_probe_import_closure_cargo_refuse_reason: Symbol = ^curated_cargo_probe_import_closure_cargo_refuse
+
+data curated_cargo_probe_emit_assemble_refuse_reason: Symbol = ^curated_cargo_probe_emit_assemble_refuse
+
+data honest_frontier_refresh_probe_note: String = "Honest frontier refresh 2026-07-20 (neat-swift-795 @ d904abdeae): reverted premature Gate-A flip-wave 6 from SelfEmitted→SeedRetained after CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh execution showed 0/6 cargo-green and 0/6 emit-clean post-#6848 merge. Current buckets by probe: curated_cargo_probe_namespace_qualified_rust_emit (emit+cargo dotted-path rustc refuse on 00_compile/02_parse/03_ingest/source_authority); curated_cargo_probe_import_closure_cargo_refuse (E0422 namespace on materialization_carriers + prior std_dup cargo residue on 01_tokenize/04_infer/program_partition); curated_cargo_probe_emit_assemble_refuse (program_assembly EMIT_REFUSE). Baseline 6 SelfEmitted (body_producer, normalize, target_carriers, discovery_enumeration, parse_engine_hooks, use_site_verdict). #6881 stays DRAFT until emit regression fixed and >=1 module cargo-green by execution."
+
+data gate_a_flip_probe_wave_note: String = "SUPERSEDED by honest_frontier_refresh_probe_note (2026-07-20): Jul-19 flip-wave claim retracted — never cargo-green by execution on current HEAD."
 
 fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
   if is_oom_or_budget {

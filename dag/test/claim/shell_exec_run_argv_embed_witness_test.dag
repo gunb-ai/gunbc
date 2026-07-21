@@ -17,10 +17,12 @@ fn src_has(path: String, needle: String) -> Bool {
   string_contains(s: r.content, pattern: needle)
 }
 
-fn witness_apply_script_exceeds_local_argv_embed_budget() -> Bool {
+data apply_script_budget_flip_note: String = "FLIPPED with belt B (PR 6940): pre-B this clause asserted script_len > budget — the incident receipt that the live apply script (which embedded the whole emitted server.js) genuinely exceeded MAX_ARG_STRLEN, making the stdin transport load-bearing. Belt B removed the frozen program from deploy (gunbc serve renders live; no emitted JS in the apply script), so the live-exceedance premise is dissolved and the clause becomes the REGRESSION WALL for exactly that class: the apply script must stay UNDER the argv embed budget — re-freezing any program payload into apply reds this row. The stdin transport stays pinned by the sibling witnesses (correct for arbitrary script sizes; the general wall is dispatch_shell's ArgvExceedsHostArgMax refusal on the host_exec_arg_max_strlen authority)."
+
+fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
   let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
-  script_len > budget
+  script_len > 0 && script_len < budget
 }
 
 fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
@@ -37,7 +39,7 @@ fn witness_shell_exec_run_uses_bash_receiver() -> Bool {
 }
 
 test fn shell_exec_run_argv_embed_witnesses() -> Bool {
-  witness_apply_script_exceeds_local_argv_embed_budget()
+  witness_apply_script_stays_under_argv_embed_budget()
     && witness_shell_exec_run_uses_stdin_transport()
     && witness_apply_script_requires_bash_receiver()
     && witness_shell_exec_run_uses_bash_receiver()

@@ -1,33 +1,5 @@
 module extdeps.bmc.redfish
 
-import extdeps.bmc.types {
-  BmcGroundedHostObservations,
-  BmcTelemetrySnapshot,
-  RedfishChassisSensorCollection,
-  RedfishMemorySummary,
-  RedfishPowerControl,
-  RedfishPowerSubsystem,
-  RedfishProcessorSummary,
-  RedfishSensorReading,
-  RedfishSystemInventory,
-  RedfishPowerState,
-}
-import std.measure {
-  ByteSize,
-  Watt,
-  HardwareThreadCount,
-  Gibibyte,
-  gibibyte,
-  gibibyte_to_byte_size,
-  byte_size,
-  watt,
-  watt_count,
-  byte_size_count,
-}
-import std.types { Int, List, NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

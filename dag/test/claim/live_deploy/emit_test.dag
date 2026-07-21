@@ -6,14 +6,13 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
   TailscalePackage,
-  NodeJsPackage,
+  TmuxPackage,
   deployment_spec_srv1,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
-  gunbc_roadmap_server_path,
 }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
@@ -46,7 +45,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_text_static_routes,
   served_static_route_literal_path,
 }
-import extdeps.apt { package_tailscale, package_nodejs }
+import extdeps.apt { package_tailscale, package_tmux }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -84,7 +83,7 @@ fn witness_owned_vs_ensured_typed() -> Bool {
 }
 
 fn witness_retract_owned_only() -> Bool {
-  count(deployment_owned_steps_retract_order()) == 3
+  count(deployment_owned_steps_retract_order()) == 5
 }
 
 fn witness_tailnet_domain_propagates_optional() -> Bool {
@@ -105,24 +104,30 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale }
   )
-  let nodejs = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs }
+  let tmux = deployment_ensure_dependency_script(
+    dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
-    && string_contains(s: nodejs, pattern: "dpkg -s nodejs")
-    && string_contains(s: nodejs, pattern: "apt-get install --yes nodejs")
+    && string_contains(s: tmux, pattern: "dpkg -s tmux")
+    && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
 }
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/server.js\" /opt/gunbc/server.js")
+    && string_contains(s: sh, pattern: "rsync -a --delete --exclude /target --exclude /.git ./ /opt/gunbc/gunbc/")
+    && string_contains(s: sh, pattern: "rsync -a ./.git/ /opt/gunbc/gunbc/.git/")
+    && !string_contains(s: sh, pattern: "--delete ./.git/")
+    && !string_contains(s: sh, pattern: "--exclude /target ./ ")
+    && string_contains(s: sh, pattern: "sudo -n install -m 0755 target/release/gunbc /opt/gunbc/bin/gunbc")
+    && string_contains(s: sh, pattern: "chown -R briansrls:briansrls /opt/gunbc/gunbc")
+    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg 8080")
     && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
-    && string_contains(s: sh, pattern: "if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install --yes nodejs; fi")
+    && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
@@ -131,22 +136,29 @@ fn witness_retract_script_owned_only() -> Bool {
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/server.js")
+    && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
+    && string_contains(s: sh, pattern: "rmdir /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "rm -rf /opt/gunbc/gunbc")
+    && !string_contains(s: sh, pattern: "rm -rf /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
 }
 
-fn witness_apply_script_contains_node_server() -> Bool {
-  string_contains(s: expected_live_deploy_apply_script(), pattern: "require('http').createServer")
+data apply_no_frozen_page_note: String = "The belt-B section-3 fix made executable: the apply script ships NO emitted node server and NO deploy-frozen page snapshot — the service renders the live roadmap per request. These two witnesses red if either ever creeps back into the apply script."
+
+fn witness_apply_script_has_no_node_server() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  !string_contains(s: sh, pattern: "require('http').createServer")
+    && !string_contains(s: sh, pattern: "server.js")
+    && string_contains(s: sh, pattern: "gunbc serve")
 }
 
-fn witness_apply_script_serves_roadmap_page() -> Bool {
+fn witness_apply_script_has_no_frozen_page() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  string_contains(s: sh, pattern: "gunbc — roadmap")
-    && string_contains(s: sh, pattern: "roadmap-section")
-    && !string_contains(s: sh, pattern: ">Browse<")
+  !string_contains(s: sh, pattern: "roadmap-section")
+    && !string_contains(s: sh, pattern: "<html")
 }
 
 fn witness_apply_script_excludes_readback_curls() -> Bool {
@@ -158,9 +170,9 @@ fn witness_apply_script_excludes_readback_curls() -> Bool {
     && !string_contains(s: sh, pattern: "--connect-timeout")
 }
 
-fn witness_retract_owned_process_removes_static_site_server() -> Bool {
+fn witness_retract_owned_process_removes_serve_service() -> Bool {
   let sh = expected_live_deploy_retract_script()
-  string_contains(s: sh, pattern: gunbc_roadmap_server_path)
+  string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: "systemctl disable --now")
@@ -191,8 +203,11 @@ fn witness_static_site_paths_only_in_retracted_server() -> Bool {
 
 fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
-  string_contains(s: unit, pattern: "ExecStart=/usr/bin/node /opt/gunbc/server.js")
-    && string_contains(s: unit, pattern: "Environment=PORT=8080")
+  string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080")
+    && string_contains(s: unit, pattern: "User=briansrls")
+    && string_contains(s: unit, pattern: "Group=briansrls")
+    && string_contains(s: unit, pattern: "WorkingDirectory=/opt/gunbc/gunbc")
+    && !string_contains(s: unit, pattern: "node")
 }
 
 fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
@@ -244,7 +259,7 @@ fn witness_retract_script_matches_committed_golden() -> Bool {
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux })
   count(steps) == 1
     && any(steps, s => match s {
          Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
@@ -269,10 +284,10 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_dependency_ensure_is_idempotent()
     && witness_apply_script_contains_systemd_and_tailscale()
     && witness_retract_script_owned_only()
-    && witness_apply_script_contains_node_server()
-    && witness_apply_script_serves_roadmap_page()
+    && witness_apply_script_has_no_node_server()
+    && witness_apply_script_has_no_frozen_page()
     && witness_apply_script_excludes_readback_curls()
-    && witness_retract_owned_process_removes_static_site_server()
+    && witness_retract_owned_process_removes_serve_service()
     && witness_static_site_routes_in_dashboard_route_table()
     && witness_static_site_paths_only_in_retracted_server()
     && witness_systemd_unit_emitted()

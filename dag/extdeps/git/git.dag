@@ -1,10 +1,5 @@
 module extdeps.git
 
-import std.types { CommitSha, ContentHash, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
-import std.measure { Percent, percent }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

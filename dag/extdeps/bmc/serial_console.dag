@@ -1,12 +1,5 @@
 module extdeps.bmc.serial_console
 
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-import std.types { NonEmptyStr, String, Milliseconds }
-import std.measure { ByteSize }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
