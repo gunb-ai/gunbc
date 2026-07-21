@@ -1265,7 +1265,30 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()),
+        }) => {
+            let cand_count = cands.clone().len() as usize;
+            if crate::resolution_silent_pick_telemetry::is_enabled() && cand_count >= 2 {
+                match global_bare_nearest_ancestor_candidate(env.module_path.clone(), cands.clone())
+                {
+                    Some(cand) => {
+                        crate::resolution_silent_pick_telemetry::record_global_bare_lcp_pick(
+                            env.module_path.clone(),
+                            name.clone(),
+                            cand_count,
+                            cand.module_path.clone(),
+                        );
+                    }
+                    None => {
+                        crate::resolution_silent_pick_telemetry::record_global_bare_lcp_tie(
+                            env.module_path.clone(),
+                            name.clone(),
+                            cand_count,
+                        );
+                    }
+                }
+            }
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+        }
         None => None,
     }
 }

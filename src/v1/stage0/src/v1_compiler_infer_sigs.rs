@@ -105,16 +105,47 @@ pub fn flatten_parent_envs(
     }
 }
 
+#[derive(Default)]
+struct ParentSigScan {
+    sig: Option<Rc<ResolvedFuncSig>>,
+    match_count: usize,
+    first_parent: Option<String>,
+}
+
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
-        None => env.parents.clone().iter().cloned().fold(
-            none_resolved_sig(),
-            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
-                Some(sig) => Some(sig.clone()),
-                None => v1_rt::map_get(&p.local.clone(), name.clone()),
-            },
-        ),
+        None => {
+            let scan = env.parents.clone().iter().cloned().fold(
+                ParentSigScan::default(),
+                |mut acc: ParentSigScan, p: Rc<ResolvedFuncEnv>| {
+                    if let Some(sig) = v1_rt::map_get(&p.local.clone(), name.clone()) {
+                        acc.match_count += 1;
+                        if acc.first_parent.is_none() {
+                            acc.first_parent = Some(p.name.clone());
+                        }
+                        if acc.sig.is_none() {
+                            acc.sig = Some(sig);
+                        }
+                    }
+                    acc
+                },
+            );
+            if crate::resolution_silent_pick_telemetry::is_enabled()
+                && scan.match_count >= 2
+                && scan.sig.is_some()
+            {
+                if let Some(chosen_parent) = scan.first_parent.clone() {
+                    crate::resolution_silent_pick_telemetry::record_fn_parent_first_hit(
+                        env.name.clone(),
+                        name.clone(),
+                        scan.match_count,
+                        chosen_parent,
+                    );
+                }
+            }
+            scan.sig
+        }
     }
 }
 
