@@ -1,7 +1,8 @@
 module gunbc.host_runner_memory_cap_verify
 
 import std.types { String, NonEmptyStr, Bool, Int }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import product.placement_supply { HostIdentity }
@@ -25,7 +26,16 @@ import gunbc.fleet_show_effective_read {
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
-  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched."
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Transport intent lives here; shell realization is scaffold-marked medium-as-string (host_runner_memory_cap_verify_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; probed_at uses slice-local date read."
+}
+
+data host_runner_memory_cap_verify_transport_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
 }
 
 type RunnerMemoryCapVerifyTally {
