@@ -3077,17 +3077,17 @@ pub fn infer_expr(
             }
             ExprData::ExprError { kind, message, .. } => {
                 let span = texpr.span.clone();
-                let diagnostics = match kind {
-                    CensusHeadsBodyStripped => Rc::new(vec![inference_error(
+                let diagnostics = match kind.clone() {
+                    ExprErrorKind::CensusHeadsBodyStripped => Rc::new(vec![inference_error(
                         message.clone(),
                         span.clone(),
                         scope.module_name.clone(),
                     )]),
-                    ParseRecoveryError | SemanticExprError | InternalExprError => Rc::new(vec![]),
+                    _ => Rc::new(vec![]),
                 };
                 Rc::new(InferResult {
                     typed: make_expr_error_node(kind.clone(), message.clone(), span.clone()),
-                    diagnostics,
+                    diagnostics: diagnostics.clone(),
                 })
             }
             ExprData::ExprVar {
