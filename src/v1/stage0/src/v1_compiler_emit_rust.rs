@@ -4435,10 +4435,41 @@ pub fn reference_derived_use_lines(
                     this_module_name, provider, block
                 );
             }
+            let mut emitted_here: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             if (block.clone() != "".to_string()) {
                 for l in block.split(&"\n".to_string()) {
+                    for nm in imported_names_in_use_line(l.to_string()).iter().cloned() {
+                        emitted_here.insert(nm);
+                    }
                     lines.push(l.to_string());
                 }
+            }
+            // §5: never silently drop. emit_specific_import_block's re-export /
+            // physical-home classification declines some legitimately-referenced
+            // top-level items; wire those directly so the reference has a binding.
+            // Variants are excluded (they resolve through their enum's path, not a
+            // direct `use`), and names already emitted by the block are skipped.
+            for nm in names.iter().cloned() {
+                if emitted_here.contains(&nm) {
+                    continue;
+                }
+                if is_known_variant(emit_info.type_summaries.clone(), nm.clone()) {
+                    continue;
+                }
+                lines.push(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                rust_visibility_prefix(),
+                                "use crate::".to_string(),
+                            ),
+                            module_to_filename(provider.clone()),
+                        ),
+                        "::".to_string(),
+                    ),
+                    v1_rt::concat(emit_import_name(nm.clone(), registry.clone()), ";".to_string()),
+                ));
             }
         }
         if trace {
@@ -4565,6 +4596,7 @@ pub fn emit_module_full(
                     .iter()
                     .cloned()
                     .chain(carrier_import_lines.iter().cloned())
+                    .chain(prelude.split(&"\n".to_string()).map(|s| s.to_string()))
                 {
                     __r.extend((*imported_names_in_use_line(l)).iter().cloned());
                 }
