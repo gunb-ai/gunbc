@@ -222,6 +222,10 @@ data claim_namespace_graft_empty_qn_refused: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
+test fn namespace_graft_empty_qn_refused_holds() -> Bool {
+  !ng_outcome_accepted(out: module_header_containment_graft(root: ng_empty_qn_node))
+}
+
 data ng_dual_position_root: Node = ng_pre_graft_module_root(
   qn: Cons {
     head: ^NgAlpha,
@@ -251,4 +255,8 @@ data claim_namespace_graft_dual_position_refused: TestClaim = EqualsClaim {
     }
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test fn namespace_graft_dual_position_refused_holds() -> Bool {
+  !ng_outcome_accepted(out: module_header_containment_graft(root: ng_dual_position_root))
 }
