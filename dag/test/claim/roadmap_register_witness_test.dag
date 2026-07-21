@@ -1,0 +1,63 @@
+module test.claim.roadmap_register_witness
+
+import std.types { Int, String, Bool }
+import std.markup { MarkupNode, ElementNode, TextNode }
+import gunbc.site.tokens {
+  BuildRule, StaticRule, CssDecl, decl,
+  theme_roles, themes_coherent, day_theme, night_theme,
+  reduced_motion_block,
+}
+import gunbc.site.theme_transition { unthemed_color_decls }
+import gunbc.site.mark { render_mark }
+import gunbc.roadmap_style { roadmap_rules }
+import gunbc.roadmap_page { roadmap_header }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_register_witness_note: String = "The roadmap dashboard as a register SITE INSTANCE (slice 1 of the roadmap-onto-register refactor, parent-acked 2026-07-21): the instance inherits the register laws by executing them over its own emission — themes_coherent over the exact Theme rows roadmap_css projects (totality, area coherence, chroma admissibility, WCAG contrast — one law set, N surfaces, never a roadmap fork); the unthemed-color census over the exact BuildRule rows the page serializes, with the RED a resurrection of the precise historical regression this refactor deleted (the hand-hex #0969da link blue) proving the census discriminates rather than vacuously passing; the shared Confluence mark consumed at nav depth from the one render authority (favicon/nav/hero cannot disagree, mark.dag). The reduced-motion pin documents that the roadmap declares ZERO ResponseRules today — slice 2 (dispatch verb row + hover migration onto the interaction machinery) flips that pin deliberately."
+
+fn witness_roadmap_theme_set_coherent() -> Bool {
+  themes_coherent(themes: [day_theme, night_theme], roles: theme_roles)
+}
+
+fn witness_roadmap_colors_all_routed() -> Bool {
+  unthemed_color_decls(rules: roadmap_rules()).length() == 0
+}
+
+fn rogue_hex_rule() -> BuildRule {
+  StaticRule { selector: ".rogue-link", decls: [ decl(prop: "color", value: "#0969da") ] }
+}
+
+fn witness_local_hex_literal_refused() -> Bool {
+  let caught = unthemed_color_decls(rules: concat(roadmap_rules(), [rogue_hex_rule()]))
+  caught.length() == 1
+    && all(caught, c =>
+      c.selector == ".rogue-link" && c.prop == "color" && c.value == "#0969da")
+}
+
+fn witness_no_response_rules_pinned() -> Bool {
+  reduced_motion_block(rules: roadmap_rules()) == ""
+}
+
+fn header_children_contain_mark(h: MarkupNode) -> Bool {
+  match h {
+    ElementNode { tag, attrs: _, children } =>
+      tag == "header"
+        && fold(children, init: false, f: (acc, c) => acc || c == render_mark(depth: 1))
+    TextNode { text: _ } => false
+  }
+}
+
+fn witness_header_carries_shared_mark() -> Bool {
+  header_children_contain_mark(h: roadmap_header(title: "gunbc — roadmap"))
+    && header_children_contain_mark(h: roadmap_header(title: "gunbc — daily workspace"))
+}
+
+test fn roadmap_register_keystone_holds() -> Bool {
+  witness_roadmap_theme_set_coherent()
+    && witness_roadmap_colors_all_routed()
+    && witness_local_hex_literal_refused()
+    && witness_no_response_rules_pinned()
+    && witness_header_carries_shared_mark()
+}
