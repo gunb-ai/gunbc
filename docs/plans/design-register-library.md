@@ -172,6 +172,19 @@ Defaults flow **down** the hierarchy; **nearest-ancestor wins** for parameters.
 
 DOC-ONLY until Phase A trigger (#6927 merge). Phases B/C are design-named; no L4 module work until B's second consumer is scheduled.
 
+### Phase A sub-phases (constants + de-stringing — §10)
+
+Phase A is not only a module move. Operator review (2026-07-21) flagged hardcoded constants and string-based modeling in the #6927 stack; the lift sequences de-stringing work by **displaced cost**:
+
+| Order | Sub-phase | Work (§10 class) | Acceptance |
+|---|---|---|---|
+| **A.0** | Lift + key-typing | extract `gunbc.design.*`; closed enums / symbol refs for element and node keys (Class 3) | emission-identical witness; coverage witnesses total by construction |
+| **A.1** | CSS/SVG grammar | `extdeps/languages/{css,svg}` rows; typed `CssDecl` emission (Class 1c) | invalid property/easing unwritable; `paint()` hand-`join()` dissolved |
+| **A.2** | Perceptual re-ground | WCAG thresholds (Class 1b) + OKLCH L1 walls (Class 2) | lightness-gap proxy RED; glare/chroma walls use perceptual chroma ceiling |
+| **A.3** | Stellar derivation | Morgan–Keenan rows with `temperature_kelvin`; color derived (Class 1a) | no-green witness is computed theorem; hand hue-range check dissolves |
+
+A.0 and A.1 may overlap the structural lift; A.2–A.3 land before Phase B. All remain DOC-ONLY in this PR.
+
 ## 6. Second-consumer discipline (§6 purity trap)
 
 | Layer | Lift when | Named consumers |
