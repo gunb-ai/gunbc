@@ -3,8 +3,7 @@ module gunbc.ci_deploy_access_emit
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { fold_list, filter, is_empty }
-import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.algebra { fold_list }
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
@@ -14,9 +13,6 @@ import gunbc.ci_deploy_access {
 import gunbc.host_effect_deploy_access_probe_script {
   host_effect_read_effective_posix_principal_script,
   host_effect_sudo_nopasswd_execute_probe_script,
-}
-import gunbc.fleet_posix_accounts {
-  gunbc_deploy_privileged_helper_path,
 }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
@@ -31,29 +27,6 @@ data deploy_access_emit_preflight_scaffold: Disposition = Scaffold {
     module_path: "gunbc.ci_deploy_access_emit",
     decl_name: "deploy_access_emit_preflight_dissolution_trigger",
     field: WholeDeclaration,
-  }
-}
-
-fn privileged_command_is_blessed_helper(cmd: PrivilegedCommand) -> Bool {
-  cmd.path == gunbc_deploy_privileged_helper_path
-}
-
-fn deploy_access_bootstrap_privileged_commands(access: DeployAccess) -> List<PrivilegedCommand> {
-  filter(
-    access.privileged_commands,
-    cmd => !privileged_command_is_blessed_helper(cmd: cmd)
-  )
-}
-
-fn deploy_access_helper_privileged_command(access: DeployAccess) -> PrivilegedCommand? {
-  let blessed = filter(
-    access.privileged_commands,
-    cmd => privileged_command_is_blessed_helper(cmd: cmd)
-  )
-  if is_empty(blessed) {
-    optional_absent()
-  } else {
-    optional_present(value: blessed.first())
   }
 }
 
@@ -79,7 +52,7 @@ fn deploy_access_emit_sudo_probe_shell(cmd: PrivilegedCommand) -> String {
 
 fn deploy_access_emit_bootstrap_probes_shell(access: DeployAccess) -> String {
   fold_list(
-    xs: deploy_access_bootstrap_privileged_commands(access: access),
+    xs: access.privileged_commands,
     empty: "",
     cons: (acc, cmd) =>
       if acc == "" {
@@ -93,37 +66,9 @@ fn deploy_access_emit_bootstrap_probes_shell(access: DeployAccess) -> String {
 fn deploy_access_emit_bootstrap_preflight_block(access: DeployAccess) -> String {
   concat(
     concat(
-      concat("# deploy-access-bootstrap-preflight (principal + historical roster grants)\n", deploy_access_emit_principal_probe_shell(access: access)),
+      concat("# deploy-access-bootstrap-preflight (principal + roster grants)\n", deploy_access_emit_principal_probe_shell(access: access)),
       deploy_access_emit_bootstrap_probes_shell(access: access)
     ),
     ""
-  )
-}
-
-fn deploy_access_emit_helper_probe_block(access: DeployAccess) -> String {
-  match deploy_access_helper_privileged_command(access: access) {
-    Present { value: cmd } =>
-      concat(
-        concat(
-          concat("# deploy-access-helper-preflight (post-install blessed helper probe)\n", deploy_access_emit_sudo_probe_shell(cmd: cmd)),
-          "\n"
-        ),
-        concat(
-          "echo \"deploy-access-preflight: PASS principal=",
-          concat(grounded_posix_principal_name(p: access.principal) as String, "\"")
-        )
-      )
-    Absent =>
-      concat(
-        concat("echo \"", deploy_access_refusal_prefix, " — blessed helper grant missing from roster\"\n"),
-        "exit 1\n"
-      )
-  }
-}
-
-fn deploy_access_emit_preflight_block(access: DeployAccess) -> String {
-  concat(
-    deploy_access_emit_bootstrap_preflight_block(access: access),
-    deploy_access_emit_helper_probe_block(access: access)
   )
 }
