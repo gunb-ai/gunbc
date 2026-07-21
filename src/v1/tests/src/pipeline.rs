@@ -1748,8 +1748,8 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
-        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
+        content.contains("fn use_fold<S>(fold: Arc<NodeFold<S>>) -> Arc<NodeFold<S>>"),
+        "generic fn params and return must preserve applied type args with shared_types Arc; got:\n{content}"
     );
 }
 
@@ -1775,7 +1775,7 @@ fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
     let content = find_file(&result, "src/nested_applied_sig.rs");
     assert!(
         content
-            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
+            .contains("fn use_wrap<S>(w: Arc<Wrapper<Arc<Boxed<S>>>>) -> Arc<Wrapper<Arc<Boxed<S>>>>"),
         "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
     );
 }
@@ -4500,7 +4500,7 @@ type Bag { items: List<String> }
     let content = find_file(&result, "src/test_rc_list.rs");
     assert!(
         content.contains("Arc<Vec<") || content.contains("Arc<Vec<String>"),
-        "list field should be Rc<Vec<...>>, got:\n{}",
+        "list field should be Arc<Vec<...>>, got:\n{}",
         content
     );
 }
@@ -4575,20 +4575,20 @@ fn unwrap(c: Container) -> Item {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_param_match.rs");
-    let has_rc_field = content.contains("item: Rc<Item>");
-    let has_rc_param = content.contains("i: Rc<Item>");
+    let has_arc_field = content.contains("item: Arc<Item>");
+    let has_arc_param = content.contains("i: Arc<Item>");
     assert_eq!(
-        has_rc_field, has_rc_param,
-        "field type and param type must agree on Rc wrapping.\n\
-         field has Rc: {}, param has Rc: {}\n{}",
-        has_rc_field, has_rc_param, content
+        has_arc_field, has_arc_param,
+        "field type and param type must agree on Arc wrapping.\n\
+         field has Arc: {}, param has Arc: {}\n{}",
+        has_arc_field, has_arc_param, content
     );
-    let has_rc_return = content.contains("-> Rc<Item>");
+    let has_arc_return = content.contains("-> Arc<Item>");
     assert_eq!(
-        has_rc_field, has_rc_return,
-        "field type and return type must agree on Rc wrapping.\n\
-         field has Rc: {}, return has Rc: {}\n{}",
-        has_rc_field, has_rc_return, content
+        has_arc_field, has_arc_return,
+        "field type and return type must agree on Arc wrapping.\n\
+         field has Arc: {}, return has Arc: {}\n{}",
+        has_arc_field, has_arc_return, content
     );
 }
 
@@ -4713,7 +4713,7 @@ fn make() -> Outer {
     let content = find_file(&result, "src/test_struct_field_emit.rs");
     assert!(
         content.contains("Arc<Inner>"),
-        "struct field type should be rendered as Rc<Inner>, got:\n{}",
+        "struct field type should be rendered as Arc<Inner>, got:\n{}",
         content
     );
     assert!(
@@ -4819,7 +4819,7 @@ type Outer<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_same_name_generic_args.rs");
     assert!(
-        content.contains("pub same: Rc<NodeFold<S>>,"),
+        content.contains("pub same: Arc<NodeFold<S>>,"),
         "explicit same-name type arg should remain applied, got:\n{}",
         content
     );
@@ -5231,8 +5231,8 @@ fn index_items(items: List<Entry>) -> Map<String, Entry> {
         "fold with struct value type should not produce BRIDGE: {content}"
     );
     assert!(
-        content.contains("HashMap<String, Rc<Entry>>"),
-        "architecture ratchet: fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        content.contains("HashMap<String, Arc<Entry>>"),
+        "architecture ratchet: fold should produce typed HashMap<String, Arc<Entry>>: {content}"
     );
 }
 
@@ -5360,8 +5360,8 @@ fn build_index(items: List<Entry>) -> Map<String, Entry> {
         "cross-module fold must not produce BRIDGE fabrication: {content}"
     );
     assert!(
-        content.contains("HashMap<String, Rc<Entry>>"),
-        "architecture ratchet: cross-module fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        content.contains("HashMap<String, Arc<Entry>>"),
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, Arc<Entry>>: {content}"
     );
 }
 
@@ -5709,12 +5709,12 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
 
     assert!(
         content.contains("pub use crate::extdeps_github_github::{GitHubAuthToken, GitHubScope}")
-            && content.contains("Result<Rc<GitHubAuthToken>"),
+            && content.contains("Result<Arc<GitHubAuthToken>"),
         "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
     );
     assert!(
         content.contains("pub struct GitHubAuthSource")
-            && content.contains("pub token_metadata: Rc<GitHubTokenMetadataAuthority>")
+            && content.contains("pub token_metadata: Arc<GitHubTokenMetadataAuthority>")
             && content.contains("pub enum GitHubTokenMetadataAuthority")
             && content.contains("DeclaredGitHubTokenMetadata"),
         "ROADMAP:376: expected credential source metadata to be explicitly declared/unverified, got:\n{content}"
@@ -5749,7 +5749,7 @@ fn github_create_review_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_github_pulls.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<PullReview> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<PullReview> = response.json().await?"),
         "expected CreateReview 200 response to deserialize through typed PullReview, got:\n{content}"
     );
     assert!(
@@ -5814,7 +5814,7 @@ fn github_oidc_get_token_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_sts.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GitHubOidcToken200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GitHubOidcToken200Body> = response.json().await?"),
         "expected GitHub OIDC GetToken 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -5855,7 +5855,7 @@ fn gcp_iam_generate_access_token_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_iam.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GcpGenerateAccessToken200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GcpGenerateAccessToken200Body> = response.json().await?"),
         "expected IAM GenerateAccessToken 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -5900,7 +5900,7 @@ fn google_oauth_refresh_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GoogleOAuth2Refresh200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GoogleOAuth2Refresh200Body> = response.json().await?"),
         "expected Google OAuth Refresh 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -6557,7 +6557,7 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     assert!(
         content_block.contains("OpenAiChatMessageText(String),")
             && content_block.contains(
-                "OpenAiChatMessageParts(Rc<Vec<Rc<OpenAiChatMessagePart>>>),"
+                "OpenAiChatMessageParts(Arc<Vec<Arc<OpenAiChatMessagePart>>>),"
             ),
         "untagged OpenAiChatMessageContent variants must emit as newtype variants so `content` serializes as a string or content-part array; got:\n{content_block}"
     );
@@ -7389,7 +7389,7 @@ fn openai_chat_completion_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<OpenAiChatCompletion200Body> = response.json().await?"),
         "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
     );
     assert!(
@@ -7603,7 +7603,7 @@ fn openai_responses_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<OpenAiResponses200Body> = response.json().await?"),
         "expected Responses 200 response to deserialize through typed OpenAiResponses200Body, got:\n{content}"
     );
     assert!(
@@ -7891,7 +7891,7 @@ fn anthropic_messages_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_anthropic_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<AnthropicMessages200Body> = response.json().await?"),
         "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
     );
     assert!(
