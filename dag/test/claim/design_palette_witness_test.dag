@@ -1,7 +1,10 @@
 module test.claim.design_palette_witness
 
 import std.types { Int, String, Bool }
-import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl_projection }
+import extdeps.color.srgb {
+  Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl_projection,
+  HslProjection, Chromatic, Achromatic,
+}
 import extdeps.color.solarized {
   solarized_base_ladder, solarized_base_mode_pairs, solarized_swatches,
 }
@@ -14,6 +17,7 @@ import gunbc.design.palette {
   grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
   set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
 }
+import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
 import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam,
@@ -87,12 +91,40 @@ fn witness_grade_kernel_discriminates() -> Bool {
 
 fn witness_camel_hsl_projection() -> Bool {
   let proj = srgb8_to_hsl_projection(c: island_camel.color)
-  proj.h == 35 && proj.s_pct == 53 && proj.l_pct == 51
+  match proj {
+    Chromatic { h, s_pct, l_pct } => h == 35 && s_pct == 53 && l_pct == 51
+    Achromatic { l_pct: _ } => false
+  }
 }
 
 fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
   let proj = srgb8_to_hsl_projection(c: island_camel.color)
-  !(proj.h == 36 && proj.s_pct == 53 && proj.l_pct == 51)
+  match proj {
+    Chromatic { h, s_pct, l_pct } => !(h == 36 && s_pct == 53 && l_pct == 51)
+    Achromatic { l_pct: _ } => true
+  }
+}
+
+fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
+  match srgb8_to_hsl_projection(c: Srgb8 { r: 128, g: 128, b: 128 }) {
+    Achromatic { l_pct: _ } => true
+    Chromatic { h: _, s_pct: _, l_pct: _ } => false
+  }
+}
+
+fn witness_chromatic_still_projects_hue() -> Bool {
+  match srgb8_to_hsl_projection(c: Srgb8 { r: 255, g: 0, b: 0 }) {
+    Chromatic { h, s_pct, l_pct: _ } => h >= 0 && s_pct > 0
+    Achromatic { l_pct: _ } => false
+  }
+}
+
+fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
+  match srgb8_to_hsl_projection(c: Srgb8 { r: 127, g: 127, b: 127 }) {
+    Chromatic { h: 0, s_pct: 0, l_pct: _ } => false
+    Chromatic { h: _, s_pct: _, l_pct: _ } => true
+    Achromatic { l_pct: _ } => true
+  }
 }
 
 fn witness_camel_passes_quiet_envelope() -> Bool {
@@ -155,6 +187,11 @@ fn witness_solarized_base_mode_pairing_involution() -> Bool {
     && solarized_mode_partner(name: solarized_mode_partner(name: "base03")) == "base03"
 }
 
+fn witness_base16_digit_refuses_out_of_range() -> Bool {
+  hex_digit_char_lower(d: 16) == base16_digit_refusal_sentinel
+    && hex_digit_char_lower(d: -1) == base16_digit_refusal_sentinel
+}
+
 test fn design_palette_catalog_keystone_holds() -> Bool {
   witness_catalog_admissible()
     && witness_hex_serialization_matches_authored()
@@ -165,10 +202,14 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_grade_kernel_discriminates()
     && witness_camel_hsl_projection()
     && witness_hsl_projection_red_on_off_by_one_hue()
+    && witness_achromatic_maps_to_variant_not_hue_zero()
+    && witness_chromatic_still_projects_hue()
+    && witness_gray_never_yields_hue_zero_as_red()
     && witness_camel_passes_quiet_envelope()
     && witness_mint_refused_by_quiet_envelope()
     && witness_ivory_refused_despite_near_achromatic_oklch()
     && witness_cited_palette_counts()
     && witness_solarized_base_ladder_order_and_count()
     && witness_solarized_base_mode_pairing_involution()
+    && witness_base16_digit_refuses_out_of_range()
 }

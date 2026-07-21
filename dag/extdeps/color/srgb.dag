@@ -1,7 +1,12 @@
 module extdeps.color.srgb
 
 import std.types { Int, String, Bool }
+import std.integer { uint8_channel_inclusive_max_value }
+import std.measure {
+  permyriad_denominator, permyriad_half_for_round_half_up, percent_scale_hundred,
+}
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,9 +16,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data color_srgb_note: String = "Cited upstream: W3C CSS Color Module Level 4 (retrieved 2026-07-21) — the sRGB color space (whose normative definition CSS4 cites to IEC 61966-2-1), 8-bit component notation, hex serialization (#rrggbb, section 'The RGB hexadecimal notations'), and the HSL<->sRGB conversion algorithm (section 'HSL Colors'). This module owns COLOR-SPACE facts only: what a color value IS and how representations convert. Perceptual LAW over colors (relative luminance, contrast thresholds) is extdeps.accessibility.wcag_contrast, which imports this module — accessibility consumes the color space, it does not own it (DESIGN sect 3: the conversion previously lived inside wcag_contrast; re-homed 2026-07-21). Srgb8 is the authored identity for catalogued colors — a hex literal is a SERIALIZATION of Srgb8, never the stored fact (decompress the string, DESIGN sect 2). RgbScaled is the scale-10000 integer representation (one unit = 0.0001 of a channel) shared by the integer kernels; conversions here are exact at the representation's precision, no floats, no host math. OKLCH coordinates are the named next representation (design-register-library.md sect 10 Class 2, phase A.2): the cube-root kernel follows the same integer-Newton pattern wcag_contrast proves for the 2.4 exponent."
+data color_srgb_note: String = "Cited upstream: W3C CSS Color Module Level 4 (retrieved 2026-07-21) — the sRGB color space (whose normative definition CSS4 cites to IEC 61966-2-1), 8-bit component notation, hex serialization (#rrggbb, section 'The RGB hexadecimal notations'), and the HSL<->sRGB conversion algorithm (section 'HSL Colors'). This module owns COLOR-SPACE facts only: what a color value IS and how representations convert. Perceptual LAW over colors (relative luminance, contrast thresholds) is extdeps.accessibility.wcag_contrast, which imports this module — accessibility consumes the color space, it does not own it (DESIGN sect 3: the conversion previously lived inside wcag_contrast; re-homed 2026-07-21). Srgb8 is the authored identity for catalogued colors — a hex literal is a SERIALIZATION of Srgb8, never the stored fact (decompress the string, DESIGN sect 2). RgbScaled is the permyriad-scale integer representation (one unit = 0.0001 of a channel) shared by the integer kernels; conversions here are exact at the representation's precision, no floats, no host math. OKLCH coordinates are the named next representation (design-register-library.md sect 10 Class 2, phase A.2): the cube-root kernel follows the same integer-Newton pattern wcag_contrast proves for the 2.4 exponent."
 
-data color_census_frontier: String = "Staged leaf-census items (msg_e9cfe443), explicit triggers: (1-4) srgb_byte_denominator 255 / permyriad 10000 / hue_milli 60000 still inline — dissolve when std.measure carriers land; (5) achromatic arm fixes h=0 per CSS4 (not yet a named Achromatic variant); (14) hex_digit 16-arm chain not yet deduped onto extdeps.languages.json.emit hex_digit_char; OKLCH reground design-register-library.md sect 10 Class 2."
+data color_census_frontier: String = "Staged leaf-census items dissolved in Phase-A arc (msg_e9cfe443): (1-4) srgb_byte_denominator / permyriad / hue_milli / percent-round — grounded on std.integer.uint8_channel_inclusive_max_value, std.measure.permyriad_denominator, hue_angle facts below; (5) Achromatic HslProjection variant per CSS4 hue-is-none; (14) hex_digit deduped onto extdeps.numeric.base16. Remaining: OKLCH reground design-register-library.md sect 10 Class 2 (explicit trigger, excluded from this PR)."
 
 type Srgb8 {
   r: Int
@@ -27,36 +32,14 @@ type CitedColorRow {
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
-  c.r >= 0 && c.r <= 255
-    && c.g >= 0 && c.g <= 255
-    && c.b >= 0 && c.b <= 255
-}
-
-fn hex_digit(v: Int) -> String {
-  if v == 0 { "0" }
-  else if v == 1 { "1" }
-  else if v == 2 { "2" }
-  else if v == 3 { "3" }
-  else if v == 4 { "4" }
-  else if v == 5 { "5" }
-  else if v == 6 { "6" }
-  else if v == 7 { "7" }
-  else if v == 8 { "8" }
-  else if v == 9 { "9" }
-  else if v == 10 { "a" }
-  else if v == 11 { "b" }
-  else if v == 12 { "c" }
-  else if v == 13 { "d" }
-  else if v == 14 { "e" }
-  else { "f" }
-}
-
-fn byte_hex(v: Int) -> String {
-  concat(hex_digit(v: v / 16), hex_digit(v: v % 16))
+  let maxv = uint8_channel_inclusive_max_value()
+  c.r >= 0 && c.r <= maxv
+    && c.g >= 0 && c.g <= maxv
+    && c.b >= 0 && c.b <= maxv
 }
 
 fn srgb8_hex(c: Srgb8) -> String {
-  join(["#", byte_hex(v: c.r), byte_hex(v: c.g), byte_hex(v: c.b)], "")
+  join(["#", byte_hex_lower(v: c.r), byte_hex_lower(v: c.g), byte_hex_lower(v: c.b)], "")
 }
 
 type RgbScaled {
@@ -66,10 +49,12 @@ type RgbScaled {
 }
 
 fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
+  let denom = permyriad_denominator
+  let maxv = uint8_channel_inclusive_max_value()
   RgbScaled {
-    r: (c.r * 10000) / 255,
-    g: (c.g * 10000) / 255,
-    b: (c.b * 10000) / 255,
+    r: (c.r * denom) / maxv,
+    g: (c.g * denom) / maxv,
+    b: (c.b * denom) / maxv,
   }
 }
 
@@ -85,7 +70,33 @@ fn imin(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
-data hsl_projection_note: String = "HslProjection: h = hue degrees [0, 360); s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. Achromatic (delta=0) arm fixes h=0 per CSS4 (census item 5 staged). OKLCH reground: design-register-library.md sect 10 Class 2."
+data full_turn_degrees: Int = 360
+
+data hexcone_sextant_count: Int = 6
+
+fn sextant_arc_degrees() -> Int {
+  full_turn_degrees / hexcone_sextant_count
+}
+
+data millidegrees_per_degree: Int = 1000
+
+fn hue_milli_per_sextant() -> Int {
+  sextant_arc_degrees() * millidegrees_per_degree
+}
+
+fn hue_milli_per_two_sextants() -> Int {
+  hue_milli_per_sextant() * 2
+}
+
+fn hue_milli_per_four_sextants() -> Int {
+  hue_milli_per_sextant() * 4
+}
+
+fn full_turn_millidegrees() -> Int {
+  full_turn_degrees * millidegrees_per_degree
+}
+
+data hsl_projection_note: String = "HslProjection: chromatic rows carry h in degrees [0, 360); Achromatic rows omit hue per CSS Color 4 hue-is-none (delta=0). s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. OKLCH reground: design-register-library.md sect 10 Class 2."
 
 type ColorConversionFrontier
   = HslLive
@@ -95,52 +106,67 @@ data color_conversion_frontier: ColorConversionFrontier = OklchStaged {
   trigger: "Exact OKLab/OKLCH requires Float channel math and cube-root; land when design-register-library.md sect 10 Class 2 fires; HSL projection is live now (integer-friendly, CSS Color 4 sRGB<->HSL)."
 }
 
-type HslProjection {
-  h: Int
-  s_pct: Int
-  l_pct: Int
+type HslProjection
+  = Chromatic { h: Int, s_pct: Int, l_pct: Int }
+  | Achromatic { l_pct: Int }
+
+fn hsl_projection_s_pct(p: HslProjection) -> Int {
+  match p {
+    Chromatic { h: _, s_pct, l_pct: _ } => s_pct
+    Achromatic { l_pct: _ } => 0
+  }
+}
+
+fn hsl_projection_l_pct(p: HslProjection) -> Int {
+  match p {
+    Chromatic { h: _, s_pct: _, l_pct } => l_pct
+    Achromatic { l_pct } => l_pct
+  }
 }
 
 fn pct_round_from_scaled(v_scaled: Int) -> Int {
-  (v_scaled * 100 + 5000) / 10000
+  (v_scaled * percent_scale_hundred + permyriad_half_for_round_half_up()) / permyriad_denominator
 }
 
 fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection {
-  let rs = (c.r * 10000) / 255
-  let gs = (c.g * 10000) / 255
-  let bs = (c.b * 10000) / 255
+  let denom = permyriad_denominator
+  let maxv = uint8_channel_inclusive_max_value()
+  let rs = (c.r * denom) / maxv
+  let gs = (c.g * denom) / maxv
+  let bs = (c.b * denom) / maxv
   let maxc = imax(a: imax(a: rs, b: gs), b: bs)
   let minc = imin(a: imin(a: rs, b: gs), b: bs)
   let delta = maxc - minc
   let l_scaled = (maxc + minc) / 2
   let light_pct = pct_round_from_scaled(v_scaled: l_scaled)
   if delta == 0 {
-    HslProjection { h: 0, s_pct: 0, l_pct: light_pct }
+    Achromatic { l_pct: light_pct }
   } else {
-    let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
-    let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
+    let denom_sat = denom - iabs(v: 2 * l_scaled - denom)
+    let sat_scaled = if denom_sat == 0 { 0 } else { (delta * denom) / denom_sat }
     let sat_pct = pct_round_from_scaled(v_scaled: sat_scaled)
     let hue_milli = if maxc == rs {
-      ((gs - bs) * 60000) / delta
+      ((gs - bs) * hue_milli_per_sextant()) / delta
     } else if maxc == gs {
-      (((bs - rs) * 60000) / delta) + 120000
+      (((bs - rs) * hue_milli_per_sextant()) / delta) + hue_milli_per_two_sextants()
     } else {
-      (((rs - gs) * 60000) / delta) + 240000
+      (((rs - gs) * hue_milli_per_sextant()) / delta) + hue_milli_per_four_sextants()
     }
-    let hue_deg = ((hue_milli % 360000) + 360000) % 360000 / 1000
-    HslProjection { h: hue_deg, s_pct: sat_pct, l_pct: light_pct }
+    let hue_deg = ((hue_milli % full_turn_millidegrees()) + full_turn_millidegrees()) % full_turn_millidegrees() / millidegrees_per_degree
+    Chromatic { h: hue_deg, s_pct: sat_pct, l_pct: light_pct }
   }
 }
 
 fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
-  let l = light_pct * 100
-  let s = sat_pct * 100
-  let c = ((10000 - iabs(v: 2 * l - 10000)) * s) / 10000
-  let h2 = ((hue % 360) + 360) % 360
-  let t = ((h2 % 120) * 10000) / 60
-  let x = (c * (10000 - iabs(v: t - 10000))) / 10000
+  let l = light_pct * percent_scale_hundred
+  let s = sat_pct * percent_scale_hundred
+  let c = ((permyriad_denominator - iabs(v: 2 * l - permyriad_denominator)) * s) / permyriad_denominator
+  let h2 = ((hue % full_turn_degrees) + full_turn_degrees) % full_turn_degrees
+  let two_sextant_deg = sextant_arc_degrees() * 2
+  let t = ((h2 % two_sextant_deg) * permyriad_denominator) / sextant_arc_degrees()
+  let x = (c * (permyriad_denominator - iabs(v: t - permyriad_denominator))) / permyriad_denominator
   let m = l - c / 2
-  let sextant = h2 / 60
+  let sextant = h2 / sextant_arc_degrees()
   if sextant == 0 {
     RgbScaled { r: c + m, g: x + m, b: m }
   } else if sextant == 1 {

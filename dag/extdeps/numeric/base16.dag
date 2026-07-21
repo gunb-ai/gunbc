@@ -1,0 +1,64 @@
+module extdeps.numeric.base16
+
+import std.types { Int, String, List, Bool }
+
+data base16_note: String = "Single authority for hexadecimal digit serialization (census item 14, msg_e9cfe443). Table-as-rows + fold — both extdeps.color.srgb byte_hex and extdeps.languages.json.emit int_to_upper_hex route here; the per-site 16-arm if-chains are dissolved."
+
+type Base16DigitRow {
+  value: Int
+  lower: String
+  upper: String
+}
+
+data base16_digit_rows: List<Base16DigitRow> = [
+  Base16DigitRow { value: 0, lower: "0", upper: "0" },
+  Base16DigitRow { value: 1, lower: "1", upper: "1" },
+  Base16DigitRow { value: 2, lower: "2", upper: "2" },
+  Base16DigitRow { value: 3, lower: "3", upper: "3" },
+  Base16DigitRow { value: 4, lower: "4", upper: "4" },
+  Base16DigitRow { value: 5, lower: "5", upper: "5" },
+  Base16DigitRow { value: 6, lower: "6", upper: "6" },
+  Base16DigitRow { value: 7, lower: "7", upper: "7" },
+  Base16DigitRow { value: 8, lower: "8", upper: "8" },
+  Base16DigitRow { value: 9, lower: "9", upper: "9" },
+  Base16DigitRow { value: 10, lower: "a", upper: "A" },
+  Base16DigitRow { value: 11, lower: "b", upper: "B" },
+  Base16DigitRow { value: 12, lower: "c", upper: "C" },
+  Base16DigitRow { value: 13, lower: "d", upper: "D" },
+  Base16DigitRow { value: 14, lower: "e", upper: "E" },
+  Base16DigitRow { value: 15, lower: "f", upper: "F" },
+]
+
+data base16_digit_refusal_sentinel: String = "!"
+
+fn base16_digit_char(rows: List<Base16DigitRow>, d: Int, upper: Bool) -> String {
+  let found = fold(rows, init: "", f: (acc, row) =>
+    if row.value == d {
+      if upper { row.upper } else { row.lower }
+    } else {
+      acc
+    })
+  if found == "" { base16_digit_refusal_sentinel } else { found }
+}
+
+fn hex_digit_char_lower(d: Int) -> String {
+  base16_digit_char(rows: base16_digit_rows, d: d, upper: false)
+}
+
+fn hex_digit_char_upper(d: Int) -> String {
+  base16_digit_char(rows: base16_digit_rows, d: d, upper: true)
+}
+
+fn byte_hex_lower(v: Int) -> String {
+  concat(hex_digit_char_lower(d: v / 16), hex_digit_char_lower(d: v % 16))
+}
+
+fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
+  if n == 0 { acc }
+  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char_upper(d: n % 16), acc)) }
+}
+
+fn int_to_upper_hex(n: Int) -> String {
+  if n == 0 { "0" }
+  else { int_to_upper_hex_inner(n: n, acc: "") }
+}

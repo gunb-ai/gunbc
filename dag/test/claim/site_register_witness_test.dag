@@ -13,8 +13,8 @@ import gunbc.roadmap_style { roadmap_rules }
 import gunbc.site.interaction {
   BehaviorRow, InteractiveElement,
   Approach, Enter, Receipt,
+  StarElement, HashElement, element_id_eq, element_id_key,
   coverage_gaps, coverage_complete, verb_key,
-  moodboard_elements, moodboard_behaviors,
 }
 import gunbc.site.mark {
   mark_nodes, mark_edges, mark_grid_unit, MarkEdge,
@@ -23,7 +23,8 @@ import gunbc.site.mark {
 import gunbc.site.constellation { layer_stars, brightest_is_authority }
 import gunbc.site.moodboard {
   moodboard_html, moodboard_preconditions_hold, unrealized_behaviors,
-  moodboard_rules, moodboard_nav_js,
+  moodboard_rules, moodboard_nav_js, moodboard_css,
+  moodboard_elements, moodboard_behaviors,
 }
 import gunbc.site.theme_transition { reframe_css, unthemed_color_decls }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -104,14 +105,14 @@ fn witness_moodboard_coverage_complete() -> Bool {
 }
 
 fn witness_dead_hover_is_located_gap() -> Bool {
-  let elements = [ InteractiveElement { element: "orphan", verbs: [Approach] } ]
+  let elements = [ InteractiveElement { element: HashElement, verbs: [Enter] } ]
   let gaps = coverage_gaps(elements: elements, rows: moodboard_behaviors)
   gaps.length() == 1
-    && all(gaps, g => g.element == "orphan" && verb_key(v: g.verb) == "approach")
+    && all(gaps, g => element_id_eq(a: g.element, b: HashElement) && verb_key(v: g.verb) == "enter")
 }
 
 fn witness_unrealized_behavior_is_counted() -> Bool {
-  let ghost = BehaviorRow { element: "star", verb: Enter, response: Receipt, timing: respond_fast }
+  let ghost = BehaviorRow { element: StarElement, verb: Enter, response: Receipt, timing: respond_fast }
   unrealized_behaviors(rows: [ghost]).length() == 1
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
 }

@@ -376,4 +376,14 @@ fn percent_count(p: Percent) -> Nat {
   measure_count(p)
 }
 
-data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.site.tokens quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
+data permyriad_denominator: Int = 10000
+
+data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — one std.measure row, census item 2."
+
+fn permyriad_half_for_round_half_up() -> Int {
+  permyriad_denominator / 2
+}
+
+data percent_scale_hundred: Int = 100
+
+data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
