@@ -4910,6 +4910,15 @@ fn typed_module_content_key(
     ))
 }
 
+fn typed_result_to_arc(
+    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Arc<v1_compiler_infer::TypecheckModuleResult> {
+    match Rc::try_unwrap(result) {
+        Ok(inner) => Arc::new(inner),
+        Err(rc) => Arc::new((*rc).clone()),
+    }
+}
+
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
 /// module per reconcile; the interface is a pure projection of the typed result).
 fn note_interface_hash(
@@ -4956,14 +4965,15 @@ fn check_index_module_source_identity(
 fn index_insert_typed(
     index: &MultiEntryIndex,
     typed_key: String,
-    result: Arc<v1_compiler_infer::TypecheckModuleResult>,
+    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Arc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    let arc = typed_result_to_arc(result);
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
             .borrow_mut()
-            .insert(typed_key, result.clone());
-        return Ok(result);
+            .insert(typed_key, arc.clone());
+        return Ok(arc);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
@@ -4971,7 +4981,7 @@ fn index_insert_typed(
     } {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
-    let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
+    let encoded = SharedTypecheckCaches::encode_typed_snapshot(arc.as_ref())?;
     let raced_bytes = {
         let mut caches = shared_caches_write(store)?;
         if let Some(existing) = caches.clone_typed_bytes(&typed_key) {
@@ -4985,7 +4995,7 @@ fn index_insert_typed(
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
     // Insert won the race: bytes live in the shared store only (no per-index Arc copy).
-    Ok(result)
+    Ok(arc)
 }
 
 /// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.

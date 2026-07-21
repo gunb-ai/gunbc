@@ -8,7 +8,9 @@
 //! module holds the interim **serde byte transport** for cross-worker share only.
 //! When armed, the shared store is the sole typed-cache authority — `index_insert_typed`
 //! never writes per-index `typed_module_cache` (reads decode shared bytes only; avoids
-//! Arc+JSON double retention).
+//! Arc+JSON double retention). 🟡 dissolve-on:
+//! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2);
+//! `cli_run` typed-cache seam flipped in slice 2/7 (#6955).
 //!
 //! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type
 //! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
