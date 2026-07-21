@@ -96,6 +96,13 @@ fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
   }
 }
 
+fn witness_verify_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
+  match host_runner_memory_cap_verify_transport_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
 test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
   witness_plan_emit_claims_nothing_on_face()
     && witness_plan_emit_includes_three_memory_cap_knobs()
@@ -104,4 +111,5 @@ test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
     && witness_verify_receipt_counts_drifted_red_control()
     && witness_converge_cli_verify_routes_srv3()
     && witness_converge_cli_verify_output_projects_receipt()
+    && witness_verify_transport_script_scaffold_carries_dissolution_trigger()
 }
