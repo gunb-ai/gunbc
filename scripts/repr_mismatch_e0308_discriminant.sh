@@ -12,8 +12,6 @@ cd "$ROOT"
 source "$ROOT/scripts/lib/render_cssl_probe_lib_cargo_toml.sh"
 
 HEAD="$(git rev-parse --short HEAD)"
-MODULE_BASENAME="$(basename "$MODULE_PATH" .dag)"
-
 count_e0308() { grep -c 'error\[E0308\]' "$1" 2>/dev/null || true; }
 count_rustc_errors() { grep -cE '^error(\[E[0-9]+\])?:' "$1" 2>/dev/null || true; }
 first_rustc_error() { grep -m1 -E '^error(\[E[0-9]+\])?:' "$1" 2>/dev/null || echo "(no rustc error line)"; }

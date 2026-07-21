@@ -1,0 +1,12 @@
+# repr_mismatch E0308 discriminant — does #6959 move the curated/CSSL probe histogram?
+# Method: scripts/repr_mismatch_e0308_discriminant.sh (bright-lynx-868, 2026-07-21)
+# Module: src/v2/compiler/04_infer.dag (deep lane 1; materialization_carriers emit-failed pre/post)
+# PRE  = a222c70a46 (parent of #6959 merge)
+# POST = ab3683cfc0 (#6959 squash merge — TargetTextCarrier / 06_translate grounding)
+# CSSL path: gunbc compile (v2-only closure, has_v1_seed=false → FaithfulFreeMonoid) + CSSL_STD_SEED_LINK=1 assemble + cargo build --lib
+# HostNative path: cargo check -p v1-compiler --lib (committed seed, HostNative corpus_repr)
+path	module	pre_head	post_head	pre_e0308	post_e0308	delta	first_error_class_notes
+CSSL_FaithfulFreeMonoid	src/v2/compiler/04_infer.dag	a222c70a46	ab3683cfc0	3873	3873	0	emit_shape blocks before E0308 ranking; total_rustc_errors=4382 both sides
+HostNative_whole_tree_seed	src/v2/compiler/04_infer.dag	a222c70a46	ab3683cfc0	0	0	0	cargo check clean; infer files e0308_infer_files=0
+
+# Disposition: #6959 grounds the v2-EMIT target model (06_translate type projection); it does NOT touch the v1-seed FaithfulFreeMonoid CSSL probe artifact. zesty right. The ~4261 repr-mismatch histogram is this probe class (E0308≈3873 on 04_infer today, pre-import-closure/generic-T peel). Histogram-drop receipt for the lever is NOT satisfied by #6959; mechanism landed for v2 translate path only (rust_freemonoid_char_string_grounding_test GREEN). Real CSSL histogram lever = v1 emit HostNative text-carrier grounding (parallel #5428), not v2 TargetTextCarrier alone.
