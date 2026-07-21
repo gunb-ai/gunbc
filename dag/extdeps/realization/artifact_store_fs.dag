@@ -3,7 +3,17 @@ module extdeps.realization.artifact_store_fs
 import extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, Bool }
+import std.types { ContentHash, String, Bool, List }
+import std.effect_grant {
+  Verb, Write, Read,
+  NamespacePosition,
+  Admitted, EffectOutsideGrant,
+}
+import std.materialization_ladder { Frame }
+import std.artifact_store_scratch_grant {
+  artifact_store_scratch_read_admissible,
+  artifact_store_scratch_write_admissible,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data artifact_store_fs_transport_note: String = "P2 host-transport half (witness-realization plan): the filesystem realization of std.artifact_store's persistent tier. The keyed path ENCODES identity - store_root/<content-hash>.artifact - so presence-at-path is a ContentKeyed hit for exactly that identity, which is NOT the #6352 existence-keying (that red keyed on OUTPUT presence while the INPUTS went unhashed; here the path IS the input hash). Layering: this module is one transport handler bound to the pure spec (std.artifact_store, the single authority); a second handler (e.g. remote CAS) binds the same shape. SCOPE (honest): put/get only - the Filesystem service exposes Write/Read but no Delete/List, so SpacePacked budget enforcement on the persistent tier is unrealizable until those operations are added to the cited service surface; until then the disk tier grows unbounded and the in-process std.artifact_store fold is the only packed tier. That gap is the named next rung, not a silent widen."
+data artifact_store_fs_transport_note: String = "P2 host-transport half (witness-realization plan): the filesystem realization of std.artifact_store's persistent tier. The keyed path ENCODES identity - store_root/<content-hash>.artifact - so presence-at-path is a ContentKeyed hit for exactly that identity, which is NOT the #6352 existence-keying (that red keyed on OUTPUT presence while the INPUTS went unhashed; here the path IS the input hash). Layering: this module is one transport handler bound to the pure spec (std.artifact_store, the single authority); a second handler (e.g. remote CAS) binds the same shape. Grant refusals surface as typed ArtifactFs*Refused variants (verb, target, frame) — never widened to miss/false/[] (DESIGN 5). SCOPE (honest): put/get only - the Filesystem service exposes Write/Read but no Delete/List, so SpacePacked budget enforcement on the persistent tier is unrealizable until those operations are added to the cited service surface; until then the disk tier grows unbounded and the in-process std.artifact_store fold is the only packed tier. That gap is the named next rung, not a silent widen."
 
 fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
   concat(store_root, "/", key, ".artifact")
@@ -21,33 +31,81 @@ fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
 type ArtifactFsLookup
   = ArtifactFsHit { payload: String }
   | ArtifactFsMiss { path: String }
+  | ArtifactFsRefused { verb: Verb, target: NamespacePosition, frame: Frame }
 
-func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> Bool {
-  let w = Filesystem.Write(path: artifact_fs_path(store_root: store_root, key: key), content: payload)
-  return w.success
+type ArtifactFsPutResult
+  = ArtifactFsPutOk
+  | ArtifactFsPutRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsPutFailed { path: String }
+
+type ArtifactFsDeleteResult
+  = ArtifactFsDeleteOk
+  | ArtifactFsDeleteRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsDeleteFailed { path: String }
+
+type ArtifactFsListResult
+  = ArtifactFsListOk { entries: List<String> }
+  | ArtifactFsListRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsListFailed { path: String }
+
+func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {
+  match artifact_store_scratch_write_admissible(store_root: store_root) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      ArtifactFsPutRefused { verb: v, target: t, frame: f }
+    Admitted { via_root: r } => {
+      let path = artifact_fs_path(store_root: store_root, key: key)
+      let w = Filesystem.Write(path: path, content: payload)
+      if w.success {
+        return ArtifactFsPutOk
+      }
+      return ArtifactFsPutFailed { path: path }
+    }
+  }
 }
 
 func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
-  let path = artifact_fs_path(store_root: store_root, key: key)
-  let r = Filesystem.Read(path: path)
-  if r.success {
-    return ArtifactFsHit { payload: r.content }
-  }
-  return ArtifactFsMiss { path: path }
-}
-
-func artifact_fs_delete(store_root: String, key: ContentHash) -> Bool {
-  let d = Filesystem.Delete(path: artifact_fs_path(store_root: store_root, key: key))
-  return d.success
-}
-
-func artifact_fs_list(store_root: String) -> List<String> {
-  let l = Filesystem.List(path: store_root)
-  if l.success {
-    if l.entries == "" {
-      return []
+  match artifact_store_scratch_read_admissible(store_root: store_root) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      ArtifactFsRefused { verb: v, target: t, frame: f }
+    Admitted { via_root: _ } => {
+      let path = artifact_fs_path(store_root: store_root, key: key)
+      let read_out = Filesystem.Read(path: path)
+      if read_out.success {
+        return ArtifactFsHit { payload: read_out.content }
+      }
+      return ArtifactFsMiss { path: path }
     }
-    return split(l.entries, separator: "\n")
   }
-  return []
+}
+
+func artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDeleteResult {
+  match artifact_store_scratch_write_admissible(store_root: store_root) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      ArtifactFsDeleteRefused { verb: v, target: t, frame: f }
+    Admitted { via_root: r } => {
+      let path = artifact_fs_path(store_root: store_root, key: key)
+      let d = Filesystem.Delete(path: path)
+      if d.success {
+        return ArtifactFsDeleteOk
+      }
+      return ArtifactFsDeleteFailed { path: path }
+    }
+  }
+}
+
+func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
+  match artifact_store_scratch_read_admissible(store_root: store_root) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      ArtifactFsListRefused { verb: v, target: t, frame: f }
+    Admitted { via_root: r } => {
+      let l = Filesystem.List(path: store_root)
+      if l.success {
+        if l.entries == "" {
+          return ArtifactFsListOk { entries: [] }
+        }
+        return ArtifactFsListOk { entries: split(l.entries, separator: "\n") }
+      }
+      return ArtifactFsListFailed { path: store_root }
+    }
+  }
 }
