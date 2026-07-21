@@ -1608,6 +1608,17 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
     );
 }
 
+// 🟡 dissolve-on (B): replace this ignored scaffold with a corpus scan that every
+// `pool.nodes_by_file` consumer refuses non-inference body/ExprData descent.
+#[test]
+#[ignore = "follow-up (B): standing wall forbidding pool.nodes_by_file non-inference body descent"]
+fn pool_nodes_by_file_consumers_must_not_descend_into_body() {
+    panic!(
+        "not implemented: static census of pool.nodes_by_file consumers must prove no \
+         non-inference ExprData/body descent on census-head nodes"
+    );
+}
+
 #[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};

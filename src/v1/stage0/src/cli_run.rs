@@ -4828,8 +4828,11 @@ struct PoolParse {
 // it is NOT a complete guard against non-inference body-content reads (direct
 // ExprData traversal, emit, node-count, etc.). `is_census_heads_fn_stand_in` and
 // `census_heads_body_traversal_refusal` are dev-convenience query helpers, not the
-// safety mechanism — follow-up (B): standing test forbidding pool.nodes_by_file
-// consumers from descending into a body.
+// safety mechanism.
+// 🟡 dissolve-on (B): `pool_nodes_by_file_consumers_must_not_descend_into_body` —
+// standing test forbidding any `pool.nodes_by_file` consumer from non-inference body
+// descent; lands the construction wall and retires `CensusHeadsBodyStripped` as a
+// validation-only backstop.
 const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
 
 thread_local! {
@@ -4901,12 +4904,14 @@ fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<R
     )
 }
 
+/// Fn-decl discriminator for heads-only shrink — must match `local_binding_for_item`'s
+/// fn arm (`04_infer.dag`: `NoConnective && body.is_some() && transport.is_none()`).
+fn census_heads_item_is_fn_decl(item: &Rc<Node>) -> bool {
+    item.connective == Connective::NoConnective && item.body.is_some() && item.transport.is_none()
+}
+
 fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
-    let is_fn_decl = item.connective == Connective::NoConnective
-        && item.transport.is_none()
-        && item.children.is_empty()
-        && item.body.is_some();
-    let body = if is_fn_decl {
+    let body = if census_heads_item_is_fn_decl(&item) {
         Some(stripped_fn_body_marker())
     } else {
         None
@@ -17403,7 +17408,10 @@ mod pool_heads_oracle_tests {
     #[test]
     fn pool_heads_materialization_oracle_dump() {
         let roots = vec![
-            workspace_root().join("src/v2").to_string_lossy().into_owned(),
+            workspace_root()
+                .join("src/v2")
+                .to_string_lossy()
+                .into_owned(),
             workspace_root().join("dag").to_string_lossy().into_owned(),
         ];
         let ref_edges = reference_resolution_facts(&roots, &roots, &[]);
