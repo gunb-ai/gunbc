@@ -1,5 +1,11 @@
 module v2.test.complexity_gate.table_fixture_add_subject_producer
 
+import v2.extdeps.languages.dag {
+  dag_add_arrow_with_body_fixture,
+  dag_add_arrow_with_body_swapped_operands_fixture
+}
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
 
 data table_fixture_add_subject_producer_note: String = "Fast-lane subject producer: table fixture Arrow (dag_add_arrow_with_body_fixture). Census ingest proofs live in ingested_fixture_arrows + long/wave1_gate1_d_mvp_subsumption_witness_test.dag."
 
