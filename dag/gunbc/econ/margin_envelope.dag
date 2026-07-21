@@ -21,6 +21,7 @@ type MarginEnvelopeRefusalCause
   = RevenueUnfiled
   | ProfitUnfiled
   | RevenueNonPositive
+  | EnvelopeDerivationRefused
 
 type MarginEnvelopeResult
   = MarginEnvelopeDerived { envelope: MarginEnvelope, margin_kind: MarginKind }
@@ -58,7 +59,7 @@ fn derive_margin_envelope_from_filed_facts(
             match margin_envelope_from_whole_dollar_counts(revenue: rev_count, profit: prf_count) {
               Present { value: envelope } =>
                 MarginEnvelopeDerived { envelope: envelope, margin_kind: margin_kind }
-              _ => MarginEnvelopeRefused { cause: RevenueNonPositive }
+              _ => MarginEnvelopeRefused { cause: EnvelopeDerivationRefused }
             }
           }
         }
