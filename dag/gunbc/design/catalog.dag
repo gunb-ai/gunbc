@@ -14,7 +14,7 @@ import extdeps.color.solarized {
   solarized_swatches, solarized_authority, solarized_version,
 }
 
-data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited swatch rows live in extdeps/color/ as CitedColorRow; catalogue wraps provenance and SwatchMemberKind only. Register binding (gunbc.site.tokens quiet_envelope via srgb8_to_hsl) is checked at theme level — island-pastel mint/ivory violate the quiet envelope by design."
+data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited swatch rows live in extdeps/color/ as CitedColorRow; catalogue wraps provenance and SwatchMemberKind only. Register binding (gunbc.site.tokens quiet_envelope_srgb8) is checked at the (set × register) witness layer — island-pastel mint/ivory violate the quiet envelope by design."
 
 data island_pastel_provenance_note: String = "Soft high-key pastel register, operator-supplied swatches 2026-07-21, inspired by Animal Crossing: New Horizons UI colorways (inspiration, not citation — no upstream spec exists to cite). loam is DERIVED from camel (text ink in-family); witness pins WCAG capability via loam only."
 

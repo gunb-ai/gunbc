@@ -12,7 +12,7 @@ data okabe_ito_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21). Set-level law: all eight swatches are mutually distinguishable under simulated deuteranopia/protanopia/tritanopia (the upstream CUD claim — witness pins distinguishability at the catalogue layer)."
+data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21). Upstream CUD CLAIM: eight colors mutually distinguishable under simulated CVD — NOT witness-pinned here; witness pins swatch count and filed hex values only; CVD distinguishability witness lands with a simulation kernel."
 
 data okabe_ito_version: String = "2008"
 

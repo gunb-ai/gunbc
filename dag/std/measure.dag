@@ -376,35 +376,4 @@ fn percent_count(p: Percent) -> Nat {
   measure_count(p)
 }
 
-type PercentPickState {
-  chosen: Percent
-  pos: Int
-}
-
-fn pick_percent_lut(lut: List<Percent>, target: Int) -> Percent {
-  let result = fold(lut, init: PercentPickState { chosen: percent(0), pos: 0 }, f: (state, p) =>
-    PercentPickState {
-      chosen: if state.pos == target { p } else { state.chosen },
-      pos: state.pos + 1,
-    })
-  result.chosen
-}
-
-data percent_lut: List<Percent> = [
-  percent(0), percent(1), percent(2), percent(3), percent(4), percent(5), percent(6), percent(7), percent(8), percent(9),
-  percent(10), percent(11), percent(12), percent(13), percent(14), percent(15), percent(16), percent(17), percent(18), percent(19),
-  percent(20), percent(21), percent(22), percent(23), percent(24), percent(25), percent(26), percent(27), percent(28), percent(29),
-  percent(30), percent(31), percent(32), percent(33), percent(34), percent(35), percent(36), percent(37), percent(38), percent(39),
-  percent(40), percent(41), percent(42), percent(43), percent(44), percent(45), percent(46), percent(47), percent(48), percent(49),
-  percent(50), percent(51), percent(52), percent(53), percent(54), percent(55), percent(56), percent(57), percent(58), percent(59),
-  percent(60), percent(61), percent(62), percent(63), percent(64), percent(65), percent(66), percent(67), percent(68), percent(69),
-  percent(70), percent(71), percent(72), percent(73), percent(74), percent(75), percent(76), percent(77), percent(78), percent(79),
-  percent(80), percent(81), percent(82), percent(83), percent(84), percent(85), percent(86), percent(87), percent(88), percent(89),
-  percent(90), percent(91), percent(92), percent(93), percent(94), percent(95), percent(96), percent(97), percent(98), percent(99),
-  percent(100),
-]
-
-fn percent_from_bounded_int(v: Int) -> Percent {
-  let clamped = if v < 0 { 0 } else if v > 100 { 100 } else { v }
-  pick_percent_lut(lut: percent_lut, target: clamped)
-}
+data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.site.tokens quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."

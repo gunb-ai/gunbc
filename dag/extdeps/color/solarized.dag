@@ -12,7 +12,7 @@ data solarized_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; sRGB hex values filed as Srgb8. Structure rows: base ladder (base03..base3), accent set (yellow..green), and role-pairing involution (each accent names its complement on the wheel). Canonical L*a*b rows land with the OKLCH reground lane — not prose-blobbed here."
+data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; sRGB hex values filed as Srgb8. Structure rows: base luminance ladder (base03 darkest .. base3 lightest) and dark/light BASE mode reassignment involution (base03<->base3, base02<->base2, base01<->base1, base00<->base0 — the pairing Schoonover documents for syntax/background roles). Canonical L*a*b rows land with the OKLCH reground lane."
 
 data solarized_version: String = "1.0.0beta2"
 
@@ -21,9 +21,9 @@ type SolarizedLadderStep {
   color: Srgb8
 }
 
-type SolarizedRolePair {
-  accent: String
-  complement: String
+type SolarizedBaseModePair {
+  dark_role: String
+  light_role: String
 }
 
 data solarized_base03: Srgb8 = Srgb8 { r: 0, g: 43, b: 54 }
@@ -54,11 +54,11 @@ data solarized_base_ladder: List<SolarizedLadderStep> = [
   SolarizedLadderStep { name: "base3", color: solarized_base3 },
 ]
 
-data solarized_role_pairs: List<SolarizedRolePair> = [
-  SolarizedRolePair { accent: "yellow", complement: "blue" },
-  SolarizedRolePair { accent: "orange", complement: "cyan" },
-  SolarizedRolePair { accent: "red", complement: "green" },
-  SolarizedRolePair { accent: "magenta", complement: "violet" },
+data solarized_base_mode_pairs: List<SolarizedBaseModePair> = [
+  SolarizedBaseModePair { dark_role: "base03", light_role: "base3" },
+  SolarizedBaseModePair { dark_role: "base02", light_role: "base2" },
+  SolarizedBaseModePair { dark_role: "base01", light_role: "base1" },
+  SolarizedBaseModePair { dark_role: "base00", light_role: "base0" },
 ]
 
 data solarized_swatches: List<CitedColorRow> = [

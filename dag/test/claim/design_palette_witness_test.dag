@@ -1,8 +1,10 @@
 module test.claim.design_palette_witness
 
 import std.types { Int, String, Bool }
-import std.measure { percent, percent_count }
-import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl }
+import extdeps.color.srgb { Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl_projection }
+import extdeps.color.solarized {
+  solarized_base_ladder, solarized_base_mode_pairs, solarized_swatches,
+}
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100, srgb8_contrast_at_least,
   wcag_aa_normal_text_hundredths, wcag_aaa_normal_text_hundredths,
@@ -11,8 +13,8 @@ import gunbc.design.palette {
   Swatch, SwatchSet, PairingGrade, TextAaa, TextAa, LargeTextOrGraphicsAa, DecorationOnly,
   grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
   set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
-  quiet_envelope_admits_swatch,
 }
+import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam,
   okabe_ito, solarized,
@@ -84,27 +86,25 @@ fn witness_grade_kernel_discriminates() -> Bool {
 }
 
 fn witness_camel_hsl_projection() -> Bool {
-  let hsl = srgb8_to_hsl(c: island_camel.color)
-  hsl.h == 35
-    && percent_count(p: hsl.s) == 53
-    && percent_count(p: hsl.l) == 51
+  let proj = srgb8_to_hsl_projection(c: island_camel.color)
+  proj.h == 35 && proj.s_pct == 53 && proj.l_pct == 51
 }
 
 fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
-  let hsl = srgb8_to_hsl(c: island_camel.color)
-  !(hsl.h == 36 && percent_count(p: hsl.s) == 53 && percent_count(p: hsl.l) == 51)
+  let proj = srgb8_to_hsl_projection(c: island_camel.color)
+  !(proj.h == 36 && proj.s_pct == 53 && proj.l_pct == 51)
 }
 
 fn witness_camel_passes_quiet_envelope() -> Bool {
-  quiet_envelope_admits_swatch(sw: island_camel)
+  quiet_envelope_srgb8(c: island_camel.color)
 }
 
 fn witness_mint_refused_by_quiet_envelope() -> Bool {
-  !quiet_envelope_admits_swatch(sw: island_mint)
+  !quiet_envelope_srgb8(c: island_mint.color)
 }
 
 fn witness_ivory_refused_despite_near_achromatic_oklch() -> Bool {
-  !quiet_envelope_admits_swatch(sw: island_ivory)
+  !quiet_envelope_srgb8(c: island_ivory.color)
 }
 
 data ivory_hsl_proxy_defect_note: String = "Teaching case: ivory (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
@@ -113,6 +113,27 @@ fn witness_cited_palette_counts() -> Bool {
   swatches_of(s: okabe_ito).length() == 8
     && swatches_of(s: solarized).length() == 16
     && palette_catalog.length() == 3
+}
+
+fn ladder_step_matches_catalog(step_name: String, step_color: Srgb8) -> Bool {
+  fold(solarized_swatches, init: false, f: (found, row) =>
+    found || (row.name == step_name
+      && row.color.r == step_color.r
+      && row.color.g == step_color.g
+      && row.color.b == step_color.b))
+}
+
+fn witness_solarized_base_ladder_order_and_count() -> Bool {
+  solarized_base_ladder.length() == 8
+    && all(solarized_base_ladder, step => ladder_step_matches_catalog(step_name: step.name, step_color: step.color))
+}
+
+fn witness_solarized_base_mode_pairing_involution() -> Bool {
+  solarized_base_mode_pairs.length() == 4
+    && fold(solarized_base_mode_pairs, init: true, f: (acc, pair) =>
+      acc && pair.dark_role != pair.light_role
+        && fold(solarized_base_mode_pairs, init: false, f: (found, rev) =>
+          found || (rev.dark_role == pair.light_role && rev.light_role == pair.dark_role)))
 }
 
 test fn design_palette_catalog_keystone_holds() -> Bool {
@@ -129,4 +150,6 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_mint_refused_by_quiet_envelope()
     && witness_ivory_refused_despite_near_achromatic_oklch()
     && witness_cited_palette_counts()
+    && witness_solarized_base_ladder_order_and_count()
+    && witness_solarized_base_mode_pairing_involution()
 }

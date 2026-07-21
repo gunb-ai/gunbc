@@ -2,10 +2,7 @@ module gunbc.design.palette
 
 import std.types { Int, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.color.srgb {
-  Srgb8, srgb8_admissible, srgb8_hex,
-  quiet_envelope_hsl, srgb8_to_hsl,
-}
+import extdeps.color.srgb { Srgb8, srgb8_admissible, srgb8_hex }
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100,
   wcag_aa_normal_text_hundredths,
@@ -13,7 +10,7 @@ import extdeps.accessibility.wcag_contrast {
   wcag_aaa_normal_text_hundredths,
 }
 
-data design_palette_note: String = "L2 palette-catalogue machinery (design-register-library.md). A SwatchSet is register-independent catalog data; admissibility against the house register (gunbc.site.tokens quiet_envelope, HSL proxy until OKLCH reground) is checked at the (set × register) binding, never here. SwatchMemberKind (Filed | Derived) is the relationship vocabulary: filed rows are authored identity; derived rows name their anchor swatch. Set-level membership laws (Okabe-Ito CVD set law, Solarized ladder + role-pairing involution) live as cited structure rows on the extdeps palette modules. PairingGrade derives from the cited WCAG kernel — approval is computed, never hand-flagged."
+data design_palette_note: String = "L2 palette-catalogue machinery (design-register-library.md). A SwatchSet is register-independent catalog data; admissibility against the house register (gunbc.site.tokens quiet_envelope_hsl_pct) is checked at the (set × register) binding in witnesses, never here. swatch_names_distinct is O(n^2) over names — acceptable at catalogue scale, dissolve if a set-ordering witness lands. SwatchMemberKind (Filed | Derived) is the relationship vocabulary. Set-level structure rows live on extdeps palette modules and are pinned by witnesses. PairingGrade derives from the cited WCAG kernel — approval is computed, never hand-flagged."
 
 type Swatch {
   name: String
@@ -72,11 +69,6 @@ fn swatch_set_admissible(s: SwatchSet) -> Bool {
   swatches.length() > 0
     && all(swatches, sw => srgb8_admissible(c: sw.color))
     && swatch_names_distinct(swatches: swatches)
-}
-
-fn quiet_envelope_admits_swatch(sw: Swatch) -> Bool {
-  let hsl = srgb8_to_hsl(c: sw.color)
-  quiet_envelope_hsl(sat: hsl.s, light: hsl.l)
 }
 
 type PairingGrade
