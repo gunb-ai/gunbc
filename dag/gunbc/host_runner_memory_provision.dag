@@ -6,52 +6,25 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
-import extdeps.os.systemd {
-  systemd_memory_max_property,
-  systemd_memory_high_property,
-  systemd_memory_swap_max_property,
-}
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import gunbc.fleet_intent { ComputeHost }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_committed_host_runner_slot_allocation,
-}
-import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
-import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
-import gunbc.host_converge_slice1 {
-  host_converge_from_policy,
-  converge_knob_by_name,
-}
 import gunbc.host_converge {
   fleet_converge_policy,
   HostConverge,
   ConvergeKnob,
-  ConvergePlan,
-  HostOs,
-  PerSlotMemoryCap,
   ConvergeVerdict,
-  VerdictConverged,
-  Drifted,
   NoMembershipProbe,
-  runner_instance_glob,
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  legacy_converge_knob,
-  RunnerSlice,
 }
+import gunbc.host_converge_slice1 { host_converge_from_policy }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
+import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
 import gunbc.host_effect {
   HostEffect,
-  host_effect_identity_evidence,
+  ConvergePlan,
+  HostOs,
   host_effect_converge_loop_evidence,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.runner_unit_live_read {
-  RunnerUnitMemoryLiveRead,
-  runner_unit_live_read_typed,
-  per_slot_memory_cap_verdict_from_unit_read,
-}
+import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
+import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 import std.realization_reconcile { Converged, NotConverged }
 
 data host_runner_memory_provision_scope_disposition: Disposition = Terminal {
