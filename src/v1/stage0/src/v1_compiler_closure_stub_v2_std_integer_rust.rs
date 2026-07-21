@@ -20,5 +20,5 @@ pub fn closure_stub_v2_std_integer_dissolve_on_note() -> String {
 }
 
 pub fn closure_stub_v2_std_integer_source() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.integer (closure projection; std_algebra + std_nat only)\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use crate::std_algebra::GroupCompletion;\n".to_string()), "use crate::std_nat::Nat;\n\n".to_string()), "pub type Int = GroupCompletion<Rc<Nat>>;\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.integer (closure projection; std_algebra + std_nat only)\n\n".to_string()), "use std::sync::Arc;\n".to_string()), "use crate::std_algebra::GroupCompletion;\n".to_string()), "use crate::std_nat::Nat;\n\n".to_string()), "pub type Int = GroupCompletion<Arc<Nat>>;\n".to_string())
 }

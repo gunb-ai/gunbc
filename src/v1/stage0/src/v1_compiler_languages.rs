@@ -528,7 +528,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         }),
         sharing: Rc::new(SharingStrategy {
             needs_sharing: true,
-            wrap_template: "Rc<{0}>".to_string(),
+            wrap_template: "Arc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
             deref_clone: "(*{0}).clone()".to_string(),
             field_clone: "{0}.{1}.clone()".to_string(),
@@ -647,7 +647,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
                 }),
             ]),
         }),
-        callable_type_template: Some("Rc<dyn Fn({params}) -> {return}>".to_string()),
+        callable_type_template: Some("Arc<dyn Fn({params}) -> {return}>".to_string()),
         naming_case: NamingCase::SnakeCase,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
@@ -1062,7 +1062,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         }),
         sharing: Rc::new(SharingStrategy {
             needs_sharing: true,
-            wrap_template: "Rc<{0}>".to_string(),
+            wrap_template: "Arc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
             deref_clone: "(*{0}).clone()".to_string(),
             field_clone: "{0}.{1}.clone()".to_string(),

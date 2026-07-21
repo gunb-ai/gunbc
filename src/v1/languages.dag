@@ -388,7 +388,7 @@ fn rust_spec() -> LanguageSpec {
     visibility: KeywordVisibility { prefix: rust_visibility },
     sharing: SharingStrategy {
       needs_sharing: true,
-      wrap_template: "Rc<{0}>",
+      wrap_template: "Arc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
@@ -481,7 +481,7 @@ fn rust_spec() -> LanguageSpec {
       plain_template: "\"{0}\".to_string()",
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
-    callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    callable_type_template: "Arc<dyn Fn(\{params\}) -> \{return\}>",
     naming_case: SnakeCase,
     async_call_prefix: "",
     bridge_method_prefix: "",
@@ -823,7 +823,7 @@ fn dag_spec() -> LanguageSpec {
     visibility: KeywordVisibility { prefix: "" },
     sharing: SharingStrategy {
       needs_sharing: true,
-      wrap_template: "Rc<{0}>",
+      wrap_template: "Arc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
