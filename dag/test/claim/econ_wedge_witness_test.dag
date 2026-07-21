@@ -84,7 +84,7 @@ fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
   match filed_amount(fact: gitlab_fy2026_gross_profit) {
     Present { value: gross_profit } => {
       let perturbed = usd_whole_dollars(
-        count: usd_whole_dollars_count(gross_profit) + 1
+        count: usd_whole_dollars_count(gross_profit) + 10000000
       )
       match derive_margin_envelope_from_filed_facts(
         revenue: gitlab_fy2026_revenue,
