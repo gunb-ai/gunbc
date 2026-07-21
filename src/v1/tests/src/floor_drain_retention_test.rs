@@ -1,3 +1,8 @@
+//! RESIDUAL after floor-drain retention lane: catalog/model witnesses live in
+//! src/v2/test/claim/manual/floor_drain_retention_test.dag (InProcess typed_module_cache,
+//! Never mechanism vs ScopeExit projection). The tests below exercise the pinned v1 harness:
+//! host-budget entry cap, counted eviction receipts, retention snapshots, and cached-vs-cold
+//! purity under cap — runtime facts with no .dag consumer yet.
 use std::fs;
 use std::sync::Mutex;
 
