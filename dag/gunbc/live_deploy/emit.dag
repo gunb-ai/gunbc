@@ -186,7 +186,7 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
     doc_line_of(text: concat("Group=", user)),
     doc_line_of(text: concat("EnvironmentFile=", gunbc_tree_sync_env_path as String)),
     doc_line_of(text: join([
-      "ExecStart=/usr/bin/rsync -a --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
+      "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
     ], "")),
     doc_line_of(text: join([
       "ExecStart=/usr/bin/rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
