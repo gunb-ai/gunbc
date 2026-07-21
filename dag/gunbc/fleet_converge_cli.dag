@@ -154,8 +154,72 @@ type ConvergeCliOutput {
   reason: String?
 }
 
+fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
+  match result {
+    RunnerMemoryCapVerifyObserved { receipt: r } =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: r.tally.converged,
+        drifted: r.tally.drifted,
+        verdict: r.verdict,
+        reason: none,
+      }
+    RunnerMemoryCapVerifyRefused { host: _, reason: why } =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: KnobFrontier { reason: why } },
+      }
+  }
+}
+
+fn converge_cli_routes_to_memory_cap_verify(host: String) -> Bool {
+  match runner_memory_host_converge(host: host as HostIdentity) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
+  if converge_cli_routes_to_memory_cap_verify(host: host) {
+    converge_cli_receipt_from_memory_cap_verify(
+      host: host,
+      result: runner_memory_cap_verify_run(host: host as HostIdentity)
+    )
+  } else {
+    ConvergeCliReceipt {
+      host: host,
+      applied: 0,
+      drifted: 0,
+      verdict: Absent,
+      reason: Present {
+        value: KnobFrontier {
+          reason: concat(
+            "host_runner_memory_cap_verify: no memory-cap converge knobs in fleet_converge_policy for ",
+            host
+          ),
+        },
+      },
+    }
+  }
+}
+
 fn converge_cli_output(host: String) -> ConvergeCliOutput {
-  let r = converge_cli_run(host: host)
+  converge_cli_output_with_verify(host: host, verify_only: false)
+}
+
+fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
+  converge_cli_output_with_verify(host: host, verify_only: true)
+}
+
+fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
+  let r = if verify_only {
+    converge_cli_verify_run(host: host)
+  } else {
+    converge_cli_run(host: host)
+  }
   ConvergeCliOutput {
     line: converge_cli_receipt_line(r: r),
     converged: converge_cli_receipt_converged(r: r),
