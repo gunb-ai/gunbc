@@ -1,0 +1,77 @@
+module extdeps.sec.facts
+
+import std.types { Int, NonEmptyStr, String, List, Float }
+import extdeps.sec.types { FilingForm, AnnualReport }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/edgar/sec-api-documentation"
+  }
+}
+
+data filed_facts_derive_not_store_note: String = "Store ONLY filed monetary facts with accession + fiscal-period citations. Margins and other ratios are DERIVED projections computed from stored facts at read time (DESIGN section 2 derive-not-store) — never stored fields on the fact row."
+
+type FiledFactCitation {
+  accession: NonEmptyStr
+  fiscal_year: Int
+  fiscal_period: NonEmptyStr
+  form: FilingForm
+  period_start: String
+  period_end: String
+  filed_date: String
+}
+
+type FiledAmount
+  = Filed { amount_usd: Int }
+  | Unfiled { cause: NonEmptyStr }
+
+type FiledMonetaryFact {
+  element: NonEmptyStr
+  amount: FiledAmount
+  citation: FiledFactCitation?
+}
+
+fn filed_amount_usd(fact: FiledMonetaryFact) -> Int? {
+  match fact.amount {
+    Filed { amount_usd: a } => Present { value: a }
+    Unfiled { cause: _ } => none
+  }
+}
+
+fn filed_gross_profit_matches_revenue_minus_cost(
+  revenue_usd: Int,
+  cost_of_revenue_usd: Int,
+  gross_profit_usd: Int
+) -> Bool {
+  gross_profit_usd == (revenue_usd - cost_of_revenue_usd)
+}
+
+fn derive_gross_margin_ratio(revenue_usd: Int, gross_profit_usd: Int) -> Float? {
+  if revenue_usd <= 0 {
+    none
+  } else {
+    Present { value: (gross_profit_usd * 1.0) / (revenue_usd * 1.0) }
+  }
+}
+
+fn derive_gross_margin_ratio_from_facts(
+  revenue: FiledMonetaryFact,
+  gross_profit: FiledMonetaryFact
+) -> Float? {
+  match filed_amount_usd(fact: revenue) {
+    Present { value: rev } =>
+      match filed_amount_usd(fact: gross_profit) {
+        Present { value: gp } => derive_gross_margin_ratio(revenue_usd: rev, gross_profit_usd: gp)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn gross_margin_ratio_in_band(ratio: Float, low: Float, high: Float) -> Bool {
+  (ratio >= low) && (ratio < high)
+}

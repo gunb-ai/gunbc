@@ -1,0 +1,55 @@
+module extdeps.sec.issuer.gitlab_facts
+
+import extdeps.sec.facts { FiledAmount, FiledFactCitation, FiledMonetaryFact }
+import extdeps.sec.types { AnnualReport }
+import extdeps.sec.us_gaap {
+  us_gaap_cost_of_revenue,
+  us_gaap_gross_profit,
+  us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "data.sec.gov/api/xbrl/companyfacts/CIK0001653482.json"
+  }
+}
+
+data gitlab_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-21, session smart-hawk-796). CIK 0001653482 verified on EDGAR submissions API. Fiscal year ended 2026-01-31, form 10-K, accession 0001628280-26-018731, filed 2026-03-17."
+
+data gitlab_fy2026_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-26-018731",
+  fiscal_year: 2026,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period_start: "2025-02-01",
+  period_end: "2026-01-31",
+  filed_date: "2026-03-17",
+}
+
+data gitlab_fy2026_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount_usd: 955224000 },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount_usd: 120743000 },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount_usd: 834481000 },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_filed_facts: List<FiledMonetaryFact> = [
+  gitlab_fy2026_revenue,
+  gitlab_fy2026_cost_of_revenue,
+  gitlab_fy2026_gross_profit,
+]
