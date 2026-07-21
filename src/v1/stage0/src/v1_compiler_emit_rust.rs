@@ -4420,7 +4420,7 @@ pub fn reference_derived_use_lines(
             let block = emit_specific_import_block(
                 provider.clone(),
                 module_to_filename(provider.clone()),
-                names,
+                names.clone(),
                 emit_info.clone(),
                 registry.clone(),
                 local_type_names.clone(),
