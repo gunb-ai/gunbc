@@ -3707,31 +3707,14 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
     "cli_run_discovery_skip_before_resolve";
 
-/// Import-closure module names from the module-graph facts scan — the same grain as
-/// `roster_import_closure_nodes_pre_resolve`, used when skip-before-resolve elides a cold
-/// entry resolve so the post-resolve calibration union stays aligned with the pre-resolve walk.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
-/// dissolves under ROADMAP `2-provenance-ingest` when the floor runner `.dag` owns the decision.
+/// Module names for one entry at the resolved-graph grain — shared by
+/// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
 fn collect_import_closure_module_names_from_facts(
+    index: &MultiEntryIndex,
     entry_path: &str,
-    facts: &ModuleGraphFactsLive,
     out: &mut HashSet<String>,
-) {
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel)
-            || closure_paths
-                .iter()
-                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
-        {
-            out.insert(node.module.clone());
-        }
-    }
+) -> Result<(), String> {
+    collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
 fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
@@ -3914,26 +3897,16 @@ fn resolve_discovery_entry_for_corpus_row(
 /// `run_discovery_corpus_with_options` asserts that equality as the definition-drift
 /// oracle (a loader fork or seeding change localizes here instead of silently skewing
 /// bytes-per-node).
+/// Resolved typed-module names for one discovery entry — the same grain as
+/// `resolve_discovery_entry_for_corpus_row` / `collect_typed_module_names`.
 fn collect_both_closure_module_names_for_entry(
     index: &MultiEntryIndex,
     entry_path: &str,
     out: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let sources = load_sources_for_entry_with_pool(index, entry_path)?;
-    let closure_paths: HashSet<String> = sources
-        .iter()
-        .map(|s| workspace_relative_repo_path(&s.path))
-        .collect();
-    for node in &index.module_graph_facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel)
-            || closure_paths
-                .iter()
-                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
-        {
-            out.insert(node.module.clone());
-        }
-    }
+    let (graph, source_indices) =
+        resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
+    collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
     Ok(())
 }
 
@@ -11340,23 +11313,13 @@ fn discovery_entry_fast_skip_without_resolve(
 }
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
-// SCAFFOLD (§7): calibration-only companion to skip-before-resolve above; dissolves with it.
+/// same resolved modules `roster_import_closure_nodes_pre_resolve` uses.
 fn augment_closure_modules_from_import_facts(
+    index: &MultiEntryIndex,
     entry_path: &str,
-    facts: &ModuleGraphFactsLive,
     out: &mut HashSet<String>,
-) {
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel) {
-            out.insert(node.module.clone());
-        }
-    }
+) -> Result<(), String> {
+    collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
 fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
