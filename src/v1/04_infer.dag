@@ -37,6 +37,7 @@ import v1.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
+  CensusHeadsBodyStripped,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge,
   And, Or, NullCoalesce,
@@ -1556,9 +1557,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprError { kind: kind, message: message } =>
       let span = texpr.span
+      let diagnostics = match kind {
+        CensusHeadsBodyStripped =>
+          [inference_error(message: message, span: span, module_name: scope.module_name)]
+        _ => []
+      }
       InferResult {
         typed: make_expr_error_node(kind: kind, message: message, span: span),
-        diagnostics: []
+        diagnostics: diagnostics
       }
 
     ExprVar { binding_kind: _ } =>
