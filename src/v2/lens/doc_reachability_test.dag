@@ -1,10 +1,11 @@
 module v2.test.lens_doc_reachability.doc_reachability_test
 
+import gunbc.doc_graph_roots { plan_doc_graph_roots }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
-  return doc_graph_orphan_clean_holds()
+  return doc_graph_orphan_clean_holds(plan_roots: plan_doc_graph_roots())
 }
 
 test fn doc_graph_has_no_dangling_links() -> Bool {

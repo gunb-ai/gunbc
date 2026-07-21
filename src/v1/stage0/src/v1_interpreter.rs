@@ -8545,7 +8545,18 @@ fn eval_builtin_inner(
             crate::cli_run::extdeps_external_authority_live_roster_module_count(),
         ))),
 
-        "doc_graph_orphan_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count()))),
+        "doc_graph_orphan_count" => {
+            let extra_roots = expect_str_list(positional.first().copied(), name)?;
+            Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
+                extra_roots,
+            ))))
+        }
+        "doc_graph_admitted_root_count" => {
+            let extra_roots = expect_str_list(positional.first().copied(), name)?;
+            Ok(Some(Value::Int(
+                crate::cli_run::doc_graph_admitted_root_count(extra_roots),
+            )))
+        }
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
             crate::cli_run::doc_graph_dangling_link_count(),
         ))),
