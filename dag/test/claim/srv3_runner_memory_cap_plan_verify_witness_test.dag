@@ -82,9 +82,18 @@ fn witness_converge_cli_verify_routes_srv3() -> Bool {
 }
 
 fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
-  let out = converge_cli_verify_output(host: "srv3")
-  string_contains(s: out.line, pattern: "converge-receipt host=srv3")
-    && string_contains(s: out.line, pattern: "verdict=")
+  match runner_memory_cap_verify_receipt_from_read(
+    host: operator_host_srv3,
+    read: srv3_memory_cap_converged_read(),
+  ) {
+    Present { value: receipt } =>
+      let cli_receipt = converge_cli_receipt_from_memory_cap_verify(
+        host: "srv3",
+        result: RunnerMemoryCapVerifyObserved { receipt: receipt },
+      )
+      converge_cli_receipt_line(r: cli_receipt) == "converge-receipt host=srv3 applied=3 drifted=0 verdict=converged"
+    Absent => false
+  }
 }
 
 test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
