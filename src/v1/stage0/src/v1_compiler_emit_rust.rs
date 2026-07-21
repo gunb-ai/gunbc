@@ -1637,6 +1637,15 @@ pub fn alias_rhs_container_arg(
     }
 }
 
+pub fn alias_rhs_nongeneric_qualified_routing_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PR 6981 routed only the GENERIC leaf branch (children > 0). The non-generic branch (children == 0, no type arguments) still keyed every lookup on the full dotted spelling and fell through rust_render_type_leaf_name -> rust_qualify_type_leaf_name, whose Absent arm returns the name VERBATIM — so 'type Foo = some.module.Bar' with no type arguments still emitted invalid dotted Rust. Same construction applied here: route on qualified_last_segment.\n\nZero drift is structural, not hoped-for: def_mod is pinned to local_mod whenever leaf == name, so the crate-path arm is UNREACHABLE for an unqualified name and every bare spelling renders byte-identically to before. Only a name that actually carries a qualifier can reach the new routing.\n\nDiscriminating corpus case: qualified_module_projection_stripped_fixture.dag declares 'type LocalAlias = v2.test.resolve.qualified_module_projection_provider.ProviderType' — the sole non-generic dotted alias in the corpus, and a fixture whose subject is qualified module projection.\n\nResidual, deliberately NOT closed here: on a routing MISS def_mod falls back to local_mod, so an unroutable qualified name renders as a bare dangling identifier (E0412) rather than refusing. Emit still reports success. That is the section 5 fail-open, and its wall must key on the ROUTING VERDICT, not on the rendered spelling — a spelling scan is inert against this shape by construction.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn alias_rhs_qualified_name_routing_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -1727,29 +1736,62 @@ pub fn render_rust_alias_rhs_type(
             if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
             {
-                match rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) {
-                    Some(host) => host.clone(),
-                    None => {
-                        if ((name.clone() == "String".to_string())
-                            && corpus_repr_is_faithful(corpus_repr.clone()))
-                        {
-                            rust_carrier_optional_wrap(
-                                n.clone(),
-                                render_rust_text_carrier(shared_types.clone()),
-                            )
-                        } else {
-                            match rust_opaque_kernel_alias_carrier(name.clone()) {
-                                Some(carrier) => carrier.clone(),
-                                None => {
-                                    let rendered = rust_render_type_leaf_name(
-                                        name.clone(),
-                                        variant_to_enum.clone(),
-                                    );
-                                    render_rust_shared_type_if_needed(
-                                        name.clone(),
-                                        rendered.clone(),
-                                        shared_types.clone(),
-                                    )
+                {
+                    let leaf = qualified_last_segment(name.clone());
+                    match rust_seed_host_numeric_alias(leaf.clone(), corpus_repr.clone()) {
+                        Some(host) => host.clone(),
+                        None => {
+                            if ((leaf.clone() == "String".to_string())
+                                && corpus_repr_is_faithful(corpus_repr.clone()))
+                            {
+                                rust_carrier_optional_wrap(
+                                    n.clone(),
+                                    render_rust_text_carrier(shared_types.clone()),
+                                )
+                            } else {
+                                match rust_opaque_kernel_alias_carrier(leaf.clone()) {
+                                    Some(carrier) => carrier.clone(),
+                                    None => {
+                                        let rendered = rust_render_type_leaf_name(
+                                            leaf.clone(),
+                                            variant_to_enum.clone(),
+                                        );
+                                        let local_mod = module_to_filename(module_name.clone());
+                                        let def_mod = if (leaf.clone() == name.clone()) {
+                                            local_mod.clone()
+                                        } else {
+                                            alias_rhs_rust_qualify_module_filename(
+                                                leaf.clone(),
+                                                module_name.clone(),
+                                                imports.clone(),
+                                                scope.clone(),
+                                                registry.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                source_indices.clone(),
+                                                module_index.clone(),
+                                            )
+                                        };
+                                        let routed = if (def_mod.clone() != local_mod.clone()) {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "crate::".to_string(),
+                                                        def_mod.clone(),
+                                                    ),
+                                                    "::".to_string(),
+                                                ),
+                                                rendered.clone(),
+                                            )
+                                        } else {
+                                            rendered.clone()
+                                        };
+                                        render_rust_shared_type_if_needed(
+                                            leaf.clone(),
+                                            routed.clone(),
+                                            shared_types.clone(),
+                                        )
+                                    }
                                 }
                             }
                         }
