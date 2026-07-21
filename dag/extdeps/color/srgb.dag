@@ -13,10 +13,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data color_srgb_note: String = "Cited upstream: W3C CSS Color Module Level 4 (retrieved 2026-07-21) — the sRGB color space (whose normative definition CSS4 cites to IEC 61966-2-1), 8-bit component notation, hex serialization (#rrggbb, section 'The RGB hexadecimal notations'), and the HSL<->sRGB conversion algorithm (section 'HSL Colors'). This module owns COLOR-SPACE facts only: what a color value IS and how representations convert. Perceptual LAW over colors (relative luminance, contrast thresholds) is extdeps.accessibility.wcag_contrast, which imports this module — accessibility consumes the color space, it does not own it (DESIGN sect 3: the conversion previously lived inside wcag_contrast; re-homed 2026-07-21). Srgb8 is the authored identity for catalogued colors — a hex literal is a SERIALIZATION of Srgb8, never the stored fact (decompress the string, DESIGN sect 2). RgbScaled is the scale-10000 integer representation (one unit = 0.0001 of a channel) shared by the integer kernels; conversions here are exact at the representation's precision, no floats, no host math. OKLCH coordinates are the named next representation (design-register-library.md sect 10 Class 2, phase A.2): the cube-root kernel follows the same integer-Newton pattern wcag_contrast proves for the 2.4 exponent."
 
+data color_census_frontier: String = "Staged leaf-census items (msg_e9cfe443), explicit triggers: (1-4) srgb_byte_denominator 255 / permyriad 10000 / hue_milli 60000 still inline — dissolve when std.measure carriers land; (5) achromatic arm fixes h=0 per CSS4 (not yet a named Achromatic variant); (14) hex_digit 16-arm chain not yet deduped onto extdeps.languages.json.emit hex_digit_char; OKLCH reground design-register-library.md sect 10 Class 2."
+
 type Srgb8 {
   r: Int
   g: Int
   b: Int
+}
+
+type CitedColorRow {
+  name: String
+  color: Srgb8
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
@@ -68,6 +75,61 @@ fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
 
 fn iabs(v: Int) -> Int {
   if v < 0 { 0 - v } else { v }
+}
+
+fn imax(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn imin(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+data hsl_projection_note: String = "HslProjection: h = hue degrees [0, 360); s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. Achromatic (delta=0) arm fixes h=0 per CSS4 (census item 5 staged). OKLCH reground: design-register-library.md sect 10 Class 2."
+
+type ColorConversionFrontier
+  = HslLive
+  | OklchStaged { trigger: String }
+
+data color_conversion_frontier: ColorConversionFrontier = OklchStaged {
+  trigger: "Exact OKLab/OKLCH requires Float channel math and cube-root; land when design-register-library.md sect 10 Class 2 fires; HSL projection is live now (integer-friendly, CSS Color 4 sRGB<->HSL)."
+}
+
+type HslProjection {
+  h: Int
+  s_pct: Int
+  l_pct: Int
+}
+
+fn pct_round_from_scaled(v_scaled: Int) -> Int {
+  (v_scaled * 100 + 5000) / 10000
+}
+
+fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection {
+  let rs = (c.r * 10000) / 255
+  let gs = (c.g * 10000) / 255
+  let bs = (c.b * 10000) / 255
+  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
+  let minc = imin(a: imin(a: rs, b: gs), b: bs)
+  let delta = maxc - minc
+  let l_scaled = (maxc + minc) / 2
+  let light_pct = pct_round_from_scaled(v_scaled: l_scaled)
+  if delta == 0 {
+    HslProjection { h: 0, s_pct: 0, l_pct: light_pct }
+  } else {
+    let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
+    let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
+    let sat_pct = pct_round_from_scaled(v_scaled: sat_scaled)
+    let hue_milli = if maxc == rs {
+      ((gs - bs) * 60000) / delta
+    } else if maxc == gs {
+      (((bs - rs) * 60000) / delta) + 120000
+    } else {
+      (((rs - gs) * 60000) / delta) + 240000
+    }
+    let hue_deg = ((hue_milli % 360000) + 360000) % 360000 / 1000
+    HslProjection { h: hue_deg, s_pct: sat_pct, l_pct: light_pct }
+  }
 }
 
 fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
