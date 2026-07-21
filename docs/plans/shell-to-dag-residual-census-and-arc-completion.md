@@ -41,7 +41,7 @@ These run before a gunbc runtime exists on the target, so shell is the honest lo
 
 | site | what | current path | dissolves to |
 | --- | --- | --- | --- |
-| `fleet_converge_emit.dag` | **~275 lines** Doc-literal bash: 12+ fn defs (`emit_receipt`,`converge_runner_width`,…), 4 for-loops, while-read drain, `$((…))` arithmetic, verdict if/elif | committed `.github/fleet-converge.sh`, run by thin ctrl reconciler | `EmitArtifactThenThinRun` (slice 2) — §2 |
+| `fleet_converge_emit.dag` | **dissolved** (slice 2 keystone LANDED: #6572 `ConvergePlan`+`EmitArtifactThenThinRun`+`converge_apply` · #6585 golden shrink 323→21 lines · #6598 `gunbc converge --host` CLI receiver) — the census-time ~275 lines / 12+ fn defs / 4 for-loops / while-read drain / arithmetic / verdict if-elif are gone; the emitter now projects only the fresh-standup bootstrap intent + thin invocation lines | committed `.github/fleet-converge.sh` (21-line thin-run golden), steady-state interpreted in-process | done — `EmitArtifactThenThinRun` (slice 2) — §2 |
 | srv3 tails (9 files) | observe scripts, receipt echoes, token-extract, sleep glue; **2 heavy**: `srv3_install_diagnostic_checklist` (curl/redfish/sol probing, FROZEN/terminal), `srv3_os_install_actuator_toolchain_ensure` (apt/curl/websocat) | `shell_exec_via_bash` heredoc → `shell.Exec.Run` | typed observe/effect on `host_effect_apply` (their scaffolds already say so) |
 | `host_identity_converge.dag` | 1–2 line `sudo hostnamectl set-hostname` as `ShellCommand{script}` | **already** `host_effect_apply_gated` | typed hostname effect (drop the shell string) |
 | `floor_diff_observe.dag` | `git diff` observe as `ShellCommand{script}` | **already** `host_effect_apply` LocalShell | **this is the target pattern already realized** |
@@ -69,7 +69,7 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 
 ## 2. `EmitArtifactThenThinRun` scoping — srv1/srv2 subsumption keystone
 
-**Goal:** move the fleet-converge srv1/srv2 steady-state (category C, ~275 lines) *out of emitted bash and into the gunbc binary*, which interprets the typed converge policy in-process and emits typed receipts. The emitted artifact shrinks to the fresh-standup bootstrap fragment + a thin `gunbc converge` invocation line.
+**Goal — ACHIEVED (2026-07-20 receipts; roadmap `6-shell-slice2` sign-off pending):** move the fleet-converge srv1/srv2 steady-state (category C, ~275 lines at census time) *out of emitted bash and into the gunbc binary*, which interprets the typed converge policy in-process and emits typed receipts. The emitted artifact shrinks to the fresh-standup bootstrap fragment + a thin `gunbc converge` invocation line. **Landed:** G1+G2 minted in #6572, G3 consumed in #6585, CLI receiver in #6598; witnesses (`fleet_converge_emit_*`, `fleet_converge_apply_holds`) green by execution 2026-07-20.
 
 ### What already exists (the pieces)
 
@@ -88,9 +88,9 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 
 ### Sequence (each gated by the byte oracle)
 
-1. **Mint G1+G2 together** (one PR, co-owned with the host-effect lane — they must not land alone per host-effect-orchestration §co-owned): `ConvergePlan` effect + `ConvergeOnHost` cell + `EmitArtifactThenThinRun` transport + the in-process knob interpreter, with a fail-closed `Unimplemented`-per-knob frontier so unmodeled knobs refuse (not fabricate).
-2. **Consume from fleet_converge** (G3): `converge_apply` for the steady-state arms; keep the Doc projection emitting *only* the fresh-standup bootstrap + the thin invocation; the committed `.github/fleet-converge.sh` golden shrinks and the drift gate proves the shrink is exactly the steady-state functions.
-3. **Retire** `fleet_converge_steady_state_doc_projection_dissolution_trigger` and the ctrl reconciler's script fan-out (host-effect Phase D's first net ctrl deletion — `runner_host_reconcile.mjs` hash/fan-out).
+1. **Mint G1+G2 together** — **LANDED (#6572)**: `ConvergePlan` effect + `ConvergeOnHost` cell + `EmitArtifactThenThinRun` transport + the in-process knob interpreter, with a fail-closed `Unimplemented`-per-knob frontier so unmodeled knobs refuse (not fabricate).
+2. **Consume from fleet_converge** (G3) — **LANDED (#6585, CLI receiver #6598)**: `converge_apply` for the steady-state arms; the Doc projection emits *only* the fresh-standup bootstrap + the thin invocations; the committed `.github/fleet-converge.sh` golden shrank 323→21 lines with the drift gate green.
+3. **Retire** `fleet_converge_steady_state_doc_projection_dissolution_trigger` and the ctrl reconciler's script fan-out (host-effect Phase D's first net ctrl deletion — `runner_host_reconcile.mjs` hash/fan-out). *(Still open: the trigger remains a Scaffold binding `fleet_converge_thin_invocation` — it dissolves when the thin invocation becomes typed argv dispatch rather than a shell line.)*
 
 **⚠ FLAG 2c — ownership.** `host_effect.dag` is a DESIGN-named seam co-owned by smart-newt-512 (dag-managed-infra) / neat-boar-71 (BMC), and its note requires **operator + bright-stag-194 sign-off before any transport arm is minted**. This scoping is the sign-ready shape; the mint is that lane's, not a solo edit from here. **✓ DISCHARGED** (operator, 2026-07-14): operator dispatch order via calm-ferret-849 supplies the sign; sessions bright-stag-194 / smart-newt-512 / neat-boar-71 verified archived at sign time (no live co-owner lane to co-sign or conflict with), so the mint proceeds under a dedicated worker owned by calm-ferret-849.
 
@@ -103,7 +103,7 @@ Two tracks run in parallel; deletion is the join.
 ### Track 1 — legitimate shell onto the v2 bash rows (bounded)
 
 - **P1 (ready now, no sign-off):** the `ci_workflow` concat-built floor-peak/cgroup runners → `emit(intent, Bash)` via the landed If-band + word support (they carry `…_shell_emit_dissolution_trigger` rows). Foreign-executor, so they *emit*; no `apply()`.
-- **P2:** the Procedure/Let emit band for the 3 fresh-standup frontier rows — the one genuinely new *emitter* vocabulary the arc still needs, scoped by the bootstrap census, fail-closed where a construct isn't modeled. *(Tier-2 band LANDED #6566; the consumer slice — route the fresh-standup fragment, byte-oracle vs `.github/fleet-converge.sh`, retire the frontier rows, delete the site-less arith arm — is in flight. The former "ubuntu-media files need `for`/heredoc" clause is superseded by the FLAG B1 working default above: ubuntu-media dissolves to typed argv/`Filesystem.Write`, so the for/heredoc band is never built.)*
+- **P2:** the Procedure/Let emit band for the 3 fresh-standup frontier rows — the one genuinely new *emitter* vocabulary the arc still needs, scoped by the bootstrap census, fail-closed where a construct isn't modeled. *(Tier-2 band LANDED #6566; the consumer slice — route the fresh-standup fragment through `emit(intent,Bash)`, byte-oracle vs `.github/fleet-converge.sh` — LANDED #6573. The former "ubuntu-media files need `for`/heredoc" clause is superseded by the FLAG B1 working default above: ubuntu-media dissolves to typed argv/`Filesystem.Write`, so the for/heredoc band is never built.)*
 - **P3:** `local_tidy_spec` pre-push hook + cron lines stay `serialize_bash`/foreign-executor **permanently** (roster entries, category (a)). These never dissolve — they're the honest residue.
 
 ### Track 2 — runtime-present shell onto `host_effect_apply` (the §2 keystone cascade)
@@ -117,7 +117,7 @@ Two tracks run in parallel; deletion is the join.
 
 When Track 1's emitters route through the v2 bash rows and Track 2's runtime-present shell is on `apply()` with typed effects, the `bash_program_importer_count` reaches the permanent-residue floor (the v2 replacement emitter + the foreign-executor roster). At that point `bash.program`/`serialize_bash` has no runtime importer, the ratchet's baseline hits the floor, and `program.dag` + `serialize_bash` delete — the arc's terminal step. The v2 bidirectional bash language is the single bash authority.
 
-**Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)**. P5/P6 are mechanical once P4 lands; P1/P2 (emitter side) run independently. The former gate — the P4 sign-off (⚠ FLAG 2a/2b/2c) — is **cleared**: signed/discharged 2026-07-14 (see §2) and the keystone worker is dispatched; the critical path is now P4's execution, not its authorization.
+**Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)** — **P4 is LANDED** (#6572/#6585/#6598; FLAGs 2a(i)/2b/2c signed/discharged 2026-07-14, see §2). The critical path is now P5/P6 (mechanical on the landed interface) and the operator sign of roadmap `6-shell-slice2`; P1/P2 (emitter side) run independently. **Dispatch note (2026-07-20):** do not re-dispatch workers onto P4/slice 2 from the old ~275-line framing — that staleness produced two misdispatches onto finished work.
 
 ## Dissolution trigger
 
