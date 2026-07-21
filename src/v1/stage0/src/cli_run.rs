@@ -29,14 +29,14 @@ use crate::v1_rt;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
     inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
     is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_items, param_node_name_at,
-    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
+    param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -4808,6 +4808,21 @@ pub fn build_multi_entry_index_with_shared_caches(
     )
 }
 
+/// Test-only: whether `parse_cache` holds a path (pool census must not pre-fill it).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -> bool {
+    index
+        .parse_cache
+        .borrow()
+        .keys()
+        .any(|k| k == path || same_canonical_file(k, path))
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.parse_cache.borrow().keys().cloned().collect()
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4833,12 +4848,164 @@ fn new_multi_entry_index_shell(
     }
 }
 
-/// Parse-grade pool snapshot: every indexed module's node plus the pool-wide
-/// newline indexes, in deterministic (sorted module path) order.
+/// Parse-grade pool snapshot: every indexed module's declaration heads plus the
+/// pool-wide newline indexes, in deterministic (sorted module path) order.
+/// Function bodies are stripped (shared marker only) — census consumers read
+/// `module_items` / `local_binding_for_item`, never bodies.
 struct PoolParse {
-    /// Workspace-relative file path → parsed module node.
+    /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+}
+
+// Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
+// `local_binding_for_item`'s fn discriminator. Loud-on-inference only:
+// `ExprErrorKind::CensusHeadsBodyStripped` raises a hard diagnostic in `infer_expr`;
+// it is NOT a complete guard against non-inference body-content reads (direct
+// ExprData traversal, emit, node-count, etc.). `is_census_heads_fn_stand_in` and
+// `census_heads_body_traversal_refusal` are dev-convenience query helpers, not the
+// safety mechanism.
+// 🟡 dissolve-on (B): `pool_nodes_by_file_consumers_must_not_descend_into_body` —
+// standing test forbidding any `pool.nodes_by_file` consumer from non-inference body
+// descent; lands the construction wall and retires `CensusHeadsBodyStripped` as a
+// validation-only backstop.
+const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
+
+thread_local! {
+    static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
+        name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
+        span: no_span(),
+        ident_span: None,
+        children: empty_node_list(),
+        connective: Connective::NoConnective,
+        params: empty_node_list(),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: empty_node_list(),
+        body: None,
+        transport: None,
+        properties: empty_node_list(),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::ExprError {
+            kind: ExprErrorKind::CensusHeadsBodyStripped,
+            message: "pool census heads-only: function body stripped — refuse to interpret"
+                .to_string(),
+        }),
+        ident: None,
+    });
+}
+
+fn stripped_fn_body_marker() -> Rc<Node> {
+    STRIPPED_FN_BODY_MARKER.with(Rc::clone)
+}
+
+pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
+    node.name == CENSUS_HEADS_FN_STAND_IN_NAME
+        || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
+}
+
+/// Optional query helper for non-inference traversals. Loud refusal on inference is
+/// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
+pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
+    if is_census_heads_fn_stand_in(node) {
+        Some(format!(
+            "census heads-only pool parse refused: body traversal hit stand-in '{}'",
+            CENSUS_HEADS_FN_STAND_IN_NAME
+        ))
+    } else {
+        None
+    }
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
+    stripped_fn_body_marker()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
+    census_heads_module_node(module)
+}
+
+fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
+    Rc::new(
+        children
+            .iter()
+            .cloned()
+            .map(census_heads_module_item)
+            .collect(),
+    )
+}
+
+/// Fn-decl discriminator for heads-only shrink — must match `local_binding_for_item`'s
+/// fn arm (`04_infer.dag`: `NoConnective && body.is_some() && transport.is_none()`).
+fn census_heads_item_is_fn_decl(item: &Rc<Node>) -> bool {
+    item.connective == Connective::NoConnective && item.body.is_some() && item.transport.is_none()
+}
+
+fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
+    let body = if census_heads_item_is_fn_decl(&item) {
+        Some(stripped_fn_body_marker())
+    } else {
+        None
+    };
+    let children = if item.children.is_empty() {
+        item.children.clone()
+    } else {
+        census_heads_children(&item.children)
+    };
+    Rc::new(Node {
+        name: item.name.clone(),
+        span: item.span.clone(),
+        ident_span: item.ident_span.clone(),
+        children,
+        connective: item.connective.clone(),
+        params: item.params.clone(),
+        inferred: item.inferred.clone(),
+        return_cardinality: item.return_cardinality.clone(),
+        uses: empty_node_list(),
+        body,
+        transport: item.transport.clone(),
+        properties: item.properties.clone(),
+        type_annotation: item.type_annotation.clone(),
+        is_self_recursive: item.is_self_recursive,
+        has_non_tail_self_call: item.has_non_tail_self_call,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: item.ident.clone(),
+    })
+}
+
+fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: module.name.clone(),
+        span: module.span.clone(),
+        ident_span: module.ident_span.clone(),
+        children: Rc::new(
+            module_items(module.clone())
+                .iter()
+                .cloned()
+                .map(census_heads_module_item)
+                .collect(),
+        ),
+        connective: module.connective.clone(),
+        params: module.params.clone(),
+        inferred: module.inferred.clone(),
+        return_cardinality: module.return_cardinality.clone(),
+        uses: empty_node_list(),
+        body: None,
+        transport: module.transport.clone(),
+        properties: module.properties.clone(),
+        type_annotation: module.type_annotation.clone(),
+        is_self_recursive: module.is_self_recursive,
+        has_non_tail_self_call: module.has_non_tail_self_call,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: module.ident.clone(),
+    })
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -5819,6 +5986,41 @@ fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::So
     }
 }
 
+fn parse_module_heads_for_pool_census(
+    index: &MultiEntryIndex,
+    source: Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    note_source_hash(index, &source);
+    let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    let current_table = index.intern_table.borrow().clone();
+    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+        let mut m = HashMap::new();
+        m.insert(source.path.clone(), nl_index.clone());
+        m
+    });
+    let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    // Pool census needs declaration heads only — do NOT install full-body ASTs into
+    // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
+    if let Some(err) = &parsed.result.error {
+        let span = diagnostic_to_span(err.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        return Err(format!(
+            "symbol_index qualified-projection census refused: parse failed for {}: {}",
+            loc,
+            diagnostic_to_message(err.diagnostic.clone())
+        ));
+    }
+    match &parsed.result.module {
+        Some(module) => Ok((census_heads_module_node(module.clone()), nl_index)),
+        None => Err(format!(
+            "symbol_index qualified-projection census refused: no module in {}",
+            source.path
+        )),
+    }
+}
+
 fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
@@ -5897,7 +6099,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
+        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
@@ -18062,6 +18264,60 @@ mod reference_edge_producer_tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod pool_heads_oracle_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// Local oracle for #6956: dump reference_resolution_facts + pool qualified-fill
+    /// SymbolIndex digests (run with `--nocapture`, compare branch vs main).
+    #[test]
+    fn pool_heads_materialization_oracle_dump() {
+        let roots = vec![
+            workspace_root()
+                .join("src/v2")
+                .to_string_lossy()
+                .into_owned(),
+            workspace_root().join("dag").to_string_lossy().into_owned(),
+        ];
+        let ref_edges = reference_resolution_facts(&roots, &roots, &[]);
+        let mut ref_rows: Vec<String> = ref_edges
+            .iter()
+            .map(|e| format!("{}|{}|{:?}", e.path, e.target_module, e.resolution))
+            .collect();
+        ref_rows.sort();
+        let ref_digest = v1_rt::bytes_identity_hash(ref_rows.join("\n").as_bytes());
+
+        let index = build_multi_entry_index(&roots);
+        let fill = pool_qualified_fill(&index).expect("qualified fill");
+        let qkeys: BTreeSet<String> = fill.entries.keys().cloned().collect();
+        let bare_keys: BTreeSet<String> = fill.global_bare.keys().cloned().collect();
+        let svc_keys: BTreeSet<String> = fill.services.keys().cloned().collect();
+        let sym_digest = v1_rt::bytes_identity_hash(
+            format!(
+                "entries={}\n{}\nbare={}\n{}\nservices={}\n{}",
+                qkeys.len(),
+                qkeys.into_iter().collect::<Vec<_>>().join("\n"),
+                bare_keys.len(),
+                bare_keys.into_iter().collect::<Vec<_>>().join("\n"),
+                svc_keys.len(),
+                svc_keys.into_iter().collect::<Vec<_>>().join("\n"),
+            )
+            .as_bytes(),
+        );
+
+        println!(
+            "POOL_HEADS_ORACLE reference_edge_count={} reference_digest={} symbol_index_digest={} qualified_entries={} global_bare={} services={}",
+            ref_edges.len(),
+            ref_digest,
+            sym_digest,
+            fill.entries.len(),
+            fill.global_bare.len(),
+            fill.services.len(),
+        );
     }
 }
 
