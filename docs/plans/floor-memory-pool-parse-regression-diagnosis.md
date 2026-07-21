@@ -214,4 +214,5 @@ resolve + reconcile, so the instrument lines are already emitted.
 
 Related: [v1 run-stability throughline](v1-run-stability-throughline.md) ·
 [floor shared-compute memoization](floor-shared-compute-memoization.md) ·
+[floor time namespace-walk regression diagnosis](floor-time-namespace-walk-regression-diagnosis.md) ·
 [v2 memory-control audit](v2-memory-control-audit.md) · namespace-resolution-design.md §PR-5b.
