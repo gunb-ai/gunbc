@@ -17,6 +17,7 @@ import gunbc.design.palette {
   grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
   set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
 }
+import std.integer { uint8_channel_inclusive_max_value }
 import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
 import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {
@@ -192,6 +193,13 @@ fn witness_base16_digit_refuses_out_of_range() -> Bool {
     && hex_digit_char_lower(d: -1) == base16_digit_refusal_sentinel
 }
 
+fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
+  match uint8_channel_inclusive_max_value() {
+    Present { value: maxv } => maxv == 255
+    Absent => false
+  }
+}
+
 test fn design_palette_catalog_keystone_holds() -> Bool {
   witness_catalog_admissible()
     && witness_hex_serialization_matches_authored()
@@ -212,4 +220,5 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_solarized_base_ladder_order_and_count()
     && witness_solarized_base_mode_pairing_involution()
     && witness_base16_digit_refuses_out_of_range()
+    && witness_uint8_channel_inclusive_max_value_present()
 }
