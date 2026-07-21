@@ -34,8 +34,7 @@ use crate::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
-    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
+    inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
     param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -63,30 +62,6 @@ fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypeche
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
-    }
-}
-
-fn log_discovery_advisory_typecheck(
-    d: &Rc<ErrorNode>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    gate: ResolveTypecheckGate,
-) {
-    if gate != ResolveTypecheckGate::DiscoveryCorpusAdvisory {
-        return;
-    }
-    // Surface ALL discovery-corpus advisory diagnostics, not only those that also
-    // interpreter-block. Every advisory diagnostic except UnlistedImportUse is already
-    // interpreter-blocking, so this is a no-op for them; it wires UnlistedImportUse
-    // (advisory + non-blocking, the diagnostic-collect signal) into the reporting path
-    // instead of leaving it emitted-but-unobservable (§5 spec-without-execution).
-    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-        let span = diagnostic_to_span(d.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, source_indices);
-        eprintln!(
-            "advisory(typecheck): {}: error: {}",
-            loc,
-            diagnostic_to_message(d.diagnostic.clone())
-        );
     }
 }
 
@@ -685,6 +660,14 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
             "cli_run_effect_reach_inference_bridge"
+        );
+    }
+
+    #[test]
+    fn walk_target_alias_plan_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER,
+            "cli_run_walk_target_alias_plan"
         );
     }
 
@@ -3723,7 +3706,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
     "cli_run_discovery_skip_before_resolve";
 
-/// Module names for one entry at the resolved-graph grain — shared by
+/// Module names for one entry at the loader both-closure grain (no resolve) — shared by
 /// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
 fn collect_import_closure_module_names_from_facts(
     index: &MultiEntryIndex,
@@ -3906,8 +3889,16 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the same resolved-module union as post-resolve
-/// (`resolve_entry_with_index_for_discovery_corpus` + `collect_typed_module_names`).
+/// the authored-module-name grain via the LOADER's both-closure source set
+/// (`load_sources_for_entry_with_pool`) — the exact set `resolve_entry_with_parse_cache`
+/// starts from — so equality with the post-resolve union
+/// (`collect_typed_module_names` over what resolve actually loaded) holds by
+/// construction WITHOUT resolving: no parse, no typecheck, and nothing installed
+/// into `resolved_graph_memo`. The #6938 form of this helper ran the full
+/// `resolve_entry_with_index_for_discovery_corpus` per entry, which made every
+/// floor run resolve the ENTIRE roster on the width-1 pump thread and retain every
+/// resolved graph co-resident in the uncapped memo (~17 GB scoped runs became
+/// ~38 GB whole-corpus retention — the 2026-07-21 exit-137 floor kills).
 /// On a completed width-1 run this equals `DiscoverySummary::roster_closure_nodes`,
 /// and `run_discovery_corpus_with_options` asserts that equality as the definition-drift
 /// oracle (a loader fork or seeding change localizes here instead of silently skewing
@@ -3917,8 +3908,21 @@ fn collect_both_closure_module_names_for_entry(
     entry_path: &str,
     out: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
-    collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
+    for source in load_sources_for_entry_with_pool(index, entry_path)? {
+        match extract_module_path(&source.content) {
+            Some(name) => {
+                out.insert(name);
+            }
+            None => {
+                return Err(format!(
+                    "calibration closure: source '{}' in entry '{}' closure declares no \
+                     module header — the loader-grain module-name count cannot include it \
+                     (fail-closed; a headerless source in the pool is an indexing defect)",
+                    source.path, entry_path
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -4530,12 +4534,21 @@ fn load_sources_for_entry_with_pool(
     index: &MultiEntryIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let cache_key = workspace_relative_entry_path(entry_path);
+    if let Some(cached) = index.entry_closure_sources.borrow().get(&cache_key) {
+        return Ok(cached.clone());
+    }
     let sources = load_sources_for_entry_with_index(
         &index.source_files,
         &index.module_graph_facts,
         entry_path,
     )?;
-    extend_sources_to_both_closure_fixpoint(sources, index)
+    let sources = extend_sources_to_both_closure_fixpoint(sources, index)?;
+    index
+        .entry_closure_sources
+        .borrow_mut()
+        .insert(cache_key, sources.clone());
+    Ok(sources)
 }
 
 fn load_sources_for_entry_with_index(
@@ -4785,6 +4798,17 @@ pub struct MultiEntryIndex {
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
     typed_cache_evictions: Cell<u64>,
+    /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
+    /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
+    /// when no private cgroup memory limit is discoverable) on every insert was the
+    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// across every co-resident session, and each eviction's recompute-on-miss
+    /// added the exact memory pressure the cap exists to relieve — a thrashing
+    /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
+    /// so index construction stays free of the governor read for callers that
+    /// never touch the typed cache.
+    typed_module_cache_cap: std::cell::OnceCell<usize>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4827,6 +4851,11 @@ pub struct MultiEntryIndex {
     /// (closure census + own-tree underlay); the pulled provider becomes
     /// closure-visible, which is what serves the name at typecheck.
     pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
+    /// Memo: normalized entry path → name-derived closure sources. The bare-
+    /// reference fixpoint (`extend_sources_to_both_closure_fixpoint`) is pure
+    /// for a fixed pool; witnesses sharing an entry file within one floor worker
+    /// reused the loader without this and re-paid the #6848 walk each time.
+    entry_closure_sources: RefCell<HashMap<String, Vec<Rc<v1_compiler_compile::SourceFile>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4904,6 +4933,30 @@ pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
 }
 
+/// Test witness for the sample-once cap: exposes the same accessor runtime
+/// call sites use, so a test can observe that repeated calls against one
+/// `index` return the identical value even as the underlying signal moves —
+/// the property the 2026-07-21 fleet OOM fix depends on.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
+    typed_module_cache_cap(index)
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
+    index.entry_closure_sources.borrow().len()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
+    index.pool_qualified_fill.borrow().is_some()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
+    *index.pool_qualified_fill.borrow_mut() = None;
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4914,6 +4967,7 @@ fn new_multi_entry_index_shell(
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
+        typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
@@ -4927,6 +4981,7 @@ fn new_multi_entry_index_shell(
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         pool_bare_census: RefCell::new(None),
+        entry_closure_sources: RefCell::new(HashMap::new()),
     }
 }
 
@@ -5230,28 +5285,73 @@ const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
 
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-pub fn typed_module_cache_max_entries() -> usize {
+/// One derivation of the typed-cache entry cap: env override, else the host
+/// budget divided by the per-entry estimate. Returns `(cap, source_label,
+/// degraded)` — `degraded` is true exactly when the budget did not come from
+/// a private cgroup `memory.max`/`memory.high` (i.e. it fell through to the
+/// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
+/// all and the ceiling was used). Pure and side-effect-free: callers decide
+/// how often to invoke it and whether to log the degraded case.
+fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
-                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+                return (
+                    n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL),
+                    "env override GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES".to_string(),
+                    false,
+                );
             }
             // Zero override is invalid — fall through to derived cap.
         }
         // Malformed override — fall through to derived cap (fail-closed).
     }
-    let (budget, _) = crate::memory_governor::read_host_budget_bytes();
-    budget
+    let (budget, source_label) = crate::memory_governor::read_host_budget_bytes();
+    // String-scan of read_host_budget_bytes' label — acceptable while that fn returns
+    // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
+    // the enum instead of re-parsing its display label (§3, avoid a second representation).
+    let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
+    let cap = budget
         .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
         .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
         .clamp(
             TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
             TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
-        )
+        );
+    (cap, source_label, degraded)
+}
+
+/// Host-budget-derived cap on `typed_module_cache` entries for the private
+/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
+///
+/// This is the pure, un-cached derivation — kept for direct env-override
+/// tests. Runtime call sites must go through `typed_module_cache_cap`
+/// instead, which samples this exactly once per index lifetime; re-deriving
+/// from a live host-shared signal on every insert was the 2026-07-21 fleet
+/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
+pub fn typed_module_cache_max_entries() -> usize {
+    typed_module_cache_cap_derivation().0
+}
+
+/// The typed-cache cap for `index`, sampled exactly ONCE for this index's
+/// lifetime (a run-start fact, never re-read per insert). On first call, if
+/// the budget source is degraded (no private cgroup limit found), emits a
+/// typed, counted `[floor-drain] degraded_budget_source` diagnostic — an
+/// honesty arm, not a widened failure: the cap still derives from whatever
+/// source was found, it is simply named so the degraded case is observable
+/// and prioritizable rather than silent.
+fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
+    *index.typed_module_cache_cap.get_or_init(|| {
+        let (cap, source, degraded) = typed_module_cache_cap_derivation();
+        if degraded {
+            eprintln!(
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+            );
+        }
+        cap
+    })
 }
 
 pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
@@ -5329,7 +5429,11 @@ fn emit_floor_drain_group_line(
     );
 }
 
-fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot) {
+fn emit_floor_drain_receipt(
+    index: &MultiEntryIndex,
+    total_groups: usize,
+    peaks: &IndexRetentionSnapshot,
+) {
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
@@ -5343,7 +5447,7 @@ fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot)
             .peak_rss_bytes
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
-        typed_module_cache_max_entries(),
+        typed_module_cache_cap(index),
     );
 }
 
@@ -5356,7 +5460,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
     if index.cross_worker_store.is_some() {
         return;
     }
-    let cap = typed_module_cache_max_entries();
+    let cap = typed_module_cache_cap(index);
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -5829,9 +5933,6 @@ fn resolved_graph_from_sources_with_index(
         s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
-    for d in typed.diagnostics.iter() {
-        log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
-    }
     let has_type_errors = typed
         .diagnostics
         .iter()
@@ -6502,19 +6603,6 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
-    // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
-    // whole tree; policy gates lookup, never fill"): the base below is the entry's
-    // closure census plus the whole-pool QUALIFIED underlay; each module that
-    // actually typechecks additionally gets its OWN tree's bare census underlaid
-    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
-    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
-        std::collections::HashMap::new();
-
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -6538,6 +6626,25 @@ fn reconcile_with_typed_cache(
     )? {
         return Ok(assembled);
     }
+    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
+    // built once, order-independent, over the whole graph before any module typechecks — see
+    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
+    // whole tree; policy gates lookup, never fill"): the base below is the entry's
+    // closure census plus the whole-pool QUALIFIED underlay; each module that
+    // actually typechecks additionally gets its OWN tree's bare census underlaid
+    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
+    // composed lazily per root in `tree_symbol_index_memo`.
+    //
+    // Built AFTER the all-cache-hits shortcut (fix axis 2b,
+    // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
+    // consumes no symbol index, so an all-hits entry — the warm single-process case,
+    // and any cold child whose closure fully hits the typed/cross-process caches —
+    // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
+    // misses reach the build below exactly as before.
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
+        std::collections::HashMap::new();
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
@@ -6768,7 +6875,6 @@ fn resolved_graph_from_sources(
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
             if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
-                log_discovery_advisory_typecheck(d, &si, typecheck_gate);
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -11797,7 +11903,8 @@ fn discovery_entry_fast_skip_without_resolve(
 }
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same resolved modules `roster_import_closure_nodes_pre_resolve` uses.
+/// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
+/// a genuinely elided resolve stays elided (the skip path must never be the heavy path).
 fn augment_closure_modules_from_import_facts(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -12407,7 +12514,7 @@ pub fn run_discovery_corpus_with_options(
         };
         let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (resolved-module union, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12543,16 +12650,17 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve resolved-module union = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve loader-closure union = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
-                     (loader fork or seeding change); reconcile the definitions before trusting \
-                     bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
-                     shared authority)",
+                     (loader fork or seeding change: resolve loaded a module set the loader \
+                     both-closure fixpoint did not produce, or vice versa); reconcile the \
+                     definitions before trusting bytes-per-node calibration \
+                     (roster_import_closure_nodes_pre_resolve is the shared authority)",
                     pre_resolve_closure_nodes, summary.roster_closure_nodes
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve resolved-module union == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
@@ -12644,7 +12752,7 @@ pub fn run_discovery_corpus_with_options(
                     drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
                     drain_prev = snap;
                 }
-                emit_floor_drain_receipt(total_groups, &drain_peaks);
+                emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
                 return Ok(attach_deferred_discovery_rows(
                     merge_discovery_summaries(summaries),
                     deferred_rows,
@@ -18833,6 +18941,363 @@ fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str
     }
 }
 
+/// Silent-pick class eligible for walk-target-sourced alias codemod (§13 relief valve).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WalkTargetAliasPlanClass {
+    GlobalBareLcp,
+    GlobalBareLcpTie,
+    FnParentFirstHit,
+}
+
+impl WalkTargetAliasPlanClass {
+    fn label(self) -> &'static str {
+        match self {
+            WalkTargetAliasPlanClass::GlobalBareLcp => "global_bare_lcp",
+            WalkTargetAliasPlanClass::GlobalBareLcpTie => "global_bare_lcp_tie",
+            WalkTargetAliasPlanClass::FnParentFirstHit => "fn_parent_first_hit",
+        }
+    }
+}
+
+/// Deduped alias plan row — one `alias <binding> = <walk.target>` per key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WalkTargetAliasPlanKey {
+    pub class: WalkTargetAliasPlanClass,
+    pub declaring_module: String,
+    pub binding: String,
+    pub walk_target_qualified_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkTargetAliasPlanRow {
+    pub key: WalkTargetAliasPlanKey,
+    pub lookup_events: usize,
+    pub walk_verified: bool,
+    /// Primary oracle key (§13): pre-flip binding identity as qualified path.
+    pub pre_flip_qualified_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkTargetAliasPlanRefused {
+    pub class: WalkTargetAliasPlanClass,
+    pub declaring_module: String,
+    pub binding: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WalkTargetAliasPlan {
+    pub rows: Vec<WalkTargetAliasPlanRow>,
+    pub refused: Vec<WalkTargetAliasPlanRefused>,
+    pub global_bare_lcp_events: usize,
+    pub global_bare_lcp_tie_events: usize,
+    pub fn_parent_first_hit_events: usize,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    /// Relative source-root labels joined with `+` (never hardcoded).
+    pub source_scope_label: String,
+}
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
+// Plan-only walk-target alias codemod (`walk_target_alias_plan` bin + cli_run plan types).
+// 🟡 dissolve-on: apply phase emits `alias` rows into source modules and retires this
+// read-only planner when §13 import→alias transmutation + refusal flip complete
+// (stern-owl-401 Phase 3). Receipt: `rg walk_target_alias_plan src/v1/stage0` until deletion;
+// ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER: &str =
+    "cli_run_walk_target_alias_plan";
+
+/// Format plan scope from caller-supplied source roots (relative to workspace when possible).
+pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {
+    let ws = process_workspace_root();
+    source_roots
+        .iter()
+        .map(|root| {
+            Path::new(root)
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| root.clone())
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Rc<TypeEnv>> {
+    ctx.modules
+        .iter()
+        .map(|tm| (tm.type_env.module_path.clone(), tm.type_env.clone()))
+        .collect()
+}
+
+/// Ground walk target for a `global_bare_lcp` silent pick via SymbolIndex — never import lists.
+fn ground_walk_target_global_bare_lcp(
+    type_env: Rc<TypeEnv>,
+    name: &str,
+    chosen_module_path: &str,
+) -> Result<String, String> {
+    match type_env.symbol_index.global_bare.get(name).map(|s| &**s) {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates, .. }) => {
+            let _cand = candidates
+                .iter()
+                .find(|c| c.module_path == chosen_module_path)
+                .ok_or_else(|| {
+                    format!(
+                        "chosen_module '{chosen_module_path}' not in global_bare candidates for '{name}'"
+                    )
+                })?;
+            let qualified_path = module_path_to_qualified_path(chosen_module_path, name);
+            if symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()).is_some()
+            {
+                Ok(qualified_path)
+            } else {
+                Err(format!("symbol_index_lookup miss for '{qualified_path}'"))
+            }
+        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => Err(format!(
+            "global_bare not ambiguous for '{name}' at silent-pick site"
+        )),
+        None => Err(format!("name '{name}' not in global_bare index")),
+    }
+}
+
+/// Ground walk target for `fn_parent_first_hit` via SymbolIndex qualified-path lookup.
+fn ground_walk_target_fn_parent_first_hit(
+    type_env: Rc<TypeEnv>,
+    chosen_parent_module: &str,
+    name: &str,
+    item_index: &ModuleItemIndex,
+) -> Result<String, String> {
+    let qualified_path = module_path_to_qualified_path(chosen_parent_module, name);
+    match symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()) {
+        Some(node) if is_fn_like_binding(&node, chosen_parent_module, name, Some(item_index)) => {
+            Ok(qualified_path)
+        }
+        Some(_) => Err(format!(
+            "symbol_index_lookup hit for '{qualified_path}' is not fn-like"
+        )),
+        None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
+    }
+}
+
+/// Build deduped walk-target alias plan from a resolved ctx + census telemetry.
+pub fn walk_target_alias_plan_from_census(
+    ctx: &v1_interpreter::InterpContext,
+    census: &ResolutionDivergenceCensus,
+) -> WalkTargetAliasPlan {
+    let type_envs = build_module_type_env_map(ctx);
+    let item_index = build_module_item_index(ctx);
+    let mut event_counts: HashMap<WalkTargetAliasPlanKey, usize> = HashMap::new();
+    let mut verified: HashMap<WalkTargetAliasPlanKey, bool> = HashMap::new();
+    let mut pre_flip_paths: HashMap<WalkTargetAliasPlanKey, String> = HashMap::new();
+    let mut refused = Vec::new();
+
+    let mut record = |class: WalkTargetAliasPlanClass,
+                      declaring_module: &str,
+                      binding: &str,
+                      walk_target: Result<String, String>| {
+        match walk_target {
+            Ok(qualified_path) => {
+                let key = WalkTargetAliasPlanKey {
+                    class,
+                    declaring_module: declaring_module.to_string(),
+                    binding: binding.to_string(),
+                    walk_target_qualified_path: qualified_path.clone(),
+                };
+                *event_counts.entry(key.clone()).or_insert(0) += 1;
+                verified.entry(key.clone()).or_insert(true);
+                pre_flip_paths.entry(key).or_insert(qualified_path);
+            }
+            Err(reason) => refused.push(WalkTargetAliasPlanRefused {
+                class,
+                declaring_module: declaring_module.to_string(),
+                binding: binding.to_string(),
+                reason,
+            }),
+        }
+    };
+
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        match type_envs.get(&row.env_module_path) {
+            Some(type_env) => record(
+                WalkTargetAliasPlanClass::GlobalBareLcp,
+                &row.env_module_path,
+                &row.name,
+                ground_walk_target_global_bare_lcp(
+                    type_env.clone(),
+                    &row.name,
+                    &row.chosen_module_path,
+                ),
+            ),
+            None => record(
+                WalkTargetAliasPlanClass::GlobalBareLcp,
+                &row.env_module_path,
+                &row.name,
+                Err(format!(
+                    "declaring module '{}' not in resolved ctx",
+                    row.env_module_path
+                )),
+            ),
+        }
+    }
+
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        match type_envs.get(&row.env_module_path) {
+            Some(type_env) => record(
+                WalkTargetAliasPlanClass::FnParentFirstHit,
+                &row.env_module_path,
+                &row.name,
+                ground_walk_target_fn_parent_first_hit(
+                    type_env.clone(),
+                    &row.chosen_parent_module,
+                    &row.name,
+                    &item_index,
+                ),
+            ),
+            None => record(
+                WalkTargetAliasPlanClass::FnParentFirstHit,
+                &row.env_module_path,
+                &row.name,
+                Err(format!(
+                    "declaring module '{}' not in resolved ctx",
+                    row.env_module_path
+                )),
+            ),
+        }
+    }
+
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        refused.push(WalkTargetAliasPlanRefused {
+            class: WalkTargetAliasPlanClass::GlobalBareLcpTie,
+            declaring_module: row.env_module_path.clone(),
+            binding: row.name.clone(),
+            reason: format!(
+                "global_bare_lcp_tie: {} candidates, no LCP winner — manual qualify/alias/rename required (§13)",
+                row.candidate_count
+            ),
+        });
+    }
+
+    let mut rows: Vec<WalkTargetAliasPlanRow> = event_counts
+        .into_iter()
+        .map(|(key, lookup_events)| WalkTargetAliasPlanRow {
+            pre_flip_qualified_path: pre_flip_paths
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| key.walk_target_qualified_path.clone()),
+            walk_verified: *verified.get(&key).unwrap_or(&false),
+            lookup_events,
+            key,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        (
+            a.key.class.label(),
+            a.key.declaring_module.as_str(),
+            a.key.binding.as_str(),
+            a.key.walk_target_qualified_path.as_str(),
+        )
+            .cmp(&(
+                b.key.class.label(),
+                b.key.declaring_module.as_str(),
+                b.key.binding.as_str(),
+                b.key.walk_target_qualified_path.as_str(),
+            ))
+    });
+
+    WalkTargetAliasPlan {
+        rows,
+        refused,
+        global_bare_lcp_events: census.silent_pick_global_bare_lcp,
+        global_bare_lcp_tie_events: census.silent_pick_global_bare_lcp_tie,
+        fn_parent_first_hit_events: census.silent_pick_fn_parent_first_hit,
+        modules_resolved: census.modules_resolved,
+        modules_excluded: census.modules_excluded,
+        source_scope_label: String::new(),
+    }
+}
+
+/// Whole-corpus walk-target alias plan (plan-only; no source edits).
+pub fn walk_target_alias_plan_live(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<WalkTargetAliasPlan, String> {
+    crate::v1_rt::resolution_silent_pick_enable();
+    let WholeTreeCtx {
+        ctx,
+        modules_resolved,
+        modules_excluded,
+        ..
+    } = whole_tree_resolved_ctx(
+        source_roots,
+        exclude_substrings,
+        v1_interpreter::ExecutionMode::Wet,
+    )?;
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+    let mut census = resolution_divergence_census_from_ctx(&ctx);
+    census.modules_resolved = modules_resolved;
+    census.modules_excluded = modules_excluded;
+    merge_silent_pick_telemetry(&mut census, silent_picks);
+    let mut plan = walk_target_alias_plan_from_census(&ctx, &census);
+    plan.source_scope_label = walk_target_alias_plan_scope_label(source_roots);
+    Ok(plan)
+}
+
+pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
+    let global_bare_unique = plan
+        .rows
+        .iter()
+        .filter(|r| r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp)
+        .count();
+    let fn_parent_unique = plan
+        .rows
+        .iter()
+        .filter(|r| r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit)
+        .count();
+    let mut lines = vec![
+        format!(
+            "[walk-target-alias-plan] scope={} modules_resolved={} modules_excluded={}",
+            if plan.source_scope_label.is_empty() {
+                "unknown".to_string()
+            } else {
+                plan.source_scope_label.clone()
+            },
+            plan.modules_resolved,
+            plan.modules_excluded
+        ),
+        format!(
+            "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} global_bare_lcp_tie_events={} fn_parent_first_hit_events={} unique_rows={} refused={}",
+            plan.global_bare_lcp_events,
+            global_bare_unique,
+            plan.global_bare_lcp_tie_events,
+            plan.fn_parent_first_hit_events,
+            fn_parent_unique,
+            plan.refused.len(),
+        ),
+    ];
+    for row in &plan.rows {
+        lines.push(format!(
+            "ALIAS_ROW\t{}\tmodule={}\tbinding={}\twalk_target={}\tlookup_events={}\twalk_verified={}\tpre_flip_qn={}",
+            row.key.class.label(),
+            row.key.declaring_module,
+            row.key.binding,
+            row.key.walk_target_qualified_path,
+            row.lookup_events,
+            row.walk_verified,
+            row.pre_flip_qualified_path,
+        ));
+    }
+    for row in &plan.refused {
+        lines.push(format!(
+            "REFUSED\t{}\tmodule={}\tbinding={}\treason={}",
+            row.class.label(),
+            row.declaring_module,
+            row.binding,
+            row.reason,
+        ));
+    }
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod resolution_divergence_census_tests {
     use super::{
@@ -18975,6 +19440,287 @@ fn caller() -> Bool {
             );
         }
         let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    fn walk_target_alias_plan_fixture_root() -> std::path::PathBuf {
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-walk-alias-plan-{}", std::process::id()))
+    }
+
+    /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
+    /// Oracle: plan row walk_target == symbol_index-grounded qualified path for LCP winner.
+    #[test]
+    fn walk_target_alias_plan_positive_control_global_bare_lcp() {
+        use super::{
+            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
+            WalkTargetAliasPlanClass,
+        };
+
+        let ws = super::process_workspace_root();
+        let fixture = walk_target_alias_plan_fixture_root();
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "near.dag",
+            r#"module test.aliasplan.near
+
+import std.types { Int }
+
+type AmbigType = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "far.dag",
+            r#"module test.aliasplan.far.away
+
+import std.types { Int }
+
+type AmbigType = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "consumer.dag",
+            r#"module test.aliasplan.near.consumer
+
+import std.types { Int }
+
+fn use_ambig(x: AmbigType) -> Int {
+  return x
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
+        assert!(
+            plan.global_bare_lcp_events >= 1,
+            "fixture must trigger global_bare_lcp silent pick, got events={}",
+            plan.global_bare_lcp_events
+        );
+        assert!(
+            plan.source_scope_label.contains("dag/std"),
+            "scope label must reflect actual source roots, got {}",
+            plan.source_scope_label
+        );
+        let rows: Vec<_> = plan
+            .rows
+            .iter()
+            .filter(|r| {
+                r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp
+                    && r.key.declaring_module == "test.aliasplan.near.consumer"
+                    && r.key.binding == "AmbigType"
+            })
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "expected one deduped AmbigType row for consumer module, plan rows={:?} refused={:?} events={}",
+            plan.rows,
+            plan.refused,
+            plan.global_bare_lcp_events
+        );
+        let row = rows[0];
+        assert!(
+            row.walk_verified,
+            "walk target must verify via symbol_index, row={row:?}"
+        );
+        assert_eq!(
+            row.pre_flip_qualified_path, "test.aliasplan.near.AmbigType",
+            "oracle primary key must be LCP-nearer qualified path"
+        );
+        assert_eq!(
+            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
+            "walk_target and pre_flip_qn must agree"
+        );
+        assert!(
+            row.lookup_events >= 1,
+            "lookup_events must count silent-pick telemetry hits"
+        );
+
+        // Binding-identity oracle within one run: re-ground from census ctx must match plan row.
+        crate::v1_rt::resolution_silent_pick_enable();
+        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
+        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
+        super::merge_silent_pick_telemetry(&mut census, silent_picks);
+        let replay = walk_target_alias_plan_from_census(&ctx, &census);
+        let replay_row = replay
+            .rows
+            .iter()
+            .find(|r| {
+                r.key.declaring_module == "test.aliasplan.near.consumer"
+                    && r.key.binding == "AmbigType"
+            })
+            .expect("replay plan must contain consumer AmbigType row");
+        assert_eq!(
+            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
+            "oracle: replay qualified_path must match plan snapshot"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Planted fn_parent_first_hit silent pick: nested modules both define `helper`, leaf calls bare.
+    #[test]
+    fn walk_target_alias_plan_positive_control_fn_parent_first_hit() {
+        use super::{
+            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
+            WalkTargetAliasPlanClass,
+        };
+
+        let ws = super::process_workspace_root();
+        let fixture = walk_target_alias_plan_fixture_root();
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "grand.dag",
+            r#"module test.aliasplan.a
+
+import std.types { Bool }
+
+fn helper(x: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "parent.dag",
+            r#"module test.aliasplan.b
+
+import std.types { Bool }
+
+fn helper(x: Bool, y: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "leaf.dag",
+            r#"module test.aliasplan.use
+
+import std.types { Bool }
+import test.aliasplan.a { }
+import test.aliasplan.b { }
+
+fn caller() -> Bool {
+  return helper(False)
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
+        assert!(
+            plan.fn_parent_first_hit_events >= 1,
+            "fixture must trigger fn_parent_first_hit silent pick, got events={}",
+            plan.fn_parent_first_hit_events
+        );
+        let rows: Vec<_> = plan
+            .rows
+            .iter()
+            .filter(|r| {
+                r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit
+                    && r.key.declaring_module == "test.aliasplan.use"
+                    && r.key.binding == "helper"
+            })
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "expected one deduped helper row for leaf module, plan rows={:?} refused={:?}",
+            plan.rows,
+            plan.refused
+        );
+        let row = rows[0];
+        assert!(
+            row.walk_verified,
+            "walk target must verify via symbol_index, row={row:?}"
+        );
+        assert!(
+            row.pre_flip_qualified_path == "test.aliasplan.a.helper"
+                || row.pre_flip_qualified_path == "test.aliasplan.b.helper",
+            "oracle must bind to an imported parent helper declaration, got {}",
+            row.pre_flip_qualified_path
+        );
+        assert_eq!(
+            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
+            "walk_target and pre_flip_qn must agree"
+        );
+
+        crate::v1_rt::resolution_silent_pick_enable();
+        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
+        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
+        super::merge_silent_pick_telemetry(&mut census, silent_picks);
+        let replay = walk_target_alias_plan_from_census(&ctx, &census);
+        let replay_row = replay
+            .rows
+            .iter()
+            .find(|r| r.key.declaring_module == "test.aliasplan.use" && r.key.binding == "helper")
+            .expect("replay plan must contain leaf helper row");
+        assert_eq!(
+            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
+            "oracle: replay qualified_path must match plan snapshot"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    #[test]
+    fn walk_target_alias_plan_refuses_global_bare_lcp_tie_sites() {
+        use super::{
+            walk_target_alias_plan_from_census, ResolutionDivergenceCensus,
+            WalkTargetAliasPlanClass,
+        };
+        use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+        use crate::v1_compiler_infer_items::ResolvedGraph;
+        use crate::v1_interpreter::InterpContext;
+        use im::HashMap;
+        use im::Vector;
+        use std::rc::Rc;
+
+        let graph = ResolvedGraph {
+            modules: Rc::new(Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), Wet);
+        let census = ResolutionDivergenceCensus {
+            silent_pick_global_bare_lcp_tie: 1,
+            silent_pick_global_bare_lcp_tie_rows: vec![crate::v1_rt::GlobalBareLcpTieSite {
+                env_module_path: "test.aliasplan.tie.consumer".to_string(),
+                name: "AmbigType".to_string(),
+                candidate_count: 2,
+            }],
+            ..ResolutionDivergenceCensus::default()
+        };
+        let plan = walk_target_alias_plan_from_census(&ctx, &census);
+        assert_eq!(plan.global_bare_lcp_tie_events, 1);
+        assert_eq!(plan.refused.len(), 1);
+        assert_eq!(
+            plan.refused[0].class,
+            WalkTargetAliasPlanClass::GlobalBareLcpTie
+        );
+        assert_eq!(
+            plan.refused[0].declaring_module,
+            "test.aliasplan.tie.consumer"
+        );
+        assert_eq!(plan.refused[0].binding, "AmbigType");
+        assert!(
+            plan.refused[0].reason.contains("global_bare_lcp_tie"),
+            "tie refusal must be typed and located, got {}",
+            plan.refused[0].reason
+        );
     }
 }
 

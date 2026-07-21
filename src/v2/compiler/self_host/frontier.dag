@@ -252,7 +252,7 @@ data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_me
   closure_reads: 17,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -317,7 +317,7 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -443,7 +443,7 @@ data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execut
   closure_reads: 58,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 

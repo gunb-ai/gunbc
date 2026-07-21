@@ -1,12 +1,22 @@
 module gunbc.design.catalog
 
 import std.types { Int, String, Bool }
-import extdeps.color.srgb { Srgb8 }
-import gunbc.design.palette { Swatch, SwatchSet, SwatchSetProvenance, InspiredByExternal, swatch_set_admissible }
+import extdeps.color.srgb { Srgb8, CitedColorRow }
+import gunbc.design.palette {
+  Swatch, SwatchSet, SwatchMember, SwatchSetProvenance,
+  InspiredByExternal, CitedUpstream, HouseAuthored,
+  swatch_filed, swatch_derived, swatch_set_admissible, swatches_of,
+}
+import extdeps.color.okabe_ito {
+  okabe_ito_swatches, okabe_ito_version,
+}
+import extdeps.color.solarized {
+  solarized_swatches, solarized_version,
+}
 
-data design_catalog_note: String = "The palette catalogue: the single home for approved color sets (operator directive 2026-07-21 — every palette in the repo derives from here; a color literal outside the catalogue and the site register is the wall the Phase-A lift closes). One data row per set, vendor-style; measured colorimetry receipts live in the witness (test.claim.design_palette_witness), graded by execution through the cited WCAG kernel — never restated here as prose numbers (no dual representation)."
+data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited swatch rows live in extdeps/color/ as CitedColorRow; catalogue wraps provenance and SwatchMemberKind only. Register binding (gunbc.site.tokens quiet_envelope_srgb8) is checked at the (set × register) witness layer — island-pastel mint/ivory violate the quiet envelope by design."
 
-data island_pastel_provenance_note: String = "Soft high-key pastel register, operator-supplied swatches 2026-07-21, inspired by Animal Crossing: New Horizons UI colorways (inspiration, not citation — no upstream spec exists to cite). Character, measured in OKLCH (offline per CSS Color 4 sRGB<->OKLab; in-substrate recompute is the A.2 trigger, design-register-library.md sect 10 Class 2): four tints at L 0.89-1.00 with moderate perceptual chroma C 0.007-0.164 over one warm camel anchor at L 0.68 — the set the HSL saturation axis misreads as neon (mint reads hsl-S 100% at C 0.142; ivory reads hsl-S 100% at C 0.007), the discriminating case for the A.2 OKLCH re-ground of the register walls. loam is DERIVED, not authored: camel's hue projected to ink depth, oklch(0.45 0.085 73) -> #724d15, so the set carries its own text ink in-family; dissolution: recompute the projection in-substrate at A.2 and pin equality. No authored pair reaches any WCAG grade (best: camel on ivory, just under 3:1) — text capability enters via loam only; the witness pins both facts by execution."
+data island_pastel_provenance_note: String = "Soft high-key pastel register, operator-supplied swatches 2026-07-21, inspired by Animal Crossing: New Horizons UI colorways (inspiration, not citation — no upstream spec exists to cite). loam is DERIVED from camel (text ink in-family); witness pins WCAG capability via loam only."
 
 data island_mint: Swatch = Swatch { name: "mint", color: Srgb8 { r: 157, g: 255, b: 176 } }
 data island_aqua: Swatch = Swatch { name: "aqua", color: Srgb8 { r: 129, g: 241, b: 247 } }
@@ -18,12 +28,42 @@ data island_loam: Swatch = Swatch { name: "loam", color: Srgb8 { r: 114, g: 77, 
 data island_pastel: SwatchSet = SwatchSet {
   name: "island-pastel",
   provenance: InspiredByExternal { note: island_pastel_provenance_note },
-  swatches: [island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam],
+  members: [
+    swatch_filed(sw: island_mint),
+    swatch_filed(sw: island_aqua),
+    swatch_filed(sw: island_ivory),
+    swatch_filed(sw: island_camel),
+    swatch_filed(sw: island_butter),
+    swatch_derived(
+      sw: island_loam,
+      anchor_name: "camel",
+      note: "camel hue projected to ink depth oklch(0.45 0.085 73) -> #724d15",
+    ),
+  ],
 }
 
-data palette_catalog: List<SwatchSet> = [island_pastel]
+fn cited_rows_to_members(rows: List<CitedColorRow>) -> List<SwatchMember> {
+  map(rows, row => swatch_filed(sw: Swatch { name: row.name, color: row.color }))
+}
+
+data okabe_ito: SwatchSet = SwatchSet {
+  name: "okabe-ito",
+  provenance: CitedUpstream { authority: extdeps.color.okabe_ito.extdeps_external_authority_anchor, version: okabe_ito_version },
+  members: cited_rows_to_members(rows: okabe_ito_swatches),
+}
+
+data solarized: SwatchSet = SwatchSet {
+  name: "solarized",
+  provenance: CitedUpstream { authority: extdeps.color.solarized.extdeps_external_authority_anchor, version: solarized_version },
+  members: cited_rows_to_members(rows: solarized_swatches),
+}
+
+data palette_catalog: List<SwatchSet> = [island_pastel, okabe_ito, solarized]
 
 fn catalog_admissible() -> Bool {
-  palette_catalog.length() > 0
+  palette_catalog.length() == 3
     && all(palette_catalog, s => swatch_set_admissible(s: s))
+    && okabe_ito_swatches.length() == 8
+    && solarized_swatches.length() == 16
+    && swatches_of(s: island_pastel).length() == 6
 }

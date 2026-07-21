@@ -45,6 +45,8 @@ mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
 #[cfg(test)]
+mod field_import_surface_generic_arg_test;
+#[cfg(test)]
 mod floor_drain_retention_test;
 #[cfg(test)]
 mod fn_as_value_test;
