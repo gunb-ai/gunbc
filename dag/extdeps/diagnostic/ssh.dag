@@ -1,9 +1,5 @@
 module extdeps.diagnostic.ssh
 
-import std.types { NonEmptyStr, String, Int, Bool }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

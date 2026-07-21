@@ -63,6 +63,10 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "from_code_point", string_type)
   let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_is_enabled", bool_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", unit_type)
   let m = map_insert(m, "to_string", string_type)
 
   let m = map_insert(m, "discriminant", string_type)

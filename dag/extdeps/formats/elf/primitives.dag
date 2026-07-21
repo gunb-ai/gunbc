@@ -1,9 +1,5 @@
 module extdeps.formats.elf.primitives
 
-import std.exec_format { ExecutableFormat, Elf }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
