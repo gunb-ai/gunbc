@@ -3616,7 +3616,20 @@ fn runtime_data_dependency_touched_via_carrier_closure(
         return false;
     }
     let mut closure_modules: HashSet<String> = HashSet::new();
-    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel)
+            || closure_paths
+                .iter()
+                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
+        {
+            closure_modules.insert(node.module.clone());
+        }
+    }
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
         .any(|carrier_home| {
@@ -3718,31 +3731,14 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
     "cli_run_discovery_skip_before_resolve";
 
-/// Import-closure module names from the module-graph facts scan — the same grain as
-/// `roster_import_closure_nodes_pre_resolve`, used when skip-before-resolve elides a cold
-/// entry resolve so the post-resolve calibration union stays aligned with the pre-resolve walk.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
-/// dissolves under ROADMAP `2-provenance-ingest` when the floor runner `.dag` owns the decision.
+/// Module names for one entry at the resolved-graph grain — shared by
+/// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
 fn collect_import_closure_module_names_from_facts(
+    index: &MultiEntryIndex,
     entry_path: &str,
-    facts: &ModuleGraphFactsLive,
     out: &mut HashSet<String>,
-) {
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel)
-            || closure_paths
-                .iter()
-                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
-        {
-            out.insert(node.module.clone());
-        }
-    }
+) -> Result<(), String> {
+    collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
 fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
@@ -3918,28 +3914,36 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the pure import walk (no typecheck). On a completed
-/// width-1 run this equals the post-resolve resolved-graph union
-/// (`DiscoverySummary.roster_closure_nodes`) — resolve resolves exactly the transitive
-/// imports — and `run_discovery_corpus_with_options` asserts that equality as the
-/// definition-drift oracle (an implicit prelude module the walk misses, or a resolve
-/// seeding change, localizes here instead of silently skewing bytes-per-node).
+/// the module-path grain via the same resolved-module union as post-resolve
+/// (`resolve_entry_with_index_for_discovery_corpus` + `collect_typed_module_names`).
+/// On a completed width-1 run this equals `DiscoverySummary::roster_closure_nodes`,
+/// and `run_discovery_corpus_with_options` asserts that equality as the definition-drift
+/// oracle (a loader fork or seeding change localizes here instead of silently skewing
+/// bytes-per-node).
+fn collect_both_closure_module_names_for_entry(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+    out: &mut HashSet<String>,
+) -> Result<(), String> {
+    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
+    collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
+    Ok(())
+}
+
 pub fn roster_import_closure_nodes_pre_resolve(
     rows: &[DiscoveryRow],
     prefix_entries: &[&str],
-    facts: &ModuleGraphFactsLive,
-) -> usize {
-    let mut closure_paths: BTreeSet<String> = BTreeSet::new();
+    index: &MultiEntryIndex,
+) -> Result<usize, String> {
+    let mut closure_modules: HashSet<String> = HashSet::new();
     for entry in rows
         .iter()
         .map(|r| r.entry.as_str())
         .chain(prefix_entries.iter().copied())
     {
-        for path in import_closure_live_paths_with_facts(entry, facts) {
-            closure_paths.insert(workspace_relative_repo_path(&path));
-        }
+        collect_both_closure_module_names_for_entry(index, entry, &mut closure_modules)?;
     }
-    closure_paths.len()
+    Ok(closure_modules.len())
 }
 
 #[cfg(test)]
@@ -7898,6 +7902,270 @@ pub fn handle_run_with_options(
     });
 }
 
+/// `gunbc serve` — the thin host seam for the gunbc-served dashboard
+/// (docs/plans/gunbc-served-dashboard-design.md). Compile the entry closure
+/// ONCE, then answer each HTTP request by calling ONE .dag function
+/// `fn(method, path, body) -> ServeWireResponse`. The seam is socket
+/// accept + minimal HTTP/1.1 parse + response write ONLY — routing and
+/// every handler live in .dag (the same altitude as WitnessBin.Run's argv
+/// seam). Sequential by design: one request at a time serializes the
+/// belt's observe-before-spawn window by construction, so two concurrent
+/// dispatch clicks cannot both observe the session absent.
+pub fn handle_serve(
+    source_roots: Vec<String>,
+    entry_file: String,
+    function: String,
+    host: String,
+    port: u16,
+) {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    let sources = match load_sources_for_entry(&source_roots, &entry_file) {
+        Ok(sources) => sources,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    eprintln!("resolved {} sources", sources.len());
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let has_errors = result
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+    if has_errors {
+        for d in result.diagnostics.iter() {
+            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
+            }
+        }
+        std::process::exit(1);
+    }
+    let graph = match result.graph.as_ref() {
+        Some(g) => g,
+        None => {
+            eprintln!("error: compilation produced no graph");
+            std::process::exit(1);
+        }
+    };
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        result.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
+            std::process::exit(1);
+        }
+    };
+    eprintln!(
+        "gunbc serve listening on {}:{} -> {}()",
+        host, port, function
+    );
+    v1_interpreter::with_active_context(&ctx, || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("serve: accept error: {}", e);
+                    continue;
+                }
+            };
+            match serve_read_request(&mut stream) {
+                Err(reason) => serve_write_response(
+                    &mut stream,
+                    400,
+                    "text/plain; charset=utf-8",
+                    &format!("bad request: {}\n", reason),
+                ),
+                Ok((method, path, body)) => {
+                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
+                        (
+                            Some("method".to_string()),
+                            v1_interpreter::Value::Str(method),
+                        ),
+                        (Some("path".to_string()), v1_interpreter::Value::Str(path)),
+                        (Some("body".to_string()), v1_interpreter::Value::Str(body)),
+                    ];
+                    match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
+                        Err(e) => serve_write_response(
+                            &mut stream,
+                            500,
+                            "text/plain; charset=utf-8",
+                            &format!("handler error: {}\n", e),
+                        ),
+                        Ok(val) => match serve_wire_fields(&val, &ctx) {
+                            Some((status, content_type, resp_body)) => serve_write_response(
+                                &mut stream,
+                                status,
+                                &content_type,
+                                &resp_body,
+                            ),
+                            None => serve_write_response(
+                                &mut stream,
+                                500,
+                                "text/plain; charset=utf-8",
+                                &format!(
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    ctx.format_value(&val)
+                                ),
+                            ),
+                        },
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Read one HTTP/1.1 request: request line + headers (only Content-Length is
+/// consumed) + exactly Content-Length body bytes. Anything else is a typed
+/// Err → 400. No keep-alive, no chunked bodies, no TLS (tailscale serve
+/// terminates HTTPS in front). Both halves are byte-bounded: the head
+/// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
+/// with the underlying stream capped via Read::take so no read path can
+/// allocate past head+body even before the typed checks fire.
+fn serve_read_request(
+    stream: &mut std::net::TcpStream,
+) -> Result<(String, String, String), String> {
+    use std::io::{BufRead, Read};
+    const MAX_HEAD: usize = 16 << 10;
+    const MAX_BODY: usize = 1 << 20;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .map_err(|e| format!("set_read_timeout: {}", e))?;
+    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
+    let mut request_line = String::new();
+    let mut head_bytes = reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("read request line: {}", e))?;
+    if head_bytes > MAX_HEAD {
+        return Err(format!(
+            "request line of {} bytes exceeds the {} byte serve head limit",
+            head_bytes, MAX_HEAD
+        ));
+    }
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().ok_or("empty request line")?.to_string();
+    let target = parts.next().ok_or("missing request target")?.to_string();
+    if !target.starts_with('/') {
+        return Err(format!(
+            "request target must be origin-form, got {:?}",
+            target
+        ));
+    }
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        let n = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read header: {}", e))?;
+        if n == 0 {
+            return Err("connection closed before end of headers".to_string());
+        }
+        head_bytes += n;
+        if head_bytes > MAX_HEAD {
+            return Err(format!(
+                "headers of {} bytes exceed the {} byte serve head limit",
+                head_bytes, MAX_HEAD
+            ));
+        }
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                if content_length.is_some() {
+                    return Err("duplicate Content-Length header".to_string());
+                }
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad Content-Length: {}", e))?,
+                );
+            }
+        }
+    }
+    let content_length = content_length.unwrap_or(0);
+    if content_length > MAX_BODY {
+        return Err(format!(
+            "body of {} bytes exceeds the {} byte serve limit",
+            content_length, MAX_BODY
+        ));
+    }
+    let mut body_bytes = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body_bytes)
+        .map_err(|e| format!("read body: {}", e))?;
+    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
+    Ok((method, target, body))
+}
+
+fn serve_write_response(
+    stream: &mut std::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &str,
+) {
+    use std::io::Write;
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        _ => "",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status,
+        reason,
+        content_type,
+        body.len(),
+        body
+    );
+    if let Err(e) = stream.write_all(response.as_bytes()) {
+        eprintln!("serve: write error: {}", e);
+    }
+}
+
+/// Read back the .dag handler's ServeWireResponse record. None = wrong shape
+/// (surfaced as a typed 500 by the caller, never a fabricated response).
+fn serve_wire_fields(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<(u16, String, String)> {
+    if let v1_interpreter::Value::Record { type_name, fields } = val {
+        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
+            return None;
+        }
+        let status = match ctx.field(fields, "status") {
+            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
+            _ => return None,
+        };
+        let content_type = match ctx.field(fields, "content_type_label") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return None,
+        };
+        let body = match ctx.field(fields, "body") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return None,
+        };
+        return Some((status, content_type, body));
+    }
+    None
+}
+
 enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },
@@ -11539,23 +11807,13 @@ fn discovery_entry_fast_skip_without_resolve(
 }
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
-// SCAFFOLD (§7): calibration-only companion to skip-before-resolve above; dissolves with it.
+/// same resolved modules `roster_import_closure_nodes_pre_resolve` uses.
 fn augment_closure_modules_from_import_facts(
+    index: &MultiEntryIndex,
     entry_path: &str,
-    facts: &ModuleGraphFactsLive,
     out: &mut HashSet<String>,
-) {
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel) {
-            out.insert(node.module.clone());
-        }
-    }
+) -> Result<(), String> {
+    collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
 fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
@@ -12157,13 +12415,9 @@ pub fn run_discovery_corpus_with_options(
         } else {
             &[]
         };
-        let n = roster_import_closure_nodes_pre_resolve(
-            &rows,
-            prefix_entries,
-            &index.module_graph_facts,
-        );
+        let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (pure import walk, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (resolved-module union, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12299,16 +12553,16 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve resolved-module union = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
-                     (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                     seeding change); reconcile the definitions before trusting bytes-per-node \
-                     calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                     (loader fork or seeding change); reconcile the definitions before trusting \
+                     bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
+                     shared authority)",
                     pre_resolve_closure_nodes, summary.roster_closure_nodes
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve resolved-module union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
@@ -12927,10 +13181,10 @@ fn run_discovery_rows(
             refuse_reads_live_tree_selection_skip(&row, "skip-before-resolve-fast-path")?;
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
+                    &index,
                     &row.entry,
-                    &index.module_graph_facts,
                     &mut closure_modules,
-                );
+                )?;
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
@@ -12965,10 +13219,10 @@ fn run_discovery_rows(
                     );
                 }
                 collect_import_closure_module_names_from_facts(
+                    &index,
                     &row.entry,
-                    &index.module_graph_facts,
                     &mut closure_modules,
-                );
+                )?;
                 ctx = None;
                 current_closure_subject = None;
                 current_entry_frontier_nodes.clear();
@@ -13457,7 +13711,7 @@ new file mode 100644
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dag").to_string_lossy().into_owned(),
         ];
-        let facts = super::build_module_graph_facts_live(&roots);
+        let index = super::build_multi_entry_index(&roots);
         let mut lying: Vec<(String, String)> = Vec::new();
         for (rel, content) in super::corpus_dag_files() {
             if !super::is_test_dag(&rel) {
@@ -13472,10 +13726,11 @@ new file mode 100644
             }
             let mut closure_modules = HashSet::new();
             super::collect_import_closure_module_names_from_facts(
+                &index,
                 &rel,
-                &facts,
                 &mut closure_modules,
-            );
+            )
+            .expect("carrier census entry resolve");
             for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
                 if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
                     lying.push((rel.clone(), (*carrier).to_string()));

@@ -1,40 +1,5 @@
 module extdeps.formats.elf.hello_static_witness
 
-import extdeps.formats.elf.primitives {
-  ElfClass32,
-  ElfClass64,
-  ElfData2Lsb,
-  EtExec,
-  EmX86_64,
-  PtLoad,
-  elf64_ehdr_size,
-  elf64_phdr_size,
-  linux_x86_64_elf_format,
-  pf_r,
-}
-import extdeps.formats.elf.encode {
-  encode_elf64_ehdr,
-  encode_elf64_phdr,
-  int_lists_equal,
-  witness_encode_decode_roundtrip_ehdr,
-}
-import extdeps.formats.elf.segments {
-  PhdrDecoded,
-  PhdrRejected,
-  decode_elf64_phdr,
-  elf64_phdr_to_load_segment,
-}
-import extdeps.formats.elf.types {
-  ElfDecoded,
-  ElfRejected,
-  decode_elf64_ehdr,
-  elf64_ehdr_entry_point,
-  elf_ident_has_valid_magic,
-}
-import std.exec_format { Elf }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
