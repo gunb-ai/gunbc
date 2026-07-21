@@ -170,6 +170,7 @@ import v2.std.integer {
 }
 import v2.std.text { String }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
   FailClosed,
@@ -5761,6 +5762,81 @@ fn parse_import_block_idents(
               )
           }
       }
+  }
+}
+
+data alias_binding_row_not_alias_decl: Symbol = ^alias_binding_row_not_alias_decl
+
+fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome<Symbol> {
+  match parse_production_captured_child_optional(node: decl) {
+    Present { value: captured } =>
+      match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: after_kw, diagnostics: _ } =>
+          match find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: ident_node, diagnostics: _ } =>
+              parse_qn_lexeme_segment(sym_node: ident_node, root: module_root)
+          }
+      }
+    Absent =>
+      match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: binding_node, diagnostics: _ } =>
+          parse_qn_lexeme_segment(sym_node: binding_node, root: module_root)
+      }
+  }
+}
+
+fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<QualifiedName> {
+  match parse_subtree_find_production_captured(
+    root: decl,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeFound { captured: qn_capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
+          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+      }
+    ParseSubtreeAbsent =>
+      match find_named_child(root: decl, name: ^dag_surface_alias_decl_target) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: qn_node, diagnostics: _ } =>
+          qualified_name_from_node(root: qn_node)
+      }
+  }
+}
+
+fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<AliasBindingRow> {
+  match parse_production_emitted_identity_optional(node: decl) {
+    Present { value: id } =>
+      if id != ^dag_surface_alias_decl {
+        outcome_rejected(Diagnostic {
+          reason: ^alias_binding_row_not_alias_decl,
+          at: node_locus(node: decl),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Accepted { value: binding, diagnostics: bd } =>
+            match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
+              Rejected { diagnostics: d } => Rejected { diagnostics: d }
+              Accepted { value: target, diagnostics: td } =>
+                Accepted {
+                  value: AliasBindingRow { binding: binding, target: target },
+                  diagnostics: diagnostics_merge(outer: bd, inner: td)
+                }
+            }
+        }
+      }
+    Absent =>
+      outcome_rejected(Diagnostic {
+        reason: ^alias_binding_row_not_alias_decl,
+        at: node_locus(node: decl),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
   }
 }
 
