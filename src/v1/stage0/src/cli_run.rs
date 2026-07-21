@@ -3605,7 +3605,20 @@ fn runtime_data_dependency_touched_via_carrier_closure(
         return false;
     }
     let mut closure_modules: HashSet<String> = HashSet::new();
-    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel)
+            || closure_paths
+                .iter()
+                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
+        {
+            closure_modules.insert(node.module.clone());
+        }
+    }
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
         .any(|carrier_home| {
@@ -3890,15 +3903,12 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the same both-closure loader as post-resolve
-/// (`extend_sources_to_both_closure_fixpoint`; import walk + bare-reference pull for
-/// import-stripped modules). On a completed width-1 run this equals the post-resolve
-/// resolved-graph union (`DiscoverySummary.roster_closure_nodes`), and
-/// `run_discovery_corpus_with_options` asserts that equality as the definition-drift
+/// the module-path grain via the same resolved-module union as post-resolve
+/// (`resolve_entry_with_index_for_discovery_corpus` + `collect_typed_module_names`).
+/// On a completed width-1 run this equals `DiscoverySummary::roster_closure_nodes`,
+/// and `run_discovery_corpus_with_options` asserts that equality as the definition-drift
 /// oracle (a loader fork or seeding change localizes here instead of silently skewing
 /// bytes-per-node).
-/// Resolved typed-module names for one discovery entry — the same grain as
-/// `resolve_discovery_entry_for_corpus_row` / `collect_typed_module_names`.
 fn collect_both_closure_module_names_for_entry(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -11923,7 +11933,7 @@ pub fn run_discovery_corpus_with_options(
         };
         let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (both-closure loader, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (resolved-module union, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12059,7 +12069,7 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve both-closure loader = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve resolved-module union = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
                      (loader fork or seeding change); reconcile the definitions before trusting \
                      bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
@@ -12068,7 +12078,7 @@ pub fn run_discovery_corpus_with_options(
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve both-closure == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve resolved-module union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
@@ -12671,10 +12681,10 @@ fn run_discovery_rows(
             refuse_reads_live_tree_selection_skip(&row, "skip-before-resolve-fast-path")?;
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
+                    &index,
                     &row.entry,
-                    &index.module_graph_facts,
                     &mut closure_modules,
-                );
+                )?;
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
@@ -12709,10 +12719,10 @@ fn run_discovery_rows(
                     );
                 }
                 collect_import_closure_module_names_from_facts(
+                    &index,
                     &row.entry,
-                    &index.module_graph_facts,
                     &mut closure_modules,
-                );
+                )?;
                 ctx = None;
                 current_closure_subject = None;
                 current_entry_frontier_nodes.clear();
@@ -13201,7 +13211,7 @@ new file mode 100644
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dag").to_string_lossy().into_owned(),
         ];
-        let facts = super::build_module_graph_facts_live(&roots);
+        let index = super::build_multi_entry_index(&roots);
         let mut lying: Vec<(String, String)> = Vec::new();
         for (rel, content) in super::corpus_dag_files() {
             if !super::is_test_dag(&rel) {
@@ -13216,10 +13226,11 @@ new file mode 100644
             }
             let mut closure_modules = HashSet::new();
             super::collect_import_closure_module_names_from_facts(
+                &index,
                 &rel,
-                &facts,
                 &mut closure_modules,
-            );
+            )
+            .expect("carrier census entry resolve");
             for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
                 if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
                     lying.push((rel.clone(), (*carrier).to_string()));
