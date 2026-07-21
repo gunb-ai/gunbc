@@ -385,7 +385,16 @@ fn main() {
                 // is already an entry, so reference derivation would only over-
                 // pull. Fill (whole-tree name census) is unchanged below.
                 let resolved = if let Some(entry_path) = &entry {
-                    cli_run::load_sources_for_entry(&source_roots, entry_path).unwrap_or_else(|e| {
+                    // §3: build the reference-derived closure under the SAME
+                    // dependency-pool policy as the census pool above (line ~338,
+                    // `build_module_index(&source_roots, pool_index)`), so closure
+                    // and census cannot fork on a cross-root homonym module.
+                    cli_run::load_sources_for_entry_with_pool_index(
+                        &source_roots,
+                        entry_path,
+                        matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
+                    )
+                    .unwrap_or_else(|e| {
                         eprintln!("error: reference-derived closure load failed: {e}");
                         std::process::exit(1);
                     })

@@ -4012,6 +4012,30 @@ pub fn load_sources_for_entry(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+/// Pool-index-aware variant of `load_sources_for_entry`: builds the closure
+/// index with the SAME dependency-pool policy the census pool uses, so the
+/// reference-derived closure and the whole-tree name census agree on which root
+/// provides a cross-root homonym module (DESIGN §3 single authority — the two
+/// membership authorities must not fork on a duplicated module path). Without
+/// this the `--entry` compile built its closure strict (all roots compete,
+/// duplicate module path panics) while the census honored
+/// `--dependency-pool-index primary-precedence` (root[0] wins, later roots fill
+/// only absent modules), so the requested pool policy was silently ignored on
+/// the closure side. `primary_precedence=true` selects root[0]-wins; `false`
+/// keeps strict.
+pub fn load_sources_for_entry_with_pool_index(
+    source_roots: &[String],
+    entry_path: &str,
+    primary_precedence: bool,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let index = if primary_precedence {
+        build_multi_entry_index_primary_precedence(source_roots)
+    } else {
+        build_multi_entry_index(source_roots)
+    };
+    load_sources_for_entry_with_pool(&index, entry_path)
+}
+
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
 /// services-census key whose provider must therefore be in the closure. This is
 /// the one dependency edge a name-derived closure cannot see: the builtin's

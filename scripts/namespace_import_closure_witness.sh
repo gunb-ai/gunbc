@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: the step-2 typed refusal in the resolver
+# (04_resolve.dag: UnlistedImportUse promoted to is_error_diagnostic=true, or the
+# resolver emitting a use-line intent directly) makes the reference_derived_use_lines
+# pass in 05_emit_rust.dag unnecessary; when that lands the pass is deleted and this
+# dev-time discriminating runner dissolves with it. Until then it is the by-execution
+# proof of the pass (greens-with / reds-without a pass-disabled control binary).
+# dissolve-on alt: a modeled cargo-compiling wet witness enrolled in
+# falsifier_self_host_wet_entries supersedes the hand-shell control-binary staging.
+# Authority (the pass + its named dissolution trigger): 05_emit_rust.dag
+# reference_derived_use_lines_note; roadmap brick: dag/gunbc/v1_deletion_plan.dag
+# emit_import_closure_root -> deep_module_lanes.
+#
 # Discriminating green-by-execution witness for the Gate-1 emit import-closure
 # derivation (PR #6960 / emit_import_closure_root).
 #
