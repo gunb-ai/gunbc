@@ -5175,8 +5175,11 @@ fn note_interface_hash(
     );
 }
 
-/// Per-field entry counts for the in-process `MultiEntryIndex` caches — the
-/// width=1 floor-drain accumulation instrument (paired with peak RSS).
+/// Interim width=1 floor-drain retention (v1-run-stability throughline, parent
+/// governor lane): instrument accumulation + host-budget entry cap on the private
+/// `typed_module_cache` only. Whole-row eviction here is a counted safety backstop,
+/// not cross-entry-typed-module-memo-sketch PR-β (`SpacePacked` + interface-summary
+/// payload). Dissolve-on: PR-β lands the content-keyed outer ring.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IndexRetentionSnapshot {
     pub typed_module_cache_entries: usize,
@@ -5198,12 +5201,17 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
 
 /// Host-budget-derived cap on `typed_module_cache` entries for the private
 /// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// overrides the derived value for tests and operator probes.
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
 pub fn typed_module_cache_max_entries() -> usize {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
-            return n.max(1);
+            if n > 0 {
+                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+            }
+            // Zero override is invalid — fall through to derived cap.
         }
+        // Malformed override — fall through to derived cap (fail-closed).
     }
     let (budget, _) = crate::memory_governor::read_host_budget_bytes();
     budget
