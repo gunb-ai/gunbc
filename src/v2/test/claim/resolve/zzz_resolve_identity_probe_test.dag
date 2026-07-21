@@ -66,8 +66,17 @@ data provider_root: Node = Node {
     Edge {
       label: Named { name: ^ProviderType },
       target: Node {
-        kind: TypeNode { connective: Atom { identity: ^ProviderType } },
-        children: [],
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^field_a },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: ^Int } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        ],
         occurrence_id: SyntheticOccurrence
       }
     }
