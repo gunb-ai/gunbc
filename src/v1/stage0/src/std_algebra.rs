@@ -21,43 +21,43 @@ use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Magma<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Semigroup<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Monoid<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeMonoid<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Group<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub identity: T,
-    pub inverse: Rc<dyn Fn(T) -> T>,
+    pub inverse: _,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct AbelianGroup<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: _,
     pub identity: T,
-    pub inverse: Rc<dyn Fn(T) -> T>,
+    pub inverse: _,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
@@ -69,40 +69,40 @@ pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);
 
 #[derive(Clone)]
 pub struct Semiring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: _,
     pub zero: T,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub mul: _,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeSemiring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: _,
     pub zero: T,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub mul: _,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Ring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: _,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub negate: _,
+    pub mul: _,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct OrderedRing<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
-    pub sub: Rc<dyn Fn(T, T) -> T>,
+    pub add: _,
+    pub sub: _,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub div: Rc<dyn Fn(T, T) -> Rc<Result<T, DivError>>>,
+    pub negate: _,
+    pub mul: _,
+    pub div: _,
     pub one: T,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
     pub eq: Rc<dyn Fn(T, T) -> bool>,
@@ -116,27 +116,27 @@ pub struct OrderedRing<T> {
 
 #[derive(Clone)]
 pub struct Field<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: _,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub negate: _,
+    pub mul: _,
     pub one: T,
-    pub reciprocal: Rc<dyn Fn(T) -> T>,
+    pub reciprocal: _,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Lattice<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
+    pub meet: _,
+    pub join: _,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct BoundedLattice<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
+    pub meet: _,
+    pub join: _,
     pub top: T,
     pub bottom: T,
     pub _phantom: std::marker::PhantomData<T>,
@@ -144,9 +144,9 @@ pub struct BoundedLattice<T> {
 
 #[derive(Clone)]
 pub struct BooleanAlgebra<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
-    pub complement: Rc<dyn Fn(T) -> T>,
+    pub meet: _,
+    pub join: _,
+    pub complement: _,
     pub top: T,
     pub bottom: T,
     pub _phantom: std::marker::PhantomData<T>,
@@ -156,13 +156,13 @@ pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Witness<V>>,
+    pub lookup: _,
     pub empty: Rc<PartialFunction<K, V>>,
-    pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
-    pub merge: Rc<dyn Fn(Rc<PartialFunction<K, V>>) -> Rc<PartialFunction<K, V>>>,
-    pub keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
-    pub values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
+    pub get: _,
+    pub insert: _,
+    pub merge: _,
+    pub keys: _,
+    pub values: _,
     pub has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,

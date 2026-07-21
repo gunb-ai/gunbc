@@ -1917,7 +1917,7 @@ pub fn type_atom_looks_like_generic_parameter(name: String) -> bool {
         && (v1_rt::substring(&name, 0, 1) <= "Z".to_string()))
 }
 
-pub fn type_node_has_unbound_type_variable(
+pub fn type_node_has_closure_unbound_generic_atom(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1933,6 +1933,72 @@ pub fn type_node_has_unbound_type_variable(
                 return true;
             }
         }
+        if (n.inferred.clone() != None) {
+            match (*n.inferred.clone().clone().unwrap()).clone() {
+                InferredNode::TypeVariable { id: tv, .. } => {
+                    if !type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
+                        return true;
+                    }
+                }
+                InferredNode::Resolved { node: rt, .. } => {
+                    if type_node_has_closure_unbound_generic_atom(
+                        rt.clone(),
+                        generic_param_names.clone(),
+                        source_indices.clone(),
+                    ) {
+                        return true;
+                    }
+                }
+                _ => (),
+            }
+        }
+        if {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if type_node_has_closure_unbound_generic_atom(
+                    child_type_node(c.clone()),
+                    generic_param_names.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            true
+        } else {
+            match find_property(
+                n.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => {
+                    let mut __found = false;
+                    for c in applied.children.clone().iter().cloned() {
+                        if type_node_has_closure_unbound_generic_atom(
+                            c.clone(),
+                            generic_param_names.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+                None => false,
+            }
+        }
+    })
+}
+
+pub fn type_node_has_unbound_type_variable(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (n.inferred.clone() != None) {
             match (*n.inferred.clone().clone().unwrap()).clone() {
                 InferredNode::TypeVariable { id: tv, .. } => {
@@ -17065,7 +17131,7 @@ pub fn lambda_param_type_strs(
                                 if (param_is_type_var.clone() || param_is_error.clone()) {
                                     None
                                 } else {
-                                    if type_node_has_unbound_type_variable(
+                                    if type_node_has_closure_unbound_generic_atom(
                                         param_type.clone(),
                                         emit_info.fn_generic_param_names.clone(),
                                         source_indices.clone(),
@@ -17564,11 +17630,18 @@ pub fn emit_rust_fold_method_call(
             emit_info.fn_generic_param_names.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
+        let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(
+            acc_type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((is_bare_container.clone() || acc_type_is_type_var.clone())
+        let lambda_acc_type_str = if ((((is_bare_container.clone()
+            || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
+            || acc_has_closure_unbound_generic.clone())
         {
             "_".to_string()
         } else {

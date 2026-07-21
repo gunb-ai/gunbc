@@ -827,11 +827,31 @@ fn type_atom_looks_like_generic_parameter(name: String) -> Bool {
   string_length(s: name) == 1 && substring(s: name, start: 0, end: 1) >= "A" && substring(s: name, start: 0, end: 1) <= "Z"
 }
 
-fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && leaf_name != "" && type_atom_looks_like_generic_parameter(name: leaf_name) {
     if !type_var_in_fn_generic_scope(id: leaf_name, generic_param_names: generic_param_names) { return true }
   }
+  if n.inferred != none {
+    match n.inferred.value {
+      TypeVariable { id: tv } =>
+        if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
+      Resolved { node: rt } =>
+        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
+      _ => ()
+    }
+  }
+  if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
+    true
+  } else {
+    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
+      Absent => false
+    }
+  }
+}
+
+fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.inferred != none {
     match n.inferred.value {
       TypeVariable { id: tv } =>
@@ -6212,7 +6232,7 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
               if param_is_type_var || param_is_error {
                 none
-              } else if type_node_has_unbound_type_variable(n: param_type, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
+              } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
                 none
               } else {
                 Present { value: render_rust_type(n: param_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
@@ -6386,8 +6406,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
+  let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Present { value: init_arg } =>
