@@ -65,8 +65,8 @@ fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     assert!(
         body.contains("Meas {")
             && body.contains("_phantom: std::marker::PhantomData")
-            && body.contains("Rc::new("),
-        "an alias-to-Rc<struct> ctor must emit `Rc::new(Meas {{ count: c, _phantom: PhantomData }})`, got:\n{body}"
+            && body.contains("Arc::new("),
+        "an alias-to-Arc<struct> ctor must emit `Arc::new(Meas {{ count: c, _phantom: PhantomData }})`, got:\n{body}"
     );
     // Negative: the alias name must NOT be used as the struct-literal head (it resolves to
     // `Rc<Meas<...>>`, which has no fields). Check the signature-stripped body so `-> Giga {`

@@ -1876,12 +1876,12 @@ fn rust_container_ops_emit_rc_sharing_bridges() {
         "empty_map should lower through the Rc runtime bridge: {content}"
     );
     assert!(
-        content.contains("Rc::new(v1_rt::map_keys("),
-        "map_keys should wrap its list result in Rc: {content}"
+        content.contains("Arc::new(v1_rt::map_keys("),
+        "map_keys should wrap its list result in Arc: {content}"
     );
     assert!(
-        content.contains("Rc::new(v1_rt::map_values("),
-        "map_values should wrap its list result in Rc: {content}"
+        content.contains("Arc::new(v1_rt::map_values("),
+        "map_values should wrap its list result in Arc: {content}"
     );
     assert!(
         content.contains("v1_rt::rc_list_push("),
@@ -2429,8 +2429,8 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/callable_sig.rs");
     assert!(
-        content.contains("type Mapper = Rc<dyn Fn(i64) -> i64>;"),
-        "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
+        content.contains("type Mapper = Arc<dyn Fn(i64) -> i64>;"),
+        "callable aliases should stay in type-position-safe Arc<dyn Fn> form: {content}"
     );
     assert!(
         content.contains("fn apply(f: impl Fn(i64) -> i64 + Clone, x: i64) -> i64"),
@@ -4262,8 +4262,8 @@ fn rust_list_type_lowers_to_rc_vec() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_list_lower.rs");
     assert!(
-        content.contains("Rc<Vec<"),
-        "List should lower to Rc<Vec<...>> in Rust, got: {}",
+        content.contains("Arc<Vec<"),
+        "List should lower to Arc<Vec<...>> in Rust, got: {}",
         content
     );
     assert!(
@@ -4280,8 +4280,8 @@ fn rust_map_type_lowers_to_rc_hashmap() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_map_lower.rs");
     assert!(
-        content.contains("Rc<HashMap<"),
-        "Map should lower to Rc<HashMap<...>> in Rust, got: {}",
+        content.contains("Arc<HashMap<"),
+        "Map should lower to Arc<HashMap<...>> in Rust, got: {}",
         content
     );
     let has_raw_map = content.lines().any(|line| {
@@ -4425,13 +4425,13 @@ fn make_outer() -> Outer {
     );
     let content = find_file(&result, "src/test_rc_struct.rs");
     assert!(
-        content.contains("Rc<Inner>"),
-        "struct field should be Rc<Inner>, got:\n{}",
+        content.contains("Arc<Inner>"),
+        "struct field should be Arc<Inner>, got:\n{}",
         content
     );
     assert!(
-        content.contains("Rc::new(Inner"),
-        "struct construction should use Rc::new(Inner{{...}}), got:\n{}",
+        content.contains("Arc::new(Inner"),
+        "struct construction should use Arc::new(Inner{{...}}), got:\n{}",
         content
     );
 }
@@ -4451,8 +4451,8 @@ fn pick() -> Color { Red }
     );
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
     assert!(
-        !content.contains("Rc<Color>"),
-        "unit enum should not be Rc<Color>, got:\n{}",
+        !content.contains("Arc<Color>"),
+        "unit enum should not be Arc<Color>, got:\n{}",
         content
     );
     assert!(
@@ -4479,8 +4479,8 @@ type Drawing { shape: Shape }
     );
     let content = find_file(&result, "src/test_rc_data_enum.rs");
     assert!(
-        content.contains("Rc<Shape>"),
-        "data enum field should be Rc<Shape>, got:\n{}",
+        content.contains("Arc<Shape>"),
+        "data enum field should be Arc<Shape>, got:\n{}",
         content
     );
 }
@@ -4499,7 +4499,7 @@ type Bag { items: List<String> }
     );
     let content = find_file(&result, "src/test_rc_list.rs");
     assert!(
-        content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
+        content.contains("Arc<Vec<") || content.contains("Arc<Vec<String>"),
         "list field should be Rc<Vec<...>>, got:\n{}",
         content
     );
@@ -4519,8 +4519,8 @@ type Config { entries: Map<String, String> }
     );
     let content = find_file(&result, "src/test_rc_map.rs");
     assert!(
-        content.contains("Rc<HashMap<"),
-        "map field should be Rc<HashMap<...>>, got:\n{}",
+        content.contains("Arc<HashMap<"),
+        "map field should be Arc<HashMap<...>>, got:\n{}",
         content
     );
 }
@@ -4539,17 +4539,17 @@ type Stats { count: Int, active: Bool, ratio: Float }
     );
     let content = find_file(&result, "src/test_rc_primitives.rs");
     assert!(
-        !content.contains("Rc<i64>"),
+        !content.contains("Arc<i64>"),
         "Int field should be bare i64, not Rc<i64>, got:\n{}",
         content
     );
     assert!(
-        !content.contains("Rc<bool>"),
+        !content.contains("Arc<bool>"),
         "Bool field should be bare bool, not Rc<bool>, got:\n{}",
         content
     );
     assert!(
-        !content.contains("Rc<f64>"),
+        !content.contains("Arc<f64>"),
         "Float field should be bare f64, not Rc<f64>, got:\n{}",
         content
     );
@@ -4608,17 +4608,17 @@ fn empty_batch() -> Batch {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
-    let has_rc_field = content.contains("Rc<Vec<");
-    let has_rc_construction = content.contains("Rc::new(vec![");
+    let has_arc_field = content.contains("Arc<Vec<");
+    let has_arc_construction = content.contains("Arc::new(vec![");
     assert_eq!(
-        has_rc_field, has_rc_construction,
-        "list field Rc wrapping must match construction.\n\
-         field has Rc: {}, construction has Rc: {}\n{}",
-        has_rc_field, has_rc_construction, content
+        has_arc_field, has_arc_construction,
+        "list field Arc wrapping must match construction.\n\
+         field has Arc: {}, construction has Arc: {}\n{}",
+        has_arc_field, has_arc_construction, content
     );
     assert!(
-        content.contains("Rc::new(vec!["),
-        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content.contains("Arc::new(vec!["),
+        "list construction should use Arc::new(vec![...]) to match Arc<Vec<>> field type, got:\n{}",
         content
     );
 }
@@ -4712,7 +4712,7 @@ fn make() -> Outer {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_struct_field_emit.rs");
     assert!(
-        content.contains("Rc<Inner>"),
+        content.contains("Arc<Inner>"),
         "struct field type should be rendered as Rc<Inner>, got:\n{}",
         content
     );
@@ -4738,8 +4738,8 @@ type Foo {
     let content = find_file(&result, "src/test.rs");
     eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
     assert!(
-        content.contains("Rc<dyn Fn() -> i64>"),
-        "fn() -> Int field should render as Rc<dyn Fn() -> i64>, got:\n{}",
+        content.contains("Arc<dyn Fn() -> i64>"),
+        "fn() -> Int field should render as Arc<dyn Fn() -> i64>, got:\n{}",
         content
     );
 }

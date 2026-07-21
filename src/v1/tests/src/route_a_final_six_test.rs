@@ -91,8 +91,8 @@ fn bounded_lattice_top_bottom_are_bare_not_boxed() {
         "BoundedLattice top/bottom (bare T) must NOT be Box::new'd, got:\n{emitted}"
     );
     assert!(
-        emitted.contains("meet: Rc::new("),
-        "BoundedLattice meet (Rc<dyn Fn>) must still be Rc::new'd — fix removed only the Box, not fn-Rc:\n{emitted}"
+        emitted.contains("meet: Arc::new("),
+        "BoundedLattice meet (Arc<dyn Fn>) must still be Arc::new'd — fix removed only the Box, not fn-Arc:\n{emitted}"
     );
 }
 
@@ -118,8 +118,8 @@ fn fn_field_single_record_uncollapses_with_rc_wrap() {
     );
     let body = fn_body_no_sig(&emit(source), "s");
     assert!(
-        body.contains("Scheme {") && body.contains("Rc::new(cmp)"),
-        "a single fn-field record must un-collapse to `Scheme {{ pick: Rc::new(cmp) }}`, got:\n{body}"
+        body.contains("Scheme {") && body.contains("Arc::new(cmp)"),
+        "a single fn-field record must un-collapse to `Scheme {{ pick: Arc::new(cmp) }}`, got:\n{body}"
     );
 }
 
