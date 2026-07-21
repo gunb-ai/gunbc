@@ -495,6 +495,7 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_module, text: "module"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_import, text: "import"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_alias, text: "alias"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_type, text: "type"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_data, text: "data"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_fn, text: "fn"),
@@ -1607,6 +1608,15 @@ fn dag_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
+      lhs: ^dag_production_alias_decl,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_alias),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name)
+      ]
+    ),
+    grammar_formal_production(
       lhs: ^dag_production_type_variant,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr)
@@ -1749,6 +1759,12 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_top_level_item,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_import_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_top_level_item,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_alias_decl)
       ]
     ),
     grammar_formal_production(
@@ -2076,6 +2092,7 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
   [
     ^dag_token_kw_module,
     ^dag_token_kw_import,
+    ^dag_token_kw_alias,
     ^dag_token_kw_type,
     ^dag_token_kw_data,
     ^dag_token_kw_fn,
@@ -2698,6 +2715,19 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_alias_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_alias),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_eq),
+        right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
+      )
+    )
+  )
+}
+
 fn dag_grammar_type_variant_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
@@ -2785,10 +2815,13 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
+      left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-        right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+        left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
+          right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+        )
       )
     )
   )
@@ -2904,6 +2937,44 @@ fn emit_row_import_decl(
   )
 }
 
+fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_alias_decl,
+        target: dag_grammar_atom(id: ^dag_surface_alias_decl)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_binding,
+        target: binding
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_target,
+        target: target
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn emit_row_alias_decl(binding: Node, target: Node) -> Node {
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: ^dag_production_alias_decl,
+      expression: dag_grammar_alias_decl_expr(),
+      emitted: ^dag_surface_alias_decl
+    ),
+    emitted: emit_alias_decl_emitted_node(binding: binding, target: target),
+    tokens: [
+      emit_fixed_token(token_class: ^dag_token_kw_alias),
+      binding,
+      emit_fixed_token(token_class: ^dag_token_eq),
+      target
+    ]
+  )
+}
+
 fn emit_data_decl_emitted_node(
   name_binding: Symbol,
   type_expr: Node,
@@ -2976,6 +3047,11 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_import_decl,
     expression: dag_grammar_import_decl_expr(),
     emitted: ^dag_surface_import_decl
+  )
+  let alias_decl = dag_grammar_production(
+    name: ^dag_production_alias_decl,
+    expression: dag_grammar_alias_decl_expr(),
+    emitted: ^dag_surface_alias_decl
   )
   let type_decl = dag_grammar_production(
     name: ^dag_production_type_decl,
@@ -3144,6 +3220,7 @@ fn dag_grammar_root() -> GrammarRoot {
       module_header,
       top_level_item,
       import_decl,
+      alias_decl,
       type_decl,
       data_decl,
       fn_decl,
@@ -3280,6 +3357,7 @@ fn dag_sync_tokens() -> Set<Symbol> {
     member: fn(sym) {
       sym == ^dag_token_kw_module ||
       sym == ^dag_token_kw_import ||
+      sym == ^dag_token_kw_alias ||
       sym == ^dag_token_kw_type ||
       sym == ^dag_token_kw_data ||
       sym == ^dag_token_kw_fn
@@ -5417,6 +5495,7 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
 fn dag_round_trip_lex_ready() -> Bool {
   dag_lex_token_symbol(sym: ^dag_token_kw_module) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_import) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_alias) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_data) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_fn) &&
   dag_lex_token_symbol(sym: ^dag_token_ident) &&
@@ -5434,6 +5513,7 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
+  grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_alias_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_data_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
