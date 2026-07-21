@@ -3,14 +3,14 @@ module v2.test.long.namespace_graft_normalize_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.test.claim.namespace_graft.normalize_graft_witness_helpers {
-  namespace_graft_graft_after_normalize_body_holds,
-  namespace_graft_manual_graft_on_parsed_module_holds,
-  namespace_graft_manual_qn_on_parsed_holds,
-  namespace_graft_normalize_accepts_holds,
-  namespace_graft_normalize_applies_on_parsed_module_holds,
-  namespace_graft_normalize_output_has_zero_metadata_edges_holds,
-  namespace_graft_normalize_qn_round_trip_holds,
-  namespace_graft_well_formed_after_manual_graft_holds
+  ng_norm_graft_after_normalize_body_holds,
+  ng_norm_manual_graft_on_parsed_module_holds,
+  ng_norm_manual_qn_on_parsed_holds,
+  ng_norm_normalize_accepts_holds,
+  ng_norm_normalize_applies_on_parsed_module_holds,
+  ng_norm_normalize_output_has_zero_metadata_edges_holds,
+  ng_norm_normalize_qn_round_trip_holds,
+  ng_norm_well_formed_after_manual_graft_holds
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -18,33 +18,33 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data namespace_graft_normalize_long_note: String = "§10 commit 2 normalize graft execution witnesses (long lane): tokenize→parse_module→normalize paths exceed per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Fast-lane synthetic receipts remain in namespace_graft graft_shape, marker_strip, and zero_metadata test files. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/namespace_graft_normalize_witness_test.dag --functions csv."
 
 test fn namespace_graft_manual_graft_on_parsed_module_holds() -> Bool {
-  namespace_graft_manual_graft_on_parsed_module_holds()
+  ng_norm_manual_graft_on_parsed_module_holds()
 }
 
 test fn namespace_graft_well_formed_after_manual_graft_holds() -> Bool {
-  namespace_graft_well_formed_after_manual_graft_holds()
+  ng_norm_well_formed_after_manual_graft_holds()
 }
 
 test fn namespace_graft_normalize_accepts_holds() -> Bool {
-  namespace_graft_normalize_accepts_holds()
+  ng_norm_normalize_accepts_holds()
 }
 
 test fn namespace_graft_manual_qn_on_parsed_holds() -> Bool {
-  namespace_graft_manual_qn_on_parsed_holds()
+  ng_norm_manual_qn_on_parsed_holds()
 }
 
 test fn namespace_graft_normalize_applies_on_parsed_module_holds() -> Bool {
-  namespace_graft_normalize_applies_on_parsed_module_holds()
+  ng_norm_normalize_applies_on_parsed_module_holds()
 }
 
 test fn namespace_graft_graft_after_normalize_body_holds() -> Bool {
-  namespace_graft_graft_after_normalize_body_holds()
+  ng_norm_graft_after_normalize_body_holds()
 }
 
 test fn namespace_graft_normalize_qn_round_trip_holds() -> Bool {
-  namespace_graft_normalize_qn_round_trip_holds()
+  ng_norm_normalize_qn_round_trip_holds()
 }
 
 test fn namespace_graft_normalize_output_has_zero_metadata_edges_holds() -> Bool {
-  namespace_graft_normalize_output_has_zero_metadata_edges_holds()
+  ng_norm_normalize_output_has_zero_metadata_edges_holds()
 }
