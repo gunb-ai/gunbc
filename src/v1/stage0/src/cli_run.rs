@@ -689,6 +689,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn walk_target_alias_plan_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER,
+            "cli_run_walk_target_alias_plan"
+        );
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -18584,6 +18592,7 @@ fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum WalkTargetAliasPlanClass {
     GlobalBareLcp,
+    GlobalBareLcpTie,
     FnParentFirstHit,
 }
 
@@ -18591,6 +18600,7 @@ impl WalkTargetAliasPlanClass {
     fn label(self) -> &'static str {
         match self {
             WalkTargetAliasPlanClass::GlobalBareLcp => "global_bare_lcp",
+            WalkTargetAliasPlanClass::GlobalBareLcpTie => "global_bare_lcp_tie",
             WalkTargetAliasPlanClass::FnParentFirstHit => "fn_parent_first_hit",
         }
     }
@@ -18627,12 +18637,22 @@ pub struct WalkTargetAliasPlan {
     pub rows: Vec<WalkTargetAliasPlanRow>,
     pub refused: Vec<WalkTargetAliasPlanRefused>,
     pub global_bare_lcp_events: usize,
+    pub global_bare_lcp_tie_events: usize,
     pub fn_parent_first_hit_events: usize,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
     /// Relative source-root labels joined with `+` (never hardcoded).
     pub source_scope_label: String,
 }
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
+// Plan-only walk-target alias codemod (`walk_target_alias_plan` bin + cli_run plan types).
+// 🟡 dissolve-on: apply phase emits `alias` rows into source modules and retires this
+// read-only planner when §13 import→alias transmutation + refusal flip complete
+// (stern-owl-401 Phase 3). Receipt: `rg walk_target_alias_plan src/v1/stage0` until deletion;
+// ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER: &str =
+    "cli_run_walk_target_alias_plan";
 
 /// Format plan scope from caller-supplied source roots (relative to workspace when possible).
 pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {
@@ -18792,6 +18812,18 @@ pub fn walk_target_alias_plan_from_census(
         }
     }
 
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        refused.push(WalkTargetAliasPlanRefused {
+            class: WalkTargetAliasPlanClass::GlobalBareLcpTie,
+            declaring_module: row.env_module_path.clone(),
+            binding: row.name.clone(),
+            reason: format!(
+                "global_bare_lcp_tie: {} candidates, no LCP winner — manual qualify/alias/rename required (§13)",
+                row.candidate_count
+            ),
+        });
+    }
+
     let mut rows: Vec<WalkTargetAliasPlanRow> = event_counts
         .into_iter()
         .map(|(key, lookup_events)| WalkTargetAliasPlanRow {
@@ -18823,6 +18855,7 @@ pub fn walk_target_alias_plan_from_census(
         rows,
         refused,
         global_bare_lcp_events: census.silent_pick_global_bare_lcp,
+        global_bare_lcp_tie_events: census.silent_pick_global_bare_lcp_tie,
         fn_parent_first_hit_events: census.silent_pick_fn_parent_first_hit,
         modules_resolved: census.modules_resolved,
         modules_excluded: census.modules_excluded,
@@ -18879,9 +18912,10 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
             plan.modules_excluded
         ),
         format!(
-            "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} fn_parent_first_hit_events={} unique_rows={} refused={}",
+            "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} global_bare_lcp_tie_events={} fn_parent_first_hit_events={} unique_rows={} refused={}",
             plan.global_bare_lcp_events,
             global_bare_unique,
+            plan.global_bare_lcp_tie_events,
             plan.fn_parent_first_hit_events,
             fn_parent_unique,
             plan.refused.len(),
@@ -19286,6 +19320,43 @@ fn caller() -> Bool {
         );
 
         let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    #[test]
+    fn walk_target_alias_plan_refuses_global_bare_lcp_tie_sites() {
+        use super::{walk_target_alias_plan_from_census, WalkTargetAliasPlanClass};
+
+        let census = ResolutionDivergenceCensus {
+            silent_pick_global_bare_lcp_tie: 1,
+            silent_pick_global_bare_lcp_tie_rows: vec![crate::v1_rt::GlobalBareLcpTieSite {
+                env_module_path: "test.aliasplan.tie.consumer".to_string(),
+                name: "AmbigType".to_string(),
+                candidate_count: 2,
+            }],
+            ..ResolutionDivergenceCensus::default()
+        };
+        let ctx = v1_interpreter::InterpContext {
+            modules: Vec::new(),
+            source_indices: Rc::new(HashMap::new()),
+            ..Default::default()
+        };
+        let plan = walk_target_alias_plan_from_census(&ctx, &census);
+        assert_eq!(plan.global_bare_lcp_tie_events, 1);
+        assert_eq!(plan.refused.len(), 1);
+        assert_eq!(
+            plan.refused[0].class,
+            WalkTargetAliasPlanClass::GlobalBareLcpTie
+        );
+        assert_eq!(
+            plan.refused[0].declaring_module,
+            "test.aliasplan.tie.consumer"
+        );
+        assert_eq!(plan.refused[0].binding, "AmbigType");
+        assert!(
+            plan.refused[0].reason.contains("global_bare_lcp_tie"),
+            "tie refusal must be typed and located, got {}",
+            plan.refused[0].reason
+        );
     }
 }
 
