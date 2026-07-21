@@ -192,50 +192,40 @@ fn derive_github_hetzner_ci_minute_wedge(
   match assumptions_input {
     WedgeAssumptionsUnknown => KnowableWedgeRefused { cause: AssumptionsUnknown }
     WedgeAssumptionsDeclared { assumptions: assumptions } => {
-      if basis_point_count(bp: assumptions.runner_utilization_bp) <= 0 {
-        KnowableWedgeRefused { cause: UtilizationUnknown }
-      } else if amortization_months_count(m: assumptions.amortization_months) <= 0 {
-        KnowableWedgeRefused { cause: AmortizationUnknown }
-      } else if assumptions.eur_to_usd_denominator <= 0 {
-        KnowableWedgeRefused { cause: ExchangeRateUnknown }
-      } else if !assumptions.runner_vcpus_are_hardware_threads {
-        KnowableWedgeRefused { cause: RunnerVcpuUnitMismatch }
-      } else {
-        match umbrella_row.per_minute.currency {
-          Usd => {
-            match floor_row.monthly.currency {
-              Eur => {
-                match derive_runner_cost_floor_per_minute_usd(
-                  row: floor_row,
-                  runner_vcpus: umbrella_row.vcpus,
-                  assumptions: assumptions,
-                ) {
-                  RunnerCostFloorDerived { floor: floor_usd } => {
-                    match subtract_money_per_minute_usd(
-                      umbrella: umbrella_row.per_minute,
-                      floor: floor_usd,
-                    ) {
-                      Present { value: wedge_usd } =>
-                        KnowableWedgeComputed {
-                          wedge: KnowableWedgeDerived {
-                            umbrella_per_minute: umbrella_row.per_minute,
-                            cost_floor_per_minute: floor_usd,
-                            wedge_per_minute: wedge_usd,
-                          }
+      match umbrella_row.per_minute.currency {
+        Usd => {
+          match floor_row.monthly.currency {
+            Eur => {
+              match derive_runner_cost_floor_per_minute_usd(
+                row: floor_row,
+                runner_vcpus: umbrella_row.vcpus,
+                assumptions: assumptions,
+              ) {
+                RunnerCostFloorDerived { floor: floor_usd } => {
+                  match subtract_money_per_minute_usd(
+                    umbrella: umbrella_row.per_minute,
+                    floor: floor_usd,
+                  ) {
+                    Present { value: wedge_usd } =>
+                      KnowableWedgeComputed {
+                        wedge: KnowableWedgeDerived {
+                          umbrella_per_minute: umbrella_row.per_minute,
+                          cost_floor_per_minute: floor_usd,
+                          wedge_per_minute: wedge_usd,
                         }
-                      _ =>
-                        KnowableWedgeRefused { cause: FloorExceedsUmbrella }
-                    }
+                      }
+                    _ =>
+                      KnowableWedgeRefused { cause: FloorExceedsUmbrella }
                   }
-                  RunnerCostFloorRefused { cause: cause } =>
-                    KnowableWedgeRefused { cause: cause }
                 }
+                RunnerCostFloorRefused { cause: cause } =>
+                  KnowableWedgeRefused { cause: cause }
               }
-              Usd => KnowableWedgeRefused { cause: FloorCurrencyMismatch }
             }
+            Usd => KnowableWedgeRefused { cause: FloorCurrencyMismatch }
           }
-          Eur => KnowableWedgeRefused { cause: UmbrellaCurrencyMismatch }
         }
+        Eur => KnowableWedgeRefused { cause: UmbrellaCurrencyMismatch }
       }
     }
   }
