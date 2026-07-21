@@ -2231,20 +2231,10 @@ pub fn build_scc_measure_params(
     func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
     si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Arc<HashMap<String, Arc<HashMap<String, String>>>> {
-    members.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Arc<HashMap<String, String>>>(),
-        |acc: Arc<HashMap<String, Arc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(
-            &func_index,
-            name.clone(),
-        ) {
-            Some(entry) => v1_rt::rc_map_insert(
-                acc.clone(),
-                name.clone(),
-                recursive_measure_param_names(entry.body.clone(), entry.params.clone(), si.clone()),
-            ),
-            None => acc.clone(),
-        },
-    )
+    members.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, Arc<HashMap<String, String>>>(), |acc: Arc<HashMap<String, Arc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => v1_rt::rc_map_insert(acc.clone(), name.clone(), recursive_measure_param_names(entry.body.clone(), entry.params.clone(), si.clone())),
+    None => acc.clone(),
+})
 }
 
 pub fn target_call_has_arithmetic_descent(
@@ -4683,30 +4673,30 @@ pub fn collect_evidence_incremental(
                                 let arm_vars =
                                     if (scrut_is_descent.clone() || scrut_is_param.clone()) {
                                         match (*arm_pattern(arm_node.clone())).clone() {
-                                            MatchPattern::VariantPattern {
-                                                field_bindings: bindings,
-                                                ..
-                                            } => bindings.clone().iter().cloned().fold(
-                                                vars.clone(),
-                                                |inner: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
-                                                    collect_field_binding_names(fb.clone(), inner)
-                                                },
-                                            ),
-                                            MatchPattern::Bind {
-                                                name: binding_name, ..
-                                            } => {
-                                                if scrut_is_descent.clone() {
-                                                    v1_rt::rc_map_insert(
-                                                        vars.clone(),
-                                                        binding_name.clone(),
-                                                        true,
-                                                    )
-                                                } else {
-                                                    vars.clone()
-                                                }
+                                        MatchPattern::VariantPattern {
+                                            field_bindings: bindings,
+                                            ..
+                                        } => bindings.clone().iter().cloned().fold(
+                                            vars.clone(),
+                                            |inner: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
+                                                collect_field_binding_names(fb.clone(), inner)
+                                            },
+                                        ),
+                                        MatchPattern::Bind {
+                                            name: binding_name, ..
+                                        } => {
+                                            if scrut_is_descent.clone() {
+                                                v1_rt::rc_map_insert(
+                                                    vars.clone(),
+                                                    binding_name.clone(),
+                                                    true,
+                                                )
+                                            } else {
+                                                vars.clone()
                                             }
-                                            _ => vars.clone(),
                                         }
+                                        _ => vars.clone(),
+                                    }
                                     } else {
                                         vars.clone()
                                     };

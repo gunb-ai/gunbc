@@ -146,7 +146,7 @@ pub fn box_template() -> String {
 pub fn rc_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "Arc<{0}>".to_string()
+            "Rc<{0}>".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

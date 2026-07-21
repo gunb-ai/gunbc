@@ -320,7 +320,7 @@ pub fn rust_error_expr_template() -> String {
 pub fn rust_list_literal_empty() -> String {
     thread_local! {
         static CACHED: String = {
-            "Arc::new(vec![])".to_string()
+            "Rc::new(vec![])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -329,7 +329,7 @@ pub fn rust_list_literal_empty() -> String {
 pub fn rust_list_literal_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "Arc::new(vec![{0}])".to_string()
+            "Rc::new(vec![{0}])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

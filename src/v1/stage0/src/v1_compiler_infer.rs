@@ -10622,75 +10622,33 @@ pub fn compose_callee_provenance(
     let_prov: Arc<HashMap<String, Arc<HashMap<String, Arc<SubValueRelation>>>>>,
 ) -> Arc<HashMap<String, Arc<SubValueRelation>>> {
     match lookup_func_sig(func_env.clone(), type_env.clone(), callee.clone()) {
-        Some(sig) => match sig.output_provenance.clone().first().cloned() {
-            Some(callee_prov) => Arc::new(v1_rt::map_keys(&callee_prov))
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(),
-                    |acc: Arc<HashMap<String, Arc<SubValueRelation>>>, callee_pname: String| {
-                        match v1_rt::map_get(&callee_prov, callee_pname.clone()) {
-                            Some(callee_rel) => {
-                                match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
-                                    Some(arg) => {
-                                        let arg_prov = classify_body_provenance(
-                                            arg.clone(),
-                                            param_names.clone(),
-                                            param_types.clone(),
-                                            type_env.clone(),
-                                            func_env.clone(),
-                                            let_prov.clone(),
-                                        );
-                                        Arc::new(v1_rt::map_keys(&arg_prov)).iter().cloned().fold(
-                                        acc.clone(),
-                                        |inner: Arc<HashMap<String, Arc<SubValueRelation>>>,
-                                         pname: String| {
-                                            match v1_rt::map_get(&arg_prov, pname.clone()) {
-                                                Some(arg_rel) => {
-                                                    let composed = compose_sub_value_relations(
-                                                        arg_rel.clone(),
-                                                        callee_rel.clone(),
-                                                    );
-                                                    match (*composed.clone()).clone() {
-                                                        SubValueRelation::SubValueUnknown => {
-                                                            inner.clone()
-                                                        }
-                                                        _ => match v1_rt::map_get(
-                                                            &inner,
-                                                            pname.clone(),
-                                                        ) {
-                                                            Some(existing) => v1_rt::rc_map_insert(
-                                                                inner.clone(),
-                                                                pname.clone(),
-                                                                meet_sub_value(
-                                                                    existing.clone(),
-                                                                    composed.clone(),
-                                                                ),
-                                                            ),
-                                                            None => v1_rt::rc_map_insert(
-                                                                inner.clone(),
-                                                                pname.clone(),
-                                                                composed.clone(),
-                                                            ),
-                                                        },
-                                                    }
-                                                }
-                                                None => inner.clone(),
-                                            }
-                                        },
-                                    )
-                                    }
-                                    None => acc.clone(),
-                                }
-                            }
-                            None => acc.clone(),
-                        }
-                    },
-                ),
-            None => v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(),
-        },
-        None => v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(),
-    }
+    Some(sig) => match sig.output_provenance.clone().first().cloned() {
+    Some(callee_prov) => Arc::new(v1_rt::map_keys(&callee_prov)).iter().cloned().fold(v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(), |acc: Arc<HashMap<String, Arc<SubValueRelation>>>, callee_pname: String| match v1_rt::map_get(&callee_prov, callee_pname.clone()) {
+    Some(callee_rel) => match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
+    Some(arg) => {
+        let arg_prov = classify_body_provenance(arg.clone(), param_names.clone(), param_types.clone(), type_env.clone(), func_env.clone(), let_prov.clone());
+Arc::new(v1_rt::map_keys(&arg_prov)).iter().cloned().fold(acc.clone(), |inner: Arc<HashMap<String, Arc<SubValueRelation>>>, pname: String| match v1_rt::map_get(&arg_prov, pname.clone()) {
+    Some(arg_rel) => {
+            let composed = compose_sub_value_relations(arg_rel.clone(), callee_rel.clone());
+match (*composed.clone()).clone() {
+    SubValueRelation::SubValueUnknown => inner.clone(),
+    _ => match v1_rt::map_get(&inner, pname.clone()) {
+    Some(existing) => v1_rt::rc_map_insert(inner.clone(), pname.clone(), meet_sub_value(existing.clone(), composed.clone())),
+    None => v1_rt::rc_map_insert(inner.clone(), pname.clone(), composed.clone()),
+},
+}
+},
+    None => inner.clone(),
+})
+},
+    None => acc.clone(),
+},
+    None => acc.clone(),
+}),
+    None => v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(),
+},
+    None => v1_rt::rc_empty_map::<String, Arc<SubValueRelation>>(),
+}
 }
 
 pub fn classify_body_per_field(
@@ -11095,24 +11053,25 @@ pub fn compose_callee_param_map(
                             Arc::new(v1_rt::map_keys(&arg_prov)).iter().cloned().fold(
                                 acc.clone(),
                                 |inner: Arc<HashMap<String, Arc<SubValueRelation>>>,
-                                 pname: String| {
-                                    match v1_rt::map_get(&arg_prov, pname.clone()) {
-                                        Some(arg_rel) => {
-                                            let composed = compose_sub_value_relations(
-                                                arg_rel.clone(),
-                                                callee_rel.clone(),
-                                            );
-                                            match (*composed.clone()).clone() {
-                                                SubValueRelation::SubValueUnknown => inner.clone(),
-                                                _ => v1_rt::rc_map_insert(
-                                                    inner.clone(),
-                                                    pname.clone(),
-                                                    composed.clone(),
-                                                ),
-                                            }
+                                 pname: String| match v1_rt::map_get(
+                                    &arg_prov,
+                                    pname.clone(),
+                                ) {
+                                    Some(arg_rel) => {
+                                        let composed = compose_sub_value_relations(
+                                            arg_rel.clone(),
+                                            callee_rel.clone(),
+                                        );
+                                        match (*composed.clone()).clone() {
+                                            SubValueRelation::SubValueUnknown => inner.clone(),
+                                            _ => v1_rt::rc_map_insert(
+                                                inner.clone(),
+                                                pname.clone(),
+                                                composed.clone(),
+                                            ),
                                         }
-                                        None => inner.clone(),
                                     }
+                                    None => inner.clone(),
                                 },
                             )
                         }
@@ -14444,55 +14403,25 @@ pub fn overlay_direct_import_exports(
     resolved_imports: Arc<Vec<Arc<ResolvedImport>>>,
     parent_index: Arc<HashMap<String, Arc<TypedModule>>>,
 ) -> Arc<HashMap<String, Arc<TypeBinding>>> {
-    resolved_imports.clone().iter().cloned().fold(
-        ancestry_str_bindings.clone(),
-        |acc: Arc<HashMap<String, Arc<TypeBinding>>>, imp: Arc<ResolvedImport>| match v1_rt::map_get(
-            &parent_index,
-            imp.module_path.clone(),
-        ) {
-            Some(typed_parent) => {
-                let export_surface = interface_env_for_import(
-                    imp.module_path.clone(),
-                    typed_parent.interface.clone().env.clone(),
-                );
-                let selected = if imp.is_all.clone() {
-                    Arc::new({
-                        let mut __result = Vec::new();
-                        for name in Arc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
-                            .iter()
-                            .cloned()
-                        {
-                            if (is_type_variable_name(name.clone()) == false) {
-                                __result.push(name);
-                            }
-                        }
-                        __result
-                    })
-                } else {
-                    imp.specific_names.clone()
-                };
-                selected.clone().iter().cloned().fold(
-                    acc.clone(),
-                    |bacc: Arc<HashMap<String, Arc<TypeBinding>>>, name: String| {
-                        if overlay_skips_kernel_name(name.clone()) {
-                            bacc.clone()
-                        } else {
-                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
-                            {
-                                Some(binding) => v1_rt::rc_map_insert(
-                                    bacc.clone(),
-                                    name.clone(),
-                                    binding.clone(),
-                                ),
-                                None => bacc.clone(),
-                            }
-                        }
-                    },
-                )
-            }
-            None => acc.clone(),
-        },
-    )
+    resolved_imports.clone().iter().cloned().fold(ancestry_str_bindings.clone(), |acc: Arc<HashMap<String, Arc<TypeBinding>>>, imp: Arc<ResolvedImport>| match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+    Some(typed_parent) => {
+        let export_surface = interface_env_for_import(imp.module_path.clone(), typed_parent.interface.clone().env.clone());
+let selected = if imp.is_all.clone() {
+            Arc::new({ let mut __result = Vec::new(); for name in Arc::new(v1_rt::map_keys(&export_surface.str_bindings.clone())).iter().cloned() { if (is_type_variable_name(name.clone()) == false) { __result.push(name); } } __result })
+        } else {
+            imp.specific_names.clone()
+        };
+selected.clone().iter().cloned().fold(acc.clone(), |bacc: Arc<HashMap<String, Arc<TypeBinding>>>, name: String| if overlay_skips_kernel_name(name.clone()) {
+            bacc.clone()
+        } else {
+            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone()) {
+    Some(binding) => v1_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
+    None => bacc.clone(),
+}
+        })
+},
+    None => acc.clone(),
+})
 }
 
 pub fn build_type_env(
