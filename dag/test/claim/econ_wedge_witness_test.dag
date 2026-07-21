@@ -1,0 +1,174 @@
+module test.claim.econ_wedge_witness
+
+import extdeps.pricing.github_actions { github_actions_linux_2core_price }
+import extdeps.pricing.hetzner_dedicated { hetzner_ax41_1_ltd_price }
+import extdeps.sec.issuer.chemed_facts {
+  chemed_fy2025_operating_income,
+  chemed_fy2025_revenue,
+}
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  filed_amount,
+  usd_whole_dollars,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.rollins_facts {
+  rollins_fy2025_operating_income,
+  rollins_fy2025_revenue,
+}
+import gunbc.econ.knowable_wedge {
+  AssumptionsUnknown,
+  KnowableWedgeComputed,
+  KnowableWedgeRefused,
+  WedgeAssumptions,
+  WedgeAssumptionsDeclared,
+  WedgeAssumptionsUnknown,
+  derive_github_hetzner_ci_minute_wedge,
+}
+import gunbc.econ.margin_envelope {
+  GrossMargin,
+  MarginEnvelopeDerived,
+  MarginEnvelopeRefused,
+  OperatingMargin,
+  derive_margin_envelope_from_filed_facts,
+  margin_envelope_in_band,
+}
+import std.measure { money_per_minute_micros }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gitlab_fy2026_gross_margin_bp_low: Int = 8735
+
+data gitlab_fy2026_gross_margin_bp_high: Int = 8737
+
+data rollins_fy2025_operating_margin_bp_low: Int = 1930
+
+data rollins_fy2025_operating_margin_bp_high: Int = 1931
+
+data chemed_fy2025_operating_margin_bp_low: Int = 1336
+
+data chemed_fy2025_operating_margin_bp_high: Int = 1337
+
+data github_hetzner_wedge_assumptions: WedgeAssumptions = WedgeAssumptions {
+  runner_utilization_bp: 10000,
+  amortization_months: 60,
+  eur_to_usd_numerator: 109,
+  eur_to_usd_denominator: 100,
+}
+
+data github_hetzner_wedge_floor_usd_micros: Int = 475
+
+data github_hetzner_wedge_spread_usd_micros: Int = 5525
+
+fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: gitlab_fy2026_revenue,
+    profit: gitlab_fy2026_gross_profit,
+    margin_kind: GrossMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: gitlab_fy2026_gross_margin_bp_low,
+        high_bp: gitlab_fy2026_gross_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
+  match filed_amount(fact: gitlab_fy2026_gross_profit) {
+    Present { value: gross_profit } => {
+      let perturbed = usd_whole_dollars(
+        count: usd_whole_dollars_count(gross_profit) + 1
+      )
+      match derive_margin_envelope_from_filed_facts(
+        revenue: gitlab_fy2026_revenue,
+        profit: FiledMonetaryFact {
+          element: gitlab_fy2026_gross_profit.element,
+          amount: Filed { amount: perturbed },
+          citation: gitlab_fy2026_gross_profit.citation,
+        },
+        margin_kind: GrossMargin,
+      ) {
+        MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+          !margin_envelope_in_band(
+            envelope: env,
+            low_bp: gitlab_fy2026_gross_margin_bp_low,
+            high_bp: gitlab_fy2026_gross_margin_bp_high,
+          )
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+fn w_rollins_operating_margin_envelope_derived() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: rollins_fy2025_revenue,
+    profit: rollins_fy2025_operating_income,
+    margin_kind: OperatingMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: rollins_fy2025_operating_margin_bp_low,
+        high_bp: rollins_fy2025_operating_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_chemed_operating_margin_envelope_derived() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: chemed_fy2025_revenue,
+    profit: chemed_fy2025_operating_income,
+    margin_kind: OperatingMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: chemed_fy2025_operating_margin_bp_low,
+        high_bp: chemed_fy2025_operating_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeComputed { wedge: w } =>
+      money_per_minute_micros(q: w.umbrella_per_minute) == 6000
+        && money_per_minute_micros(q: w.cost_floor_per_minute) == github_hetzner_wedge_floor_usd_micros
+        && w.wedge_per_minute_micros == github_hetzner_wedge_spread_usd_micros
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsUnknown,
+  ) {
+    KnowableWedgeRefused { cause: AssumptionsUnknown } => true
+    _ => false
+  }
+}
+
+test fn econ_wedge_witness_holds() -> Bool {
+  w_gitlab_gross_margin_envelope_derived_from_filed_components()
+    && w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit()
+    && w_rollins_operating_margin_envelope_derived()
+    && w_chemed_operating_margin_envelope_derived()
+    && w_github_hetzner_knowable_wedge_derived_with_declared_assumptions()
+    && w_github_hetzner_knowable_wedge_red_on_unknown_assumptions()
+}

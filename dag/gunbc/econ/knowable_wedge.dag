@@ -1,0 +1,193 @@
+module gunbc.econ.knowable_wedge
+
+import extdeps.pricing.github_actions { GithubActionsRunnerPriceRow }
+import extdeps.pricing.hetzner_dedicated {
+  HetznerDedicatedServerPriceRow,
+  HetznerDedicatedServerType,
+  Ax41_1_Ltd,
+  Ax42_1_Ltd,
+  Ax42_1,
+  Ax102_1_Ltd,
+  hetzner_dedicated_setup_fee_micros,
+}
+import std.currency { CurrencyCode, Eur, Usd }
+import std.measure {
+  HardwareThreadCount,
+  MoneyPerMinute,
+  billing_month_as_hour_count,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  minutes_per_hour,
+  money_amount_micro,
+  money_per_minute_micros,
+  money_per_month_micros,
+}
+import std.nat { Nat }
+import std.types { Int, NonEmptyStr }
+
+data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
+
+type WedgeAssumptions {
+  runner_utilization_bp: Int
+  amortization_months: Nat
+  eur_to_usd_numerator: Nat
+  eur_to_usd_denominator: Nat
+}
+
+type WedgeAssumptionsInput
+  = WedgeAssumptionsDeclared { assumptions: WedgeAssumptions }
+  | WedgeAssumptionsUnknown
+
+type KnowableWedgeRefusalCause
+  = AssumptionsUnknown
+  | UtilizationUnknown
+  | AmortizationUnknown
+  | ExchangeRateUnknown
+  | ServerThreadCountUnknown
+  | RunnerThreadCountUnknown
+  | CurrencyMismatch
+
+type KnowableWedgeDerived {
+  umbrella_per_minute: MoneyPerMinute
+  cost_floor_per_minute: MoneyPerMinute
+  wedge_per_minute_micros: Int
+}
+
+type KnowableWedgeResult
+  = KnowableWedgeComputed { wedge: KnowableWedgeDerived }
+  | KnowableWedgeRefused { cause: KnowableWedgeRefusalCause }
+
+fn hetzner_dedicated_server_thread_count(server_type: HetznerDedicatedServerType) -> HardwareThreadCount? {
+  match server_type {
+    Ax41_1_Ltd => Present { value: hardware_thread_count(count: 6) }
+    Ax42_1_Ltd => Present { value: hardware_thread_count(count: 8) }
+    Ax42_1 => Present { value: hardware_thread_count(count: 8) }
+    Ax102_1_Ltd => Present { value: hardware_thread_count(count: 16) }
+  }
+}
+
+fn minutes_per_billing_month() -> Nat {
+  billing_month_as_hour_count() * minutes_per_hour()
+}
+
+fn eur_micros_to_usd_micros(
+  eur_micros: Nat,
+  numerator: Nat,
+  denominator: Nat,
+) -> Nat? {
+  if denominator <= 0 {
+    none
+  } else {
+    Present { value: (eur_micros * numerator) / denominator }
+  }
+}
+
+fn derive_monthly_eur_micros_with_amortization(
+  row: HetznerDedicatedServerPriceRow,
+  amortization_months: Nat,
+) -> Nat? {
+  if amortization_months <= 0 {
+    none
+  } else {
+    let monthly = money_per_month_micros(q: row.monthly)
+    let setup = hetzner_dedicated_setup_fee_micros(row: row)
+    Present { value: monthly + (setup / amortization_months) }
+  }
+}
+
+fn derive_runner_cost_floor_per_minute_usd(
+  row: HetznerDedicatedServerPriceRow,
+  runner_vcpus: HardwareThreadCount,
+  assumptions: WedgeAssumptions,
+) -> Nat? {
+  if assumptions.runner_utilization_bp <= 0 {
+    none
+  } else if assumptions.amortization_months <= 0 {
+    none
+  } else if assumptions.eur_to_usd_denominator <= 0 {
+    none
+  } else {
+    match hetzner_dedicated_server_thread_count(server_type: row.server_type) {
+      Present { value: server_vcpus } => {
+        let server_count = hardware_thread_count_value(t: server_vcpus)
+        let runner_count = hardware_thread_count_value(t: runner_vcpus)
+        if server_count <= 0 {
+          none
+        } else if runner_count <= 0 {
+          none
+        } else {
+          match derive_monthly_eur_micros_with_amortization(
+            row: row,
+            amortization_months: assumptions.amortization_months,
+          ) {
+            Present { value: monthly_eur } => {
+              let per_minute_server_eur = monthly_eur / minutes_per_billing_month()
+              let per_minute_runner_eur =
+                (per_minute_server_eur * runner_count) / server_count
+              let utilized_runner_eur =
+                (per_minute_runner_eur * 10000) / assumptions.runner_utilization_bp
+              eur_micros_to_usd_micros(
+                eur_micros: utilized_runner_eur,
+                numerator: assumptions.eur_to_usd_numerator,
+                denominator: assumptions.eur_to_usd_denominator,
+              )
+            }
+            _ => none
+          }
+        }
+      }
+      _ => none
+    }
+  }
+}
+
+fn derive_github_hetzner_ci_minute_wedge(
+  umbrella_row: GithubActionsRunnerPriceRow,
+  floor_row: HetznerDedicatedServerPriceRow,
+  assumptions_input: WedgeAssumptionsInput,
+) -> KnowableWedgeResult {
+  match assumptions_input {
+    WedgeAssumptionsUnknown => KnowableWedgeRefused { cause: AssumptionsUnknown }
+    WedgeAssumptionsDeclared { assumptions: assumptions } => {
+      if assumptions.runner_utilization_bp <= 0 {
+        KnowableWedgeRefused { cause: UtilizationUnknown }
+      } else if assumptions.amortization_months <= 0 {
+        KnowableWedgeRefused { cause: AmortizationUnknown }
+      } else if assumptions.eur_to_usd_denominator <= 0 {
+        KnowableWedgeRefused { cause: ExchangeRateUnknown }
+      } else {
+        match umbrella_row.per_minute.currency {
+          Usd => {
+            match floor_row.monthly.currency {
+              Eur => {
+                match derive_runner_cost_floor_per_minute_usd(
+                  row: floor_row,
+                  runner_vcpus: umbrella_row.vcpus,
+                  assumptions: assumptions,
+                ) {
+                  Present { value: floor_usd_micros } => {
+                    let umbrella_usd_micros = money_per_minute_micros(q: umbrella_row.per_minute)
+                    KnowableWedgeComputed {
+                      wedge: KnowableWedgeDerived {
+                        umbrella_per_minute: umbrella_row.per_minute,
+                        cost_floor_per_minute: MoneyPerMinute {
+                          amount: money_amount_micro(count: floor_usd_micros),
+                          currency: Usd,
+                        },
+                        wedge_per_minute_micros: umbrella_usd_micros - floor_usd_micros,
+                      }
+                    }
+                  }
+                  _ =>
+                    KnowableWedgeRefused { cause: ServerThreadCountUnknown }
+                }
+              }
+              Usd => KnowableWedgeRefused { cause: CurrencyMismatch }
+            }
+          }
+          Eur => KnowableWedgeRefused { cause: CurrencyMismatch }
+        }
+      }
+    }
+  }
+}
