@@ -653,6 +653,7 @@ pub fn expr_error_kind_name(value: ExprErrorKind) -> String {
         ExprErrorKind::ParseRecoveryError => "ParseRecoveryError".to_string(),
         ExprErrorKind::SemanticExprError => "SemanticExprError".to_string(),
         ExprErrorKind::InternalExprError => "InternalExprError".to_string(),
+        ExprErrorKind::CensusHeadsBodyStripped => "CensusHeadsBodyStripped".to_string(),
     }
 }
 
