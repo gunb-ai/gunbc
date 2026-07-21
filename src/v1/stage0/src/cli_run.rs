@@ -17194,6 +17194,155 @@ mod reference_edge_producer_tests {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    fn str_list_value(items: &[String]) -> crate::v1_interpreter::Value {
+        super::list_value_from_vec(
+            items
+                .iter()
+                .map(|s| crate::v1_interpreter::Value::Str(s.clone()))
+                .collect(),
+        )
+    }
+
+    fn edge_from_record(
+        ctx: &crate::v1_interpreter::InterpContext,
+        value: &crate::v1_interpreter::Value,
+    ) -> (String, String) {
+        let crate::v1_interpreter::Value::Record { fields, .. } = value else {
+            panic!("expected ModuleDependencyEdge record, got {value}");
+        };
+        let path = match ctx.field(fields, "path") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            other => panic!("path field: {other:?}"),
+        };
+        let target = match ctx.field(fields, "target_module") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            other => panic!("target_module field: {other:?}"),
+        };
+        (path, target)
+    }
+
+    fn dependency_edges_from_free_monoid(
+        ctx: &crate::v1_interpreter::InterpContext,
+        value: &crate::v1_interpreter::Value,
+    ) -> Vec<(String, String)> {
+        match value {
+            crate::v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Empty") => Vec::new(),
+            crate::v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .expect("Cons.head must be present");
+                let tail = ctx
+                    .field(fields, "tail")
+                    .expect("Cons.tail must be present");
+                let mut edges = vec![edge_from_record(ctx, head)];
+                edges.extend(dependency_edges_from_free_monoid(ctx, tail));
+                edges
+            }
+            other => panic!("expected FreeMonoid Cons/Empty, got {other}"),
+        }
+    }
+
+    // Divergence control for the §3 producer fork dissolved in #6935: an import-less file that
+    // references another module by bare name is invisible to import_resolution_facts but visible to
+    // reference_resolution_facts (strict tier). Before the builtin registration the .dag lens
+    // under-selected; after, dependency_resolution_facts_live and the host agree.
+    #[test]
+    fn reference_edge_dag_host_producer_divergence_control() {
+        use super::{
+            build_multi_entry_index, import_resolution_facts, make_eval_context,
+            reference_edges_as_import_facts, reference_resolution_facts,
+            resolve_entry_with_index_for_discovery_corpus, workspace_root,
+        };
+        use crate::v1_interpreter::{self, ExecutionMode};
+
+        let root = fixture_root("divergence");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "decl.dag",
+            "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n",
+        );
+        write(
+            &root,
+            "refless.dag",
+            "module test.refless\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+
+        let pool = vec![root.to_string_lossy().into_owned()];
+        let has_import_edge = |from_sub: &str, to_mod: &str| {
+            import_resolution_facts(&pool, &pool, &[])
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
+        };
+        let has_host_ref_edge = |from_sub: &str, to_mod: &str| {
+            reference_edges_as_import_facts(&reference_resolution_facts(&pool, &pool, &[]), true)
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
+        };
+
+        // RED control: import-only producer cannot see a reference-only dependency.
+        assert!(
+            !has_import_edge("refless.dag", "test.decl"),
+            "import_resolution_facts must miss a reference-only edge — otherwise this test is not discriminating"
+        );
+        // Host selection-tier producer finds it (the fork surface we are dissolving).
+        assert!(
+            has_host_ref_edge("refless.dag", "test.decl"),
+            "host reference_resolution_facts (strict) must find the reference-only edge"
+        );
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let module_graph_entry = ws
+            .join("src/v2/lens/module_graph.dag")
+            .to_string_lossy()
+            .into_owned();
+        let index_roots = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            pool[0].clone(),
+        ];
+        let index = build_multi_entry_index(&index_roots);
+        let (graph, indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, &module_graph_entry)
+                .expect("module_graph.dag resolves");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let args = [
+            (Some("pool_roots".to_string()), str_list_value(&pool)),
+            (Some("importer_roots".to_string()), str_list_value(&pool)),
+            (
+                Some("exclude_substrings".to_string()),
+                str_list_value(&[] as &[String]),
+            ),
+        ];
+        let dag_edges = dependency_edges_from_free_monoid(
+            &ctx,
+            &v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "dependency_resolution_facts_live",
+                &args,
+                false,
+            )
+            .expect("dependency_resolution_facts_live eval"),
+        );
+        assert!(
+            dag_edges
+                .iter()
+                .any(|(path, target)| path.contains("refless.dag") && target == "test.decl"),
+            ".dag dependency_resolution_facts_live must find the reference-only edge after builtin registration"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
