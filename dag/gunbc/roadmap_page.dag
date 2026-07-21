@@ -1,5 +1,6 @@
 module gunbc.roadmap_page
 
+import std.types { list_length }
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
@@ -113,6 +114,44 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
   }
 }
 
+data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE, which both A (Node exec route) and B (gunbc serve in-process) answer -- the button is transport-agnostic, so the backend swaps under it with zero page change. The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
+
+fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
+  if node_status_symbol(rn: rn, merged: merged) == "done" {
+    []
+  } else {
+    [
+      ElementNode {
+        tag: "button",
+        attrs: [
+          MarkupAttr { name: "class", value: "dispatch-btn" },
+          MarkupAttr { name: "type", value: "button" },
+          MarkupAttr { name: "data-node", value: rn.node as String },
+        ],
+        children: [ txt("dispatch") ],
+      },
+    ]
+  }
+}
+
+data belt_dispatch_path_prefix: String = "/dispatch/"
+
+fn dispatch_client_js() -> String {
+  concat(
+    concat(
+      "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
+      belt_dispatch_path_prefix,
+    ),
+    "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{b.textContent=j.ok?('dispatched: '+j.node):'failed';if(!j.ok)\{console.log('dispatch failed',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
+  )
+}
+
+data dispatch_client_js_scaffold_note: String = "dispatch_client_js is JS-as-concatenated-string -- a medium-as-string Scaffold INDEPENDENT of the server exec route. Belt B (cool-wolf-720, gunbc serve) retires the exec route in node_http_server_emit, but this CLIENT script SURVIVES: B serves roadmap_page in-process via roadmap_serve and inherits it unchanged. So its dissolution trigger is its own, not the exec route's: dissolves to a modeled browser-emit lane -- JS/TsProgram grammar rows read backward (DESIGN section 4, the same one-grammar-both-directions move as the bash and Node emitters), at which point this string concat becomes emit over modeled nodes. Marked on the carrier here (DESIGN section 6: the mark on the carrier is the authority) rather than in belt B, whose tree does not contain this function."
+
+fn dispatch_client_script() -> MarkupNode {
+  el("script", [ txt(dispatch_client_js()) ])
+}
+
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
   let head = concat(
@@ -148,7 +187,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(head, child_block),
+    children: concat(concat(head, dispatch_button_nodes(rn: rn, merged: merged)), child_block),
   }
 }
 
@@ -193,7 +232,7 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: head,
+    children: concat(head, dispatch_button_nodes(rn: rn, merged: merged)),
   }
 }
 
@@ -232,6 +271,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
         el_class("main", "daily-workspace", [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
         ]),
+        dispatch_client_script(),
       ]),
     ],
   }
@@ -241,6 +281,15 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(lead, secs)
+  let body_base = [
+    el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
+    el_class("main", "roadmap", main_children),
+  ]
+  let body_children = if list_length(main_children) == 0 {
+    body_base
+  } else {
+    concat(body_base, [ dispatch_client_script() ])
+  }
   ElementNode {
     tag: "html",
     attrs: [],
@@ -250,10 +299,7 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
-      el("body", [
-        el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
-        el_class("main", "roadmap", main_children),
-      ]),
+      el("body", body_children),
     ],
   }
 }
