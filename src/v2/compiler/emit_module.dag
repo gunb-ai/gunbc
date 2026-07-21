@@ -68,3 +68,54 @@ fn emit_module(decls: List<InferredTree>, target: TargetModel) -> Outcome<Medium
     }
   )
 }
+
+data emit_family_note: String = "Family-grain source producer (std.emit_on_demand witness_family_build_grain_ruling): one crate per witness FAMILY, not per witness. emit_module emits N decls under ONE target model; a witness family's members each carry their OWN target model (per-member translation rows), so emit_family folds emit(member.tree, member.target) into one concatenated source. The transport target (the family dispatcher descriptor) owns the resulting medium — it is a parameter, not a member fact."
+
+type EmitFamilyMember {
+  tree: InferredTree,
+  target: TargetModel
+}
+
+fn emit_family_append_member(
+  partial: String,
+  member: EmitFamilyMember
+) -> Outcome<String> {
+  bind_outcome(
+    o: emit(tree: member.tree, target: member.target),
+    f: fn(medium) {
+      outcome_accepted(
+        value: list_append(
+          left: list_append(left: partial, right: medium.carried),
+          right: emit_module_decl_separator
+        )
+      )
+    }
+  )
+}
+
+fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
+  fold_list(
+    xs: members,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, member) {
+      bind_outcome(
+        o: acc,
+        f: fn(partial) {
+          emit_family_append_member(partial: partial, member: member)
+        }
+      )
+    }
+  )
+}
+
+fn emit_family(
+  members: List<EmitFamilyMember>,
+  transport_target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: emit_family_text(members: members),
+    f: fn(joined) {
+      target_source_medium(text: joined, target: transport_target)
+    }
+  )
+}
