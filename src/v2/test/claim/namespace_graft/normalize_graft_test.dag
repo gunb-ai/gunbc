@@ -161,6 +161,22 @@ test fn namespace_graft_normalize_applies_on_parsed_module_holds() -> Bool {
   }
 }
 
+test fn namespace_graft_graft_after_normalize_body_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: normalized } =>
+      match module_header_containment_graft(root: normalized) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Accepted { value: qn, diagnostics: _ } =>
+              qualified_name_to_dotted_string(qn: qn) == "m"
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
 test fn namespace_graft_normalize_qn_round_trip_holds() -> Bool {
   match ng_norm_normalized_root() {
     Present { value: root } =>

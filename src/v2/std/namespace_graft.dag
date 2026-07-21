@@ -232,17 +232,21 @@ fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
 }
 
 fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
-  if count(node.children) != 1 {
-    optional_absent()
-  } else {
-    match list_at_optional(xs: node.children, index: 0) {
-      Absent => optional_absent()
-      Present { value: edge } =>
-        match edge.label {
-          Named { name: _ } => optional_present(value: edge)
-          Positional => optional_absent()
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) != 1 {
+        optional_absent()
+      } else {
+        match list_at_optional(xs: node.children, index: 0) {
+          Absent => optional_absent()
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: _ } => optional_present(value: edge)
+              Positional => optional_absent()
+            }
         }
-    }
+      }
+    _ => optional_absent()
   }
 }
 

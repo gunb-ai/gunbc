@@ -169,21 +169,7 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
 }
 
 fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node> {
-  if namespace_graft_is_graft_candidate(root: folded) {
-    match module_header_containment_graft(root: folded) {
-      Rejected { diagnostics: r } =>
-        Rejected {
-          diagnostics: rejected_with_pending(pending: cd, rejected: r)
-        }
-      Accepted { value: grafted, diagnostics: d } =>
-        Accepted {
-          value: grafted,
-          diagnostics: diagnostics_merge(outer: cd, inner: d)
-        }
-    }
-  } else {
-    Accepted { value: folded, diagnostics: cd }
-  }
+  Accepted { value: folded, diagnostics: cd }
 }
 
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
