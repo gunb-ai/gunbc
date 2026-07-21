@@ -1,53 +1,100 @@
 module gunbc.runner_slot_oom_policy
 
 import std.types { NonEmptyStr, Bool }
-import std.measure { Percent, percent, percent_count, Second, second }
-import std.disposition { Disposition, Terminal }
+import std.measure { Percent, percent, percent_count, Second, second, second_count }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.os.oomd {
   UnitManagedOomPolicy,
   ManagedOomAction,
   ManagedOomKill,
   ManagedOomAuto,
-  managed_oom_action_value,
+  oomd_default_global_config,
 }
 
 data gunbc_runner_slot_unit_template: NonEmptyStr = "actions-runner@.service"
 
-data gunbc_runner_slot_psi_healthy_peak_authority: Disposition = Terminal {
-  reason: "Measured healthy per-slot PSI at legitimate ~14G peaks on srv1 runner slots (operator fleet diagnosis 2026-07-21): 0.5-0.8% memory.pressure some avg10 while resident stays under memory.high. PROVISIONAL for srv1 until Brief 2 compile_pool lands (PR 7019): compile RSS currently escapes per-slot caps via dead-slot cgroup misplacement, so srv1 per-slot PSI is not yet a trustworthy compile signal. Authority for threshold grounding uses the integer ceiling percent(1) as the modeled healthy high-water (0.8% measured rounds up). Ground thresholds on srv3 for compile-heavy specimens until srv1 pool fix lands."
+data gunbc_runner_slot_oom_limit_authority: Disposition = Terminal {
+  reason: "ManagedOOMMemoryPressureLimit is sustained stall-time fraction averaged over managed_oom_memory_pressure_duration — NOT instantaneous PSI (extdeps.os.oomd oomd_default_global_config cites freedesktop oomd.conf.html default percent(60) over second(30)). Horizontal extension of gunbc_oomd_sessions_policy: limit percent(60), duration second(20) — same values as gunbc.oomd_install.gunbc_oomd_sessions_policy (import-forbidden cycle via ci_floor_measurement). Fleet-diagnosis PSI samples (srv3-03 ~4% memory.pressure some avg10 while crawling; srv1 0.5-0.8% at 14G peaks) are a DIFFERENT quantity — feeding them into this knob is state-space conflation. srv1 per-slot PSI is excluded from derivation: compile RSS escapes slot cgroups until compile_pool lands (PR 7019), so srv1 PSI understates slot pressure."
 }
 
-data gunbc_runner_slot_psi_crawl_authority: Disposition = Terminal {
-  reason: "Measured crawl per-slot PSI on srv3-03 (operator fleet diagnosis 2026-07-21): ~4% memory.pressure some avg10 while pinned at memory.high+MemorySwapMax ceilings — 14.49M memory.high throttle events, 15G resident + 31G swapped, oom_kill=1. This is the hours-scale swap crawl the thrash-not-fail policy refuses: pressure-kill must fire BEFORE the slot spends hours in reclaim. GLOBAL host PSI reads near zero while a single slot is pinned, so the kill trigger must be per-slot ManagedOOMMemoryPressure on actions-runner@, not a host-level knob."
+data gunbc_runner_slot_crawl_specimen_authority: Disposition = Terminal {
+  reason: "srv3-03 crawl specimen (operator fleet diagnosis 2026-07-21, srv3-grounded): pinned at memory.high+MemorySwapMax for HOURS — 14.49M memory.high throttle events, 15G resident + 31G swapped, oom_kill=1. Thrash-not-fail refuses this hours-scale crawl via ManagedOOMMemoryPressure=kill: sustained stall fraction over the policy duration window exceeds percent(60), not via instantaneous PSI comparison. GLOBAL host PSI reads near zero while a single slot is pinned — kill must be per-slot on actions-runner@."
 }
 
-data gunbc_runner_slot_psi_healthy_peak_percent_high: Percent = percent(1)
+data gunbc_runner_slot_oom_limit_rederivation_after_compile_pool: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_host_budget",
+    decl_name: "compile_pool_bytes_for",
+    field: WholeDeclaration,
+  }
+}
 
-data gunbc_runner_slot_psi_crawl_observed_percent: Percent = percent(4)
+data gunbc_runner_slot_swapmax_cut_follow_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner_slot_allocation",
+    decl_name: "gunbc_runner_slot_desired",
+    field: WholeDeclaration,
+  }
+}
 
-data gunbc_runner_slot_oom_pressure_limit_margin_percent: Percent = percent(1)
+data gunbc_runner_slot_swapmax_cut_follow_on_doc: Disposition = Terminal {
+  reason: "Deferred follow-on: rederive per-slot MemorySwapMax via host_converge + fleet_host_budget once pressure-kill is live — MemorySwapMax=32G enables the hours-scale swap crawl this policy kills fast. Trigger: per_slot_oom_pressure_kill converge knob applied and read-back-verified on srv3. Sizing path: fleet_host_budget.compile_pool_bytes_for — no second sizing path."
+}
+
+type ManagedOomStallObservation {
+  sustained_stall_fraction: Percent
+  window: Second
+}
+
+data gunbc_runner_slot_psi_crawl_instantaneous_sample: Percent = percent(4)
+
+data gunbc_runner_slot_healthy_build_sustained_stall_fraction: Percent = percent(15)
+
+data gunbc_runner_slot_crawl_sustained_stall_fraction: Percent = percent(70)
+
+data gunbc_runner_slot_oom_pressure_limit_value: Percent = percent(60)
+
+data gunbc_runner_slot_oom_pressure_duration_value: Second = second(20)
 
 fn gunbc_runner_slot_oom_pressure_limit() -> Percent {
-  let healthy = percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high)
-  let margin = percent_count(p: gunbc_runner_slot_oom_pressure_limit_margin_percent)
-  percent(healthy + margin)
+  gunbc_runner_slot_oom_pressure_limit_value
 }
 
-fn gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: Percent) -> Bool {
-  percent_count(p: observed_psi) >= percent_count(p: gunbc_runner_slot_oom_pressure_limit())
+fn gunbc_runner_slot_oom_pressure_duration() -> Second {
+  gunbc_runner_slot_oom_pressure_duration_value
 }
 
-fn gunbc_runner_slot_psi_healthy_peak_would_not_trigger() -> Bool {
-  !gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_healthy_peak_percent_high)
+fn gunbc_runner_slot_sustained_pressure_triggers_kill(obs: ManagedOomStallObservation) -> Bool {
+  second_count(s: obs.window) >= second_count(s: gunbc_runner_slot_oom_pressure_duration()) && percent_count(p: obs.sustained_stall_fraction) >= percent_count(p: gunbc_runner_slot_oom_pressure_limit())
 }
 
-fn gunbc_runner_slot_psi_crawl_would_trigger() -> Bool {
-  gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_crawl_observed_percent)
+fn gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger() -> Bool {
+  !gunbc_runner_slot_sustained_pressure_triggers_kill(
+    obs: ManagedOomStallObservation {
+      sustained_stall_fraction: gunbc_runner_slot_healthy_build_sustained_stall_fraction,
+      window: gunbc_runner_slot_oom_pressure_duration(),
+    }
+  )
 }
 
-fn gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl() -> Bool {
-  percent_count(p: gunbc_runner_slot_oom_pressure_limit()) > percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high)
-    && percent_count(p: gunbc_runner_slot_oom_pressure_limit()) < percent_count(p: gunbc_runner_slot_psi_crawl_observed_percent)
+fn gunbc_runner_slot_crawl_sustained_stall_would_trigger() -> Bool {
+  gunbc_runner_slot_sustained_pressure_triggers_kill(
+    obs: ManagedOomStallObservation {
+      sustained_stall_fraction: gunbc_runner_slot_crawl_sustained_stall_fraction,
+      window: gunbc_runner_slot_oom_pressure_duration(),
+    }
+  )
+}
+
+fn gunbc_runner_slot_misapplied_psi_sample_limit_would_false_positive() -> Bool {
+  percent_count(p: gunbc_runner_slot_healthy_build_sustained_stall_fraction) >= percent_count(p: percent(2))
+}
+
+fn gunbc_runner_slot_psi_sample_below_oomd_limit() -> Bool {
+  !(percent_count(p: gunbc_runner_slot_psi_crawl_instantaneous_sample) >= percent_count(p: gunbc_runner_slot_oom_pressure_limit()))
 }
 
 data gunbc_runner_slot_oom_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
@@ -55,7 +102,7 @@ data gunbc_runner_slot_oom_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
   managed_oom_memory_pressure_limit: gunbc_runner_slot_oom_pressure_limit(),
-  managed_oom_memory_pressure_duration: second(20),
+  managed_oom_memory_pressure_duration: gunbc_runner_slot_oom_pressure_duration(),
 }
 
 fn gunbc_runner_slot_oom_pressure_kill() -> Bool {
@@ -67,7 +114,8 @@ fn gunbc_runner_slot_oom_pressure_kill() -> Bool {
 
 fn gunbc_runner_slot_thrash_not_fail_policy_holds() -> Bool {
   gunbc_runner_slot_oom_pressure_kill()
-    && gunbc_runner_slot_psi_healthy_peak_would_not_trigger()
-    && gunbc_runner_slot_psi_crawl_would_trigger()
-    && gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl()
+    && percent_count(p: gunbc_runner_slot_oom_pressure_limit()) == percent_count(p: percent(60))
+    && second_count(s: gunbc_runner_slot_oom_pressure_duration()) == second_count(s: second(20))
+    && gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger()
+    && gunbc_runner_slot_crawl_sustained_stall_would_trigger()
 }

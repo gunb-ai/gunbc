@@ -4,14 +4,15 @@ import gunbc.runner_slot_oom_policy {
   gunbc_runner_slot_thrash_not_fail_policy_holds,
   gunbc_runner_slot_oom_pressure_kill,
   gunbc_runner_slot_oom_pressure_limit,
-  gunbc_runner_slot_psi_triggers_pressure_kill,
-  gunbc_runner_slot_psi_healthy_peak_percent_high,
-  gunbc_runner_slot_psi_crawl_observed_percent,
-  gunbc_runner_slot_psi_healthy_peak_would_not_trigger,
-  gunbc_runner_slot_psi_crawl_would_trigger,
-  gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl,
+  gunbc_runner_slot_oom_pressure_duration,
+  gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger,
+  gunbc_runner_slot_crawl_sustained_stall_would_trigger,
+  gunbc_runner_slot_misapplied_psi_sample_limit_would_false_positive,
+  gunbc_runner_slot_psi_sample_below_oomd_limit,
+  gunbc_runner_slot_healthy_build_sustained_stall_fraction,
 }
-import std.measure { percent, percent_count }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy }
+import std.measure { percent, percent_count, second, second_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -24,31 +25,34 @@ test fn runner_slot_oom_policy_pressure_kill_enabled() -> Bool {
   gunbc_runner_slot_oom_pressure_kill()
 }
 
-test fn runner_slot_oom_policy_healthy_peak_psi_below_limit() -> Bool {
-  gunbc_runner_slot_psi_healthy_peak_would_not_trigger()
+test fn runner_slot_oom_policy_limit_matches_sessions_shape() -> Bool {
+  percent_count(p: gunbc_runner_slot_oom_pressure_limit()) == percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit) && second_count(s: gunbc_runner_slot_oom_pressure_duration()) == second_count(s: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_duration)
 }
 
-test fn runner_slot_oom_policy_crawl_psi_above_limit() -> Bool {
-  gunbc_runner_slot_psi_crawl_would_trigger()
+test fn runner_slot_oom_policy_duration_explicit_second_20() -> Bool {
+  second_count(s: gunbc_runner_slot_oom_pressure_duration()) == second_count(s: second(20))
 }
 
-test fn runner_slot_oom_policy_limit_grounded_between_measurements() -> Bool {
-  gunbc_runner_slot_oom_pressure_limit_strictly_between_healthy_and_crawl()
+test fn runner_slot_oom_policy_healthy_build_over_policy_window_does_not_trigger() -> Bool {
+  gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger()
 }
 
-test fn runner_slot_oom_policy_RED_limit_at_crawl_would_miss_healthy_discrimination() -> Bool {
-  !gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_healthy_peak_percent_high)
-    && gunbc_runner_slot_psi_triggers_pressure_kill(observed_psi: gunbc_runner_slot_psi_crawl_observed_percent)
+test fn runner_slot_oom_policy_crawl_over_policy_window_triggers() -> Bool {
+  gunbc_runner_slot_crawl_sustained_stall_would_trigger()
 }
 
-test fn runner_slot_oom_policy_RED_zero_limit_would_false_positive_healthy() -> Bool {
-  percent_count(p: gunbc_runner_slot_psi_healthy_peak_percent_high) >= percent_count(p: percent(0))
+test fn runner_slot_oom_policy_RED_misapplied_psi_sample_limit_would_false_positive() -> Bool {
+  gunbc_runner_slot_misapplied_psi_sample_limit_would_false_positive()
 }
 
-test fn runner_slot_oom_policy_RED_limit_above_crawl_would_never_kill() -> Bool {
-  percent_count(p: gunbc_runner_slot_psi_crawl_observed_percent) < percent_count(p: percent(5))
+test fn runner_slot_oom_policy_RED_psi_sample_does_not_discriminate_at_oomd_limit() -> Bool {
+  gunbc_runner_slot_psi_sample_below_oomd_limit()
 }
 
 test fn runner_slot_oom_policy_RED_kill_disabled_breaks_thrash_not_fail() -> Bool {
   gunbc_runner_slot_thrash_not_fail_policy_holds() && gunbc_runner_slot_oom_pressure_kill()
+}
+
+test fn runner_slot_oom_policy_RED_healthy_sustained_stall_at_misapplied_limit_would_kill() -> Bool {
+  percent_count(p: gunbc_runner_slot_healthy_build_sustained_stall_fraction) >= percent_count(p: percent(2))
 }
