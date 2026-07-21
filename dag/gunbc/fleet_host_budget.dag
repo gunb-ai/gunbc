@@ -325,19 +325,22 @@ fn fleet_host_plan_for(
               let floor = oomd_actuation_floor(host: host)
               match resolve_headroom(policy: policy, floor: floor) {
                 HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
-                HeadroomResolved { bytes: hr } => {
-                  let compile_pool = jobserver_build_pool_bytes(nproc: nproc, mem_total: host, cfg: cfg)
-                  let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr, compile_pool: compile_pool)
-                  let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_slice: session_slice, headroom: hr, runner_slice: slice, compile_pool: compile_pool)
-                  FleetHostPlanDerived {
-                    name: name,
-                    tree: tree,
-                    runner_slice_cap: slice,
-                    effective_build_tokens: derive_jobserver_tokens(nproc: nproc, mem_total: host, cfg: cfg),
-                    effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
-                    build_step: build_realization(cfg: cfg),
+                HeadroomResolved { bytes: hr } =>
+                  match compile_pool_bytes_for(placement: gunbc_compile_pool_placement, nproc: nproc, host: host, citation: citation) {
+                    CompilePoolUnresolved { reason: cr } => FleetHostPlanUnsound { reason: cr }
+                    CompilePoolDerived { bytes: compile_pool } => {
+                      let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr, compile_pool: compile_pool)
+                      let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_slice: session_slice, headroom: hr, runner_slice: slice, compile_pool: compile_pool)
+                      FleetHostPlanDerived {
+                        name: name,
+                        tree: tree,
+                        runner_slice_cap: slice,
+                        effective_build_tokens: derive_jobserver_tokens(nproc: nproc, mem_total: host, cfg: cfg),
+                        effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
+                        build_step: build_realization(cfg: cfg),
+                      }
+                    }
                   }
-                }
               }
             }
           }
