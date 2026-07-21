@@ -44,6 +44,7 @@ data witness_exclusion_substrings: List<String> = [
   "emit_host_typed_smoke_test.dag",
   "build_artifact_corruption_probe_witness_test.dag",
   "self_host_logic_behavioral_witness_test.dag",
+  "namespace_import_closure_witness_test.dag",
   "self_host_parse_engine_hooks_behavioral_witness_test.dag",
   "self_host_use_site_verdict_behavioral_witness_test.dag",
   "self_host_discovery_enumeration_behavioral_witness_test.dag",
