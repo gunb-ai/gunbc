@@ -1590,10 +1590,11 @@ fn index_source_root_into_module_index(
 
 fn load_compile_clean_entry_sources(
     source_roots: &[String],
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
+    mei: &MultiEntryIndex,
     entry_path_filter: Option<&std::collections::HashSet<String>>,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let index = &mei.source_files;
+    let facts = &mei.module_graph_facts;
     let first_root = std::path::Path::new(&source_roots[0]);
     let mut entry_files = Vec::new();
     if first_root.is_dir() {
@@ -1634,10 +1635,15 @@ fn load_compile_clean_entry_sources(
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
-    let mut sources = extend_with_reference_closure(sources, index, facts)?;
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.dedup_by(|a, b| a.path == b.path);
-    Ok(sources)
+    // BOTH closures to a joint fixpoint via the ONE shared authority the witness
+    // loader `load_sources_for_entry_with_pool` also calls (a §3 dissolution: this
+    // gate loader previously ran ONLY `extend_with_reference_closure`, so an
+    // affected entry reaching a provider purely through a bare name or a service
+    // call — patterns.dag → `gcp.STS.Exchange`, no import — dropped that provider,
+    // since the service-name → provider edge `gcp.STS` → dag/extdeps/cloud/gcp/sts.dag
+    // lives ONLY in the bare closure, and its names went unresolved. Proven: ARM1
+    // ref-only = 3 unresolved-type diags on patterns.dag's closure; +bare = 0).
+    extend_sources_to_both_closure_fixpoint(sources, mei)
 }
 
 /// Reference-derived dependency closure (namespace Rule-1 interim). A qualified
@@ -2349,9 +2355,8 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
         CompileCleanScopePlan::WholeTree => {
             eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
             let roots = witness_layer_roots();
-            let index = build_module_index_primary_precedence(&roots);
-            let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(|mut sources| {
+            let mei = build_multi_entry_index_primary_precedence(&roots);
+            load_compile_clean_entry_sources(&roots, &mei, None).map(|mut sources| {
                 append_test_floor_compile_clean_inject(&mut sources);
                 Some(sources)
             })
@@ -2367,9 +2372,8 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
                 .map(|p| workspace_relative_repo_path(p))
                 .collect();
             let roots = witness_layer_roots();
-            let index = build_module_index_primary_precedence(&roots);
-            let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, Some(&filter)).map(Some)
+            let mei = build_multi_entry_index_primary_precedence(&roots);
+            load_compile_clean_entry_sources(&roots, &mei, Some(&filter)).map(Some)
         }
     }
 }
@@ -4429,20 +4433,23 @@ fn extend_with_bare_reference_closure(
 /// versa. This is the loader the witness paths use; the raw-pair
 /// `load_sources_for_entry_with_index` stays the dotted-only base for callers
 /// without a pool index.
-fn load_sources_for_entry_with_pool(
-    index: &MultiEntryIndex,
-    entry_path: &str,
+/// The ONE closure-extension authority: run the bare/service-name and the
+/// module-path reference closures to a joint fixpoint (each newly-pulled module
+/// can carry either edge kind). Both source loaders — the per-entry witness
+/// loader and the affected-set compile-clean gate loader — call this, so the
+/// single-authority claim in `extend_with_reference_closure`'s doc-comment is
+/// true by construction rather than by two functions happening to hold identical
+/// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
+/// have left behind).
+fn extend_sources_to_both_closure_fixpoint(
+    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mut sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry_path,
-    )?;
     loop {
         let before = sources.len();
-        sources = extend_with_bare_reference_closure(sources, index)?;
+        sources = extend_with_bare_reference_closure(sources, mei)?;
         sources =
-            extend_with_reference_closure(sources, &index.source_files, &index.module_graph_facts)?;
+            extend_with_reference_closure(sources, &mei.source_files, &mei.module_graph_facts)?;
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         sources.dedup_by(|a, b| a.path == b.path);
         if sources.len() == before {
@@ -4450,6 +4457,18 @@ fn load_sources_for_entry_with_pool(
         }
     }
     Ok(sources)
+}
+
+fn load_sources_for_entry_with_pool(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let sources = load_sources_for_entry_with_index(
+        &index.source_files,
+        &index.module_graph_facts,
+        entry_path,
+    )?;
+    extend_sources_to_both_closure_fixpoint(sources, index)
 }
 
 fn load_sources_for_entry_with_index(
@@ -4536,9 +4555,8 @@ fn entry_source_from_index_or_disk(
 fn load_sources(
     source_roots: &[String],
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_module_index(source_roots);
-    let facts = build_module_graph_facts_live(source_roots);
-    load_compile_clean_entry_sources(source_roots, &index, &facts, None)
+    let mei = build_multi_entry_index(source_roots);
+    load_compile_clean_entry_sources(source_roots, &mei, None)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4763,6 +4781,20 @@ pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
+}
+
+/// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
+/// uses (`--dependency-pool-index primary-precedence`: root[0] wins, later roots
+/// fill only absent modules). Needed so `load_compile_clean_entry_sources` can run
+/// the SAME both-closure fixpoint as the witness loader (`extend_with_bare_reference_closure`
+/// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
+/// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
+fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
+    new_multi_entry_index_shell(
+        build_module_index_primary_precedence(source_roots),
+        source_roots,
+        None,
+    )
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -23332,6 +23364,100 @@ mod sigs_env_flat_parents {
         assert!(
             result.func_env.parents.iter().all(|p| !p.name.is_empty()),
             "every closure member carries its module name (the dedup key)"
+        );
+    }
+}
+
+#[cfg(test)]
+mod compile_clean_loader_closure_fork_regression {
+    // Regression for the §3 closure-authority fork dissolved 2026-07-20: the
+    // compile-clean gate loader `load_compile_clean_entry_sources` ran ONLY
+    // `extend_with_reference_closure` (module-path refs), while the witness loader
+    // `load_sources_for_entry_with_pool` ran BOTH that and
+    // `extend_with_bare_reference_closure`. The service-name → provider edge
+    // (`gcp.STS` → dag/extdeps/cloud/gcp/sts.dag) and bare-name provider pulls
+    // live ONLY in the bare closure, so an affected entry reaching a provider
+    // purely through a service call or bare name (dag/gunbc/auth/patterns.dag →
+    // `gcp.STS.Exchange`, zero imports) dropped that provider from the scoped
+    // compile set and its names went unresolved. This surfaced non-locally when
+    // #6937's import strip made patterns.dag affected. Fix = the gate loader runs
+    // the same both-closure fixpoint as the witness loader.
+    //
+    // Heavyweight (builds the whole-tree index; ~20s) and chdir-global, so it is
+    // #[ignore]d like `witness_layer_roots_compile_clean_check` — run explicitly:
+    //   cargo test -p v1-compiler --lib compile_clean_loader_closure_fork \
+    //     -- --ignored --nocapture --test-threads=1
+    use super::*;
+
+    fn hard_diags(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> Vec<String> {
+        v1_compiler_compile::compile_sources(
+            Rc::new(sources.to_vec().into()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        )
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
+    }
+
+    #[test]
+    #[ignore = "heavyweight (whole-tree index) + chdir-global; run explicitly"]
+    fn scoped_gate_loader_pulls_bare_referenced_providers() {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace root");
+        let roots = witness_layer_roots();
+        let mei = build_multi_entry_index_primary_precedence(&roots);
+
+        let patterns_rel = "dag/gunbc/auth/patterns.dag".to_string();
+        let filter: std::collections::HashSet<String> = [patterns_rel].into_iter().collect();
+
+        // RED control: the OLD ref-only behavior, replicated inline. Resolve the
+        // scoped entry + ONLY the module-path reference closure — no bare closure.
+        // The service-only provider must be ABSENT and the closure must red.
+        let entry_source =
+            entry_source_from_index_or_disk(&mei.source_files, "dag/gunbc/auth/patterns.dag")
+                .expect("entry source");
+        let mut ref_only = resolve_transitively(
+            vec![entry_source.clone()],
+            &mei.source_files,
+            &mei.module_graph_facts,
+        )
+        .expect("resolve");
+        if !ref_only.iter().any(|s| s.path.contains("patterns.dag")) {
+            ref_only.push(entry_source);
+        }
+        let ref_only =
+            extend_with_reference_closure(ref_only, &mei.source_files, &mei.module_graph_facts)
+                .expect("ref closure");
+        let sts_ref_only = ref_only
+            .iter()
+            .any(|s| s.path.contains("cloud/gcp/sts.dag"));
+        let diags_ref_only = hard_diags(&ref_only);
+        assert!(
+            !sts_ref_only,
+            "RED control broken: ref-only closure unexpectedly already contains sts.dag"
+        );
+        assert!(
+            !diags_ref_only.is_empty(),
+            "RED control broken: ref-only scoped closure of patterns.dag must produce unresolved-name \
+             hard diagnostics (the fork this test guards). Got zero — the discriminating red is gone."
+        );
+
+        // The FIX: the real gate loader, now running BOTH closures. The bare
+        // closure must pull the service/bare-referenced providers and the scoped
+        // compile must be clean.
+        let fixed = load_compile_clean_entry_sources(&roots, &mei, Some(&filter))
+            .expect("fixed scoped load");
+        let sts_fixed = fixed.iter().any(|s| s.path.contains("cloud/gcp/sts.dag"));
+        let diags_fixed = hard_diags(&fixed);
+        assert!(
+            sts_fixed,
+            "fix regressed: the both-closure gate loader must pull the service provider sts.dag \
+             into patterns.dag's scoped closure"
+        );
+        assert!(
+            diags_fixed.is_empty(),
+            "fix regressed: patterns.dag scoped compile must be clean under the both-closure loader, got: {diags_fixed:?}"
         );
     }
 }
