@@ -3,10 +3,12 @@ module gunbc.fleet_ssh_access
 import std.types { List, NonEmptyStr }
 import extdeps.access.ssh { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.cloud.gcp.gcp { GcpProjectId }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
 
 data fleet_ssh_secrets_project: GcpProjectId = "gunbai-secrets"
+
+data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
 
 
 data operator_macbook_ssh_key: SshPublicKey = SshPublicKey {
@@ -26,6 +28,18 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
   secret: "fleet-automation-ssh-key" as NonEmptyStr,
   version: "latest",
   hash_state: HashPending,
+}
+
+type SecretOwner {
+  secret: SecretRef
+  accessor_sa: ServiceAccountEmail
+  binding_provenance: NonEmptyStr
+}
+
+data fleet_automation_privkey_owner: SecretOwner = SecretOwner {
+  secret: fleet_automation_ssh_privkey_secret,
+  accessor_sa: fleet_automation_sa_email,
+  binding_provenance: "secretAccessor bound out-of-band 2026-07-21 (least-privilege, mirrors bmc-assimilator); full WIF SecretAccessGrant modeling is follow-up",
 }
 
 type SshAccessPrincipal {
