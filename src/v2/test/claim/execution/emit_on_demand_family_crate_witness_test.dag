@@ -106,12 +106,16 @@ fn family_crate_alt_members() -> List<EmitFamilyMember> {
   ]
 }
 
+fn family_crate_member_digest(member: EmitFamilyMember) -> ContentHash {
+  inferred_tree_digest(tree: member.tree)
+}
+
 fn family_crate_member_digests(members: List<EmitFamilyMember>) -> List<ContentHash> {
   match members {
     Empty => []
     Cons { head: m, tail: t } =>
       concat(
-        [inferred_tree_digest(tree: m.tree)],
+        [family_crate_member_digest(member: m)],
         family_crate_member_digests(members: t)
       )
   }
