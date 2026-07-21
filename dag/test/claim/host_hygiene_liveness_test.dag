@@ -69,12 +69,7 @@ test fn unknown_listener_also_flips_the_fleet_verdict_red() -> Bool {
   !fleet_green_from_listening(verdicts: verdicts)
 }
 
-test fn nrestarts_style_signal_is_not_consulted_by_the_verdict() -> Bool {
-  match liveness_test_fresh_slot {
-    ListeningObserved { unit: _, age: _ } => true
-    _ => false
-  }
-}
+data nrestarts_signal_exclusion_doc: String = "review 40975: the prior test here (nrestarts_style_signal_is_not_consulted_by_the_verdict) only pattern-matched that the fixture was shaped ListeningObserved\{..\} - true by construction of the data declaration two lines above it - and never called slot_listening_verdict, so it could never go red (DESIGN section 5, specification-without-execution). The real guarantee is structural, not testable by a running check: SlotListeningObservation (host_hygiene_liveness.dag) has exactly three variants - ListeningObserved\{unit,age\}, ListeningNeverSeen\{unit\}, ListeningReadInaccessible\{unit,detail\} - none carrying an NRestarts-shaped field, so slot_listening_verdict cannot consult a signal the type does not have. Adding a bogus NRestarts field to the type just to give a test something to assert would be construction-over-validation working in reverse - manufacturing writable state solely to prove a checker catches it."
 
 test fn ground_fleet_listening_converges_when_all_fresh() -> Bool {
   let verdicts = [
