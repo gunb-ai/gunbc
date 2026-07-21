@@ -4,18 +4,29 @@ import std.types { Int, String, Bool }
 import std.markup { MarkupNode, ElementNode, TextNode }
 import gunbc.site.tokens {
   BuildRule, StaticRule, CssDecl, decl,
-  theme_roles, themes_coherent, day_theme, night_theme,
-  reduced_motion_block,
+  ThemeRole, theme_roles, themes_coherent, day_theme, night_theme,
+  reduced_motion_block, role_key, respond_fast,
 }
 import gunbc.site.theme_transition { unthemed_color_decls }
 import gunbc.site.mark { render_mark }
-import gunbc.roadmap_style { roadmap_rules }
+import gunbc.site.interaction {
+  Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
+  verb_key, coverage_gaps, coverage_complete,
+}
+import gunbc.roadmap_style { roadmap_rules, roadmap_css }
 import gunbc.roadmap_page { roadmap_header }
+import gunbc.roadmap_interaction {
+  roadmap_elements, roadmap_behaviors,
+  roadmap_unrealized_behaviors,
+}
+import gunbc.design.archetype {
+  dashboard_archetype, archetype_demands_role, archetype_admits_verb,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data roadmap_register_witness_note: String = "The roadmap dashboard as a register SITE INSTANCE (slice 1 of the roadmap-onto-register refactor, parent-acked 2026-07-21): the instance inherits the register laws by executing them over its own emission — themes_coherent over the exact Theme rows roadmap_css projects (totality, area coherence, chroma admissibility, WCAG contrast — one law set, N surfaces, never a roadmap fork); the unthemed-color census over the exact BuildRule rows the page serializes, with the RED a resurrection of the precise historical regression this refactor deleted (the hand-hex #0969da link blue) proving the census discriminates rather than vacuously passing; the shared Confluence mark consumed at nav depth from the one render authority (favicon/nav/hero cannot disagree, mark.dag). The reduced-motion pin documents that the roadmap declares ZERO ResponseRules today — slice 2 (dispatch verb row + hover migration onto the interaction machinery) flips that pin deliberately."
+data roadmap_register_witness_note: String = "The roadmap dashboard as a register SITE INSTANCE (slice 1 of the roadmap-onto-register refactor, parent-acked 2026-07-21): the instance inherits the register laws by executing them over its own emission — themes_coherent over the exact Theme rows roadmap_css projects (totality, area coherence, chroma admissibility, WCAG contrast — one law set, N surfaces, never a roadmap fork); the unthemed-color census over the exact BuildRule rows the page serializes, with the RED a resurrection of the precise historical regression this refactor deleted (the hand-hex #0969da link blue) proving the census discriminates rather than vacuously passing; the shared Confluence mark consumed at nav depth from the one render authority (favicon/nav/hero cannot disagree, mark.dag). Slice 2 (manager-signed) flipped the response pin deliberately: the dispatch button's behaviors are declared rows (Approach->Brighten, Dispatch->Receipt) REALIZED through roadmap_realize_behavior — coverage total, unrealized census empty, both with located REDs (a dropped row NAMES its gap; a row with no realize arm is counted, never silently skipped) — and the reduced-motion collapse ships derived from the same rules. The Dashboard archetype rows are cross-checked BOTH directions against the shipped stylesheet: demanded-but-unused and used-but-undeclared each red (names-not-values made executable)."
 
 fn witness_roadmap_theme_set_coherent() -> Bool {
   themes_coherent(themes: [day_theme, night_theme], roles: theme_roles)
@@ -36,8 +47,51 @@ fn witness_local_hex_literal_refused() -> Bool {
       c.selector == ".rogue-link" && c.prop == "color" && c.value == "#0969da")
 }
 
-fn witness_no_response_rules_pinned() -> Bool {
-  reduced_motion_block(rules: roadmap_rules()) == ""
+fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
+  reduced_motion_block(rules: roadmap_rules()) != ""
+    && string_contains(s: roadmap_css(), pattern: "@media (prefers-reduced-motion: reduce)")
+    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:hover")
+    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:focus-visible")
+    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:active")
+}
+
+fn witness_roadmap_coverage_complete() -> Bool {
+  coverage_complete(elements: roadmap_elements, rows: roadmap_behaviors)
+    && roadmap_unrealized_behaviors(rows: roadmap_behaviors).length() == 0
+}
+
+fn approach_only_rows() -> List<BehaviorRow> {
+  fold(roadmap_behaviors, init: [], f: (acc, r) =>
+    if verb_key(v: r.verb) == "dispatch" { acc } else { concat(acc, [r]) })
+}
+
+fn witness_dropped_row_gap_is_located() -> Bool {
+  let gaps = coverage_gaps(elements: roadmap_elements, rows: approach_only_rows())
+  gaps.length() == 1
+    && all(gaps, g => g.element == "dispatch-btn" && verb_key(v: g.verb) == "dispatch")
+}
+
+fn witness_unrealized_row_is_counted() -> Bool {
+  let rogue = BehaviorRow { element: "dispatch-btn", verb: Approach, response: Reveal, timing: respond_fast }
+  roadmap_unrealized_behaviors(rows: concat(roadmap_behaviors, [rogue])).length() == 1
+}
+
+fn demand_matches_for_role(r: ThemeRole) -> Bool {
+  let demanded = archetype_demands_role(a: dashboard_archetype, r: r)
+  let used = string_contains(s: roadmap_css(), pattern: join(["var(--", role_key(r: r), ")"], ""))
+  demanded == used
+}
+
+fn witness_archetype_demand_matches_shipped_css() -> Bool {
+  all(theme_roles, r => demand_matches_for_role(r: r))
+}
+
+fn witness_archetype_verbs_match_declared_elements() -> Bool {
+  all(dashboard_archetype.verbs, v =>
+    fold(roadmap_elements, init: false, f: (acc, e) =>
+      acc || fold(e.verbs, init: false, f: (acc2, w) => acc2 || verb_key(v: w) == verb_key(v: v))))
+    && all(roadmap_elements, e =>
+      all(e.verbs, w => archetype_admits_verb(a: dashboard_archetype, v: w)))
 }
 
 fn header_children_contain_mark(h: MarkupNode) -> Bool {
@@ -58,6 +112,11 @@ test fn roadmap_register_keystone_holds() -> Bool {
   witness_roadmap_theme_set_coherent()
     && witness_roadmap_colors_all_routed()
     && witness_local_hex_literal_refused()
-    && witness_no_response_rules_pinned()
+    && witness_derived_responses_ship_with_reduced_motion_collapse()
+    && witness_roadmap_coverage_complete()
+    && witness_dropped_row_gap_is_located()
+    && witness_unrealized_row_is_counted()
+    && witness_archetype_demand_matches_shipped_css()
+    && witness_archetype_verbs_match_declared_elements()
     && witness_header_carries_shared_mark()
 }
