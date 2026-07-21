@@ -888,11 +888,15 @@ impl Drop for AdmittedSlot {
 // ---- shared cgroup sensor primitives (single authority; the executor's heartbeat and
 // ---- measurement lines consume these same readers) ----
 
-/// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
-/// Declared runner-slot RAM-speed ceiling from `gunbc.runner_slot_allocation`
-/// (`memory_high` = 15 GiB, operator ruling 2026-07-11). When no cgroup limit
-/// binds, raw MemAvailable must not be the sole budget — uncapped hosts let the
-/// floor reach physical RAM and OOM-kill (runs 29180195694, srv3 2026-07-21).
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
+/// `gunbc_runner_slot_desired().memory_high` = `byte_size(16106127360)`; corroborated by
+/// `gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live`, which derives from
+/// the same row and forbids a duplicate literal):
+/// uncapped-host MemAvailable cap for `read_host_budget_bytes`. When no cgroup limit
+/// binds, raw MemAvailable must not be the sole budget — uncapped hosts let the floor
+/// reach physical RAM and OOM-kill (runs 29180195694, srv3 2026-07-21 exit-137).
+/// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
+/// (self-host frontier row for `memory_governor` cgroup-budget readers).
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
 
 /// Cap an uncapped-host MemAvailable sample at the declared runner-slot throttle
