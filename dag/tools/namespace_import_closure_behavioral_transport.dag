@@ -1,0 +1,82 @@
+module tools.namespace_import_closure_behavioral_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+data nic_doc: String = "Wet cargo-compiling receipt for the Gate-1 emit import-closure derivation (emit_import_closure_root, PR 6960): a NAMESPACE module — zero import statements, the v2 corpus shape after namespace wave-1 — that references cross-module names emits VALID, cargo-COMPILING Rust. The regression it guards: before the reference_derived_use_lines pass in v1.compiler.emit_rust, the seed emitter derived Rust use-lines ONLY from authored import name-lists, so an import-free module referencing a sibling emitted bare unqualified names with no use-line and no inline qualification — unresolvable Rust (E0425/E0433). Regen does NOT guard this class (the seed corpus is import-based, so its emit is unchanged by the pass), which is why this receipt is REQUIRED coverage rather than redundant with the self-host fixed point. Live host effects (real gunbc emit, cargo build), so it runs in the nightly falsifier Wet follow-on batch (falsifier_self_host_wet_entries), never per-PR hermetic discovery."
+
+data nic_discriminating_control_note: String = "DESIGN section 5 discriminating control — the receipt is an A/B on exactly one axis, not a lone green. Both arms write the SAME two file paths into the SAME scratch layout and run the SAME emit+build chain; the ONLY difference is whether the provider module actually DEFINES the names the consumer references. The green arm (nic_provider_source) defines PilotColor / pilot_provider_flag / pilot_provider_default and must cargo-build; the red arm (nic_provider_missing_names_source) defines unrelated names instead, so the consumer's cross-module references are unresolvable and the chain MUST refuse. Because the two arms differ in nothing but cross-module name availability, a green red-arm would mean the fixture never exercised cross-module resolution at all — the vacuity this control exists to catch. What this control does NOT prove is the pass itself: proving RED-without-the-pass needs a second gunbc built from the pre-pass emitter, which is not a committable artifact, so that half stays the dev-time runner scripts/namespace_import_closure_witness.sh (greens-with / reds-without, exit-code oracle)."
+
+data nic_scaffold_dissolution_trigger: String = "SCAFFOLD dissolve-on: nic_provider_source / nic_provider_missing_names_source / nic_consumer_source are hand-authored fixture module sources (String carriers), the meta-harness around the receipt rather than a forked emit path — the emit itself is the real gunbc binary on real bytes. They are embedded rather than committed as .dag files on purpose: the consumer deliberately references a sibling WITHOUT importing it, so committing it under a discovered source root would feed a deliberately-unresolved module to the whole-tree compile-clean gate. DISSOLVES WHEN the step-2 typed refusal lands in the resolver (v1 04_resolve: UnlistedImportUse promoted to an error, or the resolver emitting the use-line intent directly), which deletes the reference_derived_use_lines pass and this receipt with it."
+
+data nic_provider_source: String = "module witness.pilot.emit_provider\n\ntype PilotColor = PilotRed | PilotGreen | PilotBlue\n\nfn pilot_provider_flag() -> Bool \{ true \}\n\nfn pilot_provider_default() -> PilotColor \{ PilotRed \}\n"
+
+data nic_provider_missing_names_source: String = "module witness.pilot.emit_provider\n\ntype PilotUnrelated = PilotUnrelatedA | PilotUnrelatedB\n\nfn pilot_unrelated_flag() -> Bool \{ false \}\n"
+
+data nic_consumer_source: String = "module witness.pilot.emit_consumer\n\nfn pilot_consumer_flag() -> Bool \{ pilot_provider_flag() \}\n\nfn pilot_consumer_default() -> PilotColor \{ pilot_provider_default() \}\n"
+
+fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: String) -> Bool {
+  let src = shell.Mktemp.Dir()
+  let pilot_dir = shell.Mkdir.Parents(path: concat(src.path, "/witness/pilot"))
+  let provider = Filesystem.Write(
+    path: concat(src.path, "/witness/pilot/emit_provider.dag"),
+    content: provider_source
+  )
+  let consumer = Filesystem.Write(
+    path: concat(src.path, "/witness/pilot/emit_consumer.dag"),
+    content: nic_consumer_source
+  )
+  let out = shell.Mktemp.Dir()
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", src.path,
+      "--entry", concat(src.path, "/witness/pilot/emit_consumer.dag"),
+      "--output-dir", out.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+  let emitted_lib = shell.Test.IsFile(path: concat(out.path, "/src/lib.rs"))
+  let build = if emit.success && emitted_lib.is_file {
+    cargo.Build.BuildManifest(
+      workdir: out.path,
+      manifest_path: concat(out.path, "/Cargo.toml"),
+      target_dir: concat(out.path, "/target")
+    ).success
+  } else {
+    false
+  }
+  let cleanup_src = shell.Remove.RecursiveForce(path: src.path)
+  let cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  src.success && pilot_dir.success && provider.success && consumer.success
+    && out.success
+    && emit.success && emitted_lib.is_file && build
+    && cleanup_src.success && cleanup_out.success
+}
+
+fn nic_behavioral_receipt_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+
+  let green_arm = nic_emitted_crate_builds(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    provider_source: nic_provider_source
+  )
+  let red_arm = nic_emitted_crate_builds(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    provider_source: nic_provider_missing_names_source
+  )
+
+  gunbc_built && green_arm && (red_arm == false)
+}
