@@ -186,7 +186,7 @@ fn build_cache_read_back_body() -> String {
               "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"\n",
               concat(
                 "  printf '%s\\n' \"$stats_out\"\n",
-                "  exit 1\n",
+                "  exit 1\nfi\n",
               )
             )
           )
