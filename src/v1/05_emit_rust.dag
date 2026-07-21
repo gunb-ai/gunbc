@@ -1716,6 +1716,16 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
   )
 }
 
+fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
+  diags |> fold(init: empty_map(), f: (acc, en) =>
+    match en.diagnostic {
+      UnlistedImportUse { name: nm, span: _ } =>
+        let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
+        map_insert(acc, en.module_name, concat(existing, [nm]))
+      _ => acc
+    })
+}
+
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: typed.modules)
   let base_info = build_emit_graph_info(modules: typed.modules, has_v1_seed: has_v1_seed)
@@ -1756,13 +1766,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
-  let unlisted_type_names_by_module = typed.diagnostics |> fold(init: empty_map(), f: (acc, en) =>
-    match en.diagnostic {
-      UnlistedImportUse { name: nm, span: _ } =>
-        let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
-        map_insert(acc, en.module_name, concat(existing, [nm]))
-      _ => acc
-    })
+  let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
@@ -2049,8 +2053,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     prelude_imported_names,
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
-  let reference_use_lines = reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), source_visible_names: scope.type_env.source_visible_names, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
-  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
+  let reference_use_lines = reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  let rdbg_line = concat("// RDBG unlisted_type_names=[", concat(unlisted_type_names |> join(separator: ","), concat("] ref_use_lines=[", concat(reference_use_lines |> join(separator: " | "), "]"))))
+  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), concat([rdbg_line], reference_use_lines))) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
