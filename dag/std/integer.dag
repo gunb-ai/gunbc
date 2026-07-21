@@ -24,15 +24,3 @@ type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
-
-fn int_abs(v: Int) -> Int {
-  if v < 0 { 0 - v } else { v }
-}
-
-fn int_max(a: Int, b: Int) -> Int {
-  if a > b { a } else { b }
-}
-
-fn int_min(a: Int, b: Int) -> Int {
-  if a < b { a } else { b }
-}
