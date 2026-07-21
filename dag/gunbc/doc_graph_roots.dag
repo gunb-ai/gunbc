@@ -66,6 +66,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "modeled probe transport lands (bash-emit #5828)" },
   },
   HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "emitter_residual_site_map_2026-07-21",
+    work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves with the emitter residual classes it maps (dotted-alias #6981, generic-T fold closures)" },
+  },
+  HandAuthoredDocBind {
     home: PlanDoc,
     slug: "rc-ownership-wrap-decision-design",
     work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
