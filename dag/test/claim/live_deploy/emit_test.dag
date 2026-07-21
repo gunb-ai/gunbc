@@ -118,10 +118,19 @@ fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
   let sh = expected_live_deploy_apply_script()
   string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && string_contains(s: sh, pattern: "whoami")
+    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && string_contains(s: sh, pattern: "privileged command not in sudoers (sudo -l preflight miss)")
+    && !string_contains(s: sh, pattern: "sudo -n /usr/bin/tailscale version >/dev/null")
     && string_contains(s: sh, pattern: "visudo -cf")
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
     && string_contains(s: sh, pattern: "deploy-access-preflight: PASS principal=ghrunner")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
+}
+
+fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
+  let sh = expected_live_deploy_retract_script()
+  string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
+    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
 }
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {

@@ -3,7 +3,7 @@ module gunbc.ci_deploy_access_emit
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, any }
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
@@ -13,11 +13,12 @@ import gunbc.ci_deploy_access {
 import gunbc.host_effect_deploy_access_probe_script {
   host_effect_read_effective_posix_principal_script,
   host_effect_sudo_nopasswd_execute_probe_script,
+  host_effect_sudo_nopasswd_grant_list_probe_script,
 }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 
-data deploy_access_emit_preflight_note: String = "Wave C envelope-only on #7011 realization: deploy-access preflight + roster-emitted sudoers dropin run in-script before the first mutation (apply and retract share deploy_apply_preamble_shell). Bootstrap order (review 40903): principal + historical roster grants first, then sudoers install — no blessed-helper grant (#7011 owns tree-sync/ownership/teardown realization). Typed refusal prefixes match deploy_access_refusal_prefix; no absorbing fallback."
+data deploy_access_emit_preflight_note: String = "Wave C envelope-only on #7011 realization: deploy-access preflight + roster-emitted sudoers dropin run in-script before the first mutation (apply and retract share deploy_apply_preamble_shell; retract may install the dropin on first retract-after-flip — idempotent). Bootstrap order (review 40903): principal + roster grants first, then sudoers install — no blessed-helper grant (#7011 owns tree-sync/ownership/teardown realization). Package-managed grant paths (tailscale) use sudo -l grant-list probes so a missing binary cannot masquerade as a sudoers miss (review 41039). Typed refusal prefixes match deploy_access_refusal_prefix; no absorbing fallback."
 
 data deploy_access_emit_preflight_dissolution_trigger: String = "🟡 dissolve-on: gunbc.ci_deploy_access_emit — concat-built deploy-access preflight shell (principal probe + sudo -n grant probes); DISSOLVES WHEN host_effect_deploy_access_probe_script_dissolution_trigger and live_deploy_emit_shell_dissolution_trigger retire (bash-emit #5828 / shell-intent Phase 2 realizes preflight through typed effect-plan emit without medium-as-string concat)."
 
@@ -28,6 +29,18 @@ data deploy_access_emit_preflight_scaffold: Disposition = Scaffold {
     decl_name: "deploy_access_emit_preflight_dissolution_trigger",
     field: WholeDeclaration,
   }
+}
+
+data deploy_access_emit_grant_list_probe_paths: List<NonEmptyStr> = [
+  "/usr/bin/tailscale",
+]
+
+data deploy_access_emit_exec_probe_refusal_suffix: String = " — privileged commands not granted (sudo -n preflight miss)"
+
+data deploy_access_emit_grant_list_probe_refusal_suffix: String = " — privileged command not in sudoers (sudo -l preflight miss)"
+
+fn privileged_command_uses_grant_list_probe(cmd: PrivilegedCommand) -> Bool {
+  any(deploy_access_emit_grant_list_probe_paths, p => p == cmd.path)
 }
 
 fn deploy_access_emit_principal_probe_shell(access: DeployAccess) -> String {
@@ -42,12 +55,28 @@ fn deploy_access_emit_principal_probe_shell(access: DeployAccess) -> String {
   ], "")
 }
 
-fn deploy_access_emit_sudo_probe_shell(cmd: PrivilegedCommand) -> String {
+fn deploy_access_emit_sudo_execute_probe_shell(cmd: PrivilegedCommand) -> String {
   let probe = SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
   concat(
     concat(host_effect_sudo_nopasswd_execute_probe_script(probe: probe), " >/dev/null"),
-    " || { echo \"", deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\"; exit 1; }"
+    concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_exec_probe_refusal_suffix), "\"; exit 1; }")
   )
+}
+
+fn deploy_access_emit_sudo_grant_list_probe_shell(cmd: PrivilegedCommand) -> String {
+  let list_script = host_effect_sudo_nopasswd_grant_list_probe_script(command_path: cmd.path)
+  concat(
+    concat(list_script, " >/dev/null 2>&1"),
+    concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_grant_list_probe_refusal_suffix), "\"; exit 1; }")
+  )
+}
+
+fn deploy_access_emit_sudo_probe_shell(cmd: PrivilegedCommand) -> String {
+  if privileged_command_uses_grant_list_probe(cmd: cmd) {
+    deploy_access_emit_sudo_grant_list_probe_shell(cmd: cmd)
+  } else {
+    deploy_access_emit_sudo_execute_probe_shell(cmd: cmd)
+  }
 }
 
 fn deploy_access_emit_bootstrap_probes_shell(access: DeployAccess) -> String {
