@@ -1,0 +1,96 @@
+module extdeps.astronomy.stellar_classification
+
+import std.types { Int, String, NonEmptyStr, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Stellar_classification"
+  }
+}
+
+data stellar_classification_note: String = "Cited upstream: Wikipedia, Stellar classification (the Morgan-Keenan / Harvard system), retrieved 2026-07-21. This module models what the source's main-sequence table actually says — class letters O B A F G K M hottest to coolest, effective temperature ranges in kelvin, BOTH chromaticity columns (Vega-relative and D65-calibrated, verbatim strings), hydrogen-line strength, and the main-sequence share column (kept as source-verbatim text; a typed magnitude lands when a consumer needs arithmetic on it). Perceptual rendering of these rows into any palette is a downstream projection (gunbc.site.starlight), never a fact of this module."
+
+data stellar_color_perception_quote: String = "Excluding colour-contrast effects in dim light, in typical viewing conditions there are no green, cyan, indigo, or violet stars. 'Yellow' dwarfs such as the Sun are white, 'red' dwarfs are a deep shade of yellow/orange. (Source, section: Conventional and apparent colours.)"
+
+type TemperatureRange
+  = BoundedRange { min_k: Int, max_k: Int }
+  | OpenAbove { min_k: Int }
+
+type SpectralClass {
+  code: NonEmptyStr
+  temperature: TemperatureRange
+  vega_chromaticity: String
+  d65_chromaticity: String
+  hydrogen_lines: String
+  main_sequence_share_text: String
+}
+
+data o_class: SpectralClass = SpectralClass { code: "O", temperature: OpenAbove { min_k: 33000 }, vega_chromaticity: "blue", d65_chromaticity: "blue", hydrogen_lines: "Weak", main_sequence_share_text: "0.00003%" }
+
+data b_class: SpectralClass = SpectralClass { code: "B", temperature: BoundedRange { min_k: 10000, max_k: 33000 }, vega_chromaticity: "bluish white", d65_chromaticity: "deep bluish white", hydrogen_lines: "Medium", main_sequence_share_text: "0.12%" }
+
+data a_class: SpectralClass = SpectralClass { code: "A", temperature: BoundedRange { min_k: 7300, max_k: 10000 }, vega_chromaticity: "white", d65_chromaticity: "bluish white", hydrogen_lines: "Strong", main_sequence_share_text: "0.61%" }
+
+data f_class: SpectralClass = SpectralClass { code: "F", temperature: BoundedRange { min_k: 6000, max_k: 7300 }, vega_chromaticity: "yellowish white", d65_chromaticity: "white", hydrogen_lines: "Medium", main_sequence_share_text: "3.0%" }
+
+data g_class: SpectralClass = SpectralClass { code: "G", temperature: BoundedRange { min_k: 5300, max_k: 6000 }, vega_chromaticity: "yellow", d65_chromaticity: "yellowish white", hydrogen_lines: "Weak", main_sequence_share_text: "7.6%" }
+
+data k_class: SpectralClass = SpectralClass { code: "K", temperature: BoundedRange { min_k: 3900, max_k: 5300 }, vega_chromaticity: "light orange", d65_chromaticity: "pale yellowish orange", hydrogen_lines: "Very weak", main_sequence_share_text: "12%" }
+
+data m_class: SpectralClass = SpectralClass { code: "M", temperature: BoundedRange { min_k: 2300, max_k: 3900 }, vega_chromaticity: "light orangish red", d65_chromaticity: "orangish red", hydrogen_lines: "Very weak", main_sequence_share_text: "76%" }
+
+data harvard_main_sequence_classes: List<SpectralClass> = [o_class, b_class, a_class, f_class, g_class, k_class, m_class]
+
+data sun_spectral_type_note: String = "The Sun is a G2V main-sequence star (source, lead section); its class row here is g_class."
+
+fn temperature_label(r: TemperatureRange) -> String {
+  match r {
+    BoundedRange { min_k, max_k } => join([to_string(min_k), "–", to_string(max_k), " K"], "")
+    OpenAbove { min_k } => join(["≥ ", to_string(min_k), " K"], "")
+  }
+}
+
+fn chromaticity_mentions(c: String, word: String) -> Bool {
+  string_contains(s: c, pattern: word)
+}
+
+fn class_chromaticity_is_achromatic_or_warm_or_blue(c: SpectralClass) -> Bool {
+  !chromaticity_mentions(c: c.vega_chromaticity, word: "green")
+    && !chromaticity_mentions(c: c.d65_chromaticity, word: "green")
+    && !chromaticity_mentions(c: c.vega_chromaticity, word: "cyan")
+    && !chromaticity_mentions(c: c.d65_chromaticity, word: "cyan")
+    && !chromaticity_mentions(c: c.vega_chromaticity, word: "violet")
+    && !chromaticity_mentions(c: c.d65_chromaticity, word: "violet")
+    && !chromaticity_mentions(c: c.vega_chromaticity, word: "indigo")
+    && !chromaticity_mentions(c: c.d65_chromaticity, word: "indigo")
+}
+
+fn no_green_stellar_class(classes: List<SpectralClass>) -> Bool {
+  all(classes, c => class_chromaticity_is_achromatic_or_warm_or_blue(c: c))
+}
+
+fn class_by_letter(classes: List<SpectralClass>, code: String) -> SpectralClass {
+  fold(classes, init: SpectralClass { code: "", temperature: OpenAbove { min_k: 0 }, vega_chromaticity: "", d65_chromaticity: "", hydrogen_lines: "", main_sequence_share_text: "" },
+    f: (acc, c) => {
+      let candidate_code = c.code as String
+      if candidate_code == code { c } else { acc }
+    })
+}
+
+fn classes_hot_to_cool_by_floor(classes: List<SpectralClass>) -> Bool {
+  let floors = map(classes, c => match c.temperature {
+    BoundedRange { min_k, max_k: _ } => min_k
+    OpenAbove { min_k } => min_k
+  })
+  let check = fold(floors, init: MonotoneAcc { prev: 999999, ok: true }, f: (acc, v) =>
+    MonotoneAcc { prev: v, ok: acc.ok && v < acc.prev })
+  check.ok
+}
+
+type MonotoneAcc {
+  prev: Int
+  ok: Bool
+}
