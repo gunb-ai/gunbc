@@ -1742,6 +1742,27 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
       rust_named_edge(
         name: ^target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: ^target_collection_free_monoid_no_representation)
+      ),
+      rust_named_edge(
+        name: ^target_collection_row_field_text_carrier,
+        target: rust_free_monoid_text_carrier_bundle_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_free_monoid_text_carrier_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_text_carrier_field_element,
+        target: char_kernel_type_node()
+      ),
+      rust_named_edge(
+        name: ^target_text_carrier_field_emitted,
+        target: rust_target_atom_type_form(spelling: ^rust_target_atom_type_spelling_string).node
       )
     ],
     occurrence_id: SyntheticOccurrence
