@@ -4097,13 +4097,21 @@ module test_nominal_ord_set
 type Symbol
 type DiffId { id: Symbol }
 data root_fix_symbol: Symbol = root_fix_symbol
+fn symbol_param(x: Symbol) -> Symbol { x }
 type DiffBag { ids: Set<DiffId> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "expected clean compile, got {}: {:?}",
+        msgs.len(),
+        msgs
+    );
     assert!(
         has_file(&result, "src/test_nominal_ord_set.rs"),
         "expected emitted file, got diagnostics: {:?}",
-        diagnostic_messages(&result)
+        msgs
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
@@ -4119,6 +4127,11 @@ type DiffBag { ids: Set<DiffId> }
     assert!(
         content.contains("pub fn root_fix_symbol() -> String"),
         "Symbol data values must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("fn symbol_param(x: String) -> String"),
+        "Symbol fn sig params must ground to String, got:\n{}",
         content
     );
     assert!(
