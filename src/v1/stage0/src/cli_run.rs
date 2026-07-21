@@ -3698,7 +3698,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
     "cli_run_discovery_skip_before_resolve";
 
-/// Module names for one entry at the resolved-graph grain — shared by
+/// Module names for one entry at the loader both-closure grain (no resolve) — shared by
 /// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
 fn collect_import_closure_module_names_from_facts(
     index: &MultiEntryIndex,
@@ -3881,8 +3881,16 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the same resolved-module union as post-resolve
-/// (`resolve_entry_with_index_for_discovery_corpus` + `collect_typed_module_names`).
+/// the authored-module-name grain via the LOADER's both-closure source set
+/// (`load_sources_for_entry_with_pool`) — the exact set `resolve_entry_with_parse_cache`
+/// starts from — so equality with the post-resolve union
+/// (`collect_typed_module_names` over what resolve actually loaded) holds by
+/// construction WITHOUT resolving: no parse, no typecheck, and nothing installed
+/// into `resolved_graph_memo`. The #6938 form of this helper ran the full
+/// `resolve_entry_with_index_for_discovery_corpus` per entry, which made every
+/// floor run resolve the ENTIRE roster on the width-1 pump thread and retain every
+/// resolved graph co-resident in the uncapped memo (~17 GB scoped runs became
+/// ~38 GB whole-corpus retention — the 2026-07-21 exit-137 floor kills).
 /// On a completed width-1 run this equals `DiscoverySummary::roster_closure_nodes`,
 /// and `run_discovery_corpus_with_options` asserts that equality as the definition-drift
 /// oracle (a loader fork or seeding change localizes here instead of silently skewing
@@ -3892,8 +3900,21 @@ fn collect_both_closure_module_names_for_entry(
     entry_path: &str,
     out: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
-    collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
+    for source in load_sources_for_entry_with_pool(index, entry_path)? {
+        match extract_module_path(&source.content) {
+            Some(name) => {
+                out.insert(name);
+            }
+            None => {
+                return Err(format!(
+                    "calibration closure: source '{}' in entry '{}' closure declares no \
+                     module header — the loader-grain module-name count cannot include it \
+                     (fail-closed; a headerless source in the pool is an indexing defect)",
+                    source.path, entry_path
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -11770,7 +11791,8 @@ fn discovery_entry_fast_skip_without_resolve(
 }
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same resolved modules `roster_import_closure_nodes_pre_resolve` uses.
+/// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
+/// a genuinely elided resolve stays elided (the skip path must never be the heavy path).
 fn augment_closure_modules_from_import_facts(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -12380,7 +12402,7 @@ pub fn run_discovery_corpus_with_options(
         };
         let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (resolved-module union, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12516,16 +12538,17 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve resolved-module union = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve loader-closure union = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
-                     (loader fork or seeding change); reconcile the definitions before trusting \
-                     bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
-                     shared authority)",
+                     (loader fork or seeding change: resolve loaded a module set the loader \
+                     both-closure fixpoint did not produce, or vice versa); reconcile the \
+                     definitions before trusting bytes-per-node calibration \
+                     (roster_import_closure_nodes_pre_resolve is the shared authority)",
                     pre_resolve_closure_nodes, summary.roster_closure_nodes
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve resolved-module union == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
