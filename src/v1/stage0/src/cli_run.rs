@@ -4944,6 +4944,11 @@ pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool
     index.pool_qualified_fill.borrow().is_some()
 }
 
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
+    *index.pool_qualified_fill.borrow_mut() = None;
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
