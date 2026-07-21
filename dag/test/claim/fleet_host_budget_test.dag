@@ -205,14 +205,14 @@ fn witness_plan_derives_and_conserves() -> Bool {
 }
 
 fn witness_runner_slice_is_session_worstcase_only() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
   let expected = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture()) - byte_size_count(b: fitting_headroom_bytes())
   byte_size_count(b: slice) == expected
 }
 
 fn witness_runner_slice_excludes_build_pool() -> Bool {
   let cfg = fixture_cfg()
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
   let build_pool_bytes = byte_size_count(b: cfg.mib_per_job) * hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
   let after_session = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture())
   let double_subtract_would_starve = after_session < (build_pool_bytes + byte_size_count(b: fitting_headroom_bytes()))
@@ -220,13 +220,13 @@ fn witness_runner_slice_excludes_build_pool() -> Bool {
 }
 
 fn witness_host_conserves_exactly() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
   let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: session_slice_fixture()) + byte_size_count(b: fitting_headroom_bytes()) + byte_size_count(b: slice)
   whole == byte_size_count(b: host_125gib())
 }
 
 fn witness_tree_conserves() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
   let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice)
   node_conserves(node: tree)
 }

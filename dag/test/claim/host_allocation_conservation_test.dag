@@ -9,7 +9,8 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
     runner_pool: gunbc_runner_pool_budget,
-    session_pool: byte_size(0)
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0)
   )
 }
 
@@ -19,7 +20,8 @@ test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
     runner_pool: byte_size(128849018880),
-    session_pool: byte_size(0)
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0)
   )
 }
 
@@ -29,7 +31,8 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
     runner_pool: gunbc_runner_pool_budget,
-    session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40)
+    session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40),
+    compile_pool: byte_size(0)
   )
 }
 

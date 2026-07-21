@@ -26,6 +26,7 @@ import extdeps.jobserver {
   JobserverAbsent,
   jobserver_config,
   derive_jobserver_tokens,
+  jobserver_build_pool_bytes,
 }
 import gunbc.fleet_container {
   FleetContainerType,
@@ -124,6 +125,41 @@ fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcemen
 data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = gunbc_fleet_oomd_evidence_for(mode: gunbc_ci_session_reservation_mode)
 
 
+data gunbc_compile_pool_doc: String = "THE COMPILE POOL IS A CLAIM ON HOST RAM THAT THE PER-SLOT MODEL DID NOT SEE. extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SCCACHE SERVER. So compile RSS is charged to the SERVER's cgroup, not to the runner slot that issued the compile, and a per-slot memory cap therefore does NOT bound compile memory. Measured consequence on srv1: the CI server was lazily auto-spawned inside dead slot srv1-10's cgroup and kept alive by SCCACHE_IDLE_TIMEOUT=0, so all five live slots' compiles executed under one dead slot's 15G high / 16G max caps and accumulated 229780 memory.max breach events and 12 oom_kills. Sizing is jobserver_build_pool_bytes (tokens * mib_per_job) — the same cited authority that bounds build concurrency, NOT a fresh literal: the pool must hold exactly the compiles the jobserver admits."
+
+data gunbc_compile_pool_placement_doc: String = "WHERE COMPILE RSS IS CHARGED IS A TOPOLOGY FACT, AND THE BUDGET IS DERIVED FROM IT — not a fudge factor. CompilePoolInRunnerSlots: no managed compile-pool slice exists, so cache-miss compiles are charged to whichever cgroup the sccache server sits in; the budget's compile_pool child is therefore ZERO because the pool is not a separate claim on host RAM — it is (nominally) already inside runner_pool. That is the honest description of today's topology, NOT an absorbing fallback: it is level-triggered on a declared row, it widens no failure arm, and it fabricates no converged verdict. Note it is also the topology in which a mis-placed server silently exports one slot's caps onto every compile on the host — that deficit is refused by gunbc.host_build_cache_provision's placement verdict, not papered over here. CompilePoolSliceDeclared: the managed unit owns the compiles in its own slice, so the pool becomes a first-class sibling child sized by the admitted jobserver tokens and runner_pool must shrink to keep the host conserving. DISSOLUTION TRIGGER: flip this row to CompilePoolSliceDeclared in the same change that converges the managed ctrl-sccache-ci unit and its slice; conservation then refuses by construction if the slots were not shrunk."
+
+type CompilePoolPlacement
+  = CompilePoolSliceDeclared { slice_unit: String }
+  | CompilePoolInRunnerSlots
+
+data gunbc_compile_pool_placement: CompilePoolPlacement = CompilePoolInRunnerSlots
+
+type CompilePoolResolution
+  = CompilePoolDerived { bytes: ByteSize }
+  | CompilePoolUnresolved { reason: String }
+
+fn compile_pool_bytes_for(
+  placement: CompilePoolPlacement,
+  nproc: HardwareThreadCount,
+  host: ByteSize,
+  citation: JobserverCitation
+) -> CompilePoolResolution {
+  match placement {
+    CompilePoolInRunnerSlots => CompilePoolDerived { bytes: byte_size(0) }
+    CompilePoolSliceDeclared { slice_unit: _ } => resolve_compile_pool(nproc: nproc, host: host, citation: citation)
+  }
+}
+
+fn resolve_compile_pool(nproc: HardwareThreadCount, host: ByteSize, citation: JobserverCitation) -> CompilePoolResolution {
+  match citation {
+    JobserverAbsent =>
+      CompilePoolUnresolved { reason: "jobserver config citation absent: the compile pool is sized by the admitted build tokens (tokens * mib_per_job); refuse to size the pool — and therefore to claim the host allocation conserves — without the cited installer knobs" }
+    JobserverCited { config: cfg, provenance: _ } =>
+      CompilePoolDerived { bytes: jobserver_build_pool_bytes(nproc: nproc, mem_total: host, cfg: cfg) }
+  }
+}
+
 fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
 }
@@ -163,7 +199,8 @@ fn host_allocation_tree(
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
-  session_pool: ByteSize
+  session_pool: ByteSize,
+  compile_pool: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -172,6 +209,7 @@ fn host_allocation_tree(
     children: [
       child_node(name: "runner_pool", b: runner_pool),
       child_node(name: "session_pool", b: session_pool),
+      child_node(name: "compile_pool", b: compile_pool),
       child_node(name: "headroom", b: headroom),
     ],
   }
@@ -182,14 +220,16 @@ fn host_allocation_conserves(
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
-  session_pool: ByteSize
+  session_pool: ByteSize,
+  compile_pool: ByteSize
 ) -> Bool {
   node_conserves(node: host_allocation_tree(
     host: host,
     overhead: overhead,
     headroom: headroom,
     runner_pool: runner_pool,
-    session_pool: session_pool
+    session_pool: session_pool,
+    compile_pool: compile_pool
   ))
 }
 
@@ -202,10 +242,11 @@ fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
 }
 
 
-fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize) -> ByteSize {
+fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize, compile_pool: ByteSize) -> ByteSize {
   let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
   let after_session = byte_size_saturating_sub(total: after_overhead, reserved: session_slice)
-  byte_size_saturating_sub(total: after_session, reserved: headroom)
+  let after_headroom = byte_size_saturating_sub(total: after_session, reserved: headroom)
+  byte_size_saturating_sub(total: after_headroom, reserved: compile_pool)
 }
 
 fn runner_slice_node(runner_slice: ByteSize, runner_baseline: ByteSize) -> BudgetNode {
@@ -224,7 +265,8 @@ fn fleet_host_budget_tree(
   runner_baseline: ByteSize,
   session_slice: ByteSize,
   headroom: ByteSize,
-  runner_slice: ByteSize
+  runner_slice: ByteSize,
+  compile_pool: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: name,
@@ -233,6 +275,7 @@ fn fleet_host_budget_tree(
     children: [
       child_node(name: "session_worstcase_reservation", b: session_slice),
       child_node(name: "headroom", b: headroom),
+      child_node(name: "compile_pool", b: compile_pool),
       runner_slice_node(runner_slice: runner_slice, runner_baseline: runner_baseline),
     ],
   }
@@ -283,8 +326,9 @@ fn fleet_host_plan_for(
               match resolve_headroom(policy: policy, floor: floor) {
                 HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
                 HeadroomResolved { bytes: hr } => {
-                  let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr)
-                  let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_slice: session_slice, headroom: hr, runner_slice: slice)
+                  let compile_pool = jobserver_build_pool_bytes(nproc: nproc, mem_total: host, cfg: cfg)
+                  let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr, compile_pool: compile_pool)
+                  let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_slice: session_slice, headroom: hr, runner_slice: slice, compile_pool: compile_pool)
                   FleetHostPlanDerived {
                     name: name,
                     tree: tree,

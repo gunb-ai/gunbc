@@ -17,7 +17,16 @@ import gunbc.fleet_host_budget {
   host_allocation_conserves,
   declared_runner_count,
   oomd_actuation_floor,
+  CompilePoolResolution,
+  CompilePoolDerived,
+  CompilePoolUnresolved,
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
+  compile_pool_bytes_for,
+  gunbc_compile_pool_placement,
 }
+import extdeps.jobserver { jobserver_config }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead,
@@ -180,12 +189,27 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
       let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
       let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
       let headroom = oomd_actuation_floor(host: host_ram)
+      match compile_pool_bytes_for(
+        placement: gunbc_compile_pool_placement,
+        nproc: cpu_facts_threads(cpu: cpu),
+        host: host_ram,
+        citation: jobserver_config
+      ) {
+        CompilePoolUnresolved { reason: r } =>
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { concat("compile pool unresolved: ", r) } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
+        CompilePoolDerived { bytes: compile_pool } =>
       if host_allocation_conserves(
         host: host_ram,
         overhead: overhead,
         headroom: headroom,
         runner_pool: gunbc_runner_pool_budget,
-        session_pool: byte_size(0)
+        session_pool: byte_size(0),
+        compile_pool: compile_pool
       ) {
         let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
         DeploymentAccumulator {
@@ -197,10 +221,11 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
       } else {
         DeploymentAccumulator {
           deployments: acc.deployments,
-          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
           any_unfit: acc.any_unfit,
           total: acc.total,
         }
+      }
       }
     }
   }
