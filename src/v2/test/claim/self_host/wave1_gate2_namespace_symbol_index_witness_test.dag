@@ -13,6 +13,7 @@ import v2.test.claim.symbol_index.containment {
   symbol_index_flat_index_false_accept_discriminator_holds,
   symbol_index_lexical_lookup_unique_variant_holds,
   symbol_index_lexical_lookup_chain_shadow_refuses_holds,
+  symbol_index_lexical_lookup_variant_alias_shadow_refuses_holds,
   symbol_index_lookup_miss_red_control_holds,
   symbol_index_unique_variant_without_alias_red_control_holds,
   symbol_index_variant_visibility_equivalence_holds

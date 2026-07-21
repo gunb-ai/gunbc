@@ -93,6 +93,28 @@ data si_index: SymbolIndex = symbol_index_fill_module_root(
   root: si_module_root_node
 )
 
+data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_unique"
+)
+
+data si_unique_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_unique_module_qn),
+  exports: [
+    si_type_with_variants(type_sym: ^Classical, variants: [^Yes, ^No])
+  ]
+)
+
+data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_unique_module_root_node
+)
+
+data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
+  index: empty_symbol_index(),
+  path: si_unique_module_qn,
+  node: si_unique_module_root_node
+)
+
 test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
   match symbol_index_lookup(
     index: si_index,
@@ -111,14 +133,27 @@ test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
 }
 
 test fn symbol_index_lexical_lookup_unique_variant_holds() -> Bool {
-  let type_position = qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
+  let type_position = qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical)
   match symbol_index_lexical_lookup(
-    index: si_index,
+    index: si_unique_index_containment_only,
     position: type_position,
     name: ^No
   ) {
     LexicalHit { node: _, path: _ } => true
     LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_lexical_lookup_variant_alias_shadow_refuses_holds() -> Bool {
+  let type_position = qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical)
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: type_position,
+    name: ^No
+  ) {
+    LexicalAmbiguous { candidates: cands } => length(xs: cands) == 2
+    LexicalHit { node: _, path: _ } => false
     LexicalUnbound => false
   }
 }
@@ -194,22 +229,6 @@ test fn symbol_index_lookup_miss_red_control_holds() -> Bool {
   }
 }
 
-data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
-  dotted: "v2.test.symbol_index_unique"
-)
-
-data si_unique_module_root_node: Node = si_module_root(
-  qn_spine: si_qn_spine(segments: si_unique_module_qn),
-  exports: [
-    si_type_with_variants(type_sym: ^Classical, variants: [^Yes, ^No])
-  ]
-)
-
-data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
-  index: empty_symbol_index(),
-  root: si_unique_module_root_node
-)
-
 test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
   match symbol_index_lexical_lookup(
     index: si_unique_index,
@@ -230,12 +249,6 @@ test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
     LexicalUnbound => false
   }
 }
-
-data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
-  index: empty_symbol_index(),
-  path: si_unique_module_qn,
-  node: si_unique_module_root_node
-)
 
 test fn symbol_index_unique_variant_without_alias_red_control_holds() -> Bool {
   match symbol_index_lexical_lookup(
