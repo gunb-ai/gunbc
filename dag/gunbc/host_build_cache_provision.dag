@@ -15,6 +15,7 @@ import gunbc.host_build_cache_catalog_gate {
 import gunbc.host_effect { HostEffect, ProvisionBuildCache }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold. It ALSO models the placement widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged' — which is precisely the behavior that shipped on srv1 and let a lazily auto-spawned server in dead slot srv1-10's cgroup accumulate 229780 memory.max breach events and 12 oom_kills while every provision read reported converged."
 
@@ -222,7 +223,7 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
 
 data srv1_stranded_server_cgroup_fixture: NonEmptyStr = "/system.slice/system-ghrunner.slice/ghrunner@srv1-10.service"
 
-data managed_compile_pool_slice_fixture: NonEmptyStr = "gunbc-compile-pool.slice"
+data managed_compile_pool_slice_fixture: NonEmptyStr = gunbc_managed_compile_pool_slice
 
 fn stats_ok_lazy_spawned_refuses() -> Bool {
   match provision_build_cache_verdict(

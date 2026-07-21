@@ -52,6 +52,7 @@ type SccacheServerProcessFacts {
   spawn: SccacheServerSpawn
   idle_timeout_zero_disables_shutdown: Bool
   compiles_execute_as_server_children: Bool
+  server_port: Int
   evidence: List<CacheEvidence>
 }
 
@@ -59,6 +60,7 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
   spawn: ClientAutoSpawned
   idle_timeout_zero_disables_shutdown: true
   compiles_execute_as_server_children: true
+  server_port: sccache_server_default_port
   evidence: [
     {
       field: "spawn"
