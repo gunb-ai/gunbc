@@ -1,0 +1,28 @@
+module std.filesystem_path_grant
+
+import std.types { String, List, Bool }
+import std.effect_grant { filesystem_position, NamespacePosition }
+
+data filesystem_path_grant_note: String = "Path-string projection layer ON TOP OF std.effect_grant.filesystem_position (single FilesystemPathTree position primitive — converged with eager-raven-219 PR #6901, not a fork). Parses absolute and repo-relative spellings into segment lists, then delegates position construction to filesystem_position. A `..` PATH SEGMENT escapes containment but a bare `..` substring inside a filename does not (review 39707). dissolve-on = SymbolIndex-backed position supersedes path-string interim."
+
+fn rel_path_has_parent_segment(p: String) -> Bool {
+  string_contains(s: concat("/", concat(p, "/")), pattern: "/../")
+}
+
+fn absolute_path_segments(path: String) -> List<String> {
+  filter(xs: split(s: path, delimiter: "/"), f: s => s != "")
+}
+
+fn absolute_path_position(path: String) -> NamespacePosition {
+  filesystem_position(path: absolute_path_segments(path: path))
+}
+
+fn repo_rel_path_position(rel: String) -> NamespacePosition {
+  if rel_path_has_parent_segment(p: rel) || starts_with(s: rel, prefix: "/") {
+    filesystem_position(path: absolute_path_segments(path: rel))
+  } else if rel == "" {
+    filesystem_position(path: ["repo"])
+  } else {
+    filesystem_position(path: concat(["repo"], absolute_path_segments(path: rel)))
+  }
+}
