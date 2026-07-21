@@ -12,7 +12,6 @@ use crate::std_syntax::ItemFormKind::{
     EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
 };
 pub use crate::std_syntax::{BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec};
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

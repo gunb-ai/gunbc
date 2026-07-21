@@ -2,10 +2,7 @@
 // Source module: std.graph
 
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-pub use crate::std_termination::RankingDimension;
-use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{DescentEvidence, ProofEdge, TerminationProof};
-pub use crate::std_types::{List, Map, Set};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

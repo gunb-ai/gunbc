@@ -10,17 +10,11 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
     ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
-use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
-pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
-pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::*;
-pub use crate::std_measure::second;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -32,8 +26,6 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
-pub use crate::std_types::{List, Map};
-pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -45,8 +37,6 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-pub use crate::v1_std_core::MatchPattern;
-use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,

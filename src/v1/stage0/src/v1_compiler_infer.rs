@@ -2,7 +2,6 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
-pub use crate::std_algebra::AlgebraFieldTemplate;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
@@ -22,14 +21,9 @@ pub use crate::std_induction::{
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-use crate::std_interface_summary::InterfaceContract::*;
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_interface_summary::{InterfaceContract, InterfaceHash};
-pub use crate::std_measure::second;
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_syntax::AlgebraFieldKind;
-use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -37,15 +31,11 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
-pub use crate::std_termination::ProportionalDivisor;
-use crate::std_termination::ProportionalDivisor::*;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
-pub use crate::std_types::{FilePath, List, Map, Set};
-pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -115,7 +105,6 @@ pub use crate::v1_compiler_infer_service::{
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
 pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
-pub use crate::v1_compiler_infer_types::BinOpInferred;
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
@@ -128,7 +117,6 @@ pub use crate::v1_compiler_infer_types::{
     resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
     template_return_has_variables, template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_resolve::map_has;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -154,7 +142,6 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-pub use crate::v1_std_core::InternResult;
 use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,

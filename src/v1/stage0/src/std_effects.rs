@@ -9,8 +9,6 @@ use self::IdempotencyEvidence::*;
 use self::KeySource::*;
 use self::ModifierAgreement::*;
 pub use crate::std_http_path::PathTemplate;
-pub use crate::std_http_path::UrlPathToken;
-use crate::std_http_path::UrlPathToken::*;
 pub use crate::std_http_path::{has_path_params, last_path_param};
 pub use crate::std_realization_schedule::string_list_eq;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};

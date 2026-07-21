@@ -11,21 +11,14 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_measure::second;
-pub use crate::std_syntax::AlgebraFieldKind;
-use crate::std_syntax::AlgebraFieldKind::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{FilePath, List, Map};
 pub use crate::v1_compiler_artifact::default_artifact_plan;
-use crate::v1_compiler_artifact::ArtifactKind::*;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 pub use crate::v1_compiler_artifact::{Artifact, ArtifactPlan, RenderTarget};
-pub use crate::v1_compiler_artifact::{ArtifactKind, Boundary};
-pub use crate::v1_compiler_complexity::StructuralBoundResult;
 pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
 pub use crate::v1_compiler_complexity::{
     ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
@@ -33,19 +26,13 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
-pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
-pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust;
 pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
-pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ModuleInterface};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::normalize_graph;
 pub use crate::v1_compiler_normalize::NormalizeResult;
@@ -54,7 +41,6 @@ use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_parse::ParseResult;
-pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_resolve::resolve_modules;
 pub use crate::v1_compiler_resolve::ModuleGraph;
 pub use crate::v1_compiler_tokenize::tokenize;

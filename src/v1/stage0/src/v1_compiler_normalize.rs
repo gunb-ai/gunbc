@@ -2,9 +2,6 @@
 // Source module: v1.compiler.normalize
 
 pub use crate::std_types::container_expected_arity;
-pub use crate::std_types::{List, Map, SourceSpan};
-pub use crate::v1_compiler_emit::is_self_recursive;
-pub use crate::v1_compiler_resolve::ResolvedImport;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

@@ -3,8 +3,6 @@
 
 use self::Quantity::*;
 use self::Scale::*;
-pub use crate::std_algebra::CommutativeSemiring;
-pub use crate::std_magnitude::Magnitude;
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::Witness;

@@ -6,8 +6,6 @@ use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportServi
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{FilePath, List, Map};
-pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};

@@ -3,9 +3,7 @@
 
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
-pub use crate::std_measure::second;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{FilePath, List, Map};
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
 use crate::v1_rt;

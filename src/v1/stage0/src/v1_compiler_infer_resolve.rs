@@ -4,16 +4,10 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-pub use crate::std_measure::second;
-use crate::std_syntax::AlgebraFieldKind::*;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
-pub use crate::std_syntax::{AlgebraFieldKind, BinOp};
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{List, Map};
-pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_env::{
     authored_name, env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -23,12 +17,10 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
     node_is_keyed_collection, resolved_type,
 };
-pub use crate::v1_compiler_resolve::map_has;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
@@ -42,9 +34,7 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::Wildcard;
-use crate::v1_std_core::MethodSemantics::*;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
-use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
@@ -59,7 +49,6 @@ pub use crate::v1_std_core::{
     resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality,
 };
-pub use crate::v1_std_core::{CallSemantics, MethodSemantics, UnaryOpKind};
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
     MatchPattern, NewlineIndex, Node, StringPart,

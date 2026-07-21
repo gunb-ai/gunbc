@@ -5,15 +5,10 @@ use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape};
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::InferredNode::*;
-use crate::v1_std_core::MatchPattern::*;
-use crate::v1_std_core::MethodSemantics::*;
-pub use crate::v1_std_core::{InferredNode, MatchPattern, MethodSemantics, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

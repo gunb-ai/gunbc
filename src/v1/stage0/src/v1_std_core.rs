@@ -24,7 +24,6 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_measure::second;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -38,11 +37,6 @@ pub use crate::std_types::{
     kernel_type_set,
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
-pub use crate::std_types::{List, Map};
-pub use crate::v1_compiler_complexity::{extractor_inner_arg, wrapper_inner_arg};
-pub use crate::v1_compiler_emit::is_self_recursive;
-pub use crate::v1_compiler_emit_core_support::to_string;
-pub use crate::v1_compiler_infer_types::{child_type_node, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

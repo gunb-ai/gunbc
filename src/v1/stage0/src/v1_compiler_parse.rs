@@ -8,7 +8,6 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
-pub use crate::std_measure::second;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -20,8 +19,6 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{FilePath, List, Map};
-pub use crate::v1_compiler_emit::is_self_recursive;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

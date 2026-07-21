@@ -15,7 +15,6 @@ use crate::std_syntax::ItemFormKind::{
 pub use crate::std_syntax::{
     AlgebraFieldKind, BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec,
 };
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
