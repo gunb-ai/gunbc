@@ -9,7 +9,7 @@ fn srv3_memory_cap_converged_read() -> RunnerUnitMemoryLiveRead {
     row: RunnerUnitLiveReadRow {
       unit: "actions-runner@srv3-01.service",
       memory_max_raw: to_string(byte_size_count(b: desired.memory_max)),
-      memory_swap_max_raw: to_string(byte_size_count(b: desired.memory_swap_cap)),
+      memory_swap_max_raw: to_string(byte_size_count(b: desired.memory_swap_max)),
       memory_high_raw: to_string(byte_size_count(b: desired.memory_high)),
       probed_at: "2026-07-21",
     }
@@ -47,7 +47,7 @@ fn witness_plan_emit_grounds_byte_values_on_authority() -> Bool {
   let desired = gunbc_runner_slot_desired()
   string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_max)))
     && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_high)))
-    && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_swap_cap)))
+    && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_swap_max)))
 }
 
 fn witness_verify_receipt_converged_when_live_matches_policy() -> Bool {

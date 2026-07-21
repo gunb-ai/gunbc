@@ -7,13 +7,8 @@ import std.layout {
   doc_concat, doc_line_of, doc_text,
   render,
 }
-import std.languages {
-  SerializationKnobs,
-  SerialField,
-  serial_field,
-  serial_scalar,
-  serialize_fields_doc,
-}
+import std.languages { SerializationKnobs, SerialField }
+import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
 import product.placement_supply { HostIdentity }
 import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
 import gunbc.host_runner_memory_provision {
