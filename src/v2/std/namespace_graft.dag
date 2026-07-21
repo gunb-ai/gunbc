@@ -68,7 +68,7 @@ data qualified_name_from_module_node_graft_aware_disposition: Disposition = Scaf
   }
 }
 
-data qualified_name_from_module_node_graft_aware_dissolution_trigger: String = "DISSOLVE-ON: v2.extdeps.languages.dag qualified_name_from_module_node routes grafted roots through nesting-position spine walk internally (import cycle v2.std.namespace_graft <-> v2.extdeps.languages.dag broken — spine helpers lifted to std or pre-graft ingress split to parse-only boundary). Then delete qualified_name_from_module_node_graft_aware + namespace_graft_pre_graft_module_qn; all production callers already on the collapsed reader. Completion signal: wet source_root_ingest_gate_passes green + both real_ingest RED controls green on grafted fixture ingest."
+data qualified_name_from_module_node_graft_aware_dissolution_trigger: String = "DISSOLVE-ON: v2.extdeps.languages.dag qualified_name_from_module_node routes grafted roots through nesting-position spine walk internally (import cycle v2.std.namespace_graft <-> v2.extdeps.languages.dag broken — spine helpers lifted to std or pre-graft ingress split to parse-only boundary). Then delete qualified_name_from_module_node_graft_aware + namespace_graft_pre_graft_module_qn; all production callers already on the collapsed reader. Completion signal: wet source_root_ingest_gate_passes green + both real_ingest RED controls green on grafted fixture ingest. Follow-up owner: namespace-resolution lane terminal (docs/plans/namespace-resolution-design.md §terminal — import parse error, deps from container.member refs)."
 
 fn qualified_name_from_module_node_graft_aware(root: Node) -> Outcome<QualifiedName> {
   if namespace_graft_already_grafted(root: root) {
@@ -233,6 +233,38 @@ fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
   }
 }
 
+fn namespace_graft_wrap_body_boundary(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^namespace_graft_body_boundary,
+        target: body
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn namespace_graft_is_body_boundary_wrapper(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 1 {
+        match list_at_optional(xs: node.children, index: 0) {
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: sym } => sym == ^namespace_graft_body_boundary
+              Positional => false
+            }
+          Absent => false
+        }
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
 fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -335,31 +367,43 @@ fn qualified_name_from_graft_spine(root: Node) -> Outcome<QualifiedName> {
 }
 
 fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName) -> Outcome<QualifiedName> {
-  match namespace_graft_spine_segment_edge_optional(node: node) {
-    Present { value: edge } =>
-      match edge.label {
-        Named { name: seg } =>
-          namespace_graft_qualified_name_from_spine_node(
-            node: edge.target,
-            acc: qualified_name_snoc(qn: acc, segment: seg)
-          )
-        Positional =>
+  if namespace_graft_is_body_boundary_wrapper(node: node) {
+    if is_empty(xs: acc) {
+      outcome_rejected(Diagnostic {
+        reason: ^qualified_name_structure_invalid,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    } else {
+      outcome_accepted(value: acc)
+    }
+  } else {
+    match namespace_graft_spine_segment_edge_optional(node: node) {
+      Present { value: edge } =>
+        match edge.label {
+          Named { name: seg } =>
+            namespace_graft_qualified_name_from_spine_node(
+              node: edge.target,
+              acc: qualified_name_snoc(qn: acc, segment: seg)
+            )
+          Positional =>
+            outcome_rejected(Diagnostic {
+              reason: ^qualified_name_structure_invalid,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+        }
+      Absent =>
+        if is_empty(xs: acc) {
           outcome_rejected(Diagnostic {
             reason: ^qualified_name_structure_invalid,
             at: node_locus(node: node),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
-      }
-    Absent =>
-      if is_empty(xs: acc) {
-        outcome_rejected(Diagnostic {
-          reason: ^qualified_name_structure_invalid,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-      } else {
-        outcome_accepted(value: acc)
-      }
+        } else {
+          outcome_accepted(value: acc)
+        }
+    }
   }
 }
 
@@ -410,8 +454,10 @@ fn namespace_graft_spine_body_conj(captured: Node) -> Node {
         match list_at_optional(xs: captured.children, index: 0) {
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } =>
-                if namespace_graft_node_is_conj(node: edge.target) {
+              Named { name: sym } =>
+                if sym == ^namespace_graft_body_boundary {
+                  edge.target
+                } else if namespace_graft_node_is_conj(node: edge.target) {
                   namespace_graft_spine_body_conj(captured: edge.target)
                 } else {
                   captured
@@ -479,7 +525,8 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
           Cons { head: _, tail: _ } => {
             let body_edges = namespace_graft_collect_body_edges(root: root)
             let body = namespace_graft_build_body_conj(edges: body_edges)
-            let spine = namespace_graft_fold_spine(qn: qn, body: body)
+            let bounded_body = namespace_graft_wrap_body_boundary(body: body)
+            let spine = namespace_graft_fold_spine(qn: qn, body: bounded_body)
             outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
           }
         }
