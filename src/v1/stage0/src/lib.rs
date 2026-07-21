@@ -41,7 +41,6 @@ pub mod gunbc_stage0_crate_partition_generated;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
-pub mod resolution_silent_pick_telemetry;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod std_algebra;

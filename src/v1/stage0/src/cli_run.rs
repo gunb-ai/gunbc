@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{parse_module_binding, ParsedModuleBinding};
-use crate::resolution_silent_pick_telemetry::SilentPickTelemetry;
+use crate::v1_rt::SilentPickTelemetry;
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -17491,12 +17491,9 @@ pub struct ResolutionDivergenceCensus {
     pub silent_pick_global_bare_lcp: usize,
     pub silent_pick_global_bare_lcp_tie: usize,
     pub silent_pick_fn_parent_first_hit: usize,
-    pub silent_pick_global_bare_lcp_rows:
-        Vec<crate::resolution_silent_pick_telemetry::GlobalBareLcpPickSite>,
-    pub silent_pick_global_bare_lcp_tie_rows:
-        Vec<crate::resolution_silent_pick_telemetry::GlobalBareLcpTieSite>,
-    pub silent_pick_fn_parent_first_hit_rows:
-        Vec<crate::resolution_silent_pick_telemetry::FnParentFirstHitSite>,
+    pub silent_pick_global_bare_lcp_rows: Vec<crate::v1_rt::GlobalBareLcpPickSite>,
+    pub silent_pick_global_bare_lcp_tie_rows: Vec<crate::v1_rt::GlobalBareLcpTieSite>,
+    pub silent_pick_fn_parent_first_hit_rows: Vec<crate::v1_rt::FnParentFirstHitSite>,
     pub cost_shape: ResolutionDivergenceCostShape,
 }
 
@@ -18014,13 +18011,13 @@ pub fn resolution_divergence_census_live(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<ResolutionDivergenceCensus, String> {
-    crate::resolution_silent_pick_telemetry::enable();
+    crate::v1_rt::resolution_silent_pick_enable();
     let resolve_result = whole_tree_resolved_ctx(
         source_roots,
         exclude_substrings,
         v1_interpreter::ExecutionMode::Wet,
     );
-    let silent_picks = crate::resolution_silent_pick_telemetry::disable();
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let WholeTreeCtx {
         ctx,
         modules_resolved,
