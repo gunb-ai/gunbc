@@ -7,7 +7,7 @@ data curated_probe_cargo_scaffold_note: String = "SCAFFOLD — dissolve-on: dele
 
 data curated_probe_report_doc_provenance: String = "bind: docs/probes/curated_cargo_frontier_probe_report.md — probe-only seed-retained frontier cargo-green verdict receipts (cool-crab-179); dissolves when modeled probe transport lands (bash-emit #5828)."
 
-data emitter_residual_site_map_doc_provenance: String = "bind: docs/probes/emitter_residual_site_map_2026-07-21.md — post-#6981 emitted deep-module E0308 probe histograms mapped to emitter function sites (05_emit_rust.dag / 04_emit_info.dag), owner quiet-bee #6924 Phase-1 residual (crisp-fox-839); map-only, no fix landed here."
+data emitter_residual_site_map_doc_provenance: String = "bind: docs/probes/emitter_residual_site_map_2026-07-21.md — emitted deep-module E0308/E0425 probe histograms mapped to emitter fn sites (crisp-fox-839, landed via #7023 without this row — the doc-orphan wall red first surfaced on the next merged-with-main floor); dissolves with the residual classes it maps (dotted-alias #6981, generic-T fold closures)."
 
 fn curated_probe_cargo_toml_from_cssl_authority() -> String {
   let root = git.Core.Toplevel()
