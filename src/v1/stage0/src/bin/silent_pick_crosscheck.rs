@@ -7,23 +7,14 @@
 //! `resolution_divergence_census --closure-scoped` is the gate's own binary.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use v1_compiler::cli_run::{
     resolution_divergence_census_live_closure_scoped,
     resolution_divergence_silent_pick_genuine_rows,
 };
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("workspace root")
-}
-
 fn main() {
-    let ws = workspace_root();
-    let census = resolution_divergence_census_live_closure_scoped(&ws)
+    let census = resolution_divergence_census_live_closure_scoped()
         .expect("closure-scoped census resolve");
 
     // Distinct silent-pick sites across all three classes, keyed (module, name).

@@ -75,7 +75,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // same source set the falsifier's whole-tree cold control already resolves
         // cleanly — instead of the default blind directory walk. Additive mode; the
         // default (source_roots empty => dag+src/v2) is untouched below.
-        resolution_divergence_census_live_closure_scoped(&ws)
+        resolution_divergence_census_live_closure_scoped()
     } else {
         if source_roots.is_empty() {
             source_roots = resolution_divergence_census_source_roots(&ws);

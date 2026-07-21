@@ -18707,9 +18707,8 @@ pub fn resolution_divergence_census_live(
 /// compiled tree. Does NOT touch `resolution_divergence_census_live`'s default
 /// whole-tree scan — an additive mode, not a semantics change for #6936/#6967
 /// or any other consumer.
-pub fn resolution_divergence_census_live_closure_scoped(
-    ws: &Path,
-) -> Result<ResolutionDivergenceCensus, String> {
+pub fn resolution_divergence_census_live_closure_scoped()
+-> Result<ResolutionDivergenceCensus, String> {
     let roots = witness_layer_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
     let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
@@ -18725,7 +18724,6 @@ pub fn resolution_divergence_census_live_closure_scoped(
         None,
         None,
     );
-    let _ = ws;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = 0;
