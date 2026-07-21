@@ -15,8 +15,11 @@ import v2.std.node {
   TypeNode,
   well_formed
 }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import v2.std.namespace_graft {
   module_header_containment_graft,
+  namespace_graft_already_grafted,
+  namespace_graft_has_module_header,
   namespace_graft_is_metadata_edge,
   namespace_graft_is_module_shell,
   qualified_name_from_graft_spine
@@ -157,6 +160,69 @@ test fn namespace_graft_manual_qn_on_parsed_holds() -> Bool {
 test fn namespace_graft_normalize_applies_on_parsed_module_holds() -> Bool {
   match ng_norm_normalized_root() {
     Present { value: root } => namespace_graft_is_module_shell(root: root)
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_normalized_header_present_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => namespace_graft_has_module_header(root: root)
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_normalized_already_grafted_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => namespace_graft_already_grafted(root: root)
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_normalized_module_node_qn_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } =>
+      match qualified_name_from_module_node(root: root) {
+        Accepted { value: qn, diagnostics: _ } =>
+          qualified_name_to_dotted_string(qn: qn) == "m"
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_graft_on_normalized_accepted_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: normalized } =>
+      match module_header_containment_graft(root: normalized) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_qn_on_grafted_normalized_rejects_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: normalized } =>
+      match module_header_containment_graft(root: normalized) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_debug_qn_on_normalized_before_graft_rejects_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: normalized } =>
+      match qualified_name_from_graft_spine(root: normalized) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
     Absent => false
   }
 }
