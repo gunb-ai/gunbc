@@ -4622,7 +4622,7 @@ match bare_s.clone() {
                     )
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
                         prefer_specific_type(
                             acc,
                             t.clone(),
