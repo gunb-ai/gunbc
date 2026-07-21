@@ -2,7 +2,6 @@ module test.claim.bmc_onboarding_lifecycle
 
 import std.logic { Bool }
 import std.types { Int }
-import std.credentials { Stored, Chained }
 import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
 import gunbc.bmc_onboarding {
   BmcOnboardingPhase,
@@ -183,10 +182,7 @@ test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
 test fn srv3_plan_starts_factory_default_at_192() -> Bool {
   srv3_onboarding_plan.bmc.host == "192.168.1.192"
     && phase_tag(p: srv3_onboarding_plan.start_phase) == 0
-    && match srv3_onboarding_plan.rotated_credential {
-      Stored { secret_name: s } => s == "bmc-srv3-admin"
-      Chained { steps: _ } => false
-    }
+    && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
     && match srv3_onboarding_plan.os_target {
       UbuntuOs { distro: d } =>
         match d {
@@ -205,10 +201,7 @@ test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
   srv4_onboarding_plan.bmc.host == "192.168.1.195"
     && !(srv4_onboarding_plan.bmc.host == srv3_onboarding_plan.bmc.host)
     && phase_tag(p: srv4_onboarding_plan.start_phase) == 0
-    && match srv4_onboarding_plan.rotated_credential {
-      Stored { secret_name: s } => s == "bmc-srv4-admin"
-      Chained { steps: _ } => false
-    }
+    && srv4_onboarding_plan.secret_name == "bmc-srv4-admin"
     && match srv4_onboarding_plan.os_target {
       UbuntuOs { distro: d } =>
         match d {

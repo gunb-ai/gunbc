@@ -1,7 +1,7 @@
 module gunbc.bmc_onboarding
 
 import std.bmc { BmcEndpoint, Redfish }
-import std.credentials { FactoryLogin, CredentialFlow, Stored }
+import std.credentials { FactoryLogin }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List }
 import std.logic { Bool }
@@ -195,7 +195,7 @@ type BmcOnboardingPlan {
   bmc: BmcEndpoint
   redfish_system_id: NonEmptyStr
   factory_login: FactoryLogin
-  rotated_credential: CredentialFlow
+  secret_name: NonEmptyStr
   rotated_account_role: RedfishAccountRole
   os_target: OperatingSystemProduct
   os_install_boot_target: RedfishBootSourceOverrideTarget
@@ -215,7 +215,7 @@ fn altra_onboarding_plan(bmc_host: NonEmptyStr, secret_name: NonEmptyStr) -> Bmc
     bmc: BmcEndpoint { host: bmc_host, protocol: Redfish },
     redfish_system_id: asrock_altrad8ud_redfish_system_id,
     factory_login: openbmc_factory_login,
-    rotated_credential: Stored { secret_name: secret_name },
+    secret_name: secret_name,
     rotated_account_role: AccountRoleAdministrator,
     os_target: UbuntuOs { distro: NobleNumbat2404Lts },
     os_install_boot_target: srv3_install_boot_target,

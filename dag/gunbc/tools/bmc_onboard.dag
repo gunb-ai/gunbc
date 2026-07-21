@@ -19,7 +19,6 @@ import gunbc.auth.access_token_source {
   GcloudPrintToken,
   resolve_access_token,
 }
-import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
@@ -79,10 +78,7 @@ fn gcp_secret_full_name(project: String, secret_id: String) -> String {
 }
 
 fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr {
-  match plan.rotated_credential {
-    Stored { secret_name: sn } => sn
-    Chained { steps: _ } => plan.bmc.host
-  }
+  plan.secret_name
 }
 
 fn mint_bmc_credential() -> Secret {
