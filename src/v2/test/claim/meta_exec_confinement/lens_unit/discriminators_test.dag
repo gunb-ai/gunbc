@@ -42,7 +42,7 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/ci_deploy_access.dag",
+    path: "dag/gunbc/ci_deploy_target_host.dag",
     import_module: target_meta_exec_module
   }
 ]
@@ -81,9 +81,9 @@ data stale_roster: List<String> = [
 ]
 
 data live_leak_paths: List<String> = [
-  "dag/gunbc/ci_deploy_access.dag"
+  "dag/gunbc/ci_deploy_target_host.dag"
 ]
 test fn roster_stale_entry_red_holds() -> Bool {
-  meta_exec_roster_stale_count(roster: stale_roster, live_leak_paths: live_leak_paths) == 1
+  meta_exec_roster_stale_count(roster: stale_roster, live_leak_paths: live_leak_paths) == 2
     && !meta_exec_roster_sound(roster: stale_roster, live_leak_paths: live_leak_paths)
 }

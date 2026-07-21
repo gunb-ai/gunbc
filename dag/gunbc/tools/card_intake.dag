@@ -174,7 +174,7 @@ func intake_binder(
   results = for p in photo_paths {
     intake_binder_photo(
       photo_path: p,
-      bearer_token: token.access_token,
+      bearer_token: token.access_token as Secret,
       category_id: category_id,
       high_value_threshold: high_value_threshold
     )
@@ -198,14 +198,14 @@ func list_card_sku(
   )
 
   priced = tcgplayer.Store.UpdateSkuPrice(
-    bearer_token: token.access_token,
+    bearer_token: token.access_token as Secret,
     store_key: store_key,
     sku_id: sku_id,
     price: price
   )
 
   stocked = tcgplayer.Store.IncrementSkuQuantity(
-    bearer_token: token.access_token,
+    bearer_token: token.access_token as Secret,
     store_key: store_key,
     sku_id: sku_id,
     quantity: quantity

@@ -47,5 +47,18 @@ fn roadmap_css() -> String {
     css_rule(selector: ".frontier-ready h2", props: "color: #856404"),
     css_rule(selector: ".frontier-upcoming h2", props: "color: #084298"),
     css_rule(selector: ".frontier-done h2", props: "color: #0a3622"),
+    css_rule(selector: ".three-gate-progress", props: "display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px"),
+    css_rule(selector: ".three-gate-progress h2", props: "margin: 0 0 4px"),
+    css_rule(selector: ".gate-row", props: "border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 16px; background: #fff"),
+    css_rule(selector: ".gate-head", props: "display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px"),
+    css_rule(selector: ".gate-name", props: "font-weight: 600; font-size: 14px"),
+    css_rule(selector: ".gate-count", props: "font-family: ui-monospace, monospace; font-size: 13px; color: #555; font-variant-numeric: tabular-nums"),
+    css_rule(selector: ".gate-bar", props: "height: 10px; border-radius: 5px; background: #eef1f4; overflow: hidden; margin-bottom: 8px"),
+    css_rule(selector: ".bar-fill", props: "height: 100%; background: #2da44e"),
+    css_rule(selector: "ul.bricks", props: "list-style: none; padding-left: 0; display: flex; flex-direction: column; gap: 3px"),
+    css_rule(selector: "li.brick", props: "font-size: 12px; padding: 1px 0; color: #444; display: flex; align-items: baseline"),
+    css_rule(selector: ".brick-state", props: "display: inline-block; flex: 0 0 auto; width: 62px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 8px"),
+    css_rule(selector: ".brick-inflight .brick-state", props: "color: #9a6700"),
+    css_rule(selector: ".brick-gated .brick-state", props: "color: #999"),
   ], "\n")
 }
