@@ -1080,8 +1080,7 @@ mod tests {
 
     #[test]
     fn uncapped_host_budget_caps_mem_available_at_declared_runner_slot_high() {
-        let (budget, capped) =
-            uncapped_host_budget_from_mem_available(35_161_423_872);
+        let (budget, capped) = uncapped_host_budget_from_mem_available(35_161_423_872);
         assert_eq!(budget, DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES);
         assert!(capped);
         let (small, capped_small) = uncapped_host_budget_from_mem_available(8_000_000_000);
