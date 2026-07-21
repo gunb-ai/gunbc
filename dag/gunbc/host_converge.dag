@@ -27,6 +27,7 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slot_oom_pressure_kill }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import extdeps.os.systemd {
@@ -445,6 +446,7 @@ fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
+  let oom_auto = managed_oom_action_value(a: gunbc_runner_slot_desired().managed_oom_memory_pressure)
   [
     slice_numeric_knob(
       slice: RunnerSlice,
@@ -484,6 +486,17 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         instance_glob: glob,
         property: systemd_memory_high_property,
         bytes_value: to_string(byte_size_count(b: h.per_runner_memory_high_cap)),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_oom_pressure_kill",
+      desired: if gunbc_runner_slot_oom_pressure_kill() { "true" } else { "false" },
+      target: SliceProperty {
+        unit: gunbc_runner_unit_template,
+        property: oomd_managed_oom_memory_pressure_property,
+        apply_value: oom_auto,
+        expected_effective: oom_auto,
       }
     ),
     slice_numeric_knob(

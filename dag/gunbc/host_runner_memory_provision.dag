@@ -28,7 +28,7 @@ import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 import std.realization_reconcile { Converged, NotConverged }
 
 data host_runner_memory_provision_scope_disposition: Disposition = Terminal {
-  reason: "srv3 runner memory caps via host-standup converge (operator mandate 2026-07-21): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs derived from gunbc.runner_slot_allocation single authority, applied as a ConvergePlan host-effect ensure on the assimilation spine (P1:runner-deploy-slot), routed through host_effect_apply_gated — never hand systemctl or raw drop-ins. Values are never fresh literals; per-unit caps derive from gunbc_runner_slot_desired() and runner_instance_glob(host). Read-back is mandatory: applied-without-read-back refuses (per_slot_memory_cap_verdict_from_unit_read). FreshStandup apply mode for srv3 is host_converge.gunbc_apply_mode_for_host, not a separate cap row. Live host mutation requires deploy access; absent access yields a typed refusal naming the host."
+  reason: "srv3 runner memory policy via host-standup converge (operator mandate 2026-07-21; Brief 3 thrash-not-fail extension): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs plus per_slot_oom_pressure_kill=false (ManagedOOMMemoryPressure=auto on actions-runner@ template — thrash-not-fail: between memory.high and memory.max the slot reclaim-throttles into swap; memory.max is the kill line; inverse of sessions.slice oom_pressure_kill=true). All knobs derive from gunbc.runner_slot_allocation single authority, applied as a ConvergePlan host-effect ensure on the assimilation spine (P1:runner-deploy-slot), routed through host_effect_apply_gated — never hand systemctl or raw drop-ins. Values are never fresh literals; per-unit caps derive from gunbc_runner_slot_desired() and runner_instance_glob(host). Read-back is mandatory for byte caps: applied-without-read-back refuses (per_slot_memory_cap_verdict_from_unit_read). FreshStandup apply mode for srv3 is host_converge.gunbc_apply_mode_for_host, not a separate cap row. Live host mutation requires deploy access; absent access yields a typed refusal naming the host."
 }
 
 data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
@@ -40,14 +40,15 @@ data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_memory_cap_knob_names: List<String> = [
+data runner_memory_policy_knob_names: List<String> = [
   "per_slot_memory_max_bytes",
   "per_slot_memory_high_bytes",
   "per_slot_memory_swap_max_bytes",
+  "per_slot_oom_pressure_kill",
 ]
 
 fn runner_memory_knob_selected(name: String) -> Bool {
-  fold(runner_memory_cap_knob_names, init: false, f: (acc, n) => acc || n == name)
+  fold(runner_memory_policy_knob_names, init: false, f: (acc, n) => acc || n == name)
 }
 
 fn runner_memory_knobs_from(host: HostConverge) -> List<ConvergeKnob> {

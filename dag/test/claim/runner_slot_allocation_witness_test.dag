@@ -8,7 +8,12 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slice_cap_declared,
   gunbc_committed_runner_slot_allocations,
   gunbc_runner_slot_enforcement_expected_cap,
+  gunbc_runner_slot_thrash_not_fail_policy_holds,
+  gunbc_runner_slot_oom_pressure_kill,
+  gunbc_runner_slot_memory_policy,
+  ThrashNotFail,
 }
+import extdeps.os.oomd { ManagedOomAuto }
 import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -42,4 +47,29 @@ test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
   byte_size_count(b: gunbc_runner_slot_enforcement_expected_cap()) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+test fn runner_slot_allocation_thrash_not_fail_policy_holds() -> Bool {
+  gunbc_runner_slot_thrash_not_fail_policy_holds()
+}
+
+test fn runner_slot_allocation_oom_pressure_kill_is_false() -> Bool {
+  !gunbc_runner_slot_oom_pressure_kill()
+}
+
+test fn runner_slot_allocation_managed_oom_memory_pressure_is_auto() -> Bool {
+  match gunbc_runner_slot_desired().managed_oom_memory_pressure {
+    ManagedOomAuto => true
+    _ => false
+  }
+}
+
+test fn runner_slot_allocation_memory_policy_is_thrash_not_fail() -> Bool {
+  match gunbc_runner_slot_memory_policy() {
+    ThrashNotFail => true
+  }
+}
+
+test fn runner_slot_allocation_RED_oom_pressure_kill_would_break_thrash_not_fail() -> Bool {
+  gunbc_runner_slot_thrash_not_fail_policy_holds() && !gunbc_runner_slot_oom_pressure_kill()
 }

@@ -11,6 +11,10 @@ fn srv3_memory_high_knob_name() -> String {
   "per_slot_memory_high_bytes"
 }
 
+fn srv3_oom_pressure_kill_knob_name() -> String {
+  "per_slot_oom_pressure_kill"
+}
+
 fn srv3_host_converge_from_standup_policy() -> HostConverge? {
   host_converge_from_policy(policy: host_standup_fleet_converge_policy(), host: operator_host_srv3)
 }
@@ -92,6 +96,30 @@ fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
     && byte_size_count(b: desired.memory_high) == byte_size_count(b: byte_size(16106127360))
 }
 
+fn witness_srv3_oom_pressure_kill_knob_is_thrash_not_fail() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } =>
+      match srv3_memory_knob(host: host, name: srv3_oom_pressure_kill_knob_name()) {
+        Present { value: knob } =>
+          knob.desired == "false"
+            && match knob.target {
+              SliceProperty {
+                unit: gunbc_runner_unit_template,
+                property: p,
+                apply_value: av,
+                expected_effective: ev,
+              } =>
+                p == oomd_managed_oom_memory_pressure_property
+                  && av == oomd_managed_value_auto
+                  && ev == oomd_managed_value_auto
+              _ => false
+            }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
   converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
 }
@@ -102,6 +130,15 @@ fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
       last_runner_slice_knob_name(knobs: host.knobs) == "runner_count"
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_memory_max_knob_name())
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_memory_high_knob_name())
+        && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_kill_knob_name())
+    Absent => false
+  }
+}
+
+fn witness_provision_includes_oom_pressure_kill_knob() -> Bool {
+  match runner_memory_host_converge(host: operator_host_srv3) {
+    Present { value: host } =>
+      fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_kill_knob_name())
     Absent => false
   }
 }
@@ -136,9 +173,11 @@ test fn srv3_runner_memory_converge_holds() -> Bool {
     && witness_srv3_standup_converge_policy_includes_host()
     && witness_srv3_memory_max_knob_grounds_authority()
     && witness_srv3_memory_high_knob_grounds_authority()
+    && witness_srv3_oom_pressure_kill_knob_is_thrash_not_fail()
     && witness_srv3_memory_high_is_throttle_line_below_max()
     && witness_srv3_apply_mode_is_fresh_standup()
     && witness_srv3_memory_knobs_precede_runner_width_widen()
+    && witness_provision_includes_oom_pressure_kill_knob()
     && witness_provision_routes_through_host_effect_apply()
     && witness_provision_refuses_without_readback_arm()
 }
