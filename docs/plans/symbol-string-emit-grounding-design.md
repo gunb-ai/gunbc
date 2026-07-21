@@ -59,9 +59,25 @@ backstop in `v1_interpreter.rs`).
    it GREEN. Design decision: `project_free_monoid_collection_type_node` must, when `elem` is the Char kernel and
    the target provides a native text-carrier, emit the native `String` atom (a nullary atom) instead of the
    `Vec<Char>` instantiation. `TargetRepresentation`/`TargetRepresentationChoice` (target_model.dag:9090) can only
-   express generic-apply forms today, so the grounding adds a **target-provided text-carrier realization** (rust.dag
-   row + target_model.dag shape — this lane) that the stage consults; the Char check + `String` spelling stay in the
-   realization authority, never hardcoded in the target-agnostic stage.
+   express generic-apply forms today, so the grounding adds a **target-provided text-carrier realization** that the
+   stage consults; the Char check + `String` spelling stay in the realization authority, never hardcoded in the
+   target-agnostic stage.
+
+   **Mechanism boundary found (2026-07-21, by execution):** the existing atom-realization catalog
+   (`rust_target_atom_realization_catalog`) is NOT the vehicle — its encode/decode assumes a *simple atom*
+   `source_carrier` (Symbol/Bool/Char kernels), so a row whose `source_carrier` is the compound `FreeMonoid<Char>`
+   Instantiation makes `atom_identity_hash` fail during the catalog content-hash lookup (verified). Corrected GREEN
+   design: extend the **free-monoid collection realization** (the choice site my parent named) with an optional
+   `text_carrier: Optional<TargetTextCarrier { element_carrier: Node, type_form: TargetTypeExpression }>`. rust.dag
+   (this lane) sets `element_carrier = char_kernel_type_node()` and `type_form =` the native `String` type_form
+   (the same one Symbol emits). The stage, after reading the realization `row`, checks
+   `content_hash(elem) == content_hash(row.text_carrier.element_carrier)` (generic — no hardcoded Char/String
+   knowledge in the stage) and emits `row.text_carrier.type_form.node`; else the existing `Vec` path. Edit sites:
+   `TargetCollectionRealization` shape + its bundle encode/decode (`free_monoid_collection_realization_from_target`),
+   `rust_free_monoid_collection_realization_bundle_node` (data), and `project_free_monoid_collection_type_node`
+   (~6-line consult). Receipt runs against `rust_target_model()` (has both projection rows and the collection
+   realization); the committed RED receipt currently pins the sg2 probe model — switch it to `rust_target_model()`
+   when the realization carries the text_carrier.
 2. **Op layer.** `FreeMonoid<Char>` operations used on `String` (`string_head`/`string_tail`/`string_is_empty`,
    `Empty`/`Cons` construction) get native-String realizations, mirroring Root B's `rust_host_string_op_fn_emit`.
    A module that does rope-ops on `String` needs this or it emits native-String code expecting rope ops.
