@@ -5310,6 +5310,9 @@ fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot)
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
+/// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
+/// correctness is preserved by content-key recompute on miss; only cost/frequency
+/// is affected if a hot entry is dropped.
 fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
     if index.cross_worker_store.is_some() {
         return;
