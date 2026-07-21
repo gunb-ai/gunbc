@@ -1,0 +1,107 @@
+module gunbc.host_runner_memory_cap_plan_emit
+
+import std.types { String, List, Bool }
+import std.layout {
+  Doc, DocConcat, DocLine,
+  LayoutProtocol,
+  doc_concat, doc_line_of, doc_text,
+  render,
+}
+import std.languages { SerializationKnobs, SerialField }
+import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
+import product.placement_supply { HostIdentity }
+import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
+import gunbc.host_runner_memory_provision {
+  runner_memory_host_converge,
+  runner_memory_knobs_from,
+}
+
+data runner_memory_cap_plan_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+data runner_memory_cap_plan_record_knobs: SerializationKnobs = {
+  assign: "=",
+  entry_separator: " ",
+  open: "",
+  close: "",
+  quote_keys: false,
+  value_quote: null,
+}
+
+data runner_memory_cap_plan_emit_disclaimer: String = "RUNNER-MEMORY-CAP APPLY SHEET — EMIT CLAIMS NOTHING: typed projection of fleet_converge_policy memory-cap knobs (per_slot_memory_max_bytes, per_slot_memory_high_bytes, per_slot_memory_swap_max_bytes) for operator hand-apply only. Modeled-but-not-applied until a separate verify-only receipt reads Converged on the runner instance glob. This emission does not invoke host_effect_apply, systemctl, or any host mutation."
+
+fn memory_cap_plan_row_is_per_slot_memory_cap(knob: ConvergeKnob) -> Bool {
+  match knob.target {
+    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
+    _ => false
+  }
+}
+
+fn memory_cap_dropin_stanza(property: String, bytes_value: String) -> String {
+  concat(concat(concat("[Service]\n", property), "="), bytes_value)
+}
+
+fn memory_cap_plan_row_fields(host: HostIdentity, knob: ConvergeKnob) -> List<SerialField> {
+  match knob.target {
+    PerSlotMemoryCap { dropin_path: path, instance_glob: glob, property: prop, bytes_value: bytes } =>
+      [
+        serial_field(key: "host", value: serial_scalar(text: host as String)),
+        serial_field(key: "knob_name", value: serial_scalar(text: knob.name)),
+        serial_field(key: "dropin_path", value: serial_scalar(text: path)),
+        serial_field(key: "property", value: serial_scalar(text: prop)),
+        serial_field(key: "bytes_value", value: serial_scalar(text: bytes)),
+        serial_field(key: "instance_glob", value: serial_scalar(text: glob)),
+        serial_field(
+          key: "dropin_stanza",
+          value: serial_scalar(text: memory_cap_dropin_stanza(property: prop, bytes_value: bytes))
+        ),
+      ]
+    _ => []
+  }
+}
+
+fn memory_cap_plan_row_doc(host: HostIdentity, knob: ConvergeKnob) -> Doc {
+  if memory_cap_plan_row_is_per_slot_memory_cap(knob: knob) {
+    doc_concat(parts: [
+      doc_text(text: "runner-memory-cap-plan "),
+      serialize_fields_doc(knobs: runner_memory_cap_plan_record_knobs, fields: memory_cap_plan_row_fields(host: host, knob: knob)),
+      DocLine,
+    ])
+  } else {
+    doc_line_of(text: concat("runner-memory-cap-plan UNSOUND: knob ", concat(knob.name, " is not PerSlotMemoryCap")))
+  }
+}
+
+fn project_runner_memory_cap_plan_doc(host: HostIdentity) -> Doc {
+  match runner_memory_host_converge(host: host) {
+    Present { value: hc } =>
+      doc_concat(parts: append(
+        [
+          doc_line_of(text: runner_memory_cap_plan_emit_disclaimer),
+          doc_line_of(text: ""),
+        ],
+        items: map(runner_memory_knobs_from(host: hc), knob => memory_cap_plan_row_doc(host: host, knob: knob))
+      ))
+    Absent =>
+      doc_line_of(
+        text: concat(
+          "runner-memory-cap-plan UNSOUND: memory-cap converge knobs absent from fleet_converge_policy for ",
+          host as String
+        )
+      )
+  }
+}
+
+fn expected_runner_memory_cap_apply_sheet(host: HostIdentity) -> String {
+  render(doc: project_runner_memory_cap_plan_doc(host: host), proto: runner_memory_cap_plan_protocol)
+}
+
+fn runner_memory_cap_plan_emit_claims_nothing(host: HostIdentity) -> Bool {
+  string_contains(
+    s: expected_runner_memory_cap_apply_sheet(host: host),
+    pattern: "EMIT CLAIMS NOTHING"
+  )
+    && string_contains(
+      s: expected_runner_memory_cap_apply_sheet(host: host),
+      pattern: "Modeled-but-not-applied until a separate verify-only receipt reads Converged"
+    )
+}

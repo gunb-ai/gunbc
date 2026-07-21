@@ -28,7 +28,7 @@ test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
 }
 
 test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc_committed_runner_slot_allocations() |> count == 2
+  gunbc_committed_runner_slot_allocations() |> count == 3
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
