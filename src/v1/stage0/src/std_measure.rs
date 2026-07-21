@@ -3,6 +3,8 @@
 
 use self::Quantity::*;
 use self::Scale::*;
+pub use crate::std_currency::CurrencyCode;
+use crate::std_currency::CurrencyCode::*;
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -98,6 +100,10 @@ pub fn kibi_factor() -> Nat {
 }
 
 pub fn seconds_per_minute() -> Nat {
+    60
+}
+
+pub fn minutes_per_hour() -> Nat {
     60
 }
 
@@ -335,6 +341,111 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
 }
 
+pub fn money_rate_billing_unit_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerMinute(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerHour(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PerMonth(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Once(pub std::marker::PhantomData<()>);
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MoneyRate<P> {
+    pub amount: MoneyAmountMicro,
+    pub currency: CurrencyCode,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type MoneyPerMinute = Rc<MoneyRate<PerMinute>>;
+
+pub type MoneyPerHour = Rc<MoneyRate<PerHour>>;
+
+pub type MoneyPerMonth = Rc<MoneyRate<PerMonth>>;
+
+pub type MoneyOnce = Rc<MoneyRate<Once>>;
+
+pub fn money_rate_carrier_representation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn money_rate_micros<P>(q: Rc<MoneyRate<P>>) -> Nat {
+    money_amount_micro_count(q.amount.clone())
+}
+
+pub fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn money_once_micros(q: MoneyOnce) -> Nat {
+    money_rate_micros(q.clone())
+}
+
+pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
+    Rc::new(MoneyRate {
+        amount: money_amount_micro((money_per_minute_micros(q.clone()) * minutes_per_hour())),
+        currency: q.currency.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn billing_month_as_hour_count() -> Nat {
+    730
+}
+
+pub fn billing_month_as_hour_count_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn billing_month_as_hour_count_representation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
+    Rc::new(MoneyRate {
+        amount: money_amount_micro(
+            (money_per_month_micros(q.clone()) / billing_month_as_hour_count()),
+        ),
+        currency: q.currency.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
 pub fn byte_size(count: Nat) -> ByteSize {
     Rc::new(Measure {
         count: count.clone(),
@@ -483,6 +594,15 @@ pub fn percent(count: Nat) -> Percent {
 
 pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
+}
+
+pub fn percent_from_computed_int_frontier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.site.tokens quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
