@@ -1,6 +1,6 @@
 # Floor time +20min regression — diagnosis (bisected to #6848 namespace walks)
 
-**Status:** diagnosis complete; fix landed in the same PR (call-order + entry-closure memo).
+**Status:** diagnosis complete; axis 2b (reconcile deferral) on `main` (#6998); entry-closure memo in this PR (#6999).
 Resolver semantics unchanged — perf-only caching/call-order.
 
 **One-line verdict:** #6848's name-derived loader (`extend_sources_to_both_closure_fixpoint`
