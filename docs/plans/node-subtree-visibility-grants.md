@@ -86,7 +86,7 @@ exactly nested containment (`Repo ⊂ Org ⊂ Network ⊂ World`). Read as a sma
 of the next), `Publish` grants reuse `position_under`/`admit_effect_go` **verbatim**, the same
 fold `Reference` uses, just against a different cited tree — the "N cited trees" list
 `std/effect_grant.dag` already carries (`FilesystemPathTree | UriTree | ProcTree |
-ServiceOpTree | CodeNameTree`) gains a fifth member, `AudienceScopeTree`, and
+ServiceOpTree | CodeNameTree`) gains a sixth member, `AudienceScopeTree`, and
 `std.cache_interface.VisibilityScope` becomes a **projection** of its four positions rather than
 a parallel enum (dissolve-on: the projection lands, `VisibilityScope`'s own definition stays as
 the cache-lane's local name for the same four positions, or is retired in favor of the shared
@@ -210,7 +210,7 @@ construction wall — `VisibilityPlacementMismatch`, typed and located, fired at
 whenever a file about to land in a storage root carries content whose resolved `Publish` grant
 does not admit that root's audience. This is the incident class named in the brief and it is
 worth stating precisely: **a file with no declared `Publish` fact, pushed to the public root, is
-not "assumed public"** — per §5's frontier default, undeclared content defaults to the *narrowest*
+not "assumed public"** — per §4/§8's frontier default, undeclared content defaults to the *narrowest*
 storage root until declared, so the failure mode of "forgot to mark it" is exclusion from the
 public mirror (loud, safe, reversible by declaring the grant) rather than accidental publication
 (silent, unsafe, irreversible — history is public forever once pushed). This is the fail-closed
@@ -251,9 +251,19 @@ listed together, noting where they diverge.
   `VisibilityPlacementMismatch` (§4) and a public-to-private dangling-reference check (Rule 1,
   degenerate to file grain). The resolver's `.` projection path calls `Reference`'s `visible_from`
   when the projected child leaves the referrer's ancestor chain (unchanged from the prior draft);
-  refusal is `NameNotVisible`. Every currently-resolvable name and currently-public file stays
-  exactly as reachable as it is today — every node is `LegacyOpen` until an author explicitly
-  declares one, so this is a zero-behavior-change landing by construction.
+  refusal is `NameNotVisible`. For `Reference` this is a zero-behavior-change landing by
+  construction: every node is `LegacyOpen` until an author explicitly declares one, and
+  `LegacyOpen`'s undeclared default stays unconditional resolvability. `Publish` is **not**
+  zero-behavior-change the same way (§10 Q5 names this explicitly) — its undeclared default is
+  narrowest-storage-root (§4/§8), which would exclude every currently-public file the instant the
+  guard goes live unless the landing step itself stamps the existing corpus. So P-B's `Publish`
+  half lands with a one-time bulk migration as part of the same change: every file already
+  committed to the public root is declared `Publish { audience: World }` explicitly (not left
+  `LegacyOpen`) at cutover, so the narrowest-default rule only ever bites *new* undeclared content
+  added after P-B lands, never retroactively excludes what was already public. That migration step
+  is what makes "today's all-public-repo content stays public" true; it is a one-time cost, not an
+  ongoing one, and is the concrete answer to Q5's workflow-cost concern (new files need an explicit
+  grant going forward; existing ones do not need one retroactively).
 - **P-C (Stage 1 — the composed-graph wall):** Rules 1–2 run as compile-time refusals over the
   **composed** graph (both storage roots mounted, the §2 multi-root precedent), not just the
   push-time file check — turning "the public repo happened to not dangle" into "the public repo
@@ -319,7 +329,7 @@ therefore how complete that check was entitled to be.
 | element | existing carrier | relationship |
 |---|---|---|
 | position / subtree / `⊑` (code) | `std.effect_grant.NamespacePosition`, `position_under` (`CodeNameTree`) | reuse verbatim |
-| position / subtree / `⊑` (audience) | `std.cache_interface.VisibilityScope`'s four values, reframed | converge — projected onto a fifth `NamespaceTree` variant, `AudienceScopeTree` (§1.4, corrected from the prior draft's "false friend" call) |
+| position / subtree / `⊑` (audience) | `std.cache_interface.VisibilityScope`'s four values, reframed | converge — projected onto a sixth `NamespaceTree` variant, `AudienceScopeTree` (§1.4, corrected from the prior draft's "false friend" call) |
 | grant / admission fold | `std.effect_grant.Grant`, `admit_effect_go` | reuse the algebra unmodified; two new verbs (`Reference`, `Publish`), direction inverted for both (documented, not hidden) |
 | the edge `Reference` gates | `.` projection (namespace-resolution-design §3.3) | reuse — the one seam that constructs a reference edge |
 | the edges `Publish`'s Rule 1 walks | existing import-closure machinery | reuse — same reference edges, different question asked of them |
