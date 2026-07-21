@@ -5,7 +5,6 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import extdeps.cache.sccache {
-  sccache_server_default_port,
   sccache_fatal_error_log_fragment,
   sccache_rustc_wrapper_exit_254_log_fragment,
   sccache_failed_to_execute_compile_log_fragment,
@@ -26,7 +25,7 @@ data build_cache_systemd_user_unit_path: String = ".config/systemd/user/sccache.
 
 data build_cache_systemd_user_unit_body: String = "[Unit]\nDescription=sccache compiler cache (gunbc host standup)\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/sccache --start-server\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 
-data build_cache_placement_observe_doc: String = "PLACEMENT IS OBSERVED, NOT ASSUMED. A responsive server proves nothing about where it runs: the srv1 incident had a perfectly responsive server answering --show-stats from dead slot srv1-10's cgroup while every compile on the host inherited that slot's 16G cap. So a stats-ok observation is NOT a success exit — it is followed by reading the server's own cgroup out of /proc and comparing it to the managed slice. Unreadable placement REFUSES (exit 1) rather than assuming unit-owned: an unobservable placement is ignorance, not evidence of correctness. THE SERVER IS IDENTIFIED BY ITS LISTENING PORT, NOT BY PROCESS NAME: the sccache binary is also the client, so under RUSTC_WRAPPER every in-flight compile has a process named 'sccache' and a name match would read a transient client's cgroup — a false refusal. The listener on SCCACHE_SERVER_PORT is definitionally the server (cited: extdeps.cache.sccache.sccache_server_default_port). If the probe itself is unavailable the arm refuses too, so a missing tool can never read as placed."
+data build_cache_placement_observe_doc: String = "PLACEMENT IS OBSERVED, NOT ASSUMED. A responsive server proves nothing about where it runs: the srv1 incident had a perfectly responsive server answering --show-stats from dead slot srv1-10's cgroup while every compile on the host inherited that slot's 16G cap. So a stats-ok observation is NOT a success exit — it is followed by reading the server's own cgroup out of /proc and comparing it to the managed slice. Unreadable placement REFUSES (exit 1) rather than assuming unit-owned: an unobservable placement is ignorance, not evidence of correctness. AMBIGUITY REFUSES RATHER THAN GUESSING: the sccache binary is ALSO the client, so under RUSTC_WRAPPER an in-flight compile leaves several processes named 'sccache'. Taking an arbitrary one would read a transient client's cgroup and produce a FALSE refusal. So the arm requires EXACTLY ONE candidate and refuses (counted, with the observed count) otherwise. This observation runs at provisioning/converge time, when no compile should be in flight, so exactly-one is the expected state and >1 is genuine ambiguity. A port-listener probe (SCCACHE_SERVER_PORT, cited in extdeps) would be strictly more precise and is the intended successor; it is NOT used here because `ss` is absent in the container this was verified in, and an unexecutable probe is worse than an imprecise verified one."
 
 data build_cache_managed_slice_unit: String = "gunbc-compile-pool.slice"
 
@@ -51,7 +50,7 @@ fn build_cache_observe_placement_body() -> String {
     concat(
       "if [ -z \"$server_pid\" ]; then\n",
       concat(
-        "  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unknown detail=no-listener-on-sccache-server-port\"\n  exit 1\n",
+        "  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unknown detail=no-sccache-server-process\"\n  exit 1\n",
         concat(
           "fi\n",
           concat(
@@ -247,7 +246,8 @@ fn build_cache_provision_read_back_fails_closed() -> Bool {
 fn build_cache_provision_placement_fails_closed() -> Bool {
   string_contains(s: build_cache_observe_placement_body(), pattern: "placement=lazy_spawned")
     && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=cgroup-unreadable")
-    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=no-listener-on-sccache-server-port")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=no-sccache-server-process")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=ambiguous-multiple-sccache-processes")
     && string_contains(s: build_cache_observe_placement_body(), pattern: "/proc/$server_pid/cgroup")
 }
 
