@@ -1,5 +1,14 @@
 module v2.test.lens_common.infer_fixture
 
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { Map }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 fn claim_atom_node(s: Symbol) -> Node {
   Node {
