@@ -158,21 +158,21 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
       )
     SelfHostReadsRealBytesGate =>
       runnable_resource_profile(
-        heavy_whole_tree_resolve: false,
+        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
       )
     SelfHostStalenessGate =>
       runnable_resource_profile(
-        heavy_whole_tree_resolve: false,
+        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
       )
     EmitHostGate =>
       runnable_resource_profile(
-        heavy_whole_tree_resolve: false,
+        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
