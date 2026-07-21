@@ -27,7 +27,10 @@ fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
 fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: gha_actions_cache_id,
-    observed: DaemonStatsOk { stats_line: "compile_requests=1" },
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=1",
+      placement: ServerUnitOwned { slice_unit: managed_compile_pool_slice_fixture },
+    },
   ) {
     ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
@@ -74,11 +77,69 @@ fn design_witness_cited_fatal_error_fragment() -> Bool {
 fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
-    observed: DaemonStatsOk { stats_line: "compile_requests=42" },
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerUnitOwned { slice_unit: managed_compile_pool_slice_fixture },
+    },
   ) {
     ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
     ProvisionRefused { cause: _, reason: _ } => false
   }
+}
+
+fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool {
+  stats_ok_lazy_spawned_refuses()
+}
+
+fn design_witness_stats_ok_placement_unknown_refuses() -> Bool {
+  stats_ok_placement_unknown_refuses()
+}
+
+fn design_witness_stats_ok_unit_owned_converges() -> Bool {
+  stats_ok_unit_owned_converges()
+}
+
+fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
+  match provision_build_cache_absorbing_fallback_widen_sketch(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+    },
+  ) {
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
+}
+
+fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
+  witness_widen_sketch_fabricates_converged_on_lazy_spawned()
+    && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: DaemonStatsOk {
+          stats_line: "compile_requests=42",
+          placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+        },
+      ),
+      observed: DaemonStatsOk {
+        stats_line: "compile_requests=42",
+        placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+      },
+    )
+    && build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_verdict(
+        catalog_id: sccache_local_id,
+        observed: DaemonStatsOk {
+          stats_line: "compile_requests=42",
+          placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+        },
+      ),
+      observed: DaemonStatsOk {
+        stats_line: "compile_requests=42",
+        placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+      },
+    )
 }
 
 fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
@@ -116,4 +177,8 @@ test fn host_build_cache_provision_design_witnesses() -> Bool {
     && design_witness_cited_fatal_error_fragment()
     && design_witness_converged_not_refused_on_ok_stats()
     && witness_red_control_widen_on_absent_rejected_by_gate()
+    && design_witness_stats_ok_lazy_spawned_refuses()
+    && design_witness_stats_ok_placement_unknown_refuses()
+    && design_witness_stats_ok_unit_owned_converges()
+    && witness_red_control_widen_on_lazy_spawned_rejected_by_gate()
 }

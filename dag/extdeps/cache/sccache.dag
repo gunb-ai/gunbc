@@ -20,6 +20,7 @@ import std.cache_interface {
   LocalDiskUs,
   ReadYourWrites,
   VendorCitation,
+  CacheEvidence,
   ManualPurge,
   ToolchainChange,
   Org,
@@ -36,6 +37,48 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data sccache_local_id: CacheInterfaceId = "sccache_local"
+
+data sccache_server_process_model_doc: String = "sccache is a client/server tool: the client auto-spawns a server on first use if none is listening, the server survives the client that spawned it, and CACHE MISSES ARE COMPILED BY THE SERVER — rustc runs as a CHILD OF THE SERVER PROCESS, not of the invoking client. Consequence (load-bearing for host budgeting): the server's cgroup IS the cgroup every cache-miss compile on the host executes in, so a server that was lazily spawned inside some job's cgroup makes that job's memory caps bound EVERY subsequent compile on the host, including compiles issued by other jobs. SCCACHE_IDLE_TIMEOUT=0 disables the idle shutdown, so such a mis-placed server survives indefinitely."
+
+type SccacheServerSpawn
+  = ClientAutoSpawned
+  | UnitStarted
+
+type SccacheServerProcessFacts {
+  spawn: SccacheServerSpawn
+  idle_timeout_zero_disables_shutdown: Bool
+  compiles_execute_as_server_children: Bool
+  evidence: List<CacheEvidence>
+}
+
+data sccache_server_process_facts: SccacheServerProcessFacts = {
+  spawn: ClientAutoSpawned
+  idle_timeout_zero_disables_shutdown: true
+  compiles_execute_as_server_children: true
+  evidence: [
+    {
+      field: "spawn"
+      evidence: VendorCitation {
+        source: "sccache client starts a server process if one is not already running"
+        url: "https://github.com/mozilla/sccache/blob/main/README.md#usage"
+      }
+    },
+    {
+      field: "idle_timeout_zero_disables_shutdown"
+      evidence: VendorCitation {
+        source: "SCCACHE_IDLE_TIMEOUT: seconds the server waits before shutting down; 0 disables shutdown entirely"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md"
+      }
+    },
+    {
+      field: "compiles_execute_as_server_children"
+      evidence: VendorCitation {
+        source: "sccache server performs the compilation on a cache miss; the compiler subprocess is a child of the server"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Architecture.md"
+      }
+    },
+  ]
+}
 
 data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
 

@@ -16,7 +16,7 @@ import gunbc.host_effect { HostEffect, ProvisionBuildCache }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
 
-data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
+data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold. It ALSO models the placement widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged' — which is precisely the behavior that shipped on srv1 and let a lazily auto-spawned server in dead slot srv1-10's cgroup accumulate 229780 memory.max breach events and 12 oom_kills while every provision read reported converged."
 
 data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
 
@@ -47,8 +47,15 @@ data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Scaffold {
   }
 }
 
+data build_cache_server_placement_doc: String = "WHY PLACEMENT IS A VERDICT AXIS AND NOT A DETAIL: extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS. So the server's cgroup is the cgroup every compile on the host runs in, and the server's caps bound every compile on the host — not just the caps of the job that issued them. A lazily auto-spawned server therefore silently exports one arbitrary job's memory caps onto the whole host's compile traffic, and SCCACHE_IDLE_TIMEOUT=0 keeps it there indefinitely. Answering --show-stats proves the server is RESPONSIVE; it proves nothing about WHERE it runs. Collapsing those two into one DaemonStatsOk arm is the DESIGN.md §5 state-space conflation, and it fabricates a plausible ProvisionConverged over a host whose compiles are being throttled and killed."
+
+type BuildCacheServerPlacement
+  = ServerUnitOwned { slice_unit: NonEmptyStr }
+  | ServerLazySpawned { observed_cgroup: NonEmptyStr }
+  | ServerPlacementUnknown { detail: NonEmptyStr }
+
 type BuildCacheDaemonObservation
-  = DaemonStatsOk { stats_line: String }
+  = DaemonStatsOk { stats_line: String, placement: BuildCacheServerPlacement }
   | DaemonAbsent
   | DaemonUnresponsive { detail: NonEmptyStr }
   | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
@@ -59,6 +66,8 @@ type BuildCacheProvisionRefusal
   | RefusalDaemonMisconfigured
   | RefusalPrivilegeDenied
   | RefusalCatalogUnknown
+  | RefusalServerLazySpawned
+  | RefusalPlacementUnknown
 
 type BuildCacheProvisionVerdict
   = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
@@ -74,7 +83,7 @@ fn provision_build_cache_absorbing_fallback_widen_sketch(
         catalog_id: catalog_id,
         stats_line: "local-build-without-rustc-wrapper-widen-sketch",
       }
-    DaemonStatsOk { stats_line: line } =>
+    DaemonStatsOk { stats_line: line, placement: _ } =>
       ProvisionConverged { catalog_id: catalog_id, stats_line: line }
     DaemonUnresponsive { detail: d } =>
       ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
@@ -96,10 +105,25 @@ fn build_cache_provision_gate_accepts(
         ProvisionRefused { cause: _, reason: _ } => true
         ProvisionConverged { catalog_id: _, stats_line: _ } => false
       }
-    DaemonStatsOk { stats_line: _ } =>
-      match verdict {
-        ProvisionConverged { catalog_id: _, stats_line: _ } => true
-        ProvisionRefused { cause: _, reason: _ } => false
+    DaemonStatsOk { stats_line: _, placement: p } =>
+      match p {
+        ServerUnitOwned { slice_unit: _ } =>
+          match verdict {
+            ProvisionConverged { catalog_id: _, stats_line: _ } => true
+            ProvisionRefused { cause: _, reason: _ } => false
+          }
+        ServerLazySpawned { observed_cgroup: _ } =>
+          match verdict {
+            ProvisionRefused { cause: RefusalServerLazySpawned, reason: _ } => true
+            ProvisionConverged { catalog_id: _, stats_line: _ } => false
+            ProvisionRefused { cause: _, reason: _ } => false
+          }
+        ServerPlacementUnknown { detail: _ } =>
+          match verdict {
+            ProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => true
+            ProvisionConverged { catalog_id: _, stats_line: _ } => false
+            ProvisionRefused { cause: _, reason: _ } => false
+          }
       }
     DaemonUnresponsive { detail: _ } =>
       match verdict {
@@ -116,6 +140,27 @@ fn build_cache_provision_gate_accepts(
   }
 }
 
+fn placement_verdict(
+  catalog_id: CacheInterfaceId,
+  stats_line: String,
+  placement: BuildCacheServerPlacement,
+) -> BuildCacheProvisionVerdict {
+  match placement {
+    ServerUnitOwned { slice_unit: _ } =>
+      ProvisionConverged { catalog_id: catalog_id, stats_line: stats_line }
+    ServerLazySpawned { observed_cgroup: cg } =>
+      ProvisionRefused {
+        cause: RefusalServerLazySpawned,
+        reason: concat("host_build_cache_provision: sccache server is responsive but NOT unit-owned; it was lazily auto-spawned into cgroup ", concat(cg as String, "; cache-miss compiles execute as its children, so that cgroup's caps bound every compile on this host. Refusing: responsive is not placed.")) as NonEmptyStr,
+      }
+    ServerPlacementUnknown { detail: d } =>
+      ProvisionRefused {
+        cause: RefusalPlacementUnknown,
+        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as NonEmptyStr,
+      }
+  }
+}
+
 fn provision_build_cache_verdict(
   catalog_id: CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
@@ -128,8 +173,8 @@ fn provision_build_cache_verdict(
       }
     ProvisionBuildCacheCatalogRealizable =>
       match observed {
-        DaemonStatsOk { stats_line: line } =>
-          ProvisionConverged { catalog_id: catalog_id, stats_line: line }
+        DaemonStatsOk { stats_line: line, placement: p } =>
+          placement_verdict(catalog_id: catalog_id, stats_line: line, placement: p)
         DaemonAbsent =>
           ProvisionRefused {
             cause: RefusalDaemonAbsent,
@@ -172,6 +217,51 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
   ) {
     ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
     ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+data srv1_stranded_server_cgroup_fixture: NonEmptyStr = "/system.slice/system-ghrunner.slice/ghrunner@srv1-10.service"
+
+data managed_compile_pool_slice_fixture: NonEmptyStr = "gunbc-compile-pool.slice"
+
+fn stats_ok_lazy_spawned_refuses() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+    },
+  ) {
+    ProvisionRefused { cause: RefusalServerLazySpawned, reason: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn stats_ok_placement_unknown_refuses() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerPlacementUnknown { detail: "cgroup read unavailable" },
+    },
+  ) {
+    ProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn stats_ok_unit_owned_converges() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerUnitOwned { slice_unit: managed_compile_pool_slice_fixture },
+    },
+  ) {
+    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
