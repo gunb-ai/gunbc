@@ -18656,6 +18656,47 @@ pub fn resolution_divergence_census_live(
     Ok(census)
 }
 
+/// §5 fail-closed gate: any silent-pick telemetry row is a regression (the
+/// §13-ratified unique-on-chain rule has no silent-pick arm; #6936's Diverge=0
+/// baseline means the frontier starts at zero, not a tuned threshold). Single
+/// authority consumed by both the CLI binary's exit code and the Rust
+/// discriminating-RED oracle (§2 — one decision, not two).
+pub fn resolution_divergence_silent_pick_refusal(census: &ResolutionDivergenceCensus) -> Option<String> {
+    let total = census.silent_pick_global_bare_lcp
+        + census.silent_pick_global_bare_lcp_tie
+        + census.silent_pick_fn_parent_first_hit;
+    if total == 0 {
+        return None;
+    }
+    let mut lines = vec![format!(
+        "resolution-divergence-census: SILENT_PICK regression: {total} silent pick(s) \
+         (global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}) — DESIGN §5/§13: \
+         a resolver that silently picks among >=2 candidates must refuse, never pick",
+        census.silent_pick_global_bare_lcp,
+        census.silent_pick_global_bare_lcp_tie,
+        census.silent_pick_fn_parent_first_hit,
+    )];
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        lines.push(format!(
+            "  SILENT_PICK_GLOBAL_BARE_LCP module={} name={} candidates={} chosen_module={}",
+            row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
+        ));
+    }
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        lines.push(format!(
+            "  SILENT_PICK_GLOBAL_BARE_LCP_TIE module={} name={} candidates={}",
+            row.env_module_path, row.name, row.candidate_count,
+        ));
+    }
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        lines.push(format!(
+            "  SILENT_PICK_FN_PARENT_FIRST_HIT module={} name={} parent_matches={} chosen_parent={}",
+            row.env_module_path, row.name, row.parent_match_count, row.chosen_parent_module,
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
 pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) -> String {
     let mut lines = Vec::new();
     lines.push(format!(
