@@ -25,7 +25,7 @@ import gunbc.fleet_show_effective_read {
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
-  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched."
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Interim shell.Exec.Run transport is rostered on meta_exec_confinement_exception_roster (precedent: host_converge_slice1); dissolve-on: host_converge_realize wires verify read-back through host_effect_apply typed transport and this roster row deletes."
 }
 
 type RunnerMemoryCapVerifyTally {

@@ -79,10 +79,6 @@ fn runner_memory_cap_readback_verdict(read: RunnerUnitMemoryLiveRead, knob: Conv
   per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
 }
 
-fn runner_memory_readback_required_after_apply() -> Bool {
-  true
-}
-
 fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {
   match host_runner_memory_provision_realize_scaffold {
     Scaffold {
