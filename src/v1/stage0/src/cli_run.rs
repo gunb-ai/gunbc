@@ -1,5 +1,5 @@
 use im::HashMap;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -15,10 +15,12 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
-    lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
-    GlobalBareLookupState, SymbolIndex,
+    lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
+    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_lookup::global_bare_callable_node;
+use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -26,6 +28,7 @@ use crate::v1_compiler_resolve;
 use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
+use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
@@ -4012,6 +4015,30 @@ pub fn load_sources_for_entry(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+/// Pool-index-aware variant of `load_sources_for_entry`: builds the closure
+/// index with the SAME dependency-pool policy the census pool uses, so the
+/// reference-derived closure and the whole-tree name census agree on which root
+/// provides a cross-root homonym module (DESIGN §3 single authority — the two
+/// membership authorities must not fork on a duplicated module path). Without
+/// this the `--entry` compile built its closure strict (all roots compete,
+/// duplicate module path panics) while the census honored
+/// `--dependency-pool-index primary-precedence` (root[0] wins, later roots fill
+/// only absent modules), so the requested pool policy was silently ignored on
+/// the closure side. `primary_precedence=true` selects root[0]-wins; `false`
+/// keeps strict.
+pub fn load_sources_for_entry_with_pool_index(
+    source_roots: &[String],
+    entry_path: &str,
+    primary_precedence: bool,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let index = if primary_precedence {
+        build_multi_entry_index_primary_precedence(source_roots)
+    } else {
+        build_multi_entry_index(source_roots)
+    };
+    load_sources_for_entry_with_pool(&index, entry_path)
+}
+
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
 /// services-census key whose provider must therefore be in the closure. This is
 /// the one dependency edge a name-derived closure cannot see: the builtin's
@@ -4750,6 +4777,10 @@ pub struct MultiEntryIndex {
     /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Counted evictions from the host-budget-derived typed-cache entry cap (width=1
+    /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
+    /// a silent widen (§5).
+    typed_cache_evictions: Cell<u64>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4859,6 +4890,16 @@ pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
     index.parse_cache.borrow().keys().cloned().collect()
 }
 
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
+    index.typed_module_cache.borrow().len()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
+    index.typed_cache_evictions.get()
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4868,6 +4909,7 @@ fn new_multi_entry_index_shell(
         source_files,
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        typed_cache_evictions: Cell::new(0),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
@@ -5160,6 +5202,176 @@ fn note_interface_hash(
     );
 }
 
+/// Interim width=1 floor-drain retention (v1-run-stability throughline, parent
+/// governor lane): instrument accumulation + host-budget entry cap on the private
+/// `typed_module_cache` only. Whole-row eviction here is a counted safety backstop,
+/// not cross-entry-typed-module-memo-sketch PR-β (`SpacePacked` + interface-summary
+/// payload). Dissolve-on: PR-β lands the content-keyed outer ring.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IndexRetentionSnapshot {
+    pub typed_module_cache_entries: usize,
+    pub parse_cache_entries: usize,
+    pub resolved_graph_memo_entries: usize,
+    pub normalize_diag_cache_entries: usize,
+    pub ownership_diag_cache_entries: usize,
+    pub intern_table_entries: usize,
+    pub typed_cache_evictions: u64,
+    pub peak_rss_bytes: Option<u64>,
+}
+
+/// Conservative per-entry estimate for deriving a typed-cache cap from the host
+/// memory envelope (v1-run-stability M0/M1 receipts: ~2–11 MiB/module; 3 MiB is
+/// the interim declared fraction denominator until measured space lands).
+const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
+const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
+const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
+
+/// Host-budget-derived cap on `typed_module_cache` entries for the private
+/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
+pub fn typed_module_cache_max_entries() -> usize {
+    if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            if n > 0 {
+                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+            }
+            // Zero override is invalid — fall through to derived cap.
+        }
+        // Malformed override — fall through to derived cap (fail-closed).
+    }
+    let (budget, _) = crate::memory_governor::read_host_budget_bytes();
+    budget
+        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
+        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
+        .clamp(
+            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+        )
+}
+
+pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
+    IndexRetentionSnapshot {
+        typed_module_cache_entries: index.typed_module_cache.borrow().len(),
+        parse_cache_entries: index.parse_cache.borrow().len(),
+        resolved_graph_memo_entries: index.resolved_graph_memo.borrow().len(),
+        normalize_diag_cache_entries: index.normalize_diag_cache.borrow().len(),
+        ownership_diag_cache_entries: index.ownership_diag_cache.borrow().len(),
+        intern_table_entries: index.intern_table.borrow().index.len(),
+        typed_cache_evictions: index.typed_cache_evictions.get(),
+        peak_rss_bytes: peak_rss_vhwm_bytes(),
+    }
+}
+
+fn floor_drain_retention_detail_enabled() -> bool {
+    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
+        .ok()
+        .as_deref()
+        .map(|v| matches!(v, "1" | "true" | "TRUE"))
+        .unwrap_or(false)
+}
+
+fn retention_snapshot_peak(
+    a: &IndexRetentionSnapshot,
+    b: &IndexRetentionSnapshot,
+) -> IndexRetentionSnapshot {
+    IndexRetentionSnapshot {
+        typed_module_cache_entries: a
+            .typed_module_cache_entries
+            .max(b.typed_module_cache_entries),
+        parse_cache_entries: a.parse_cache_entries.max(b.parse_cache_entries),
+        resolved_graph_memo_entries: a
+            .resolved_graph_memo_entries
+            .max(b.resolved_graph_memo_entries),
+        normalize_diag_cache_entries: a
+            .normalize_diag_cache_entries
+            .max(b.normalize_diag_cache_entries),
+        ownership_diag_cache_entries: a
+            .ownership_diag_cache_entries
+            .max(b.ownership_diag_cache_entries),
+        intern_table_entries: a.intern_table_entries.max(b.intern_table_entries),
+        typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
+        peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
+            (Some(x), Some(y)) => Some(x.max(y)),
+            (Some(x), None) => Some(x),
+            (None, Some(y)) => Some(y),
+            (None, None) => None,
+        },
+    }
+}
+
+fn emit_floor_drain_group_line(
+    group_idx: usize,
+    total_groups: usize,
+    prev: &IndexRetentionSnapshot,
+    cur: &IndexRetentionSnapshot,
+) {
+    eprintln!(
+        "[floor-drain] group={group_idx}/{total_groups} \
+         typed_cache={}({:+}) parse_cache={}({:+}) resolved_memo={}({:+}) \
+         intern_table={}({:+}) evictions={} peak_rss={}",
+        cur.typed_module_cache_entries,
+        cur.typed_module_cache_entries as i64 - prev.typed_module_cache_entries as i64,
+        cur.parse_cache_entries,
+        cur.parse_cache_entries as i64 - prev.parse_cache_entries as i64,
+        cur.resolved_graph_memo_entries,
+        cur.resolved_graph_memo_entries as i64 - prev.resolved_graph_memo_entries as i64,
+        cur.intern_table_entries,
+        cur.intern_table_entries as i64 - prev.intern_table_entries as i64,
+        cur.typed_cache_evictions,
+        cur.peak_rss_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+    );
+}
+
+fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot) {
+    eprintln!(
+        "[floor-drain] receipt: groups={total_groups} \
+         typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
+         intern_table_peak={} evictions={} peak_rss={} cap_entries={}",
+        peaks.typed_module_cache_entries,
+        peaks.parse_cache_entries,
+        peaks.resolved_graph_memo_entries,
+        peaks.intern_table_entries,
+        peaks.typed_cache_evictions,
+        peaks
+            .peak_rss_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        typed_module_cache_max_entries(),
+    );
+}
+
+/// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
+/// are counted and logged — a typed, located diagnostic, never a silent widen.
+/// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
+/// correctness is preserved by content-key recompute on miss; only cost/frequency
+/// is affected if a hot entry is dropped.
+fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
+    if index.cross_worker_store.is_some() {
+        return;
+    }
+    let cap = typed_module_cache_max_entries();
+    let mut cache = index.typed_module_cache.borrow_mut();
+    let mut evicted = 0u64;
+    while cache.len() > cap {
+        let Some(key) = cache.keys().next().cloned() else {
+            break;
+        };
+        cache.remove(&key);
+        evicted += 1;
+    }
+    drop(cache);
+    if evicted > 0 {
+        let total = index.typed_cache_evictions.get() + evicted;
+        index.typed_cache_evictions.set(total);
+        eprintln!(
+            "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
+        );
+    }
+}
+
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
 /// cross-worker store is armed (no local duplicate — serde transport is one authority).
 /// `typed_key` is the content key from `typed_module_content_key`, never a module name.
@@ -5200,6 +5412,7 @@ fn index_insert_typed(
             .typed_module_cache
             .borrow_mut()
             .insert(typed_key, result.clone());
+        enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
     if let Some(bytes) = {
@@ -12148,7 +12361,11 @@ pub fn run_discovery_corpus_with_options(
                     stream: floor_stream,
                 };
                 let mut summaries = Vec::new();
-                for group_indices in groups {
+                let drain_detail = floor_drain_retention_detail_enabled();
+                let total_groups = groups.len();
+                let mut drain_prev = index_retention_snapshot(&index);
+                let mut drain_peaks = drain_prev;
+                for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
                     summaries.push(run_discovery_rows(
@@ -12163,7 +12380,19 @@ pub fn run_discovery_corpus_with_options(
                         options.witness_budget_policy(),
                         style,
                     )?);
+                    let snap = index_retention_snapshot(&index);
+                    if drain_detail {
+                        emit_floor_drain_group_line(
+                            group_idx + 1,
+                            total_groups,
+                            &drain_prev,
+                            &snap,
+                        );
+                    }
+                    drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
+                    drain_prev = snap;
                 }
+                emit_floor_drain_receipt(total_groups, &drain_peaks);
                 return Ok(attach_deferred_discovery_rows(
                     merge_discovery_summaries(summaries),
                     deferred_rows,
@@ -17445,6 +17674,13 @@ pub enum ResolutionDivergenceBucket {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NeitherBoundSubclass {
+    BuiltinOrIntrinsic,
+    LocalOrParam,
+    GenuinelyUnbound,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolutionDivergenceSite {
     pub calling_module: String,
     pub caller_fn: String,
@@ -17452,6 +17688,35 @@ pub struct ResolutionDivergenceSite {
     pub call_file: String,
     pub call_span_start: i64,
     pub bucket: ResolutionDivergenceBucket,
+    pub containment_via: Option<ContainmentResolveVia>,
+    pub import_owner_module: Option<String>,
+    pub containment_owner_module: Option<String>,
+    pub neither_bound_subclass: Option<NeitherBoundSubclass>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgreeGlobalUniqueOwnerRow {
+    pub calling_module: String,
+    pub caller_fn: String,
+    pub callee: String,
+    pub call_file: String,
+    pub call_span_start: i64,
+    pub import_owner_module: String,
+    pub containment_owner_module: String,
+    pub owners_agree: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportUnresolvedInferCrossCheckRow {
+    pub calling_module: String,
+    pub caller_fn: String,
+    pub callee: String,
+    pub call_file: String,
+    pub call_span_start: i64,
+    pub containment_via: ContainmentResolveVia,
+    pub walk_binding: FnBindingRef,
+    pub infer_binding: Option<FnBindingRef>,
+    pub walk_infer_agree: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -17476,6 +17741,21 @@ pub struct ResolutionDivergenceCensus {
     pub diverge_rows: Vec<ResolutionDivergenceSite>,
     pub containment_ambiguous_rows: Vec<ResolutionDivergenceSite>,
     pub containment_unresolved_rows: Vec<ResolutionDivergenceSite>,
+    pub import_unresolved_rows: Vec<ResolutionDivergenceSite>,
+    pub neither_bound_rows: Vec<ResolutionDivergenceSite>,
+    pub agree_global_unique_owner_rows: Vec<AgreeGlobalUniqueOwnerRow>,
+    pub import_unresolved_infer_cross_check_rows: Vec<ImportUnresolvedInferCrossCheckRow>,
+    pub import_unresolved_infer_agree: usize,
+    pub import_unresolved_infer_mismatch: usize,
+    pub neither_bound_builtin_or_intrinsic: usize,
+    pub neither_bound_local_or_param: usize,
+    pub neither_bound_genuinely_unbound: usize,
+    pub silent_pick_global_bare_lcp: usize,
+    pub silent_pick_global_bare_lcp_tie: usize,
+    pub silent_pick_fn_parent_first_hit: usize,
+    pub silent_pick_global_bare_lcp_rows: Vec<crate::v1_rt::GlobalBareLcpPickSite>,
+    pub silent_pick_global_bare_lcp_tie_rows: Vec<crate::v1_rt::GlobalBareLcpTieSite>,
+    pub silent_pick_fn_parent_first_hit_rows: Vec<crate::v1_rt::FnParentFirstHitSite>,
     pub cost_shape: ResolutionDivergenceCostShape,
 }
 
@@ -17564,24 +17844,56 @@ fn import_chain_owner(func_env: &ResolvedFuncEnv, name: &str) -> Option<String> 
     None
 }
 
-/// `symbol_index_lexical_lookup` from `dag/std/symbol_index.dag`, on v1 string QNs.
+/// `symbol_index_lexical_lookup` from `src/v2/std/symbol_index.dag`, on v1 string QNs.
+/// Unique-on-chain: collects every binder on the ancestor chain; 0 = Unbound, 1 = Hit, 2+ = Ambiguous.
+#[derive(Clone, Debug)]
+pub enum LexicalLookupV1 {
+    Hit {
+        owner_module: String,
+        node: Rc<Node>,
+        steps: usize,
+    },
+    Ambiguous {
+        candidates: Vec<(String, Rc<Node>)>,
+    },
+    Unbound,
+}
+
 pub fn symbol_index_lexical_lookup_v1(
     index: &SymbolIndex,
     position: &str,
     name: &str,
-) -> Option<(String, Rc<Node>, usize)> {
+) -> LexicalLookupV1 {
     let mut pos = position.to_string();
-    let mut steps = 0usize;
+    let mut step = 0usize;
+    let mut candidates: Vec<(String, Rc<Node>, usize)> = Vec::new();
     loop {
-        steps += 1;
+        step += 1;
         let qn = module_path_to_qualified_path(&pos, name);
         if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
-            return Some((pos, node, steps));
+            candidates.push((pos.clone(), node, step));
         }
         if pos.is_empty() {
-            return None;
+            break;
         }
         pos = qualified_all_but_last(pos);
+    }
+    match candidates.len() {
+        0 => LexicalLookupV1::Unbound,
+        1 => {
+            let (owner, node, steps) = candidates.into_iter().next().unwrap();
+            LexicalLookupV1::Hit {
+                owner_module: owner,
+                node,
+                steps,
+            }
+        }
+        _ => LexicalLookupV1::Ambiguous {
+            candidates: candidates
+                .into_iter()
+                .map(|(owner, node, _)| (owner, node))
+                .collect(),
+        },
     }
 }
 
@@ -17601,16 +17913,24 @@ pub fn containment_resolve_fn_v1_for_module(
     name: &str,
     item_index: Option<&ModuleItemIndex>,
 ) -> ContainmentResolve {
-    if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
-        if is_fn_like_binding(&node, &owner, name, item_index) {
-            return ContainmentResolve::Hit {
-                owner_module: owner.clone(),
-                qualified_path: module_path_to_qualified_path(&owner, name),
-                node_ptr: Rc::as_ptr(&node) as usize,
-                via: ContainmentResolveVia::Lexical,
-                lexical_steps: steps,
-            };
+    match symbol_index_lexical_lookup_v1(index, module_path, name) {
+        LexicalLookupV1::Hit {
+            owner_module: owner,
+            node,
+            steps,
+        } => {
+            if is_fn_like_binding(&node, &owner, name, item_index) {
+                return ContainmentResolve::Hit {
+                    owner_module: owner.clone(),
+                    qualified_path: module_path_to_qualified_path(&owner, name),
+                    node_ptr: Rc::as_ptr(&node) as usize,
+                    via: ContainmentResolveVia::Lexical,
+                    lexical_steps: steps,
+                };
+            }
         }
+        LexicalLookupV1::Ambiguous { .. } => return ContainmentResolve::Ambiguous,
+        LexicalLookupV1::Unbound => {}
     }
     match index.global_bare.get(name).map(|s| &**s) {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
@@ -17659,6 +17979,73 @@ fn collect_bare_call_sites(
 
 fn bindings_agree(import: &FnBindingRef, containment: &FnBindingRef) -> bool {
     import.node_ptr == containment.node_ptr || import.qualified_path == containment.qualified_path
+}
+
+fn containment_owner_and_via(
+    containment: &ContainmentResolve,
+) -> (Option<String>, Option<ContainmentResolveVia>) {
+    match containment {
+        ContainmentResolve::Hit {
+            owner_module, via, ..
+        } => (Some(owner_module.clone()), Some(via.clone())),
+        ContainmentResolve::Ambiguous | ContainmentResolve::Unresolved => (None, None),
+    }
+}
+
+fn infer_fn_binding_at_site(
+    type_env: Rc<TypeEnv>,
+    module_path: &str,
+    callee: &str,
+    item_index: &ModuleItemIndex,
+) -> Option<FnBindingRef> {
+    if let Some(node) = global_bare_callable_node(type_env.clone(), callee.to_string()) {
+        return Some(fn_binding_from_node(module_path, callee, &node));
+    }
+    if let Some(binding) = lookup_binding_by_name(type_env, callee.to_string()) {
+        if is_fn_like_binding(&binding.resolved, module_path, callee, Some(item_index)) {
+            return Some(fn_binding_from_node(module_path, callee, &binding.resolved));
+        }
+    }
+    None
+}
+
+fn classify_neither_bound_subclass(
+    callee: &str,
+    func_env: &ResolvedFuncEnv,
+    caller_item: &Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> NeitherBoundSubclass {
+    if infer_builtin_call_type(callee.to_string()).is_some() {
+        return NeitherBoundSubclass::BuiltinOrIntrinsic;
+    }
+    if func_env.local.contains_key(callee) {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    if v1_rt::map_get(&type_env.str_bindings, callee.to_string()).is_some() {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    for param in caller_item.params.iter() {
+        if param_node_name_at(param.clone(), source_indices.clone()) == callee {
+            return NeitherBoundSubclass::LocalOrParam;
+        }
+    }
+    if lookup_type_by_name(type_env, callee.to_string()).is_some() {
+        return NeitherBoundSubclass::LocalOrParam;
+    }
+    NeitherBoundSubclass::GenuinelyUnbound
+}
+
+fn merge_silent_pick_telemetry(
+    census: &mut ResolutionDivergenceCensus,
+    telemetry: SilentPickTelemetry,
+) {
+    census.silent_pick_global_bare_lcp = telemetry.global_bare_lcp_picks.len();
+    census.silent_pick_global_bare_lcp_tie = telemetry.global_bare_lcp_ties.len();
+    census.silent_pick_fn_parent_first_hit = telemetry.fn_parent_first_hits.len();
+    census.silent_pick_global_bare_lcp_rows = telemetry.global_bare_lcp_picks;
+    census.silent_pick_global_bare_lcp_tie_rows = telemetry.global_bare_lcp_ties;
+    census.silent_pick_fn_parent_first_hit_rows = telemetry.fn_parent_first_hits;
 }
 
 fn bucket_site(
@@ -17773,7 +18160,48 @@ pub fn resolution_divergence_census_from_ctx(
                     }
                 }
 
-                let bucket = bucket_site(import_binding, containment);
+                let import_owner = import_chain_owner(&func_env, &callee);
+                let (containment_owner_module, containment_via) =
+                    containment_owner_and_via(&containment);
+                let bucket = bucket_site(import_binding, containment.clone());
+
+                if let ContainmentResolve::Hit {
+                    via: ContainmentResolveVia::GlobalUnique,
+                    ..
+                } = &containment
+                {
+                    if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        if let (Some(import_owner), Some(containment_owner)) =
+                            (import_owner.clone(), containment_owner_module.clone())
+                        {
+                            out.agree_global_unique_owner_rows
+                                .push(AgreeGlobalUniqueOwnerRow {
+                                    calling_module: module_path.clone(),
+                                    caller_fn: caller_fn.clone(),
+                                    callee: callee.clone(),
+                                    call_file: call_node.span.file.clone(),
+                                    call_span_start: call_node.span.start,
+                                    import_owner_module: import_owner.clone(),
+                                    containment_owner_module: containment_owner.clone(),
+                                    owners_agree: import_owner == containment_owner,
+                                });
+                        }
+                    }
+                }
+
+                let neither_bound_subclass =
+                    if matches!(bucket, ResolutionDivergenceBucket::NeitherBound) {
+                        Some(classify_neither_bound_subclass(
+                            &callee,
+                            func_env.as_ref(),
+                            item,
+                            tm.type_env.clone(),
+                            source_indices.clone(),
+                        ))
+                    } else {
+                        None
+                    };
+
                 let site = ResolutionDivergenceSite {
                     calling_module: module_path.clone(),
                     caller_fn: caller_fn.clone(),
@@ -17781,6 +18209,23 @@ pub fn resolution_divergence_census_from_ctx(
                     call_file: call_node.span.file.clone(),
                     call_span_start: call_node.span.start,
                     bucket: bucket.clone(),
+                    containment_via: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        None
+                    } else {
+                        containment_via.clone()
+                    },
+                    import_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree) {
+                        None
+                    } else {
+                        import_owner.clone()
+                    },
+                    containment_owner_module: if matches!(bucket, ResolutionDivergenceBucket::Agree)
+                    {
+                        None
+                    } else {
+                        containment_owner_module.clone()
+                    },
+                    neither_bound_subclass: neither_bound_subclass.clone(),
                 };
                 match bucket {
                     ResolutionDivergenceBucket::Agree => out.agree += 1,
@@ -17796,10 +18241,58 @@ pub fn resolution_divergence_census_from_ctx(
                         out.containment_unresolved += 1;
                         out.containment_unresolved_rows.push(site);
                     }
-                    ResolutionDivergenceBucket::ImportUnresolved { .. } => {
-                        out.import_unresolved += 1
+                    ResolutionDivergenceBucket::ImportUnresolved {
+                        containment_binding,
+                    } => {
+                        out.import_unresolved += 1;
+                        out.import_unresolved_rows.push(site.clone());
+                        let infer_binding = infer_fn_binding_at_site(
+                            tm.type_env.clone(),
+                            &module_path,
+                            &callee,
+                            &item_index,
+                        );
+                        let walk_infer_agree = infer_binding
+                            .as_ref()
+                            .map(|infer| bindings_agree(infer, &containment_binding))
+                            .unwrap_or(false);
+                        if walk_infer_agree {
+                            out.import_unresolved_infer_agree += 1;
+                        } else {
+                            out.import_unresolved_infer_mismatch += 1;
+                        }
+                        if let ContainmentResolve::Hit { via, .. } = &containment {
+                            out.import_unresolved_infer_cross_check_rows.push(
+                                ImportUnresolvedInferCrossCheckRow {
+                                    calling_module: module_path.clone(),
+                                    caller_fn: caller_fn.clone(),
+                                    callee: callee.clone(),
+                                    call_file: call_node.span.file.clone(),
+                                    call_span_start: call_node.span.start,
+                                    containment_via: via.clone(),
+                                    walk_binding: containment_binding,
+                                    infer_binding,
+                                    walk_infer_agree,
+                                },
+                            );
+                        }
                     }
-                    ResolutionDivergenceBucket::NeitherBound => out.neither_bound += 1,
+                    ResolutionDivergenceBucket::NeitherBound => {
+                        out.neither_bound += 1;
+                        out.neither_bound_rows.push(site.clone());
+                        match neither_bound_subclass {
+                            Some(NeitherBoundSubclass::BuiltinOrIntrinsic) => {
+                                out.neither_bound_builtin_or_intrinsic += 1
+                            }
+                            Some(NeitherBoundSubclass::LocalOrParam) => {
+                                out.neither_bound_local_or_param += 1
+                            }
+                            Some(NeitherBoundSubclass::GenuinelyUnbound) => {
+                                out.neither_bound_genuinely_unbound += 1
+                            }
+                            None => {}
+                        }
+                    }
                 }
             }
         }
@@ -17820,19 +18313,23 @@ pub fn resolution_divergence_census_live(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<ResolutionDivergenceCensus, String> {
+    crate::v1_rt::resolution_silent_pick_enable();
+    let resolve_result = whole_tree_resolved_ctx(
+        source_roots,
+        exclude_substrings,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let WholeTreeCtx {
         ctx,
         modules_resolved,
         modules_excluded,
         ..
-    } = whole_tree_resolved_ctx(
-        source_roots,
-        exclude_substrings,
-        v1_interpreter::ExecutionMode::Wet,
-    )?;
+    } = resolve_result?;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = modules_excluded;
+    merge_silent_pick_telemetry(&mut census, silent_picks);
     Ok(census)
 }
 
@@ -17871,6 +18368,32 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         census.neither_bound
     ));
     lines.push(format!(
+        "[resolution-divergence-census] neither_bound_subclass builtin_or_intrinsic={} local_or_param={} genuinely_unbound={}",
+        census.neither_bound_builtin_or_intrinsic,
+        census.neither_bound_local_or_param,
+        census.neither_bound_genuinely_unbound,
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] silent_pick global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}",
+        census.silent_pick_global_bare_lcp,
+        census.silent_pick_global_bare_lcp_tie,
+        census.silent_pick_fn_parent_first_hit,
+    ));
+    let agree_global_unique_owner_mismatch = census
+        .agree_global_unique_owner_rows
+        .iter()
+        .filter(|row| !row.owners_agree)
+        .count();
+    lines.push(format!(
+        "[resolution-divergence-census] agree_global_unique_owner_rows={} owner_mismatch={}",
+        census.agree_global_unique_owner_rows.len(),
+        agree_global_unique_owner_mismatch,
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] import_unresolved_infer_cross_check agree={} mismatch={}",
+        census.import_unresolved_infer_agree, census.import_unresolved_infer_mismatch,
+    ));
+    lines.push(format!(
         "[resolution-divergence-census] cost_shape hits={} lexical_only={} global_unique={} lexical_steps_histogram={:?}",
         census.cost_shape.containment_hits,
         census.cost_shape.lexical_only_hits,
@@ -17885,12 +18408,16 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         {
             lines.push(format!(
                 "DIVERGE\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
+                 via={}\timport_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
                 import_binding.node_ptr,
@@ -17904,12 +18431,16 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         if let ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding } = &site.bucket {
             lines.push(format!(
                 "CONTAINMENT_AMBIGUOUS\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({})",
+                 via={}\timport_chain={} ({})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
             ));
@@ -17919,18 +18450,134 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } = &site.bucket {
             lines.push(format!(
                 "CONTAINMENT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
-                 import_chain={} ({})",
+                 via={}\timport_chain={} ({})",
                 site.calling_module,
                 site.caller_fn,
                 site.callee,
                 site.call_file,
                 site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
                 import_binding.owner_module,
                 import_binding.qualified_path,
             ));
         }
     }
+    for site in &census.import_unresolved_rows {
+        if let ResolutionDivergenceBucket::ImportUnresolved {
+            containment_binding,
+        } = &site.bucket
+        {
+            lines.push(format!(
+                "IMPORT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+                 via={}\tcontainment={} ({})",
+                site.calling_module,
+                site.caller_fn,
+                site.callee,
+                site.call_file,
+                site.call_span_start,
+                site.containment_via
+                    .as_ref()
+                    .map(containment_via_label)
+                    .unwrap_or("n/a"),
+                containment_binding.owner_module,
+                containment_binding.qualified_path,
+            ));
+        }
+    }
+    for site in &census.neither_bound_rows {
+        lines.push(format!(
+            "NEITHER_BOUND\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\tsubclass={}",
+            site.calling_module,
+            site.caller_fn,
+            site.callee,
+            site.call_file,
+            site.call_span_start,
+            site.neither_bound_subclass
+                .as_ref()
+                .map(neither_bound_subclass_label)
+                .unwrap_or("unknown"),
+        ));
+    }
+    for row in census
+        .agree_global_unique_owner_rows
+        .iter()
+        .filter(|row| !row.owners_agree)
+    {
+        lines.push(format!(
+            "AGREE_GLOBAL_UNIQUE_OWNER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+             import_owner={}\tcontainment_owner={}",
+            row.calling_module,
+            row.caller_fn,
+            row.callee,
+            row.call_file,
+            row.call_span_start,
+            row.import_owner_module,
+            row.containment_owner_module,
+        ));
+    }
+    for row in census
+        .import_unresolved_infer_cross_check_rows
+        .iter()
+        .filter(|row| !row.walk_infer_agree)
+    {
+        lines.push(format!(
+            "IMPORT_UNRESOLVED_INFER_MISMATCH\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+             via={}\twalk={} ({} ptr={})\tinfer={}",
+            row.calling_module,
+            row.caller_fn,
+            row.callee,
+            row.call_file,
+            row.call_span_start,
+            containment_via_label(&row.containment_via),
+            row.walk_binding.owner_module,
+            row.walk_binding.qualified_path,
+            row.walk_binding.node_ptr,
+            row.infer_binding
+                .as_ref()
+                .map(|b| format!("{} ({})", b.qualified_path, b.node_ptr))
+                .unwrap_or_else(|| "none".to_string()),
+        ));
+    }
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        lines.push(format!(
+            "SILENT_PICK_GLOBAL_BARE_LCP\tmodule={}\tname={}\tcandidates={}\tchosen_module={}",
+            row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
+        ));
+    }
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        lines.push(format!(
+            "SILENT_PICK_GLOBAL_BARE_LCP_TIE\tmodule={}\tname={}\tcandidates={}",
+            row.env_module_path, row.name, row.candidate_count,
+        ));
+    }
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        lines.push(format!(
+            "SILENT_PICK_FN_PARENT_FIRST_HIT\tmodule={}\tname={}\tparent_matches={}\tchosen_parent={}",
+            row.env_module_path,
+            row.name,
+            row.parent_match_count,
+            row.chosen_parent_module,
+        ));
+    }
     lines.join("\n")
+}
+
+fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
+    match via {
+        ContainmentResolveVia::Lexical => "lexical",
+        ContainmentResolveVia::GlobalUnique => "global_unique",
+    }
+}
+
+fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str {
+    match subclass {
+        NeitherBoundSubclass::BuiltinOrIntrinsic => "builtin_or_intrinsic",
+        NeitherBoundSubclass::LocalOrParam => "local_or_param",
+        NeitherBoundSubclass::GenuinelyUnbound => "genuinely_unbound",
+    }
 }
 
 #[cfg(test)]

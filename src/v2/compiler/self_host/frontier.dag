@@ -17,8 +17,9 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady,
   UnknownProbeCause,
   FixtureCemented,
-  gate_a_flip_probe_unresolved_compiler_error_reason,
-  gate_a_flip_probe_witness_std_dup_reason,
+  curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  curated_cargo_probe_import_closure_cargo_refuse_reason,
+  curated_cargo_probe_emit_assemble_refuse_reason,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
@@ -240,9 +241,9 @@ fn knowledge_attributed_blocker_class_seed_retained_row(
 data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
   closure_reads: 102,
-  measured_blocker: NameResolutionGap,
+  measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -251,15 +252,17 @@ data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_me
   closure_reads: 17,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/02_parse.dag",
   closure_reads: 65,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_parse_cursor_grounded
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -274,11 +277,13 @@ data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = executi
   tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
 )
 
-data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_ingest.dag",
   closure_reads: 104,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_reparse_lookahead_lands
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
@@ -312,7 +317,7 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -406,9 +411,9 @@ data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = knowledge_
 data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/materialization_carriers.dag",
   closure_reads: 35,
-  measured_blocker: EmitSurfaceGap,
+  measured_blocker: NameResolutionGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -427,9 +432,9 @@ data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execu
 data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_assembly.dag",
   closure_reads: 90,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: curated_cargo_probe_emit_assemble_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -438,7 +443,7 @@ data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execut
   closure_reads: 58,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -454,7 +459,7 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = executi
   closure_reads: 87,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -506,7 +511,6 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/discovery_enumeration.dag",
   "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/self_host.dag",
-  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/07_target_carriers.dag",
   "src/v2/compiler/fold_lowering.dag",
   "src/v2/compiler/03_normalize.dag",
@@ -524,10 +528,11 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/emit_produced.dag",
   "src/v2/compiler/02_parse.dag",
   "src/v2/compiler/source_authority.dag",
-  "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/00_compile.dag",
   "src/v2/compiler/03_ingest.dag",
+  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/03_body_producer.dag",
-  "src/v2/compiler/00_compile.dag"
+  "src/v2/compiler/program_assembly.dag"
 ]
 
 fn compiler_frontier_roster_count() -> Int {
@@ -796,12 +801,30 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   }
 }
 
+fn band_a_emit_readiness_module_is_self_emitted(module_path: String) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: false,
+    cons: fn(matched, row) {
+      if row.module_path == module_path {
+        match row.disposition {
+          SelfEmitted => true
+          SeedRetained { reason: _, migration_trigger: _ } => false
+        }
+      } else {
+        matched
+      }
+    }
+  )
+}
+
 fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
   match row.gate {
     FlippableNow => true
     BodyProducerGated => false
     OtherGate { migration_trigger: trigger } =>
-      band_a_emit_readiness_roster_row_trigger_matches(
+      band_a_emit_readiness_module_is_self_emitted(module_path: row.module_path)
+        || band_a_emit_readiness_roster_row_trigger_matches(
         module_path: row.module_path,
         trigger: trigger,
         row: compiler_frontier_row_use_site_verdict
@@ -1052,11 +1075,8 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_source_authority" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_compile" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
 ]
 

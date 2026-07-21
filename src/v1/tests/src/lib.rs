@@ -45,6 +45,8 @@ mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
 #[cfg(test)]
+mod floor_drain_retention_test;
+#[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
 mod fold_unused_element_clone_elision_test;
