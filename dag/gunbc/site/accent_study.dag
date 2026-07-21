@@ -9,9 +9,10 @@ import gunbc.site.tokens {
   TextRole, TextDimRole, SurfaceRole, CanvasRole,
 }
 import gunbc.site.starlight {
-  StellarClass, mk_classes, study_candidates, verdigris_patina,
-  lit_variant, edge_variant, candidates_admissible,
+  StarlightRender, study_candidates, verdigris_patina,
+  lit_variant, edge_variant, candidates_admissible, render_label,
 }
+import extdeps.astronomy.stellar_classification { stellar_color_perception_quote }
 import gunbc.site.constellation { constellation_svg, layer_stars, layer_import_edges }
 import gunbc.site.moodboard { figure_rules }
 import gunbc.site.register_principles { register_thesis }
@@ -41,17 +42,17 @@ fn theme_vars_style(t: Theme) -> String {
   join(map(theme_var_decls(t: t), d => join([d.prop, ": ", d.value], "")), "; ")
 }
 
-fn candidate_panel(c: StellarClass) -> MarkupNode {
+fn candidate_panel(r: StarlightRender) -> MarkupNode {
   ElementNode {
     tag: "div",
     attrs: [
       MarkupAttr { name: "class", value: "panel variant" },
-      MarkupAttr { name: "style", value: figure_vars_style(figure: c.figure) },
+      MarkupAttr { name: "style", value: figure_vars_style(figure: r.figure) },
     ],
     children: [
       constellation_svg(stars: layer_stars, edges: layer_import_edges),
       el_class("p", "mono label", [
-        txt(join([c.letter, " — ", c.perceived, " · ", paint(m: c.figure)], "")),
+        txt(join([render_label(r: r), " · ", paint(m: r.figure)], "")),
       ]),
     ],
   }
@@ -80,8 +81,10 @@ fn verdigris_panel() -> MarkupNode {
 }
 
 fn g_figure() -> Material {
-  fold(study_candidates, init: verdigris_patina, f: (acc, c) =>
-    if c.letter == "G" { c.figure } else { acc })
+  fold(study_candidates, init: verdigris_patina, f: (acc, r) => {
+    let candidate_code = r.spectral.code as String
+    if candidate_code == "G" { r.figure } else { acc }
+  })
 }
 
 fn day_panel() -> MarkupNode {
@@ -125,7 +128,7 @@ fn study_static_rules() -> List<BuildRule> {
     StaticRule { selector: "h2", decls: [
       decl(prop: "font-size", value: "0.85rem"),
       decl(prop: "font-weight", value: "500"),
-      decl(prop: "letter-spacing", value: "0.08em"),
+      decl(prop: "code-spacing", value: "0.08em"),
       decl(prop: "text-transform", value: "lowercase"),
       role_decl(prop: "color", r: TextDimRole),
       decl(prop: "margin-top", value: "2.2rem"),
@@ -176,11 +179,12 @@ fn accent_study_page() -> MarkupNode {
         el_class("p", "thesis", [ txt(register_thesis) ]),
         el_class("p", "thesis", [ txt("the night accent is starlight, so the candidates are stellar classes (Morgan-Keenan); same constellation fact rows in every panel — only the temperature changes. no green panel exists: there are no green stars.") ]),
         el("h2", [ txt("candidates — pick a temperature") ]),
-        el("div", map(study_candidates, c => candidate_panel(c: c))),
+        el("div", map(study_candidates, r => candidate_panel(r: r))),
         el("h2", [ txt("green, where physics allows it — patina, not starlight") ]),
         verdigris_panel(),
         el("h2", [ txt("the day identity is accent-independent") ]),
         day_panel(),
+        el_class("p", "mono label", [ txt(stellar_color_perception_quote) ]),
       ]),
     ]),
   ] }
@@ -194,5 +198,5 @@ fn accent_study_html() -> String {
 }
 
 fn accent_study_preconditions_hold() -> Bool {
-  candidates_admissible(cs: study_candidates)
+  candidates_admissible(rs: study_candidates)
 }

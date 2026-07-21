@@ -53,13 +53,13 @@ type CoverageGap {
   verb: Verb
 }
 
-fn verb_eq(a: Verb, b: Verb) -> Bool {
+fn interaction_verb_eq(a: Verb, b: Verb) -> Bool {
   verb_key(v: a) == verb_key(v: b)
 }
 
 fn row_covers(rows: List<BehaviorRow>, element: String, verb: Verb) -> Bool {
   fold(rows, init: false, f: (acc, r) =>
-    acc || (r.element == element && verb_eq(a: r.verb, b: verb)))
+    acc || (r.element == element && interaction_verb_eq(a: r.verb, b: verb)))
 }
 
 fn element_gaps(rows: List<BehaviorRow>, e: InteractiveElement) -> List<CoverageGap> {
