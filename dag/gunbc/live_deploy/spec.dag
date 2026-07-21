@@ -22,7 +22,7 @@ import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
-data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5; srv1 provisioning facts settled by parent lane 2026-07-20): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ROOT (actions-runner unit User=root, verified on srv1), so tree-sync and chown run bare — no new sudoers grant; the flipped unit runs User=briansrls (claude auth exists only under briansrls, so a root-run belt would spawn unauthed dead sessions)."
+data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is the UNPRIVILEGED ci-runner (gunbc.fleet_posix_accounts FleetAccountCiRunner — the earlier ROOT claim here was a hand-verification fork of that authority, falsified by deploy run 29822498755; see gunbc.live_deploy.emit emit_deploy_principal_note), so every host mutation rides the five granted commands, and the tree sync runs AS the service user via gunbc-tree-sync.service; the flipped unit runs User=briansrls (claude auth exists only under briansrls, so a root-run belt would spawn unauthed dead sessions)."
 
 data gunbc_service_user: NonEmptyStr = "briansrls"
 
@@ -77,6 +77,11 @@ type DeploymentServiceConfig {
 data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 data gunbc_roadmap_systemd_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-roadmap.service"
 data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
+
+data gunbc_tree_sync_note: String = "gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent member: a oneshot unit running AS the service user (the tree's owner writes its own tree — ownership by construction, no chown), installed/started by the deploy through the granted install+systemctl channel because the ci-runner principal holds no rsync grant and no write access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries the runner checkout path (varies per runner slot), written by the apply at run time. Both files are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm."
+data gunbc_tree_sync_unit_name: NonEmptyStr = "gunbc-tree-sync.service"
+data gunbc_tree_sync_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-tree-sync.service"
+data gunbc_tree_sync_env_path: NonEmptyStr = "/etc/gunbc-tree-sync.env"
 
 fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
