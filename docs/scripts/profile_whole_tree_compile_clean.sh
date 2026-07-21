@@ -12,11 +12,11 @@
 # Profile receipt: docs/plans/compile-clean-whole-tree-time-diagnosis.md
 #
 # Usage:
-#   ./scripts/profile_whole_tree_compile_clean.sh              # build + histogram + floor receipt
-#   ./scripts/profile_whole_tree_compile_clean.sh histogram    # histogram path only
-#   ./scripts/profile_whole_tree_compile_clean.sh floor main   # floor receipt path only
+#   ./docs/scripts/profile_whole_tree_compile_clean.sh              # build + histogram + floor receipt
+#   ./docs/scripts/profile_whole_tree_compile_clean.sh histogram    # histogram path only
+#   ./docs/scripts/profile_whole_tree_compile_clean.sh floor main   # floor receipt path only
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 BIN_DIR="${BIN_DIR:-$ROOT/target/release}"

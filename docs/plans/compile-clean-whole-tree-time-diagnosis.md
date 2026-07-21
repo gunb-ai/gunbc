@@ -40,7 +40,8 @@ GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 GUNBC_FLOOR_GANTT=1 \
 GUNBC_FLOOR_GANTT=1 ./target/release/compile_clean_diagnostic_histogram
 ```
 
-Harness: `scripts/profile_whole_tree_compile_clean.sh` (runs both + prints a table).
+Harness: `docs/scripts/profile_whole_tree_compile_clean.sh` (runs both + prints a table;
+lives under `docs/` so docs-only PRs keep the affected-set floor skip).
 
 **Hand-shell honesty (DESIGN §2/§3/§6):** the script is an interim locate-only receipt
 entrypoint — it carries a `SCAFFOLD — dissolve-on:` marker and names bash-emit #5828 as the
