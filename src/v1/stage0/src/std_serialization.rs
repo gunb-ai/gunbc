@@ -13,6 +13,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -29,17 +30,17 @@ pub enum VariantNaming {
 #[serde(tag = "_variant")]
 pub enum VariantEncoding {
     StringVariant {
-        naming: Rc<VariantNaming>,
+        naming: Arc<VariantNaming>,
     },
     InternallyTaggedObject {
         tag_field: String,
-        naming: Rc<VariantNaming>,
+        naming: Arc<VariantNaming>,
     },
     UntaggedVariant,
     TaggedVariant,
 }
 impl VariantEncoding {
-    pub fn naming(&self) -> Rc<VariantNaming> {
+    pub fn naming(&self) -> Arc<VariantNaming> {
         match self {
             VariantEncoding::StringVariant { naming: __val, .. } => __val.clone(),
             VariantEncoding::InternallyTaggedObject { naming: __val, .. } => __val.clone(),
@@ -51,13 +52,13 @@ impl VariantEncoding {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoproductWireContract {
-    pub coproduct: Rc<DeclarationRef>,
-    pub encoding: Rc<VariantEncoding>,
+    pub coproduct: Arc<DeclarationRef>,
+    pub encoding: Arc<VariantEncoding>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WireContract {
-    pub variant_encoding: Rc<VariantEncoding>,
+    pub variant_encoding: Arc<VariantEncoding>,
 }
 
 #[derive(

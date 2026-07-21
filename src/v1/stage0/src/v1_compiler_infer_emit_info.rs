@@ -29,8 +29,9 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: Arc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
@@ -57,11 +58,11 @@ impl TypeRepr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
     pub name: String,
-    pub repr: Rc<TypeRepr>,
-    pub field_summaries: Rc<HashMap<String, Rc<FieldSummary>>>,
-    pub field_type_map: Rc<HashMap<String, String>>,
-    pub variant_name_set: Rc<HashMap<String, bool>>,
-    pub generic_param_names: Rc<Vec<String>>,
+    pub repr: Arc<TypeRepr>,
+    pub field_summaries: Arc<HashMap<String, Arc<FieldSummary>>>,
+    pub field_type_map: Arc<HashMap<String, String>>,
+    pub variant_name_set: Arc<HashMap<String, bool>>,
+    pub generic_param_names: Arc<Vec<String>>,
     pub has_fn_fields: bool,
 }
 
@@ -76,27 +77,27 @@ pub enum RustCorpusRepr {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
-    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    pub recursive_type_set: Rc<BTreeSet<String>>,
-    pub fielded_variants: Rc<BTreeSet<String>>,
-    pub positional_payload_variants: Rc<BTreeSet<String>>,
-    pub shared_types: Rc<BTreeSet<String>>,
-    pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub movable: Rc<BTreeSet<String>>,
-    pub variant_to_enum: Rc<HashMap<String, String>>,
-    pub owned_bindings: Rc<BTreeSet<String>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub read_only_params: Rc<BTreeSet<String>>,
+    pub type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    pub type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    pub recursive_type_set: Arc<BTreeSet<String>>,
+    pub fielded_variants: Arc<BTreeSet<String>>,
+    pub positional_payload_variants: Arc<BTreeSet<String>>,
+    pub shared_types: Arc<BTreeSet<String>>,
+    pub ownership_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    pub movable: Arc<BTreeSet<String>>,
+    pub variant_to_enum: Arc<HashMap<String, String>>,
+    pub owned_bindings: Arc<BTreeSet<String>>,
+    pub read_only_params_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    pub read_only_params: Arc<BTreeSet<String>>,
     pub corpus_repr: RustCorpusRepr,
-    pub fn_generic_param_names: Rc<Vec<String>>,
-    pub fn_type_env: Rc<TypeEnv>,
+    pub fn_generic_param_names: Arc<Vec<String>>,
+    pub fn_type_env: Arc<TypeEnv>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
-    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    pub type_decl_items: Arc<HashMap<String, Arc<Node>>>,
 }
 
 pub fn empty_emit_graph_info_ord_fallback_note() -> String {
@@ -108,19 +109,19 @@ pub fn empty_emit_graph_info_ord_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
-        type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+pub fn empty_emit_graph_info() -> Arc<EmitGraphInfo> {
+    Arc::new(EmitGraphInfo {
+        type_summaries: v1_rt::rc_empty_map::<String, Arc<TypeSummary>>(),
+        type_decl_items: v1_rt::rc_empty_map::<String, Arc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
         shared_types: v1_rt::rc_empty_set::<String>(),
-        ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+        ownership_index: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
         movable: v1_rt::rc_empty_set::<String>(),
         variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+        read_only_params_index: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
         read_only_params: v1_rt::rc_empty_set::<String>(),
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
         fn_generic_param_names: Rc::new(vec![]),
@@ -129,11 +130,11 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
 }
 
 pub fn emit_info_with_fn_type_context(
-    emit_info: Rc<EmitGraphInfo>,
-    generic_param_names: Rc<Vec<String>>,
-    env: Rc<TypeEnv>,
-) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
+    emit_info: Arc<EmitGraphInfo>,
+    generic_param_names: Arc<Vec<String>>,
+    env: Arc<TypeEnv>,
+) -> Arc<EmitGraphInfo> {
+    Arc::new(EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
         type_decl_items: emit_info.type_decl_items.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -153,7 +154,7 @@ pub fn emit_info_with_fn_type_context(
 }
 
 pub fn variant_has_fields(
-    emit_info: Rc<EmitGraphInfo>,
+    emit_info: Arc<EmitGraphInfo>,
     enum_name: String,
     variant_name: String,
 ) -> bool {
@@ -174,19 +175,22 @@ pub fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 }
 
 pub fn lookup_emit_type_summary(
-    emit_info: Rc<EmitGraphInfo>,
+    emit_info: Arc<EmitGraphInfo>,
     type_name: String,
-) -> Option<Rc<TypeSummary>> {
+) -> Option<Arc<TypeSummary>> {
     v1_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone())
 }
 
-pub fn lookup_emit_type_decl(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<Node>> {
+pub fn lookup_emit_type_decl(
+    emit_info: Arc<EmitGraphInfo>,
+    type_name: String,
+) -> Option<Arc<Node>> {
     v1_rt::map_get(&emit_info.type_decl_items.clone(), type_name.clone())
 }
 
 pub fn emit_graph_records_type_decl(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
@@ -200,25 +204,25 @@ pub fn emit_graph_records_type_decl(
 }
 
 pub fn derive_variant_to_enum(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<HashMap<String, String>> {
-    Rc::new(v1_rt::map_values(&type_summaries))
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+) -> Arc<HashMap<String, String>> {
+    Arc::new(v1_rt::map_values(&type_summaries))
         .iter()
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary
+            |acc: Arc<HashMap<String, String>>, summary: Arc<TypeSummary>| match (*summary
                 .repr
                 .clone())
             .clone()
             {
                 TypeRepr::EnumRepr { unit_only: _, .. } => {
-                    Rc::new(v1_rt::map_keys(&summary.variant_name_set.clone()))
+                    Arc::new(v1_rt::map_keys(&summary.variant_name_set.clone()))
                         .iter()
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |inner: Rc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
+                            |inner: Arc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
                                 &inner,
                                 vn.clone(),
                             ) {
@@ -239,12 +243,12 @@ pub fn derive_variant_to_enum(
 }
 
 pub fn is_known_variant(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     name: String,
 ) -> bool {
     {
         let mut __found = false;
-        for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
+        for summary in Arc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
             if match (*summary.repr.clone()).clone() {
                 TypeRepr::EnumRepr { unit_only: _, .. } => {
                     emit_map_has(summary.variant_name_set.clone(), name.clone())
@@ -260,7 +264,7 @@ pub fn is_known_variant(
 }
 
 pub fn variant_belongs_to_enum(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     variant_name: String,
     enum_name: String,
 ) -> bool {
@@ -276,7 +280,7 @@ pub fn variant_belongs_to_enum(
 }
 
 pub fn is_enum_in_summaries(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     type_name: String,
 ) -> bool {
     match v1_rt::map_get(&type_summaries, type_name.clone()) {
@@ -289,11 +293,11 @@ pub fn is_enum_in_summaries(
 }
 
 pub fn find_variant_parent(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     variant_name: String,
-    scope_enums: Rc<Vec<String>>,
+    scope_enums: Arc<Vec<String>>,
 ) -> Option<String> {
-    Rc::new({
+    Arc::new({
         let mut __result = Vec::new();
         for en in scope_enums.clone().iter().cloned() {
             if variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()) {
@@ -306,7 +310,7 @@ pub fn find_variant_parent(
     .cloned()
 }
 
-pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
+pub fn field_value_shape_from_type_node(type_node: Arc<Node>) -> FieldValueShape {
     {
         let normed = normalize_access_type_node(type_node.clone());
         let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
@@ -318,18 +322,18 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
     }
 }
 
-pub fn is_tuple_type(n: Rc<Node>) -> bool {
+pub fn is_tuple_type(n: Arc<Node>) -> bool {
     (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None))
         && ((n.children.clone().len() as i64) == 2))
 }
 
 pub fn build_struct_field_summaries(
-    parent: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<FieldSummary>>> {
+    parent: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<FieldSummary>>> {
     {
         let is_pair = is_tuple_type(parent.clone());
-        Rc::new(
+        Arc::new(
             parent
                 .children
                 .clone()
@@ -342,8 +346,8 @@ pub fn build_struct_field_summaries(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
+            v1_rt::rc_empty_map::<String, Arc<FieldSummary>>(),
+            |acc: Arc<HashMap<String, Arc<FieldSummary>>>, pair: (i64, Arc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
                 if (child.inferred.clone() == None) {
@@ -363,7 +367,7 @@ pub fn build_struct_field_summaries(
                         v1_rt::rc_map_insert(
                             acc.clone(),
                             key.clone(),
-                            Rc::new(FieldSummary {
+                            Arc::new(FieldSummary {
                                 access_style: style.clone(),
                                 value_shape: field_value_shape_from_type_node(child_type_node(
                                     child.clone(),
@@ -378,10 +382,10 @@ pub fn build_struct_field_summaries(
 }
 
 pub fn find_first_enum_field_node(
-    variants: Rc<Vec<Rc<Node>>>,
+    variants: Arc<Vec<Arc<Node>>>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     match variants.clone().first().cloned() {
         Some(variant) => {
             match find_child_named(variant.clone(), field_name.clone(), source_indices.clone()) {
@@ -394,9 +398,9 @@ pub fn find_first_enum_field_node(
 }
 
 pub fn enum_field_present_in_all_variants(
-    variants: Rc<Vec<Rc<Node>>>,
+    variants: Arc<Vec<Arc<Node>>>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __all = true;
@@ -411,10 +415,10 @@ pub fn enum_field_present_in_all_variants(
 }
 
 pub fn enum_field_type_consistent(
-    variants: Rc<Vec<Rc<Node>>>,
+    variants: Arc<Vec<Arc<Node>>>,
     field_name: String,
-    expected: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expected: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __all = true;
@@ -437,12 +441,12 @@ pub fn enum_field_type_consistent(
 }
 
 pub fn build_enum_field_summaries(
-    variants: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<FieldSummary>>> {
+    variants: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<FieldSummary>>> {
     {
         let first_field_names = match variants.clone().first().cloned() {
-            Some(first_variant) => Rc::new({
+            Some(first_variant) => Arc::new({
                 let mut __result = Vec::new();
                 for f in first_variant.children.clone().iter().cloned() {
                     __result.push(authored_name_at(source_indices.clone(), f.clone()));
@@ -451,7 +455,7 @@ pub fn build_enum_field_summaries(
             }),
             None => Rc::new(vec![]),
         };
-        let shared = Rc::new({
+        let shared = Arc::new({
             let mut __result = Vec::new();
             for field_name in first_field_names.clone().iter().cloned() {
                 if enum_field_present_in_all_variants(
@@ -464,7 +468,7 @@ pub fn build_enum_field_summaries(
             }
             __result
         });
-        let consistent = Rc::new({
+        let consistent = Arc::new({
             let mut __result = Vec::new();
             for field_name in shared.clone().iter().cloned() {
                 if match find_first_enum_field_node(
@@ -486,8 +490,8 @@ pub fn build_enum_field_summaries(
             __result
         });
         consistent.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| {
+            v1_rt::rc_empty_map::<String, Arc<FieldSummary>>(),
+            |acc: Arc<HashMap<String, Arc<FieldSummary>>>, field_name: String| {
                 match find_first_enum_field_node(
                     variants.clone(),
                     field_name.clone(),
@@ -496,7 +500,7 @@ pub fn build_enum_field_summaries(
                     Some(first_field) => v1_rt::rc_map_insert(
                         acc.clone(),
                         field_name.clone(),
-                        Rc::new(FieldSummary {
+                        Arc::new(FieldSummary {
                             access_style: FieldAccessStyle::EnumAccessor,
                             value_shape: field_value_shape_from_type_node(child_type_node(
                                 first_field.clone(),
@@ -511,12 +515,12 @@ pub fn build_enum_field_summaries(
 }
 
 pub fn build_field_type_map(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, String>> {
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, String>> {
     children.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child
+        |acc: Arc<HashMap<String, String>>, child: Arc<Node>| match child
             .inferred
             .clone()
             .as_deref()
@@ -547,9 +551,9 @@ pub fn build_field_type_map(
 }
 
 pub fn build_type_summary(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<TypeSummary>> {
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<TypeSummary>> {
     {
         if (((item.connective.clone() == Connective::NoConnective)
             || (item.connective.clone() == Connective::Arrow))
@@ -557,7 +561,7 @@ pub fn build_type_summary(
         {
             return None;
         }
-        let gpn = Rc::new({
+        let gpn = Arc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
                 __result.push(param_node_name_at(p.clone(), source_indices.clone()));
@@ -581,9 +585,9 @@ pub fn build_type_summary(
             __found
         };
         if is_product.clone() {
-            Some(Rc::new(TypeSummary {
+            Some(Arc::new(TypeSummary {
                 name: authored_name_at(source_indices.clone(), item.clone()),
-                repr: Rc::new(TypeRepr::StructRepr),
+                repr: Arc::new(TypeRepr::StructRepr),
                 field_summaries: build_struct_field_summaries(item.clone(), source_indices.clone()),
                 field_type_map: build_field_type_map(item.children.clone(), source_indices.clone()),
                 variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
@@ -602,9 +606,9 @@ pub fn build_type_summary(
                     }
                     __all
                 };
-                Some(Rc::new(TypeSummary {
+                Some(Arc::new(TypeSummary {
                     name: authored_name_at(source_indices.clone(), item.clone()),
-                    repr: Rc::new(TypeRepr::EnumRepr {
+                    repr: Arc::new(TypeRepr::EnumRepr {
                         unit_only: unit_only.clone(),
                     }),
                     field_summaries: build_enum_field_summaries(
@@ -614,7 +618,7 @@ pub fn build_type_summary(
                     field_type_map: v1_rt::rc_empty_map::<String, String>(),
                     variant_name_set: item.children.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
-                        |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| {
+                        |acc: Arc<HashMap<String, bool>>, child: Arc<Node>| {
                             v1_rt::rc_map_insert(
                                 acc,
                                 authored_name_at(source_indices.clone(), child.clone()),
@@ -632,8 +636,8 @@ pub fn build_type_summary(
 
 pub fn type_summary_reaches_fn(
     name: String,
-    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    visited: Rc<BTreeSet<String>>,
+    summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    visited: Arc<BTreeSet<String>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v1_rt::set_contains(&visited, name.clone()) {
@@ -648,7 +652,7 @@ pub fn type_summary_reaches_fn(
                             let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
                             {
                                 let mut __found = false;
-                                for ft in Rc::new(v1_rt::map_values(&s.field_type_map.clone()))
+                                for ft in Arc::new(v1_rt::map_values(&s.field_type_map.clone()))
                                     .iter()
                                     .cloned()
                                 {
@@ -673,11 +677,11 @@ pub fn type_summary_reaches_fn(
 }
 
 pub fn close_fn_fields(
-    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
+    summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+) -> Arc<HashMap<String, Arc<TypeSummary>>> {
+    Arc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
         summaries.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+        |acc: Arc<HashMap<String, Arc<TypeSummary>>>, name: String| match v1_rt::map_get(
             &summaries,
             name.clone(),
         ) {
@@ -692,7 +696,7 @@ pub fn close_fn_fields(
                     v1_rt::rc_map_insert(
                         acc.clone(),
                         name.clone(),
-                        Rc::new(TypeSummary {
+                        Arc::new(TypeSummary {
                             name: s.name.clone(),
                             repr: s.repr.clone(),
                             field_summaries: s.field_summaries.clone(),
@@ -712,16 +716,16 @@ pub fn close_fn_fields(
 }
 
 pub fn add_emit_item_summary(
-    state: Rc<EmitInfoBuildState>,
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<EmitInfoBuildState> {
+    state: Arc<EmitInfoBuildState>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<EmitInfoBuildState> {
     {
         let decl_name = authored_name_at(source_indices.clone(), item.clone());
         let state = if ((decl_name.clone() != "".to_string())
             && emit_graph_records_type_decl(item.clone(), source_indices.clone()))
         {
-            Rc::new(EmitInfoBuildState {
+            Arc::new(EmitInfoBuildState {
                 type_summaries: state.type_summaries.clone(),
                 type_decl_items: v1_rt::rc_map_insert(
                     state.type_decl_items.clone(),
@@ -739,7 +743,8 @@ pub fn add_emit_item_summary(
                         TypeRepr::EnumRepr { unit_only: _, .. } => {
                             item.children.clone().iter().cloned().fold(
                                 state.type_summaries.clone(),
-                                |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
+                                |acc: Arc<HashMap<String, Arc<TypeSummary>>>,
+                                 variant: Arc<Node>| {
                                     if ((variant.children.clone().len() as i64) > 0) {
                                         {
                                             let v_has_fn = {
@@ -773,9 +778,9 @@ pub fn add_emit_item_summary(
                                             v1_rt::rc_map_insert(
                                                 acc.clone(),
                                                 qualified_vname.clone(),
-                                                Rc::new(TypeSummary {
+                                                Arc::new(TypeSummary {
                                                     name: qualified_vname.clone(),
-                                                    repr: Rc::new(TypeRepr::StructRepr),
+                                                    repr: Arc::new(TypeRepr::StructRepr),
                                                     field_summaries: build_struct_field_summaries(
                                                         variant.clone(),
                                                         source_indices.clone(),
@@ -807,7 +812,7 @@ pub fn add_emit_item_summary(
                     summary.name.clone(),
                     summary.clone(),
                 );
-                Rc::new(EmitInfoBuildState {
+                Arc::new(EmitInfoBuildState {
                     type_summaries: next_summaries.clone(),
                     type_decl_items: state.type_decl_items.clone(),
                 })

@@ -19,16 +19,17 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn type_variable_node(id: String) -> Rc<Node> {
-    Rc::new(Node {
+pub fn type_variable_node(id: String) -> Arc<Node> {
+    Arc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
+        inferred: Some(Arc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
@@ -38,12 +39,12 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
-pub fn map_of_type_variables() -> Rc<Node> {
+pub fn map_of_type_variables() -> Arc<Node> {
     make_map_type(
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
@@ -52,33 +53,33 @@ pub fn map_of_type_variables() -> Rc<Node> {
     .clone()
 }
 
-pub fn list_of_type_variable(id: String) -> Rc<Node> {
+pub fn list_of_type_variable(id: String) -> Arc<Node> {
     make_container_type("List".to_string(), type_variable_node(id.clone()))
         .ty
         .clone()
 }
 
-pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
+pub fn list_of_element(element: Arc<Node>) -> Arc<Node> {
     make_container_type("List".to_string(), element.clone())
         .ty
         .clone()
 }
 
-pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
+pub fn witness_of_element(element: Arc<Node>) -> Arc<Node> {
     make_container_type("Witness".to_string(), element.clone())
         .ty
         .clone()
 }
 
-pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn seed_node_map(key: String, value: Arc<Node>) -> Arc<HashMap<String, Arc<Node>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        v1_rt::rc_empty_map::<String, Arc<Node>>(),
         key.clone(),
         value.clone(),
     )
 }
 
-pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn builtin_kernel_seed_diagnostics() -> Arc<Vec<Arc<ErrorNode>>> {
     v1_rt::concat(
         v1_rt::concat(
             make_map_type(
@@ -103,7 +104,7 @@ pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
     )
 }
 
-pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
+pub fn builtin_function_registry() -> Arc<HashMap<String, Arc<Node>>> {
     {
         let m = seed_node_map("count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type());
@@ -496,11 +497,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     }
 }
 
-pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
+pub fn infer_builtin_call_type(name: String) -> Option<Arc<Node>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
 }
 
-pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
+pub fn resolve_builtin_call_type(name: String) -> Arc<Node> {
     match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
         None => unit_type(),

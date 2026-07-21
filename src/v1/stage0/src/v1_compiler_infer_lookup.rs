@@ -58,8 +58,9 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: Arc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
@@ -72,15 +73,15 @@ pub fn is_witness_type_name(name: String) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KnownMethodResolution {
-    pub semantics: Option<Rc<MethodSemantics>>,
-    pub result_type: Option<Rc<Node>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub semantics: Option<Arc<MethodSemantics>>,
+    pub result_type: Option<Arc<Node>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn lookup_in_scope(
-    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    locals: Arc<HashMap<String, Arc<TypeBinding>>>,
     name: String,
-) -> Option<Rc<Node>> {
+) -> Option<Arc<Node>> {
     match v1_rt::map_get(&locals, name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
@@ -88,10 +89,10 @@ pub fn lookup_in_scope(
 }
 
 pub fn lookup_func_sig(
-    func_env: Rc<ResolvedFuncEnv>,
-    type_env: Rc<TypeEnv>,
+    func_env: Arc<ResolvedFuncEnv>,
+    type_env: Arc<TypeEnv>,
     name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
+) -> Option<Arc<ResolvedFuncSig>> {
     match lookup_resolved_sig(func_env.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
         None => func_sig_from_global_bare(type_env.clone(), name.clone()),
@@ -101,13 +102,16 @@ pub fn lookup_func_sig(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BorrowedCensusDecl {
     pub owner_module_path: String,
-    pub node: Rc<Node>,
+    pub node: Arc<Node>,
 }
 
-pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<BorrowedCensusDecl>> {
+pub fn borrowed_census_decl(
+    type_env: Arc<TypeEnv>,
+    name: String,
+) -> Option<Arc<BorrowedCensusDecl>> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
-            Some(node) => Some(Rc::new(BorrowedCensusDecl {
+            Some(node) => Some(Arc::new(BorrowedCensusDecl {
                 owner_module_path: qualified_all_but_last(name.clone()),
                 node: node.clone(),
             })),
@@ -125,7 +129,7 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
                 module_path: mp,
                 binding: b,
                 ..
-            }) => Some(Rc::new(BorrowedCensusDecl {
+            }) => Some(Arc::new(BorrowedCensusDecl {
                 owner_module_path: mp.clone(),
                 node: b.resolved.clone(),
             })),
@@ -135,7 +139,7 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
                 type_env.module_path.clone(),
                 cands.clone(),
             ) {
-                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                Some(cand) => Some(Arc::new(BorrowedCensusDecl {
                     owner_module_path: cand.module_path.clone(),
                     node: cand.binding.clone().resolved.clone(),
                 })),
@@ -156,9 +160,9 @@ pub fn census_reserved_method_name_note() -> String {
 }
 
 pub fn func_sig_from_global_bare(
-    type_env: Rc<TypeEnv>,
+    type_env: Arc<TypeEnv>,
     name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
+) -> Option<Arc<ResolvedFuncSig>> {
     {
         if algebra_method_template_name(name.clone()) {
             return None;
@@ -167,7 +171,7 @@ pub fn func_sig_from_global_bare(
             Some(_) => None,
             None => {
                 let borrowed = match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
-                    Some(binding) => Some(Rc::new(BorrowedCensusDecl {
+                    Some(binding) => Some(Arc::new(BorrowedCensusDecl {
                         owner_module_path: type_env.module_path.clone(),
                         node: binding.resolved.clone(),
                     })),
@@ -196,7 +200,7 @@ pub fn func_sig_from_global_bare(
                                     },
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
-                                    Some(Rc::new(ResolvedFuncSig {
+                                    Some(Arc::new(ResolvedFuncSig {
                                         name: name.clone(),
                                         params: node.params.clone(),
                                         inferred: raw_return.clone(),
@@ -204,10 +208,10 @@ pub fn func_sig_from_global_bare(
                                         output_provenance: Rc::new(vec![]),
                                         variant_provenance: v1_rt::rc_empty_map::<
                                             String,
-                                            Rc<
+                                            Arc<
                                                 HashMap<
                                                     String,
-                                                    Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                                    Arc<HashMap<String, Arc<SubValueRelation>>>,
                                                 >,
                                             >,
                                         >(
@@ -221,7 +225,7 @@ pub fn func_sig_from_global_bare(
                                             type_env.clone(),
                                             excluded.clone(),
                                         );
-                                        Some(Rc::new(ResolvedFuncSig {
+                                        Some(Arc::new(ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
                                             inferred: qualified_return.clone(),
@@ -229,10 +233,10 @@ pub fn func_sig_from_global_bare(
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
-                                                Rc<
+                                                Arc<
                                                     HashMap<
                                                         String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                                        Arc<HashMap<String, Arc<SubValueRelation>>>,
                                                     >,
                                                 >,
                                             >(
@@ -250,7 +254,7 @@ pub fn func_sig_from_global_bare(
     }
 }
 
-pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+pub fn global_bare_callable_node(type_env: Arc<TypeEnv>, name: String) -> Option<Arc<Node>> {
     {
         if algebra_method_template_name(name.clone()) {
             return None;
@@ -271,10 +275,10 @@ pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<
 }
 
 pub fn lookup_field_type_node(
-    n: Rc<Node>,
+    n: Arc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
@@ -356,10 +360,10 @@ pub fn lookup_field_type_node(
 }
 
 pub fn lookup_coproduct_common_field_node(
-    variants: Rc<Vec<Rc<Node>>>,
+    variants: Arc<Vec<Arc<Node>>>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     {
         let found_in_all = {
             let mut __all = true;
@@ -390,7 +394,7 @@ pub fn lookup_coproduct_common_field_node(
     }
 }
 
-pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
+pub fn resolve_scrutinee_type_node(env: Arc<TypeEnv>, n: Arc<Node>) -> Arc<Node> {
     resolve_scrutinee_type_node_seen(
         env.clone(),
         n.clone(),
@@ -398,7 +402,7 @@ pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     )
 }
 
-pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+pub fn resolve_method_receiver_type(receiver_type: Arc<Node>, env: Arc<TypeEnv>) -> Arc<Node> {
     {
         let raw_name = authored_name_at(env.source_indices.clone(), receiver_type.clone());
         if ((receiver_type.connective.clone() == Connective::Conj)
@@ -426,10 +430,10 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
 }
 
 pub fn resolve_scrutinee_type_node_seen(
-    env: Rc<TypeEnv>,
-    n: Rc<Node>,
-    seen: Rc<HashMap<String, bool>>,
-) -> Rc<Node> {
+    env: Arc<TypeEnv>,
+    n: Arc<Node>,
+    seen: Arc<HashMap<String, bool>>,
+) -> Arc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
@@ -536,7 +540,7 @@ pub fn resolve_scrutinee_type_node_seen(
     })
 }
 
-pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+pub fn map_value_type_in_env(type_node: Arc<Node>, env: Arc<TypeEnv>) -> Option<Arc<Node>> {
     {
         let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
@@ -554,7 +558,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
     }
 }
 
-pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+pub fn map_key_type_in_env(type_node: Arc<Node>, env: Arc<TypeEnv>) -> Option<Arc<Node>> {
     {
         let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
@@ -572,7 +576,7 @@ pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<N
     }
 }
 
-pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+pub fn set_element_type_in_env(type_node: Arc<Node>, env: Arc<TypeEnv>) -> Option<Arc<Node>> {
     {
         let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
@@ -591,16 +595,16 @@ pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<
 }
 
 pub fn field_summary_for_type(
-    base_type: Rc<Node>,
-    env: Rc<TypeEnv>,
+    base_type: Arc<Node>,
+    env: Arc<TypeEnv>,
     field: String,
-) -> Option<Rc<FieldSummary>> {
+) -> Option<Arc<FieldSummary>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
         let normed = normalize_access_type_node(resolved.clone());
         let normed_opt = (normed.return_cardinality.clone() == Cardinality::CardOptional);
         if ((field.clone() == "value".to_string()) && normed_opt.clone()) {
-            Some(Rc::new(FieldSummary {
+            Some(Arc::new(FieldSummary {
                 access_style: FieldAccessStyle::OptionalUnwrap,
                 value_shape: FieldValueShape::PlainValue,
             }))
@@ -609,7 +613,7 @@ pub fn field_summary_for_type(
                 {
                     let inner = with_required_cardinality(normed.clone());
                     match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
-                        Some(inner_summary) => Some(Rc::new(FieldSummary {
+                        Some(inner_summary) => Some(Arc::new(FieldSummary {
                             access_style: inner_summary.access_style.clone(),
                             value_shape: FieldValueShape::OptionalValue,
                         })),
@@ -651,20 +655,20 @@ pub fn field_summary_for_type(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodFieldResult {
-    pub field_node: Rc<Node>,
-    pub result_type: Rc<Node>,
+    pub field_node: Arc<Node>,
+    pub result_type: Arc<Node>,
     pub size_effect: Option<CollectionSizeEffect>,
     pub cost_shape: Option<CostShape>,
-    pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
+    pub algebra_template: Option<Arc<AlgebraFieldTemplate>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralMethodLookup {
-    pub resolution: Option<Rc<MethodFieldResult>>,
-    pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub resolution: Option<Arc<MethodFieldResult>>,
+    pub kernel_diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
-pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
+pub fn product_field_result_type(field: Arc<Node>) -> Option<Arc<Node>> {
     match field.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             if ((rt.params.clone().len() as i64) > 0) {
@@ -683,10 +687,10 @@ pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn map_lookup_result_type(
-    product: Rc<Node>,
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    product: Arc<Node>,
+    field: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     if (authored_name_at(source_indices.clone(), product.clone()) == "Map".to_string()) {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
@@ -708,12 +712,12 @@ pub fn map_lookup_result_type(
 }
 
 pub fn lookup_field_in_product(
-    product: Rc<Node>,
+    product: Arc<Node>,
     method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<MethodFieldResult>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<MethodFieldResult>> {
     {
-        let matching = Rc::new({
+        let matching = Arc::new({
             let mut __result = Vec::new();
             for c in product.children.clone().iter().cloned() {
                 if (authored_name_at(source_indices.clone(), c.clone()) == method_name.clone()) {
@@ -728,7 +732,7 @@ pub fn lookup_field_in_product(
             } else {
                 None
             } {
-                Some(lookup_rt) => Some(Rc::new(MethodFieldResult {
+                Some(lookup_rt) => Some(Arc::new(MethodFieldResult {
                     field_node: field.clone(),
                     result_type: lookup_rt.clone(),
                     size_effect: None,
@@ -736,7 +740,7 @@ pub fn lookup_field_in_product(
                     algebra_template: None,
                 })),
                 None => match product_field_result_type(field.clone()) {
-                    Some(rt) => Some(Rc::new(MethodFieldResult {
+                    Some(rt) => Some(Arc::new(MethodFieldResult {
                         field_node: field.clone(),
                         result_type: rt.clone(),
                         size_effect: None,
@@ -752,10 +756,10 @@ pub fn lookup_field_in_product(
 }
 
 pub fn lookup_structural_method(
-    receiver_type: Rc<Node>,
+    receiver_type: Arc<Node>,
     method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<StructuralMethodLookup> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<StructuralMethodLookup> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product.clone() {
@@ -765,7 +769,7 @@ pub fn lookup_structural_method(
                     method_name.clone(),
                     source_indices.clone(),
                 );
-                Rc::new(StructuralMethodLookup {
+                Arc::new(StructuralMethodLookup {
                     resolution: direct.clone(),
                     kernel_diagnostics: Rc::new(vec![]),
                 })
@@ -795,7 +799,7 @@ pub fn lookup_structural_method(
                                 let template_match = match profile.clone() {
                                     Some(p) => {
                                         let templates = algebra_templates_for_profile(p.clone());
-                                        Rc::new({
+                                        Arc::new({
                                             let mut __result = Vec::new();
                                             for t in templates.clone().iter().cloned() {
                                                 if (t.name.clone() == method_name.clone()) {
@@ -810,7 +814,7 @@ pub fn lookup_structural_method(
                                     None => None,
                                 };
                                 let resolution = match template_match.clone() {
-                                    Some(t) => Some(Rc::new(MethodFieldResult {
+                                    Some(t) => Some(Arc::new(MethodFieldResult {
                                         field_node: mfr.field_node.clone(),
                                         result_type: mfr.result_type.clone(),
                                         size_effect: t.size_effect.clone(),
@@ -819,19 +823,19 @@ pub fn lookup_structural_method(
                                     })),
                                     None => base_result.clone(),
                                 };
-                                Rc::new(StructuralMethodLookup {
+                                Arc::new(StructuralMethodLookup {
                                     resolution: resolution.clone(),
                                     kernel_diagnostics: enriched.diagnostics.clone(),
                                 })
                             }
-                            None => Rc::new(StructuralMethodLookup {
+                            None => Arc::new(StructuralMethodLookup {
                                 resolution: None,
                                 kernel_diagnostics: enriched.diagnostics.clone(),
                             }),
                         }
                     }
                 } else {
-                    Rc::new(StructuralMethodLookup {
+                    Arc::new(StructuralMethodLookup {
                         resolution: None,
                         kernel_diagnostics: enriched.diagnostics.clone(),
                     })
@@ -842,13 +846,13 @@ pub fn lookup_structural_method(
 }
 
 pub fn resolve_known_method_node(
-    receiver: Rc<Node>,
-    receiver_type: Rc<Node>,
+    receiver: Arc<Node>,
+    receiver_type: Arc<Node>,
     method_name: String,
-    fold_accumulator_type: Option<Rc<Node>>,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KnownMethodResolution> {
+    fold_accumulator_type: Option<Arc<Node>>,
+    service_registry: Arc<HashMap<String, Arc<Vec<Arc<OpEntry>>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KnownMethodResolution> {
     {
         let tier0 = lookup_structural_method(
             receiver_type.clone(),
@@ -857,14 +861,14 @@ pub fn resolve_known_method_node(
         );
         match tier0.resolution.clone() {
             Some(mfr) => {
-                let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
+                let semantics = Arc::new(MethodSemantics::AlgebraMethodSemantics {
                     method_def: mfr.field_node.clone(),
                     fold_accumulator_type: fold_accumulator_type.clone(),
                     size_effect: mfr.size_effect.clone(),
                     cost_shape: mfr.cost_shape.clone(),
                     algebra_template: mfr.algebra_template.clone(),
                 });
-                Rc::new(KnownMethodResolution {
+                Arc::new(KnownMethodResolution {
                     semantics: Some(semantics.clone()),
                     result_type: Some(mfr.result_type.clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
@@ -876,8 +880,8 @@ pub fn resolve_known_method_node(
                 service_registry.clone(),
                 source_indices.clone(),
             ) {
-                Some(svc_result) => Rc::new(KnownMethodResolution {
-                    semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
+                Some(svc_result) => Arc::new(KnownMethodResolution {
+                    semantics: Some(Arc::new(MethodSemantics::ServiceMethodSemantics {
                         service_name: authored_name_at(
                             source_indices.clone(),
                             receiver_type.clone(),
@@ -887,7 +891,7 @@ pub fn resolve_known_method_node(
                     result_type: Some(svc_result.result_type.clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
                 }),
-                None => Rc::new(KnownMethodResolution {
+                None => Arc::new(KnownMethodResolution {
                     semantics: None,
                     result_type: None,
                     diagnostics: tier0.kernel_diagnostics.clone(),

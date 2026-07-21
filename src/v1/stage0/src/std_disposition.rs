@@ -13,6 +13,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -32,7 +33,7 @@ pub enum Disposition {
     },
     Scaffold {
         dissolves_to: ConstructionMechanism,
-        bind: Rc<DeclarationRef>,
+        bind: Arc<DeclarationRef>,
     },
 }
 

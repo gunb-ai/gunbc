@@ -34,6 +34,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -51,16 +52,16 @@ pub struct Stage0CrateSpec {
     pub crate_dir: String,
     pub kind: Stage0CrateKind,
     pub header_doc: String,
-    pub modules: Rc<Vec<String>>,
-    pub reexport_packages: Rc<Vec<String>>,
-    pub dependencies: Rc<Vec<Rc<CargoDependency>>>,
-    pub features: Rc<Vec<Rc<CargoFeature>>>,
+    pub modules: Arc<Vec<String>>,
+    pub reexport_packages: Arc<Vec<String>>,
+    pub dependencies: Arc<Vec<Arc<CargoDependency>>>,
+    pub features: Arc<Vec<Arc<CargoFeature>>>,
     pub carries_non_empty_wrappers: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stage0CratePlan {
-    pub crates: Rc<Vec<Rc<Stage0CrateSpec>>>,
+    pub crates: Arc<Vec<Arc<Stage0CrateSpec>>>,
 }
 
 pub fn stage0_crate_plan_note() -> String {
@@ -152,7 +153,7 @@ pub fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
     v1_rt::replace(crate_dir.clone(), "src/v1/".to_string(), "../".to_string())
 }
 
-pub fn stage0_partition_row_is_module_bearing(row: Rc<GeneratedPartitionCrateRow>) -> bool {
+pub fn stage0_partition_row_is_module_bearing(row: Arc<GeneratedPartitionCrateRow>) -> bool {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => false,
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => true,
@@ -183,7 +184,7 @@ pub enum Stage0ModuleOwnerLookup {
         package_name: String,
     },
     Stage0ModuleOwnerRefused {
-        cause: Rc<Stage0ModuleOwnerRefusalCause>,
+        cause: Arc<Stage0ModuleOwnerRefusalCause>,
     },
 }
 
@@ -210,7 +211,7 @@ pub enum Stage0PackageCrateDirLookup {
         crate_dir: String,
     },
     Stage0PackageCrateDirRefused {
-        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+        cause: Arc<Stage0PackageCrateDirRefusalCause>,
     },
 }
 
@@ -218,10 +219,10 @@ pub enum Stage0PackageCrateDirLookup {
 #[serde(tag = "_variant")]
 pub enum Stage0ReexportPathDepsOutcome {
     Stage0ReexportPathDepsOk {
-        deps: Rc<Vec<Rc<CargoDependency>>>,
+        deps: Arc<Vec<Arc<CargoDependency>>>,
     },
     Stage0ReexportPathDepsRefused {
-        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+        cause: Arc<Stage0PackageCrateDirRefusalCause>,
     },
 }
 
@@ -229,10 +230,10 @@ pub enum Stage0ReexportPathDepsOutcome {
 #[serde(tag = "_variant")]
 pub enum Stage0EmitShellReexportsOutcome {
     Stage0EmitShellReexportsOk {
-        lines: Rc<Vec<String>>,
+        lines: Arc<Vec<String>>,
     },
     Stage0EmitShellReexportsRefused {
-        cause: Rc<Stage0ModuleOwnerRefusalCause>,
+        cause: Arc<Stage0ModuleOwnerRefusalCause>,
     },
 }
 
@@ -240,10 +241,10 @@ pub enum Stage0EmitShellReexportsOutcome {
 #[serde(tag = "_variant")]
 pub enum Stage0PartitionRowDepsOutcome {
     Stage0PartitionRowDepsOk {
-        deps: Rc<Vec<Rc<CargoDependency>>>,
+        deps: Arc<Vec<Arc<CargoDependency>>>,
     },
     Stage0PartitionRowDepsRefused {
-        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+        cause: Arc<Stage0PackageCrateDirRefusalCause>,
     },
 }
 
@@ -251,10 +252,10 @@ pub enum Stage0PartitionRowDepsOutcome {
 #[serde(tag = "_variant")]
 pub enum Stage0PartitionRowSpecOutcome {
     Stage0PartitionRowSpecOk {
-        spec: Rc<Stage0CrateSpec>,
+        spec: Arc<Stage0CrateSpec>,
     },
     Stage0PartitionRowSpecRefused {
-        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+        cause: Arc<Stage0PackageCrateDirRefusalCause>,
     },
 }
 
@@ -262,10 +263,10 @@ pub enum Stage0PartitionRowSpecOutcome {
 #[serde(tag = "_variant")]
 pub enum Stage0CratePlanOutcome {
     Stage0CratePlanOk {
-        plan: Rc<Stage0CratePlan>,
+        plan: Arc<Stage0CratePlan>,
     },
     Stage0CratePlanRefused {
-        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+        cause: Arc<Stage0PackageCrateDirRefusalCause>,
     },
 }
 
@@ -273,10 +274,10 @@ pub enum Stage0CratePlanOutcome {
 #[serde(tag = "_variant")]
 pub enum Stage0CrateLibEmitOutcome {
     Stage0CrateLibEmitOk {
-        file: Rc<TextFile>,
+        file: Arc<TextFile>,
     },
     Stage0CrateLibEmitRefused {
-        cause: Rc<Stage0ModuleOwnerRefusalCause>,
+        cause: Arc<Stage0ModuleOwnerRefusalCause>,
     },
 }
 
@@ -291,18 +292,18 @@ pub enum Stage0CrateBoundaryEmitRefusalCause {
 #[serde(tag = "_variant")]
 pub enum Stage0CrateBoundaryEmitOutcome {
     Stage0CrateBoundaryEmitOk {
-        files: Rc<Vec<Rc<TextFile>>>,
+        files: Arc<Vec<Arc<TextFile>>>,
     },
     Stage0CrateBoundaryEmitRefused {
-        cause: Rc<Stage0CrateBoundaryEmitRefusalCause>,
+        cause: Arc<Stage0CrateBoundaryEmitRefusalCause>,
     },
 }
 
 pub fn stage0_lookup_module_owner_package_name(
     module_basename: String,
-) -> Rc<Stage0ModuleOwnerLookup> {
+) -> Arc<Stage0ModuleOwnerLookup> {
     {
-        let matches = Rc::new({
+        let matches = Arc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
                 if (stage0_partition_row_is_module_bearing(row.clone()) && {
@@ -320,7 +321,7 @@ pub fn stage0_lookup_module_owner_package_name(
             }
             __result
         });
-        let package_name = Rc::new({
+        let package_name = Arc::new({
             let mut __result = Vec::new();
             for row in matches.clone().iter().cloned() {
                 __result.push(row.package_name.clone());
@@ -337,22 +338,22 @@ pub fn stage0_lookup_module_owner_package_name(
             }
         });
         if (package_name.clone() == "".to_string()) {
-            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
-                cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
+            Arc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
+                cause: Arc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
                     module_basename: module_basename.clone(),
                 }),
             })
         } else {
-            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+            Arc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
                 package_name: package_name.clone(),
             })
         }
     }
 }
 
-pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0PackageCrateDirLookup> {
+pub fn stage0_lookup_package_crate_dir(package_name: String) -> Arc<Stage0PackageCrateDirLookup> {
     {
-        let matches = Rc::new({
+        let matches = Arc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
                 if (row.package_name.clone() == package_name.clone()) {
@@ -363,7 +364,7 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
         });
         let crate_dir = matches.clone().iter().cloned().fold(
             "".to_string(),
-            |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
+            |acc: String, row: Arc<GeneratedPartitionCrateRow>| {
                 if (acc.clone() == "".to_string()) {
                     row.crate_dir.clone()
                 } else {
@@ -372,15 +373,15 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
             },
         );
         if (crate_dir.clone() == "".to_string()) {
-            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
-                cause: Rc::new(
+            Arc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                cause: Arc::new(
                     Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
                         package_name: package_name.clone(),
                     },
                 ),
             })
         } else {
-            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+            Arc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                 crate_dir: crate_dir.clone(),
             })
         }
@@ -388,13 +389,13 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
 }
 
 pub fn stage0_map_package_dir_refusal_to_boundary(
-    cause: Rc<Stage0PackageCrateDirRefusalCause>,
-) -> Rc<Stage0CrateBoundaryEmitRefusalCause> {
+    cause: Arc<Stage0PackageCrateDirRefusalCause>,
+) -> Arc<Stage0CrateBoundaryEmitRefusalCause> {
     match (*cause.clone()).clone() {
         Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
             package_name: package_name,
             ..
-        } => Rc::new(
+        } => Arc::new(
             Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageCrateDirMissing {
                 package_name: package_name.clone(),
             },
@@ -403,13 +404,13 @@ pub fn stage0_map_package_dir_refusal_to_boundary(
 }
 
 pub fn stage0_map_module_owner_refusal_to_boundary(
-    cause: Rc<Stage0ModuleOwnerRefusalCause>,
-) -> Rc<Stage0CrateBoundaryEmitRefusalCause> {
+    cause: Arc<Stage0ModuleOwnerRefusalCause>,
+) -> Arc<Stage0CrateBoundaryEmitRefusalCause> {
     match (*cause.clone()).clone() {
         Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
             module_basename: module_basename,
             ..
-        } => Rc::new(
+        } => Arc::new(
             Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing {
                 module_basename: module_basename.clone(),
             },
@@ -418,7 +419,7 @@ pub fn stage0_map_module_owner_refusal_to_boundary(
 }
 
 pub fn stage0_crate_boundary_emit_refusal_message(
-    cause: Rc<Stage0CrateBoundaryEmitRefusalCause>,
+    cause: Arc<Stage0CrateBoundaryEmitRefusalCause>,
 ) -> String {
     match (*cause.clone()).clone() {
         Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing {
@@ -438,46 +439,46 @@ pub fn stage0_crate_boundary_emit_refusal_message(
     }
 }
 
-pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
+pub fn stage0_foundation_runtime_dependencies() -> Arc<Vec<Arc<CargoDependency>>> {
     Rc::new(vec![
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec![]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "serde_json".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec![]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "unicode-ident".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec![]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "unicode-properties".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec!["emoji".to_string()]),
             }),
@@ -485,25 +486,25 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
     ])
 }
 
-pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
+pub fn stage0_emit_shell_registry_dependencies() -> Arc<Vec<Arc<CargoDependency>>> {
     Rc::new(vec![
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec![]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
             }),
         }),
-        Rc::new(CargoDependency {
+        Arc::new(CargoDependency {
             name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: Arc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
             }),
@@ -512,16 +513,16 @@ pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>>
 }
 
 pub fn stage0_reexport_path_dependencies_outcome(
-    reexport_packages: Rc<Vec<String>>,
-) -> Rc<Stage0ReexportPathDepsOutcome> {
+    reexport_packages: Arc<Vec<String>>,
+) -> Arc<Stage0ReexportPathDepsOutcome> {
     reexport_packages.clone().iter().cloned().fold(
-        Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+        Arc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
             deps: Rc::new(vec![]),
         }),
-        |acc: Rc<Stage0ReexportPathDepsOutcome>, pkg: String| match (*acc).clone() {
+        |acc: Arc<Stage0ReexportPathDepsOutcome>, pkg: String| match (*acc).clone() {
             Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                 cause: cause, ..
-            } => Rc::new(
+            } => Arc::new(
                 Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                     cause: cause.clone(),
                 },
@@ -531,12 +532,12 @@ pub fn stage0_reexport_path_dependencies_outcome(
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                         crate_dir: crate_dir,
                         ..
-                    } => Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+                    } => Arc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
                         deps: v1_rt::concat(
                             deps.clone(),
-                            Rc::new(vec![Rc::new(CargoDependency {
+                            Rc::new(vec![Arc::new(CargoDependency {
                                 name: pkg.clone(),
-                                source: Rc::new(CargoDepSource::LocalPathDep {
+                                source: Arc::new(CargoDepSource::LocalPathDep {
                                     path: stage0_crate_dir_to_sibling_dep_path(crate_dir.clone()),
                                 }),
                             })]),
@@ -545,7 +546,7 @@ pub fn stage0_reexport_path_dependencies_outcome(
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
                         cause: cause,
                         ..
-                    } => Rc::new(
+                    } => Arc::new(
                         Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                             cause: cause.clone(),
                         },
@@ -556,10 +557,10 @@ pub fn stage0_reexport_path_dependencies_outcome(
     )
 }
 
-pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new({
+pub fn stage0_emit_shell_path_dependencies() -> Arc<Vec<Arc<CargoDependency>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for row in Rc::new({
+        for row in Arc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
                 if stage0_partition_row_is_module_bearing(row.clone()) {
@@ -571,9 +572,9 @@ pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
         .iter()
         .cloned()
         {
-            __result.push(Rc::new(CargoDependency {
+            __result.push(Arc::new(CargoDependency {
                 name: row.package_name.clone(),
-                source: Rc::new(CargoDepSource::LocalPathDep {
+                source: Arc::new(CargoDepSource::LocalPathDep {
                     path: stage0_crate_dir_to_sibling_dep_path(row.crate_dir.clone()),
                 }),
             }));
@@ -582,7 +583,7 @@ pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
     })
 }
 
-pub fn stage0_partition_row_kind(row: Rc<GeneratedPartitionCrateRow>) -> Stage0CrateKind {
+pub fn stage0_partition_row_kind(row: Arc<GeneratedPartitionCrateRow>) -> Stage0CrateKind {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Stage0CrateKind::FoundationCrate,
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Stage0CrateKind::LayeredCoreCrate,
@@ -590,7 +591,7 @@ pub fn stage0_partition_row_kind(row: Rc<GeneratedPartitionCrateRow>) -> Stage0C
     }
 }
 
-pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> String {
+pub fn stage0_partition_row_header_doc(row: Arc<GeneratedPartitionCrateRow>) -> String {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => stage0_foundation_header_doc(),
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => stage0_layered_core_header_doc(),
@@ -599,11 +600,11 @@ pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> S
 }
 
 pub fn stage0_partition_row_dependencies_outcome(
-    row: Rc<GeneratedPartitionCrateRow>,
-) -> Rc<Stage0PartitionRowDepsOutcome> {
+    row: Arc<GeneratedPartitionCrateRow>,
+) -> Arc<Stage0PartitionRowDepsOutcome> {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            Arc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                 deps: stage0_foundation_runtime_dependencies(),
             })
         }
@@ -614,7 +615,7 @@ pub fn stage0_partition_row_dependencies_outcome(
                 Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
                     deps: reexport_deps,
                     ..
-                } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+                } => Arc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                     deps: v1_rt::concat(
                         stage0_foundation_runtime_dependencies(),
                         reexport_deps.clone(),
@@ -623,7 +624,7 @@ pub fn stage0_partition_row_dependencies_outcome(
                 Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                     cause: cause,
                     ..
-                } => Rc::new(
+                } => Arc::new(
                     Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
                         cause: cause.clone(),
                     },
@@ -631,7 +632,7 @@ pub fn stage0_partition_row_dependencies_outcome(
             }
         }
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            Arc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                 deps: v1_rt::concat(
                     stage0_foundation_runtime_dependencies(),
                     stage0_emit_shell_path_dependencies(),
@@ -642,11 +643,11 @@ pub fn stage0_partition_row_dependencies_outcome(
 }
 
 pub fn stage0_partition_row_features(
-    row: Rc<GeneratedPartitionCrateRow>,
-) -> Rc<Vec<Rc<CargoFeature>>> {
+    row: Arc<GeneratedPartitionCrateRow>,
+) -> Arc<Vec<Arc<CargoFeature>>> {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(vec![Rc::new(CargoFeature {
+            Rc::new(vec![Arc::new(CargoFeature {
                 name: "text_lookup_work_counter".to_string(),
                 dependencies: Rc::new(vec![]),
             })])
@@ -657,19 +658,19 @@ pub fn stage0_partition_row_features(
 }
 
 pub fn stage0_partition_row_to_spec_outcome(
-    row: Rc<GeneratedPartitionCrateRow>,
-) -> Rc<Stage0PartitionRowSpecOutcome> {
+    row: Arc<GeneratedPartitionCrateRow>,
+) -> Arc<Stage0PartitionRowSpecOutcome> {
     match (*stage0_partition_row_dependencies_outcome(row.clone())).clone() {
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused { cause: cause, .. } => {
-            Rc::new(
+            Arc::new(
                 Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
                     cause: cause.clone(),
                 },
             )
         }
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk { deps: deps, .. } => {
-            Rc::new(Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
-                spec: Rc::new(Stage0CrateSpec {
+            Arc::new(Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
+                spec: Arc::new(Stage0CrateSpec {
                     package_name: row.package_name.clone(),
                     crate_dir: row.crate_dir.clone(),
                     kind: stage0_partition_row_kind(row.clone()),
@@ -685,7 +686,7 @@ pub fn stage0_partition_row_to_spec_outcome(
     }
 }
 
-pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
+pub fn render_stage0_crate_dep(dep: Arc<CargoDependency>) -> String {
     match (*dep.source.clone()).clone() {
         CargoDepSource::RegistryDep {
             version, features, ..
@@ -700,12 +701,12 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     }
 }
 
-pub fn render_stage0_crate_feature(feature: Rc<CargoFeature>) -> String {
+pub fn render_stage0_crate_feature(feature: Arc<CargoFeature>) -> String {
     if ((feature.dependencies.clone().len() as i64) == 0) {
         v1_rt::concat(feature.name.clone(), " = []\n".to_string())
     } else {
         {
-            let dep_names = Rc::new({
+            let dep_names = Arc::new({
                 let mut __result = Vec::new();
                 for d in feature.dependencies.clone().iter().cloned() {
                     __result.push(v1_rt::concat(
@@ -727,13 +728,13 @@ pub fn render_stage0_crate_feature(feature: Rc<CargoFeature>) -> String {
     }
 }
 
-pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>) -> String {
+pub fn render_stage0_crate_features_section(features: Arc<Vec<Arc<CargoFeature>>>) -> String {
     if ((features.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         v1_rt::concat(
             v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
-            Rc::new(
+            Arc::new(
                 features
                     .clone()
                     .iter()
@@ -746,9 +747,9 @@ pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>)
     }
 }
 
-pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
+pub fn emit_stage0_crate_manifest(spec: Arc<Stage0CrateSpec>) -> Arc<TextFile> {
     {
-        let deps = Rc::new(
+        let deps = Arc::new(
             spec.dependencies
                 .clone()
                 .iter()
@@ -770,7 +771,7 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
             ),
             deps.clone(),
         );
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(spec.crate_dir.clone(), "/Cargo.toml".to_string()),
             content: content.clone(),
         })
@@ -799,9 +800,9 @@ pub fn stage0_crate_mod_include(module_basename: String) -> String {
     )
 }
 
-pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
+pub fn render_stage0_foundation_lib(spec: Arc<Stage0CrateSpec>) -> String {
     {
-        let includes = Rc::new({
+        let includes = Arc::new({
             let mut __result = Vec::new();
             for m in spec.modules.clone().iter().cloned() {
                 __result.push(stage0_crate_mod_include(m.clone()));
@@ -833,9 +834,9 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
     }
 }
 
-pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
+pub fn render_stage0_layered_core_lib(spec: Arc<Stage0CrateSpec>) -> String {
     {
-        let sorted_reexports = Rc::new({
+        let sorted_reexports = Arc::new({
             let mut __sorted: Vec<_> = spec.reexport_packages.clone().iter().cloned().collect();
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka =
@@ -846,7 +847,7 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
             });
             __sorted
         });
-        let reexports = Rc::new({
+        let reexports = Arc::new({
             let mut __result = Vec::new();
             for pkg in sorted_reexports.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -860,7 +861,7 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
             __result
         })
         .join(&"\n".to_string());
-        let includes = Rc::new({
+        let includes = Arc::new({
             let mut __result = Vec::new();
             for m in spec.modules.clone().iter().cloned() {
                 __result.push(stage0_crate_mod_include(m.clone()));
@@ -891,19 +892,19 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
 }
 
 pub fn stage0_emit_shell_module_reexports_outcome(
-    modules: Rc<Vec<String>>,
-) -> Rc<Stage0EmitShellReexportsOutcome> {
+    modules: Arc<Vec<String>>,
+) -> Arc<Stage0EmitShellReexportsOutcome> {
     modules.clone().iter().cloned().fold(
-        Rc::new(
+        Arc::new(
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                 lines: Rc::new(vec![]),
             },
         ),
-        |acc: Rc<Stage0EmitShellReexportsOutcome>, module_basename: String| match (*acc).clone() {
+        |acc: Arc<Stage0EmitShellReexportsOutcome>, module_basename: String| match (*acc).clone() {
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
                 cause: cause,
                 ..
-            } => Rc::new(
+            } => Arc::new(
                 Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
                     cause: cause.clone(),
                 },
@@ -915,7 +916,7 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                     Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
                         package_name: owner,
                         ..
-                    } => Rc::new(
+                    } => Arc::new(
                         Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                             lines: v1_rt::concat(
                                 lines.clone(),
@@ -942,7 +943,7 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                         },
                     ),
                     Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => {
-                        Rc::new(
+                        Arc::new(
                             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
                                 cause: cause.clone(),
                             },
@@ -955,14 +956,14 @@ pub fn stage0_emit_shell_module_reexports_outcome(
 }
 
 pub fn render_stage0_emit_core_lib_outcome(
-    spec: Rc<Stage0CrateSpec>,
-) -> Rc<Stage0CrateLibEmitOutcome> {
+    spec: Arc<Stage0CrateSpec>,
+) -> Arc<Stage0CrateLibEmitOutcome> {
     match (*stage0_emit_shell_module_reexports_outcome(spec.modules.clone())).clone() {
-    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused { cause: cause, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
+    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused { cause: cause, .. } => Arc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
     cause: cause.clone(),
 }),
-    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-    file: Rc::new(TextFile {
+    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Arc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+    file: Arc::new(TextFile {
     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
     content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), lines.clone().join(&"\n\n".to_string())), "\n\n".to_string()), "#[rustfmt::skip]\n#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string()),
 }),
@@ -977,19 +978,19 @@ pub fn stage0_partition_lookups_valid() -> bool {
     }
 }
 
-pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {
+pub fn emit_stage0_crate_lib_outcome(spec: Arc<Stage0CrateSpec>) -> Arc<Stage0CrateLibEmitOutcome> {
     match spec.kind.clone() {
         Stage0CrateKind::FoundationCrate => {
-            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: Rc::new(TextFile {
+            Arc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+                file: Arc::new(TextFile {
                     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
                     content: render_stage0_foundation_lib(spec.clone()),
                 }),
             })
         }
         Stage0CrateKind::LayeredCoreCrate => {
-            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: Rc::new(TextFile {
+            Arc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+                file: Arc::new(TextFile {
                     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
                     content: render_stage0_layered_core_lib(spec.clone()),
                 }),
@@ -999,17 +1000,18 @@ pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0Crat
     }
 }
 
-pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
+pub fn stage0_crate_plan_outcome() -> Arc<Stage0CratePlanOutcome> {
     generated_partition_crate_rows().iter().cloned().fold(
-        Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
-            plan: Rc::new(Stage0CratePlan {
+        Arc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
+            plan: Arc::new(Stage0CratePlan {
                 crates: Rc::new(vec![]),
             }),
         }),
-        |acc: Rc<Stage0CratePlanOutcome>, row: Rc<GeneratedPartitionCrateRow>| match (*acc).clone()
+        |acc: Arc<Stage0CratePlanOutcome>, row: Arc<GeneratedPartitionCrateRow>| match (*acc)
+            .clone()
         {
             Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => {
-                Rc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
+                Arc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
                     cause: cause.clone(),
                 })
             }
@@ -1018,13 +1020,13 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
                     Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
                         cause: cause,
                         ..
-                    } => Rc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
+                    } => Arc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
                         cause: cause.clone(),
                     }),
                     Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
                         spec: spec, ..
-                    } => Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
-                        plan: Rc::new(Stage0CratePlan {
+                    } => Arc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
+                        plan: Arc::new(Stage0CratePlan {
                             crates: v1_rt::concat(plan.crates.clone(), Rc::new(vec![spec.clone()])),
                         }),
                     }),
@@ -1035,16 +1037,17 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
 }
 
 pub fn emit_stage0_crate_boundary_files_outcome(
-    plan: Rc<Stage0CratePlan>,
-) -> Rc<Stage0CrateBoundaryEmitOutcome> {
+    plan: Arc<Stage0CratePlan>,
+) -> Arc<Stage0CrateBoundaryEmitOutcome> {
     plan.crates.clone().iter().cloned().fold(
-        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+        Arc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
             files: Rc::new(vec![]),
         }),
-        |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: Rc<Stage0CrateSpec>| match (*acc).clone() {
+        |acc: Arc<Stage0CrateBoundaryEmitOutcome>, spec: Arc<Stage0CrateSpec>| match (*acc).clone()
+        {
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                 cause: cause, ..
-            } => Rc::new(
+            } => Arc::new(
                 Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                     cause: cause.clone(),
                 },
@@ -1053,13 +1056,13 @@ pub fn emit_stage0_crate_boundary_files_outcome(
                 match (*emit_stage0_crate_lib_outcome(spec.clone())).clone() {
                     Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
                         cause: cause, ..
-                    } => Rc::new(
+                    } => Arc::new(
                         Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                             cause: stage0_map_module_owner_refusal_to_boundary(cause.clone()),
                         },
                     ),
                     Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk { file: lib_file, .. } => {
-                        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+                        Arc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
                             files: v1_rt::concat(
                                 files.clone(),
                                 Rc::new(vec![
@@ -1075,9 +1078,9 @@ pub fn emit_stage0_crate_boundary_files_outcome(
     )
 }
 
-pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome> {
+pub fn stage0_crate_boundary_emit_outcome() -> Arc<Stage0CrateBoundaryEmitOutcome> {
     match (*stage0_crate_plan_outcome()).clone() {
-        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(
+        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Arc::new(
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                 cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
             },

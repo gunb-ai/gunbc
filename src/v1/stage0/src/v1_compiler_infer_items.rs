@@ -29,6 +29,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -48,18 +49,18 @@ pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
     pub kind: ItemKind,
-    pub service_names: Rc<Vec<String>>,
-    pub resource_names: Rc<Vec<String>>,
-    pub params: Rc<Vec<Rc<Node>>>,
+    pub service_names: Arc<Vec<String>>,
+    pub resource_names: Arc<Vec<String>>,
+    pub params: Arc<Vec<Arc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleInterface {
-    pub summary: Rc<InterfaceSummary>,
-    pub env: Rc<TypeEnv>,
-    pub cache: Rc<TypeEnvCache>,
+    pub summary: Arc<InterfaceSummary>,
+    pub env: Arc<TypeEnv>,
+    pub cache: Arc<TypeEnvCache>,
 }
 
 pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
@@ -73,35 +74,35 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Rc<Node>,
-    pub items: Rc<Vec<Rc<Node>>>,
-    pub type_env: Rc<TypeEnv>,
-    pub type_env_cache: Rc<TypeEnvCache>,
-    pub interface: Rc<ModuleInterface>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub module: Arc<Node>,
+    pub items: Arc<Vec<Arc<Node>>>,
+    pub type_env: Arc<TypeEnv>,
+    pub type_env_cache: Arc<TypeEnvCache>,
+    pub interface: Arc<ModuleInterface>,
+    pub func_env: Arc<ResolvedFuncEnv>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Arc<Vec<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub modules: Arc<Vec<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    pub emit_graph_info: Arc<EmitGraphInfo>,
 }
 
 pub fn inferred_to_outputs(
-    inferred: Option<Rc<InferredNode>>,
-    span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
+    inferred: Option<Arc<InferredNode>>,
+    span: Arc<SourceSpan>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<Node>>> {
     if (inferred.clone() == None) {
         Rc::new(vec![])
     } else {
@@ -115,7 +116,7 @@ pub fn inferred_to_outputs(
                         let is_product = (rt.connective.clone() == Connective::Conj);
                         if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
-                                Rc::new({
+                                Arc::new({
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
@@ -181,7 +182,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: Rc<Node>) -> ItemKind {
+pub fn item_kind(item: Arc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))

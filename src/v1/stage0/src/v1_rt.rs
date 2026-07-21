@@ -6,6 +6,7 @@
 use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[cfg(feature = "text_lookup_work_counter")]
 thread_local! {
@@ -295,7 +296,7 @@ pub fn trim(s: String) -> String {
     s.trim().to_string()
 }
 
-pub fn count<T: Clone>(items: Rc<Vec<T>>) -> i64 {
+pub fn count<T: Clone>(items: Arc<Vec<T>>) -> i64 {
     items.len() as i64
 }
 
@@ -389,12 +390,12 @@ pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
 // args (cheap refcount bump) keep the inner element pointers, so ptr_eq on the
 // clones equals ptr_eq on the originals -- lets the .dag pass args by value and
 // emit through the normal clone path (no all-args-by-ref emit rule needed).
-pub fn rc_ptr_eq<T>(a: Rc<T>, b: Rc<T>) -> bool {
-    Rc::ptr_eq(&a, &b)
+pub fn rc_ptr_eq<T>(a: Arc<T>, b: Arc<T>) -> bool {
+    Arc::ptr_eq(&a, &b)
 }
 
-pub fn rc_vec_ptr_eq<T>(a: Rc<Vec<Rc<T>>>, b: Rc<Vec<Rc<T>>>) -> bool {
-    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Rc::ptr_eq(x, y))
+pub fn rc_vec_ptr_eq<T>(a: Arc<Vec<Arc<T>>>, b: Arc<Vec<Arc<T>>>) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Arc::ptr_eq(x, y))
 }
 
 pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
@@ -411,13 +412,13 @@ pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
     list
 }
 
-pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
+pub fn append<T: Clone>(list: Arc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
     v.push_back(item);
     v
 }
 
-pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
+pub fn chars_to_string(chars: &Arc<Vec<i64>>, start: i64, end: i64) -> String {
     let len = chars.len();
     let start = (start.max(0) as usize).min(len);
     let end = (end.max(0) as usize).min(len).max(start);
@@ -448,19 +449,19 @@ pub fn map_has<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) 
     m.contains_key(&key)
 }
 
-pub fn rc_empty_set<T: Ord>() -> Rc<BTreeSet<T>> {
-    Rc::new(BTreeSet::new())
+pub fn rc_empty_set<T: Ord>() -> Arc<BTreeSet<T>> {
+    Arc::new(BTreeSet::new())
 }
 
-pub fn rc_set_insert<T: Ord + Clone>(mut s: Rc<BTreeSet<T>>, x: T) -> Rc<BTreeSet<T>> {
-    Rc::make_mut(&mut s).insert(x);
+pub fn rc_set_insert<T: Ord + Clone>(mut s: Arc<BTreeSet<T>>, x: T) -> Arc<BTreeSet<T>> {
+    Arc::make_mut(&mut s).insert(x);
     s
 }
 
-pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>> {
+pub fn rc_set_union<T: Ord + Clone>(a: Arc<BTreeSet<T>>, b: Arc<BTreeSet<T>>) -> Arc<BTreeSet<T>> {
     let mut out = a;
     for x in b.iter().cloned() {
-        Rc::make_mut(&mut out).insert(x);
+        Arc::make_mut(&mut out).insert(x);
     }
     out
 }
@@ -469,8 +470,8 @@ pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
     s.as_ref().contains(&x)
 }
 
-pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    Rc::new(list.iter().cloned().rev().collect())
+pub fn reverse<T: Clone>(list: Arc<Vec<T>>) -> Arc<Vec<T>> {
+    Arc::new(list.iter().cloned().rev().collect())
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -481,29 +482,29 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // These mirror the bare Vec/HashMap functions above but operate on Rc-wrapped
 // containers for O(1) clone cost. Generated code using Rc container templates
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
-// map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
+// map_contains_key, map_has) work with Arc<HashMap> via auto-deref.
 
 // take_owned: move out of a uniquely-held Rc; clone when shared. With every
 // container realized persistently (im), the shared-arm clone is cheap
 // structural sharing — an ordinary designed path, not a degradation arm, so
 // no counter and no refusal (the clone-fallback guard class was deleted with
-// the Rc<std container> carriers it policed).
-pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
-    match Rc::try_unwrap(x) {
+// the Arc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Arc<T>) -> T {
+    match Arc::try_unwrap(x) {
         Ok(v) => v,
         Err(rc) => (*rc).clone(),
     }
 }
 
-pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
+pub fn rc_list_push<T: Clone>(list: Arc<Vec<T>>, item: T) -> Arc<Vec<T>> {
     let mut v = list;
-    Rc::make_mut(&mut v).push_back(item);
+    Arc::make_mut(&mut v).push_back(item);
     v
 }
 
-pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
+pub fn rc_list_concat<T: Clone>(a: Arc<Vec<T>>, b: Arc<Vec<T>>) -> Arc<Vec<T>> {
     let mut result = a;
-    Rc::make_mut(&mut result).extend(b.iter().cloned());
+    Arc::make_mut(&mut result).extend(b.iter().cloned());
     result
 }
 
@@ -512,21 +513,21 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
 // make_mut's clone arm is O(1) structural sharing and each update copies an
 // O(log n) node path — a designed update, never a degradation arm.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
-    map: Rc<HashMap<K, V>>,
+    map: Arc<HashMap<K, V>>,
     key: K,
     value: V,
-) -> Rc<HashMap<K, V>> {
+) -> Arc<HashMap<K, V>> {
     let mut m = map;
-    Rc::make_mut(&mut m).insert(key, value);
+    Arc::make_mut(&mut m).insert(key, value);
     m
 }
 
 pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
-    base: Rc<HashMap<K, V>>,
-    overlay: Rc<HashMap<K, V>>,
-) -> Rc<HashMap<K, V>> {
+    base: Arc<HashMap<K, V>>,
+    overlay: Arc<HashMap<K, V>>,
+) -> Arc<HashMap<K, V>> {
     let mut result = base;
-    let inner = Rc::make_mut(&mut result);
+    let inner = Arc::make_mut(&mut result);
     for (k, v) in overlay.iter() {
         inner.insert(k.clone(), v.clone());
     }
@@ -534,18 +535,18 @@ pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
 }
 
 pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(
-    list: Rc<Vec<V>>,
+    list: Arc<Vec<V>>,
     key_fn: F,
-) -> Rc<HashMap<String, V>> {
-    Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
+) -> Arc<HashMap<String, V>> {
+    Arc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
 }
 
-pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
-    Rc::new(HashMap::new())
+pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Arc<HashMap<K, V>> {
+    Arc::new(HashMap::new())
 }
 
-impl<T: Clone> V2Concat for Rc<Vec<T>> {
-    fn v1_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> {
+impl<T: Clone> V2Concat for Arc<Vec<T>> {
+    fn v1_concat(self, other: Arc<Vec<T>>) -> Arc<Vec<T>> {
         rc_list_concat(self, other)
     }
 }

@@ -10,21 +10,22 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn compute_in_graph_deps(
-    all_names: Rc<Vec<String>>,
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    name_set: Rc<BTreeSet<String>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    all_names: Arc<Vec<String>>,
+    deps_map: Arc<HashMap<String, Arc<Vec<String>>>>,
+    name_set: Arc<BTreeSet<String>>,
+) -> Arc<HashMap<String, Arc<Vec<String>>>> {
     {
         let result = all_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+            v1_rt::rc_empty_map::<String, Arc<Vec<String>>>(),
+            |acc: Arc<HashMap<String, Arc<Vec<String>>>>, name: String| match v1_rt::map_get(
                 &deps_map,
                 name.clone(),
             ) {
                 Some(deps) => {
-                    let local = Rc::new({
+                    let local = Arc::new({
                         let mut __result = Vec::new();
                         for d in deps.clone().iter().cloned() {
                             if ((d.clone() != name.clone())
@@ -45,18 +46,18 @@ pub fn compute_in_graph_deps(
 }
 
 pub fn build_reverse_adj(
-    all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    all_names: Arc<Vec<String>>,
+    local_deps: Arc<HashMap<String, Arc<Vec<String>>>>,
+) -> Arc<HashMap<String, Arc<Vec<String>>>> {
     all_names.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+        v1_rt::rc_empty_map::<String, Arc<Vec<String>>>(),
+        |acc: Arc<HashMap<String, Arc<Vec<String>>>>, name: String| match v1_rt::map_get(
             &local_deps,
             name.clone(),
         ) {
             Some(deps) => deps.clone().iter().cloned().fold(
                 acc.clone(),
-                |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
+                |inner_acc: Arc<HashMap<String, Arc<Vec<String>>>>, dep: String| {
                     let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
                         Some(v) => v.clone(),
                         None => Rc::new(vec![]),
@@ -74,12 +75,12 @@ pub fn build_reverse_adj(
 }
 
 pub fn build_in_degree(
-    all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, i64>> {
+    all_names: Arc<Vec<String>>,
+    local_deps: Arc<HashMap<String, Arc<Vec<String>>>>,
+) -> Arc<HashMap<String, i64>> {
     all_names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, name: String| {
+        |acc: Arc<HashMap<String, i64>>, name: String| {
             let deg = match v1_rt::map_get(&local_deps, name.clone()) {
                 Some(deps) => (deps.clone().len() as i64),
                 None => 0,
@@ -90,13 +91,13 @@ pub fn build_in_degree(
 }
 
 pub fn kahn_remove_loop(
-    remaining: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<Vec<String>> {
+    remaining: Arc<Vec<String>>,
+    local_deps: Arc<HashMap<String, Arc<Vec<String>>>>,
+) -> Arc<Vec<String>> {
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
         let in_degree = build_in_degree(remaining.clone(), local_deps.clone());
-        let initial_queue = Rc::new({
+        let initial_queue = Arc::new({
             let mut __result = Vec::new();
             for n in remaining.clone().iter().cloned() {
                 if match v1_rt::map_get(&in_degree, n.clone()) {
@@ -118,7 +119,7 @@ pub fn kahn_remove_loop(
         if (final_state.removed_count.clone() == (remaining.clone().len() as i64)) {
             Rc::new(vec![])
         } else {
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for n in remaining.clone().iter().cloned() {
                     if match v1_rt::map_get(&final_state.in_degree.clone(), n.clone()) {
@@ -136,30 +137,30 @@ pub fn kahn_remove_loop(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnState {
-    pub in_degree: Rc<HashMap<String, i64>>,
+    pub in_degree: Arc<HashMap<String, i64>>,
     pub removed_count: i64,
 }
 
 pub fn kahn_cycle_drain(
-    mut queue: Rc<Vec<String>>,
-    mut in_degree: Rc<HashMap<String, i64>>,
-    mut reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut queue: Arc<Vec<String>>,
+    mut in_degree: Arc<HashMap<String, i64>>,
+    mut reverse_adj: Arc<HashMap<String, Arc<Vec<String>>>>,
     mut removed_count: i64,
     mut fuel: i64,
-) -> Rc<KahnState> {
+) -> Arc<KahnState> {
     loop {
         if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnState {
+            return Arc::new(KahnState {
                 in_degree: in_degree.clone(),
                 removed_count: removed_count.clone(),
             });
         }
         let result = queue.clone().iter().cloned().fold(
-            Rc::new(KahnState {
+            Arc::new(KahnState {
                 in_degree: in_degree.clone(),
                 removed_count: removed_count.clone(),
             }),
-            |state: Rc<KahnState>, node: String| {
+            |state: Arc<KahnState>, node: String| {
                 let state = v1_rt::take_owned(state);
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
@@ -168,7 +169,7 @@ pub fn kahn_cycle_drain(
                     };
                     let new_deg = dependents.clone().iter().cloned().fold(
                         state.in_degree,
-                        |deg_acc: Rc<HashMap<String, i64>>, dep: String| {
+                        |deg_acc: Arc<HashMap<String, i64>>, dep: String| {
                             let old = match v1_rt::map_get(&deg_acc, dep.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -176,7 +177,7 @@ pub fn kahn_cycle_drain(
                             v1_rt::rc_map_insert(deg_acc.clone(), dep.clone(), (old.clone() - 1))
                         },
                     );
-                    Rc::new(KahnState {
+                    Arc::new(KahnState {
                         in_degree: new_deg.clone(),
                         removed_count: (state.removed_count + 1),
                     })
@@ -224,13 +225,13 @@ pub fn kahn_cycle_drain(
 }
 
 pub fn detect_type_cycles_kahn(
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<Vec<String>> {
+    deps_map: Arc<HashMap<String, Arc<Vec<String>>>>,
+    bindings: Arc<HashMap<String, Arc<TypeBinding>>>,
+) -> Arc<Vec<String>> {
     {
-        let all_names = Rc::new({
+        let all_names = Arc::new({
             let mut __result = Vec::new();
-            for b in Rc::new(v1_rt::map_values(&bindings)).iter().cloned() {
+            for b in Arc::new(v1_rt::map_values(&bindings)).iter().cloned() {
                 __result.push(b.name.clone());
             }
             __result
@@ -244,7 +245,7 @@ pub fn detect_type_cycles_kahn(
             });
         let local_deps =
             compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set.clone());
-        let self_refs = Rc::new({
+        let self_refs = Arc::new({
             let mut __result = Vec::new();
             for name in all_names.clone().iter().cloned() {
                 if match v1_rt::map_get(&deps_map, name.clone()) {
@@ -280,7 +281,7 @@ pub fn detect_type_cycles_kahn(
             .fold(sr_set.clone(), |acc: _, n: String| {
                 v1_rt::rc_set_insert(acc, n.clone())
             });
-        let result = Rc::new({
+        let result = Arc::new({
             let mut __result = Vec::new();
             for n in all_names.clone().iter().cloned() {
                 if v1_rt::set_contains(&cm_set, n.clone()) {

@@ -13,83 +13,84 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
+pub fn compiler_inductive_fields() -> Arc<Vec<Arc<InductiveField>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<InductiveField>>> = {
-                Rc::new(vec![Rc::new(InductiveField {
+            static CACHED: Arc<Vec<Arc<InductiveField>>> = {
+                Rc::new(vec![Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "children".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "params".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "uses".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "properties".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "body".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "transport".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "type_annotation".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "inferred".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "InferredNode".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "InferredNode".to_string(),
         variant_name: "Resolved".to_string(),
         field_name: "node".to_string(),
         shape: RecursionShape::DirectRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "MatchPattern".to_string(),
         variant_name: "VariantPattern".to_string(),
         field_name: "field_bindings".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "AlgebraMethodSemantics".to_string(),
         field_name: "method_def".to_string(),
         shape: RecursionShape::DirectRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "AlgebraMethodSemantics".to_string(),
         field_name: "fold_accumulator_type".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }), Arc::new(InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "ServiceMethodSemantics".to_string(),
         field_name: "op_params".to_string(),
@@ -98,21 +99,21 @@ pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<InductiveField>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<InductiveField>>>| c.clone())
 }
 
-pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
+pub fn compiler_recursive_types() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("Node".to_string(), true);
             __m.insert("InferredNode".to_string(), true);
             __m.insert("MatchPattern".to_string(), true);
             __m.insert("MethodSemantics".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_compiler_recursive_type(name: String) -> bool {

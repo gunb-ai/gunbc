@@ -34,20 +34,21 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn re_export_derive_op_effect(
     operation_name: String,
     method: HttpMethod,
-    path: Rc<PathTemplate>,
-) -> Rc<DeriveOpEffectResult> {
+    path: Arc<PathTemplate>,
+) -> Arc<DeriveOpEffectResult> {
     derive_op_effect(operation_name.clone(), method.clone(), path.clone())
 }
 
 pub fn re_export_check_modifier(
-    op: Rc<DerivedOpEffect>,
+    op: Arc<DerivedOpEffect>,
     declared_idempotent: bool,
     declared_readonly: bool,
-) -> Rc<ModifierCheck> {
+) -> Arc<ModifierCheck> {
     check_modifier_vs_derivation(
         op.clone(),
         declared_idempotent.clone(),
@@ -55,10 +56,10 @@ pub fn re_export_check_modifier(
     )
 }
 
-pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
+pub fn re_export_parse_path_template(raw: String) -> Arc<PathTemplateParseResult> {
     parse_path_template(raw.clone())
 }
 
-pub fn re_export_has_path_params(template: Rc<PathTemplate>) -> bool {
+pub fn re_export_has_path_params(template: Arc<PathTemplate>) -> bool {
     has_path_params(template.clone())
 }

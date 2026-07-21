@@ -16,6 +16,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn ct_module_header() -> String {
     v1_rt::concat(
@@ -81,7 +82,7 @@ pub fn ct_type_size_test() -> String {
 pub fn ct_coercion_tests() -> String {
     {
         let entries = extract_coercion_tests();
-        let test_fns = Rc::new({
+        let test_fns = Arc::new({
             let mut __result = Vec::new();
             for e in entries.clone().iter().cloned() {
                 __result.push(render_coercion_test_rust(e.clone()));
@@ -105,9 +106,9 @@ pub fn render_target_rust_enum(target: RenderTarget) -> String {
     }
 }
 
-pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
+pub fn render_coercion_test_rust(entry: Arc<CoercionTestEntry>) -> String {
     {
-        let assertions = Rc::new({
+        let assertions = Arc::new({
             let mut __result = Vec::new();
             for a in entry.assertions.clone().iter().cloned() {
                 __result.push(render_coercion_assertion_rust(a.clone()));
@@ -133,21 +134,21 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
     }
 }
 
-pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
+pub fn first_or_empty(items: Arc<Vec<String>>) -> String {
     match items.clone().first().cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
-pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
+pub fn second_or_empty(items: Arc<Vec<String>>) -> String {
     match items.clone().get(1 as usize).cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
-pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
+pub fn render_coercion_assertion_rust(a: Arc<CoercionAssertion>) -> String {
     match (*a.clone()).clone() {
         CoercionAssertion::CheckpointAssertion {
             target: t,

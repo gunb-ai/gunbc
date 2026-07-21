@@ -12,6 +12,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -47,7 +48,7 @@ pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     }
 }
 
-pub fn uri_is_url(uri: Rc<Uri>) -> bool {
+pub fn uri_is_url(uri: Arc<Uri>) -> bool {
     uri_scheme_is_http(uri.scheme.clone())
 }
 
@@ -64,7 +65,7 @@ pub fn uri_scheme_wire(s: UriScheme) -> String {
     }
 }
 
-pub fn uri_wire(uri: Rc<Uri>) -> String {
+pub fn uri_wire(uri: Arc<Uri>) -> String {
     v1_rt::concat(uri_scheme_wire(uri.scheme.clone()), uri.locator.clone())
 }
 
@@ -93,58 +94,58 @@ pub fn href_is_relative_reference(s: String) -> bool {
         || !v1_rt::contains(s.clone(), ":".to_string()))
 }
 
-pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
+pub fn parse_href_scheme(url: String) -> Arc<ParsedHrefScheme> {
     {
         let s = v1_rt::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
-            Rc::new(ParsedHrefScheme::UnknownHref)
+            Arc::new(ParsedHrefScheme::UnknownHref)
         } else {
             if href_is_relative_reference(s.clone()) {
-                Rc::new(ParsedHrefScheme::RelativeHref)
+                Arc::new(ParsedHrefScheme::RelativeHref)
             } else {
                 if (v1_rt::starts_with(s.clone(), "javascript:".to_string())
                     || v1_rt::starts_with(s.clone(), "JAVASCRIPT:".to_string()))
                 {
-                    Rc::new(ParsedHrefScheme::HrefScheme {
+                    Arc::new(ParsedHrefScheme::HrefScheme {
                         scheme: UriScheme::Javascript,
                     })
                 } else {
                     if (v1_rt::starts_with(s.clone(), "data:".to_string())
                         || v1_rt::starts_with(s.clone(), "DATA:".to_string()))
                     {
-                        Rc::new(ParsedHrefScheme::HrefScheme {
+                        Arc::new(ParsedHrefScheme::HrefScheme {
                             scheme: UriScheme::Data,
                         })
                     } else {
                         if (v1_rt::starts_with(s.clone(), "vbscript:".to_string())
                             || v1_rt::starts_with(s.clone(), "VBSCRIPT:".to_string()))
                         {
-                            Rc::new(ParsedHrefScheme::HrefScheme {
+                            Arc::new(ParsedHrefScheme::HrefScheme {
                                 scheme: UriScheme::Vbscript,
                             })
                         } else {
                             if (v1_rt::starts_with(s.clone(), "https://".to_string())
                                 || v1_rt::starts_with(s.clone(), "HTTPS://".to_string()))
                             {
-                                Rc::new(ParsedHrefScheme::HrefScheme {
+                                Arc::new(ParsedHrefScheme::HrefScheme {
                                     scheme: UriScheme::Https,
                                 })
                             } else {
                                 if (v1_rt::starts_with(s.clone(), "http://".to_string())
                                     || v1_rt::starts_with(s.clone(), "HTTP://".to_string()))
                                 {
-                                    Rc::new(ParsedHrefScheme::HrefScheme {
+                                    Arc::new(ParsedHrefScheme::HrefScheme {
                                         scheme: UriScheme::Http,
                                     })
                                 } else {
                                     if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
                                         || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
                                     {
-                                        Rc::new(ParsedHrefScheme::HrefScheme {
+                                        Arc::new(ParsedHrefScheme::HrefScheme {
                                             scheme: UriScheme::Mailto,
                                         })
                                     } else {
-                                        Rc::new(ParsedHrefScheme::UnknownHref)
+                                        Arc::new(ParsedHrefScheme::UnknownHref)
                                     }
                                 }
                             }

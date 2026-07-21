@@ -15,26 +15,27 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "en.wikipedia.org/wiki/Software_versioning".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
 pub type VersionIdentity = String;
 
 #[derive(Clone)]
 pub struct VersionScheme {
-    pub compare: Rc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
+    pub compare: Arc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
 }
 
 pub type VersionConstraint = String;

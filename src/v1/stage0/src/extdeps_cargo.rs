@@ -20,19 +20,20 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/cargo/".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
 #[derive(
@@ -87,7 +88,7 @@ pub struct CargoPackage {
 pub enum CargoDepSource {
     RegistryDep {
         version: CargoVersionRequirement,
-        features: Rc<Vec<String>>,
+        features: Arc<Vec<String>>,
     },
     LocalPathDep {
         path: String,
@@ -97,7 +98,7 @@ pub enum CargoDepSource {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoDependency {
     pub name: String,
-    pub source: Rc<CargoDepSource>,
+    pub source: Arc<CargoDepSource>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -122,20 +123,20 @@ impl CargoTarget {
 }
 
 pub fn cargo_target_source_path(
-    target: Rc<CargoTarget>,
+    target: Arc<CargoTarget>,
     package_name: String,
-) -> Rc<FilePathParts> {
+) -> Arc<FilePathParts> {
     match (*target.clone()).clone() {
-        CargoTarget::Lib => Rc::new(FilePathParts {
+        CargoTarget::Lib => Arc::new(FilePathParts {
             segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
         }),
         CargoTarget::Bin { name: name, .. } => {
             if (name.clone() == package_name.clone()) {
-                Rc::new(FilePathParts {
+                Arc::new(FilePathParts {
                     segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
                 })
             } else {
-                Rc::new(FilePathParts {
+                Arc::new(FilePathParts {
                     segments: Rc::new(vec![
                         "src".to_string(),
                         "bin".to_string(),
@@ -144,19 +145,19 @@ pub fn cargo_target_source_path(
                 })
             }
         }
-        CargoTarget::CargoTest { name: name, .. } => Rc::new(FilePathParts {
+        CargoTarget::CargoTest { name: name, .. } => Arc::new(FilePathParts {
             segments: Rc::new(vec![
                 "tests".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
         }),
-        CargoTarget::Example { name: name, .. } => Rc::new(FilePathParts {
+        CargoTarget::Example { name: name, .. } => Arc::new(FilePathParts {
             segments: Rc::new(vec![
                 "examples".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
         }),
-        CargoTarget::Bench { name: name, .. } => Rc::new(FilePathParts {
+        CargoTarget::Bench { name: name, .. } => Arc::new(FilePathParts {
             segments: Rc::new(vec![
                 "benches".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
@@ -165,15 +166,15 @@ pub fn cargo_target_source_path(
     }
 }
 
-pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
+pub fn rust_module_candidate_paths(stem: String) -> Arc<Vec<Arc<FilePathParts>>> {
     Rc::new(vec![
-        Rc::new(FilePathParts {
+        Arc::new(FilePathParts {
             segments: Rc::new(vec![
                 "src".to_string(),
                 v1_rt::concat(stem.clone(), ".rs".to_string()),
             ]),
         }),
-        Rc::new(FilePathParts {
+        Arc::new(FilePathParts {
             segments: Rc::new(vec!["src".to_string(), stem.clone(), "mod.rs".to_string()]),
         }),
     ])
@@ -181,19 +182,19 @@ pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
 
 pub type CargoProfile = String;
 
-pub fn canonical_profiles() -> Rc<Vec<String>> {
+pub fn canonical_profiles() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Arc<Vec<String>> = {
             Rc::new(vec!["dev".to_string(), "release".to_string(), "test".to_string(), "bench".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoFeature {
     pub name: String,
-    pub dependencies: Rc<Vec<String>>,
+    pub dependencies: Arc<Vec<String>>,
 }
 
 #[derive(

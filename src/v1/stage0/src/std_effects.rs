@@ -21,6 +21,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -28,7 +29,7 @@ pub enum EffectShape<K> {
     ReadEffect,
     UpsertEffect { key_source: K },
     DeleteEffect { key_source: K },
-    CreateEffect { cause: Rc<CreateCause<K>> },
+    CreateEffect { cause: Arc<CreateCause<K>> },
     AppendEffect,
     ExecuteEffect,
 }
@@ -64,23 +65,23 @@ pub fn keyless_fallback_cause_note() -> String {
 pub enum KeySource {
     PathParam { param: String },
     InputField { field: String },
-    CompositeKey { fields: Rc<Vec<String>> },
+    CompositeKey { fields: Arc<Vec<String>> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum IdempotencyEvidence {
     LatticeEffect {
-        shape: Rc<EffectShape<Rc<KeySource>>>,
+        shape: Arc<EffectShape<Arc<KeySource>>>,
     },
     IdentityEffect,
     NonIdempotent {
-        shape: Rc<EffectShape<Rc<KeySource>>>,
+        shape: Arc<EffectShape<Arc<KeySource>>>,
         reason: String,
     },
 }
 impl IdempotencyEvidence {
-    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
+    pub fn shape(&self) -> Arc<EffectShape<Arc<KeySource>>> {
         match self {
             IdempotencyEvidence::LatticeEffect { shape: __val, .. } => __val.clone(),
             IdempotencyEvidence::IdentityEffect => panic!("no shape on unit variant"),
@@ -98,7 +99,7 @@ pub fn generic_predicate_frontier_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
+pub fn is_idempotent_effect(shape: Arc<EffectShape<Arc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
@@ -116,7 +117,7 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     }
 }
 
-pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
+pub fn key_source_eq(left: Arc<KeySource>, right: Arc<KeySource>) -> bool {
     match (*left.clone()).clone() {
         KeySource::PathParam { param: pa, .. } => match (*right.clone()).clone() {
             KeySource::PathParam { param: pb, .. } => (pa.clone() == pb.clone()),
@@ -133,7 +134,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
     }
 }
 
-pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
+pub fn create_effect_is_dedupable(shape: Arc<EffectShape<Arc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
@@ -158,8 +159,8 @@ pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool
 }
 
 pub fn create_double_init_collapsible(
-    a: Rc<EffectShape<Rc<KeySource>>>,
-    b: Rc<EffectShape<Rc<KeySource>>>,
+    a: Arc<EffectShape<Arc<KeySource>>>,
+    b: Arc<EffectShape<Arc<KeySource>>>,
 ) -> bool {
     match (*a.clone()).clone() {
         EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
@@ -205,18 +206,18 @@ pub fn create_double_init_collapsible(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
-    pub shape: Rc<EffectShape<Rc<KeySource>>>,
-    pub evidence: Rc<IdempotencyEvidence>,
+    pub shape: Arc<EffectShape<Arc<KeySource>>>,
+    pub evidence: Arc<IdempotencyEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompositionVerdict {
     IdempotentComposition,
-    BrokenBy { first_breaker: Rc<OperationEffect> },
+    BrokenBy { first_breaker: Arc<OperationEffect> },
 }
 impl CompositionVerdict {
-    pub fn first_breaker(&self) -> Rc<OperationEffect> {
+    pub fn first_breaker(&self) -> Arc<OperationEffect> {
         match self {
             CompositionVerdict::IdempotentComposition => panic!("no first_breaker on unit variant"),
             CompositionVerdict::BrokenBy {
@@ -227,25 +228,25 @@ impl CompositionVerdict {
     }
 }
 
-pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
+pub fn compose_effects(effects: Arc<Vec<Arc<OperationEffect>>>) -> Arc<CompositionVerdict> {
     effects.clone().iter().cloned().fold(
-        Rc::new(CompositionVerdict::IdempotentComposition),
-        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
+        Arc::new(CompositionVerdict::IdempotentComposition),
+        |acc: Arc<CompositionVerdict>, e: Arc<OperationEffect>| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
                 first_breaker: breaker,
                 ..
             } => acc.clone(),
             CompositionVerdict::IdempotentComposition => match (*e.evidence.clone()).clone() {
                 IdempotencyEvidence::NonIdempotent { shape, reason, .. } => {
-                    Rc::new(CompositionVerdict::BrokenBy {
+                    Arc::new(CompositionVerdict::BrokenBy {
                         first_breaker: e.clone(),
                     })
                 }
                 IdempotencyEvidence::LatticeEffect { shape: shape, .. } => {
-                    Rc::new(CompositionVerdict::IdempotentComposition)
+                    Arc::new(CompositionVerdict::IdempotentComposition)
                 }
                 IdempotencyEvidence::IdentityEffect => {
-                    Rc::new(CompositionVerdict::IdempotentComposition)
+                    Arc::new(CompositionVerdict::IdempotentComposition)
                 }
             },
         },
@@ -256,15 +257,15 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
-    pub path_template: Rc<PathTemplate>,
-    pub shape: Rc<EffectShape<Rc<KeySource>>>,
+    pub path_template: Arc<PathTemplate>,
+    pub shape: Arc<EffectShape<Arc<KeySource>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DeriveOpEffectResult {
     DerivedEffect {
-        effect: Rc<DerivedOpEffect>,
+        effect: Arc<DerivedOpEffect>,
     },
     MalformedPathInput {
         operation_name: String,
@@ -277,41 +278,41 @@ pub enum DeriveOpEffectResult {
 
 pub fn derive_effect_shape(
     method: HttpMethod,
-    path: Rc<PathTemplate>,
-) -> Rc<EffectShape<Rc<KeySource>>> {
+    path: Arc<PathTemplate>,
+) -> Arc<EffectShape<Arc<KeySource>>> {
     match method.clone() {
-        HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
-            cause: Rc::new(CreateCause::PostAlways),
+        HttpMethod::GET => Arc::new(EffectShape::ReadEffect),
+        HttpMethod::HEAD => Arc::new(EffectShape::ReadEffect),
+        HttpMethod::OPTIONS => Arc::new(EffectShape::ReadEffect),
+        HttpMethod::POST => Arc::new(EffectShape::CreateEffect {
+            cause: Arc::new(CreateCause::PostAlways),
         }),
         HttpMethod::DELETE => match last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::DeleteEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Arc::new(EffectShape::DeleteEffect {
+                key_source: Arc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
+            None => Arc::new(EffectShape::CreateEffect {
+                cause: Arc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::DELETE,
                 }),
             }),
         },
         HttpMethod::PUT => match last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::UpsertEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Arc::new(EffectShape::UpsertEffect {
+                key_source: Arc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
+            None => Arc::new(EffectShape::CreateEffect {
+                cause: Arc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::PUT,
                 }),
             }),
         },
         HttpMethod::PATCH => match last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::UpsertEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Arc::new(EffectShape::UpsertEffect {
+                key_source: Arc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
+            None => Arc::new(EffectShape::CreateEffect {
+                cause: Arc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::PATCH,
                 }),
             }),
@@ -322,12 +323,12 @@ pub fn derive_effect_shape(
 pub fn derive_op_effect(
     operation_name: String,
     method: HttpMethod,
-    path: Rc<PathTemplate>,
-) -> Rc<DeriveOpEffectResult> {
+    path: Arc<PathTemplate>,
+) -> Arc<DeriveOpEffectResult> {
     {
         let shape = derive_effect_shape(method.clone(), path.clone());
-        Rc::new(DeriveOpEffectResult::DerivedEffect {
-            effect: Rc::new(DerivedOpEffect {
+        Arc::new(DeriveOpEffectResult::DerivedEffect {
+            effect: Arc::new(DerivedOpEffect {
                 operation_name: operation_name.clone(),
                 method: method.clone(),
                 path_template: path.clone(),
@@ -359,46 +360,46 @@ pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
-    pub derived_shape: Rc<EffectShape<Rc<KeySource>>>,
-    pub agreement: Rc<ModifierAgreement>,
+    pub derived_shape: Arc<EffectShape<Arc<KeySource>>>,
+    pub agreement: Arc<ModifierAgreement>,
 }
 
 pub fn check_modifier_vs_derivation(
-    op: Rc<DerivedOpEffect>,
+    op: Arc<DerivedOpEffect>,
     declared_idempotent: bool,
     declared_readonly: bool,
-) -> Rc<ModifierCheck> {
+) -> Arc<ModifierCheck> {
     {
         let derived_idempotent = is_idempotent_effect(op.shape.clone());
         let agreement = if (declared_idempotent.clone() && derived_idempotent.clone()) {
-            Rc::new(ModifierAgreement::Agrees)
+            Arc::new(ModifierAgreement::Agrees)
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
     EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
-    CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
+    CreateCause::PostAlways => Arc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
 }),
-    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::DerivationUnknown {
+    CreateCause::KeylessFallback { method: method, .. } => Arc::new(ModifierAgreement::DerivationUnknown {
     reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived".to_string(),
 }),
-    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
 },
-    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::ReadEffect => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
-    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
-    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
-    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::AppendEffect => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
-    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::ExecuteEffect => Arc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
 }
@@ -406,36 +407,36 @@ pub fn check_modifier_vs_derivation(
                 if (!declared_idempotent.clone() && derived_idempotent.clone()) {
                     match (*op.shape.clone()).clone() {
     EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
-    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Arc::new(ModifierAgreement::Disagrees {
     reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
 }),
-    CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
-    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::Agrees),
+    CreateCause::PostAlways => Arc::new(ModifierAgreement::Agrees),
+    CreateCause::KeylessFallback { method: method, .. } => Arc::new(ModifierAgreement::Agrees),
 },
-    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Agrees),
-    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
-    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
-    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Agrees),
-    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::ReadEffect => Arc::new(ModifierAgreement::Agrees),
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Arc::new(ModifierAgreement::Agrees),
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Arc::new(ModifierAgreement::Agrees),
+    EffectShape::AppendEffect => Arc::new(ModifierAgreement::Agrees),
+    EffectShape::ExecuteEffect => Arc::new(ModifierAgreement::Agrees),
 }
                 } else {
                     if (!declared_idempotent.clone() && declared_readonly.clone()) {
                         match op.method.clone() {
-                            HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
-                            HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
-                            HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
-                            _ => Rc::new(ModifierAgreement::Disagrees {
+                            HttpMethod::GET => Arc::new(ModifierAgreement::Agrees),
+                            HttpMethod::HEAD => Arc::new(ModifierAgreement::Agrees),
+                            HttpMethod::OPTIONS => Arc::new(ModifierAgreement::Agrees),
+                            _ => Arc::new(ModifierAgreement::Disagrees {
                                 reason: "readonly declared but method is not GET/HEAD/OPTIONS"
                                     .to_string(),
                             }),
                         }
                     } else {
-                        Rc::new(ModifierAgreement::Agrees)
+                        Arc::new(ModifierAgreement::Agrees)
                     }
                 }
             }
         };
-        Rc::new(ModifierCheck {
+        Arc::new(ModifierCheck {
             operation_name: op.operation_name.clone(),
             declared_idempotent: declared_idempotent.clone(),
             declared_readonly: declared_readonly.clone(),
@@ -448,17 +449,17 @@ pub fn check_modifier_vs_derivation(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
-    pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
+    pub effect_shape: Arc<EffectShape<Arc<KeySource>>>,
     pub claim: String,
     pub witness_required: bool,
 }
 
 pub fn generate_idempotency_obligations(
-    ops: Rc<Vec<Rc<DerivedOpEffect>>>,
-) -> Rc<Vec<Rc<IdempotencyTestObligation>>> {
-    Rc::new({
+    ops: Arc<Vec<Arc<DerivedOpEffect>>>,
+) -> Arc<Vec<Arc<IdempotencyTestObligation>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for o in Rc::new({
+        for o in Arc::new({
             let mut __result = Vec::new();
             for o in ops.clone().iter().cloned() {
                 if is_idempotent_effect(o.shape.clone()) {
@@ -470,7 +471,7 @@ pub fn generate_idempotency_obligations(
         .iter()
         .cloned()
         {
-            __result.push(Rc::new(IdempotencyTestObligation {
+            __result.push(Arc::new(IdempotencyTestObligation {
                 operation_name: o.operation_name.clone(),
                 effect_shape: o.shape.clone(),
                 claim: "f(f(x)) == f(x)".to_string(),

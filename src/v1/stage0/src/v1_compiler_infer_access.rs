@@ -22,22 +22,23 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
-    pub inferred: Option<Rc<InferredNode>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub inferred: Option<Arc<InferredNode>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedCollectionParts {
-    pub key_type: Rc<Node>,
-    pub value_type: Rc<Node>,
+    pub key_type: Arc<Node>,
+    pub value_type: Arc<Node>,
 }
 
-pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
+pub fn access_error(message: String, span: Arc<SourceSpan>, module_name: String) -> Arc<ErrorNode> {
     make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
+        Arc::new(CompilerDiagnostic::InternalError {
             message: message.clone(),
             span: span.clone(),
         }),
@@ -46,14 +47,14 @@ pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) 
 }
 
 pub fn access_result(
-    inferred: Rc<Node>,
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    span: Rc<SourceSpan>,
+    inferred: Arc<Node>,
+    diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    span: Arc<SourceSpan>,
     fallback_message: String,
-) -> Rc<AccessCheckResultNode> {
+) -> Arc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
-        Rc::new(AccessCheckResultNode {
-            inferred: Some(Rc::new(InferredNode::Resolved {
+        Arc::new(AccessCheckResultNode {
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: inferred.clone(),
             })),
             diagnostics: diagnostics.clone(),
@@ -64,8 +65,8 @@ pub fn access_result(
                 Some(diag) => diagnostic_to_message(diag.diagnostic.clone()),
                 None => fallback_message.clone(),
             };
-            Rc::new(AccessCheckResultNode {
-                inferred: Some(Rc::new(InferredNode::CompilerError {
+            Arc::new(AccessCheckResultNode {
+                inferred: Some(Arc::new(InferredNode::CompilerError {
                     message: message.clone(),
                     span: span.clone(),
                 })),
@@ -76,15 +77,15 @@ pub fn access_result(
 }
 
 pub fn keyed_collection_parts(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<KeyedCollectionParts>> {
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<KeyedCollectionParts>> {
     if (node_is_keyed_collection(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) >= 2))
     {
         match n.children.clone().first().cloned() {
             Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
-                Some(value_child) => Some(Rc::new(KeyedCollectionParts {
+                Some(value_child) => Some(Arc::new(KeyedCollectionParts {
                     key_type: resolved_type(key_child.clone()),
                     value_type: resolved_type(value_child.clone()),
                 })),
@@ -98,12 +99,12 @@ pub fn keyed_collection_parts(
 }
 
 pub fn check_index_access_node(
-    base_type: Rc<Node>,
-    index_type: Rc<Node>,
-    span: Rc<SourceSpan>,
+    base_type: Arc<Node>,
+    index_type: Arc<Node>,
+    span: Arc<SourceSpan>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<AccessCheckResultNode> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<AccessCheckResultNode> {
     {
         let normed = normalize_access_type_node(base_type.clone());
         let normed_index = normalize_access_type_node(index_type.clone());
@@ -203,13 +204,13 @@ pub fn check_index_access_node(
 }
 
 pub fn check_slice_access_node(
-    base_type: Rc<Node>,
-    start_type: Rc<Node>,
-    end_type: Rc<Node>,
-    span: Rc<SourceSpan>,
+    base_type: Arc<Node>,
+    start_type: Arc<Node>,
+    end_type: Arc<Node>,
+    span: Arc<SourceSpan>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<AccessCheckResultNode> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<AccessCheckResultNode> {
     {
         let normed_base = normalize_access_type_node(base_type.clone());
         let base_is_string =

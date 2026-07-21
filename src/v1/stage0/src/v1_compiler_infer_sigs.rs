@@ -18,35 +18,36 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
     pub name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Rc<Node>,
+    pub params: Arc<Vec<Arc<Node>>>,
+    pub inferred: Arc<Node>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub output_provenance: Arc<Vec<Arc<HashMap<String, Arc<SubValueRelation>>>>>,
     pub variant_provenance:
-        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+        Arc<HashMap<String, Arc<HashMap<String, Arc<HashMap<String, Arc<SubValueRelation>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
     pub name: String,
-    pub local: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    pub parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+    pub local: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+    pub parents: Arc<Vec<Arc<ResolvedFuncEnv>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveFuncSigsResult {
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub func_env: Arc<ResolvedFuncEnv>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SigsAccum {
-    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub signatures: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -66,15 +67,15 @@ pub fn sigs_env_flat_parents_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FlattenAccum {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub out: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+    pub seen: Arc<HashMap<String, bool>>,
+    pub out: Arc<Vec<Arc<ResolvedFuncEnv>>>,
 }
 
 pub fn flatten_parent_envs(
-    direct_parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
-) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    direct_parents: Arc<Vec<Arc<ResolvedFuncEnv>>>,
+) -> Arc<Vec<Arc<ResolvedFuncEnv>>> {
     {
-        let ordered = Rc::new({
+        let ordered = Arc::new({
             let mut __result = Vec::new();
             for p in v1_rt::reverse(direct_parents.clone()).iter().cloned() {
                 __result.extend(
@@ -86,15 +87,15 @@ pub fn flatten_parent_envs(
             __result
         });
         let dedup = ordered.clone().iter().cloned().fold(
-            Rc::new(FlattenAccum {
+            Arc::new(FlattenAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
-            |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
+            |acc: Arc<FlattenAccum>, p: Arc<ResolvedFuncEnv>| {
                 if emit_map_has(acc.seen.clone(), p.name.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(FlattenAccum {
+                    Arc::new(FlattenAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), p.name.clone(), true),
                         out: v1_rt::rc_list_push(acc.out.clone(), p.clone()),
                     })
@@ -107,27 +108,27 @@ pub fn flatten_parent_envs(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentSigScan {
-    pub sig: Option<Rc<ResolvedFuncSig>>,
+    pub sig: Option<Arc<ResolvedFuncSig>>,
     pub match_count: i64,
     pub first_parent: Option<String>,
 }
 
 pub fn lookup_resolved_sig_with_telemetry(
-    env: Rc<ResolvedFuncEnv>,
+    env: Arc<ResolvedFuncEnv>,
     name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
+) -> Option<Arc<ResolvedFuncSig>> {
     {
         let scan = env.parents.clone().iter().cloned().fold(
-            Rc::new(ParentSigScan {
+            Arc::new(ParentSigScan {
                 sig: None,
                 match_count: 0,
                 first_parent: None,
             }),
-            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+            |acc: Arc<ParentSigScan>, p: Arc<ResolvedFuncEnv>| match v1_rt::map_get(
                 &p.local.clone(),
                 name.clone(),
             ) {
-                Some(sig) => Rc::new(ParentSigScan {
+                Some(sig) => Arc::new(ParentSigScan {
                     sig: if (acc.sig.clone() != None) {
                         acc.sig.clone()
                     } else {
@@ -158,7 +159,10 @@ pub fn lookup_resolved_sig_with_telemetry(
     }
 }
 
-pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
+pub fn lookup_resolved_sig(
+    env: Arc<ResolvedFuncEnv>,
+    name: String,
+) -> Option<Arc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
         None => {
@@ -167,7 +171,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
             } else {
                 env.parents.clone().iter().cloned().fold(
                     none_resolved_sig(),
-                    |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
+                    |acc: Option<Arc<ResolvedFuncSig>>, p: Arc<ResolvedFuncEnv>| match acc.clone() {
                         Some(sig) => Some(sig.clone()),
                         None => v1_rt::map_get(&p.local.clone(), name.clone()),
                     },
@@ -177,16 +181,16 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
     }
 }
 
-pub fn none_resolved_sig() -> Option<Rc<ResolvedFuncSig>> {
+pub fn none_resolved_sig() -> Option<Arc<ResolvedFuncSig>> {
     None
 }
 
 pub fn collect_func_call_edges(
-    items: Rc<Vec<Rc<Node>>>,
-    local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CallEdge>>> {
-    Rc::new({
+    items: Arc<Vec<Arc<Node>>>,
+    local_func_set: Arc<HashMap<String, bool>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<CallEdge>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for item in items.clone().iter().cloned() {
             __result.extend(
@@ -210,16 +214,16 @@ pub fn collect_func_call_edges(
 
 pub fn collect_calls_in_expr(
     caller: String,
-    texpr: Rc<Node>,
-    local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CallEdge>>> {
+    texpr: Arc<Node>,
+    local_func_set: Arc<HashMap<String, bool>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 let f = expr_call_func_at(texpr.clone(), source_indices.clone());
                 if emit_map_has(local_func_set.clone(), f.clone()) {
-                    Rc::new(vec![Rc::new(CallEdge {
+                    Rc::new(vec![Arc::new(CallEdge {
                         caller: caller.clone(),
                         callee: f.clone(),
                     })])
@@ -229,7 +233,7 @@ pub fn collect_calls_in_expr(
             }
             _ => Rc::new(vec![]),
         };
-        let child_edges = Rc::new({
+        let child_edges = Arc::new({
             let mut __result = Vec::new();
             for child in texpr.children.clone().iter().cloned() {
                 __result.extend(
@@ -253,8 +257,8 @@ pub fn collect_calls_in_expr(
 pub fn func_reaches_self(
     root: String,
     current: String,
-    call_edges: Rc<Vec<Rc<CallEdge>>>,
-    visited: Rc<HashMap<String, bool>>,
+    call_edges: Arc<Vec<Arc<CallEdge>>>,
+    visited: Arc<HashMap<String, bool>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if emit_map_has(visited.clone(), current.clone()) {
@@ -262,9 +266,9 @@ pub fn func_reaches_self(
         } else {
             {
                 let next_visited = v1_rt::rc_map_insert(visited.clone(), current.clone(), true);
-                let callees = Rc::new({
+                let callees = Arc::new({
                     let mut __result = Vec::new();
-                    for e in Rc::new({
+                    for e in Arc::new({
                         let mut __result = Vec::new();
                         for e in call_edges.clone().iter().cloned() {
                             if (e.caller.clone() == current.clone()) {
@@ -304,17 +308,17 @@ pub fn func_reaches_self(
     })
 }
 
-pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
+pub fn build_name_set(names: Arc<Vec<String>>) -> Arc<HashMap<String, bool>> {
     names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, name: String| {
+        |acc: Arc<HashMap<String, bool>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
         },
     )
 }
 
-pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
-    Rc::new(ResolvedFuncSig {
+pub fn declared_to_resolved(dsig: Arc<DeclaredFuncSig>) -> Arc<ResolvedFuncSig> {
+    Arc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
         params: dsig.params.clone(),
         inferred: dsig.inferred.clone().clone().unwrap(),
@@ -325,15 +329,15 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 }
 
 pub fn merge_remaining_declared(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v1_rt::map_values(&declared_sigs))
+    declared_sigs: Arc<HashMap<String, Arc<DeclaredFuncSig>>>,
+    resolved: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+) -> Arc<HashMap<String, Arc<ResolvedFuncSig>>> {
+    Arc::new(v1_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
         .fold(
             resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
+            |acc: Arc<HashMap<String, Arc<ResolvedFuncSig>>>, dsig: Arc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != None) {
                     v1_rt::rc_map_insert(
                         acc.clone(),
@@ -348,26 +352,26 @@ pub fn merge_remaining_declared(
 }
 
 pub fn topo_resolve_loop(
-    mut remaining: Rc<Vec<String>>,
-    mut resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    mut declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    mut call_edges: Rc<Vec<Rc<CallEdge>>>,
-    mut local_func_set: Rc<HashMap<String, bool>>,
+    mut remaining: Arc<Vec<String>>,
+    mut resolved: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+    mut declared_sigs: Arc<HashMap<String, Arc<DeclaredFuncSig>>>,
+    mut call_edges: Arc<Vec<Arc<CallEdge>>>,
+    mut local_func_set: Arc<HashMap<String, bool>>,
     mut module_name: String,
-    mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    mut parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+    mut diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    mut parent_envs: Arc<Vec<Arc<ResolvedFuncEnv>>>,
     mut fuel: i64,
-) -> Rc<ResolveFuncSigsResult> {
+) -> Arc<ResolveFuncSigsResult> {
     loop {
         if ((remaining.clone().len() as i64) == 0) {
             {
-                let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
+                let all_resolved = Arc::new(v1_rt::map_values(&declared_sigs))
                     .iter()
                     .cloned()
                     .fold(
                         resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+                         dsig: Arc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -379,8 +383,8 @@ pub fn topo_resolve_loop(
                             }
                         },
                     );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
+                return Arc::new(ResolveFuncSigsResult {
+                    func_env: Arc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
@@ -389,15 +393,15 @@ pub fn topo_resolve_loop(
                 });
             }
         }
-        let ready = Rc::new({
+        let ready = Arc::new({
             let mut __result = Vec::new();
             for fn_name in remaining.clone().iter().cloned() {
                 if {
-                    let local_callees = Rc::new({
+                    let local_callees = Arc::new({
                         let mut __result = Vec::new();
-                        for c in Rc::new({
+                        for c in Arc::new({
                             let mut __result = Vec::new();
-                            for e in Rc::new({
+                            for e in Arc::new({
                                 let mut __result = Vec::new();
                                 for e in call_edges.clone().iter().cloned() {
                                     if (e.caller.clone() == fn_name.clone()) {
@@ -441,17 +445,17 @@ pub fn topo_resolve_loop(
         if ((ready.clone().len() as i64) == 0) {
             {
                 let cycle_accum = remaining.clone().iter().cloned().fold(
-                    Rc::new(SigsAccum {
+                    Arc::new(SigsAccum {
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                    |acc: Arc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                         &declared_sigs,
                         fn_name.clone(),
                     ) {
                         Some(dsig) => {
                             if (dsig.inferred.clone() != None) {
-                                Rc::new(SigsAccum {
+                                Arc::new(SigsAccum {
                                     signatures: v1_rt::rc_map_insert(
                                         acc.signatures.clone(),
                                         fn_name.clone(),
@@ -460,12 +464,12 @@ pub fn topo_resolve_loop(
                                     diagnostics: acc.diagnostics.clone(),
                                 })
                             } else {
-                                Rc::new(SigsAccum {
+                                Arc::new(SigsAccum {
                                     signatures: acc.signatures.clone(),
                                     diagnostics: v1_rt::rc_list_push(
                                         acc.diagnostics.clone(),
                                         make_error_node(
-                                            Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                            Arc::new(CompilerDiagnostic::MissingAnnotation {
                                                 fn_name: fn_name.clone(),
                                                 what: "return type (recursive)".to_string(),
                                                 span: no_span(),
@@ -479,13 +483,13 @@ pub fn topo_resolve_loop(
                         None => acc.clone(),
                     },
                 );
-                let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
+                let all_resolved = Arc::new(v1_rt::map_values(&declared_sigs))
                     .iter()
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Arc<HashMap<String, Arc<ResolvedFuncSig>>>,
+                         dsig: Arc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -497,8 +501,8 @@ pub fn topo_resolve_loop(
                             }
                         },
                     );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
+                return Arc::new(ResolveFuncSigsResult {
+                    func_env: Arc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
@@ -511,17 +515,17 @@ pub fn topo_resolve_loop(
             }
         }
         let ready_accum = ready.clone().iter().cloned().fold(
-            Rc::new(SigsAccum {
+            Arc::new(SigsAccum {
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+            |acc: Arc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                 &declared_sigs,
                 fn_name.clone(),
             ) {
                 Some(dsig) => {
                     if (dsig.inferred.clone() != None) {
-                        Rc::new(SigsAccum {
+                        Arc::new(SigsAccum {
                             signatures: v1_rt::rc_map_insert(
                                 acc.signatures.clone(),
                                 fn_name.clone(),
@@ -530,12 +534,12 @@ pub fn topo_resolve_loop(
                             diagnostics: acc.diagnostics.clone(),
                         })
                     } else {
-                        Rc::new(SigsAccum {
+                        Arc::new(SigsAccum {
                             signatures: acc.signatures.clone(),
                             diagnostics: v1_rt::rc_list_push(
                                 acc.diagnostics.clone(),
                                 make_error_node(
-                                    Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                    Arc::new(CompilerDiagnostic::MissingAnnotation {
                                         fn_name: fn_name.clone(),
                                         what: "return type".to_string(),
                                         span: no_span(),
@@ -551,11 +555,11 @@ pub fn topo_resolve_loop(
         );
         let ready_set = ready.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
+            |acc: Arc<HashMap<String, bool>>, fn_name: String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
             },
         );
-        let next_remaining = Rc::new({
+        let next_remaining = Arc::new({
             let mut __result = Vec::new();
             for fn_name in remaining.clone().iter().cloned() {
                 if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) {
@@ -579,16 +583,16 @@ pub fn topo_resolve_loop(
 }
 
 pub fn resolve_func_sigs(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
-    items: Rc<Vec<Rc<Node>>>,
+    declared_sigs: Arc<HashMap<String, Arc<DeclaredFuncSig>>>,
+    parent_envs: Arc<Vec<Arc<ResolvedFuncEnv>>>,
+    items: Arc<Vec<Arc<Node>>>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ResolveFuncSigsResult> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ResolveFuncSigsResult> {
     {
-        let local_func_names = Rc::new({
+        let local_func_names = Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
                 for item in items.clone().iter().cloned() {
                     if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
@@ -612,7 +616,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            v1_rt::rc_empty_map::<String, Arc<ResolvedFuncSig>>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

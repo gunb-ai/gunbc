@@ -12,6 +12,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -153,16 +154,16 @@ pub struct Measure<Q, S, M> {
     pub _phantom: std::marker::PhantomData<(Q, S, M)>,
 }
 
-pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
+pub fn measure_count<Q, S, M: Clone>(m: Arc<Measure<Q, S, M>>) -> M {
     m.count.clone()
 }
 
 pub fn measure_scale_fraction_floor<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Arc<Measure<Q, S, Nat>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
-    Rc::new(Measure {
+) -> Arc<Measure<Q, S, Nat>> {
+    Arc::new(Measure {
         count: if (den.clone() == 0) {
             den.clone()
         } else {
@@ -173,8 +174,8 @@ pub fn measure_scale_fraction_floor<Q, S>(
 }
 
 pub fn measure_fit_count_floor<Q, S>(
-    capacity: Rc<Measure<Q, S, Nat>>,
-    each: Rc<Measure<Q, S, Nat>>,
+    capacity: Arc<Measure<Q, S, Nat>>,
+    each: Arc<Measure<Q, S, Nat>>,
 ) -> Nat {
     {
         let each_count = each.count.clone();
@@ -187,11 +188,11 @@ pub fn measure_fit_count_floor<Q, S>(
 }
 
 pub fn measure_scale_fraction_ceil<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Arc<Measure<Q, S, Nat>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
-    Rc::new(Measure {
+) -> Arc<Measure<Q, S, Nat>> {
+    Arc::new(Measure {
         count: if (den.clone() == 0) {
             (m.count.clone() * num.clone())
         } else {
@@ -202,36 +203,36 @@ pub fn measure_scale_fraction_ceil<Q, S>(
 }
 
 pub fn measure_add<Q, S>(
-    a: Rc<Measure<Q, S, Nat>>,
-    b: Rc<Measure<Q, S, Nat>>,
-) -> Rc<Measure<Q, S, Nat>> {
-    Rc::new(Measure {
+    a: Arc<Measure<Q, S, Nat>>,
+    b: Arc<Measure<Q, S, Nat>>,
+) -> Arc<Measure<Q, S, Nat>> {
+    Arc::new(Measure {
         count: (a.count.clone() + b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) -> bool {
+pub fn measure_le<Q, S>(a: Arc<Measure<Q, S, Nat>>, b: Arc<Measure<Q, S, Nat>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
-    Rc::new(Measure {
+pub fn time_measure<S>(count: Nat) -> Arc<Measure<(), S, Nat>> {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<(), (), i64>>;
+pub type ByteSize = Arc<Measure<(), (), i64>>;
 
-pub type Kibibyte = Rc<Measure<(), (), i64>>;
+pub type Kibibyte = Arc<Measure<(), (), i64>>;
 
-pub type Mebibyte = Rc<Measure<(), (), i64>>;
+pub type Mebibyte = Arc<Measure<(), (), i64>>;
 
-pub type Gibibyte = Rc<Measure<(), (), i64>>;
+pub type Gibibyte = Arc<Measure<(), (), i64>>;
 
 pub fn mebibyte(count: Nat) -> Mebibyte {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -242,7 +243,7 @@ pub fn mebibyte_count(m: Mebibyte) -> Nat {
 }
 
 pub fn gibibyte(count: Nat) -> Gibibyte {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -256,28 +257,28 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size((gibibyte_count(g.clone()) * gibibyte_scale_factor_bytes()))
 }
 
-pub type BitWidth = Rc<Measure<(), (), i64>>;
+pub type BitWidth = Arc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
     8
 }
 
-pub type Hertz = Rc<Measure<(), (), i64>>;
+pub type Hertz = Arc<Measure<(), (), i64>>;
 
-pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+pub type HardwareThreadCount = Arc<Measure<(), (), i64>>;
 
-pub type Millicore = Rc<Measure<(), (), i64>>;
+pub type Millicore = Arc<Measure<(), (), i64>>;
 
-pub type Watt = Rc<Measure<(), (), i64>>;
+pub type Watt = Arc<Measure<(), (), i64>>;
 
-pub type Joule = Rc<Measure<(), (), i64>>;
+pub type Joule = Arc<Measure<(), (), i64>>;
 
-pub type Celsius = Rc<Measure<(), (), i64>>;
+pub type Celsius = Arc<Measure<(), (), i64>>;
 
-pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
+pub type RevolutionsPerMinute = Arc<Measure<(), (), i64>>;
 
 pub fn watt(count: Nat) -> Watt {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -288,7 +289,7 @@ pub fn watt_count(w: Watt) -> Nat {
 }
 
 pub fn joule(count: Nat) -> Joule {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -299,7 +300,7 @@ pub fn joule_count(j: Joule) -> Nat {
 }
 
 pub fn celsius(count: i64) -> Celsius {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -310,7 +311,7 @@ pub fn celsius_count(c: Celsius) -> i64 {
 }
 
 pub fn rpm(count: Nat) -> RevolutionsPerMinute {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -320,12 +321,12 @@ pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r.clone())
 }
 
-pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
+pub type MoneyAmount<S> = Arc<Measure<(), S, i64>>;
 
 pub type MoneyAmountMicro = MoneyAmount<()>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -336,7 +337,7 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
 }
 
 pub fn byte_size(count: Nat) -> ByteSize {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -347,7 +348,7 @@ pub fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 pub fn bit_width(count: Nat) -> BitWidth {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -358,7 +359,7 @@ pub fn bit_width_count(b: BitWidth) -> Nat {
 }
 
 pub fn hertz(count: Nat) -> Hertz {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -369,7 +370,7 @@ pub fn hertz_count(h: Hertz) -> Nat {
 }
 
 pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -380,7 +381,7 @@ pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
 }
 
 pub fn millicore(count: Nat) -> Millicore {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -390,10 +391,10 @@ pub fn millicore_count(m: Millicore) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Bandwidth = Rc<Measure<(), (), i64>>;
+pub type Bandwidth = Arc<Measure<(), (), i64>>;
 
 pub fn bandwidth(count: Nat) -> Bandwidth {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -403,10 +404,10 @@ pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
 }
 
-pub type Nanosecond = Rc<Measure<(), (), i64>>;
+pub type Nanosecond = Arc<Measure<(), (), i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -416,10 +417,10 @@ pub fn nanosecond_count(n: Nanosecond) -> Nat {
     measure_count(n.clone())
 }
 
-pub type Microsecond = Rc<Measure<(), (), i64>>;
+pub type Microsecond = Arc<Measure<(), (), i64>>;
 
 pub fn microsecond(count: Nat) -> Microsecond {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -429,10 +430,10 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Millisecond = Rc<Measure<(), (), i64>>;
+pub type Millisecond = Arc<Measure<(), (), i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -442,10 +443,10 @@ pub fn millisecond_count(m: Millisecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Second = Rc<Measure<(), (), i64>>;
+pub type Second = Arc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -459,10 +460,10 @@ pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule((watt_count(power.clone()) * second_count(time.clone())))
 }
 
-pub type Minute = Rc<Measure<(), (), i64>>;
+pub type Minute = Arc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -472,10 +473,10 @@ pub fn minute_count(m: Minute) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Percent = Rc<Measure<(), (), i64>>;
+pub type Percent = Arc<Measure<(), (), i64>>;
 
 pub fn percent(count: Nat) -> Percent {
-    Rc::new(Measure {
+    Arc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })

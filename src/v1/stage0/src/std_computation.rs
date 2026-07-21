@@ -29,6 +29,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -39,12 +40,12 @@ pub enum SizeBound {
     SubtreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
-    ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
+    ExplicitCountPositive { steps: Arc<PositiveDescentAmount> },
     Forever,
 }
 
-pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
-    Rc::new(SizeBound::SubtreeSize {
+pub fn tree_size_bound(param: String) -> Arc<SizeBound> {
+    Arc::new(SizeBound::SubtreeSize {
         param: param.clone(),
     })
 }
@@ -56,15 +57,15 @@ pub enum CallPattern {
         accessor: String,
     },
     CollectionShrinkCall {
-        amount: Rc<PositiveDescentAmount>,
+        amount: Arc<PositiveDescentAmount>,
         collection: String,
     },
     ArithmeticSubtractCall {
-        steps: Rc<PositiveDescentAmount>,
+        steps: Arc<PositiveDescentAmount>,
         ring_param: String,
     },
     ArithmeticDivideCall {
-        divisor: Rc<ProportionalDivisor>,
+        divisor: Arc<ProportionalDivisor>,
         ring_param: String,
     },
     ParserAdvanceCall {
@@ -83,16 +84,16 @@ pub enum CallPattern {
 #[serde(tag = "_variant")]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { steps: Rc<PositiveDescentAmount> },
-    ProportionalShrink { divisor: Rc<ProportionalDivisor> },
+    ConstantShrink { steps: Arc<PositiveDescentAmount> },
+    ProportionalShrink { divisor: Arc<ProportionalDivisor> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
-    pub bound: Rc<SizeBound>,
+    pub bound: Arc<SizeBound>,
     pub evidence: DescentEvidence,
-    pub factor: Option<Rc<ShrinkFactor>>,
+    pub factor: Option<Arc<ShrinkFactor>>,
 }
 
 #[derive(
@@ -105,11 +106,11 @@ pub enum IterationPrimitive {
     Repeat,
 }
 
-pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
+pub fn lower_call_pattern(pattern: Arc<CallPattern>) -> Arc<LoweringTarget> {
     match (*pattern.clone()).clone() {
-        CallPattern::ChildAccessorCall { accessor: a, .. } => Rc::new(LoweringTarget {
+        CallPattern::ChildAccessorCall { accessor: a, .. } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: Rc::new(SizeBound::SubtreeSize { param: a.clone() }),
+            bound: Arc::new(SizeBound::SubtreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
@@ -117,65 +118,65 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             amount: p,
             collection: c,
             ..
-        } => Rc::new(LoweringTarget {
+        } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: c.clone() }),
+            bound: Arc::new(SizeBound::CollectionSize { param: c.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
+            factor: Some(Arc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticSubtractCall {
             steps: p,
             ring_param: r,
             ..
-        } => Rc::new(LoweringTarget {
+        } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
+            bound: Arc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
+            factor: Some(Arc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticDivideCall {
             divisor: d,
             ring_param: r,
             ..
-        } => Rc::new(LoweringTarget {
+        } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
+            bound: Arc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
+            factor: Some(Arc::new(ShrinkFactor::ProportionalShrink {
                 divisor: d.clone(),
             })),
         }),
-        CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
+        CallPattern::ParserAdvanceCall { witness: w, .. } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
+            bound: Arc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
+        CallPattern::WorklistDrainCall { element: e, .. } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
+            bound: Arc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
         CallPattern::FoldBodyCall {
             outer_collection: oc,
             ..
-        } => Rc::new(LoweringTarget {
+        } => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
+            bound: Arc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         }),
-        CallPattern::SameArgumentCall => Rc::new(LoweringTarget {
+        CallPattern::SameArgumentCall => Arc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::Forever),
+            bound: Arc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         }),
     }
 }
 
-pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
+pub fn size_bound_param(bound: Arc<SizeBound>) -> Option<String> {
     match (*bound.clone()).clone() {
         SizeBound::SubtreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
@@ -188,7 +189,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     }
 }
 
-pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
+pub fn is_constant_bound(bound: Arc<SizeBound>) -> bool {
     match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => true,
         SizeBound::ExplicitCountPositive { steps: _, .. } => true,
@@ -201,7 +202,7 @@ pub fn forever_iteration_bound() -> i64 {
     9223372036854775807
 }
 
-pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
+pub fn constant_bound_value(bound: Arc<SizeBound>) -> Option<i64> {
     match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {

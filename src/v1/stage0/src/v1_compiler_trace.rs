@@ -12,11 +12,12 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
     pub generated_line: i64,
-    pub source_span: Rc<SourceSpan>,
+    pub source_span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,17 +25,17 @@ pub struct SpanMapping {
 pub enum TraceEvent {
     TraceEnter {
         node_id: String,
-        span: Rc<SourceSpan>,
-        inputs: Rc<HashMap<String, String>>,
+        span: Arc<SourceSpan>,
+        inputs: Arc<HashMap<String, String>>,
     },
     TraceExit {
         node_id: String,
-        span: Rc<SourceSpan>,
+        span: Arc<SourceSpan>,
         output: String,
     },
     TraceError {
         node_id: String,
-        span: Rc<SourceSpan>,
+        span: Arc<SourceSpan>,
         message: String,
     },
 }
@@ -46,7 +47,7 @@ impl TraceEvent {
             TraceEvent::TraceError { node_id: __val, .. } => __val.clone(),
         }
     }
-    pub fn span(&self) -> Rc<SourceSpan> {
+    pub fn span(&self) -> Arc<SourceSpan> {
         match self {
             TraceEvent::TraceEnter { span: __val, .. } => __val.clone(),
             TraceEvent::TraceExit { span: __val, .. } => __val.clone(),
@@ -58,49 +59,49 @@ impl TraceEvent {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
     pub func_name: String,
-    pub span: Rc<SourceSpan>,
-    pub bindings: Rc<HashMap<String, String>>,
+    pub span: Arc<SourceSpan>,
+    pub bindings: Arc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
-    pub events: Rc<Vec<Rc<TraceEvent>>>,
-    pub stack: Rc<Vec<Rc<TraceFrame>>>,
+    pub events: Arc<Vec<Arc<TraceEvent>>>,
+    pub stack: Arc<Vec<Arc<TraceFrame>>>,
 }
 
-pub fn empty_trace() -> Rc<Trace> {
-    Rc::new(Trace {
+pub fn empty_trace() -> Arc<Trace> {
+    Arc::new(Trace {
         events: Rc::new(vec![]),
         stack: Rc::new(vec![]),
     })
 }
 
-pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
-    Rc::new(Trace {
+pub fn trace_push_event(trace: Arc<Trace>, event: Arc<TraceEvent>) -> Arc<Trace> {
+    Arc::new(Trace {
         events: v1_rt::rc_list_push(trace.events.clone(), event.clone()),
         stack: trace.stack.clone(),
     })
 }
 
-pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
-    Rc::new(Trace {
+pub fn trace_push_frame(trace: Arc<Trace>, frame: Arc<TraceFrame>) -> Arc<Trace> {
+    Arc::new(Trace {
         events: trace.events.clone(),
         stack: v1_rt::rc_list_push(trace.stack.clone(), frame.clone()),
     })
 }
 
-pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
+pub fn trace_pop_frame(trace: Arc<Trace>) -> Arc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
         if (n.clone() <= 1) {
-            Rc::new(Trace {
+            Arc::new(Trace {
                 events: trace.events.clone(),
                 stack: Rc::new(vec![]),
             })
         } else {
-            Rc::new(Trace {
+            Arc::new(Trace {
                 events: trace.events.clone(),
-                stack: Rc::new(
+                stack: Arc::new(
                     trace
                         .stack
                         .clone()
@@ -114,7 +115,7 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
     }
 }
 
-pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
+pub fn event_span(event: Arc<TraceEvent>) -> Arc<SourceSpan> {
     match (*event.clone()).clone() {
         TraceEvent::TraceEnter { span: s, .. } => s.clone(),
         TraceEvent::TraceExit { span: s, .. } => s.clone(),
@@ -122,7 +123,7 @@ pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn event_node_id(event: Rc<TraceEvent>) -> String {
+pub fn event_node_id(event: Arc<TraceEvent>) -> String {
     match (*event.clone()).clone() {
         TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
         TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
@@ -138,18 +139,18 @@ pub enum TraceFilter {
     FilterErrors,
 }
 
-pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
+pub fn event_matches_span(event: Arc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
     {
         let sp = event_span(event.clone());
         ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
     }
 }
 
-pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
+pub fn replay_trace(trace: Arc<Trace>, filter: Arc<TraceFilter>) -> Arc<Vec<Arc<TraceEvent>>> {
     match (*filter.clone()).clone() {
         TraceFilter::FilterByFunc {
             func_name: name, ..
-        } => Rc::new({
+        } => Arc::new({
             let mut __result = Vec::new();
             for e in trace.events.clone().iter().cloned() {
                 if (event_node_id(e.clone()) == name.clone()) {
@@ -160,7 +161,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
         }),
         TraceFilter::FilterBySpan {
             start: s, end: e, ..
-        } => Rc::new({
+        } => Arc::new({
             let mut __result = Vec::new();
             for ev in trace.events.clone().iter().cloned() {
                 if event_matches_span(ev.clone(), s.clone(), e.clone()) {
@@ -169,7 +170,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
             }
             __result
         }),
-        TraceFilter::FilterErrors => Rc::new({
+        TraceFilter::FilterErrors => Arc::new({
             let mut __result = Vec::new();
             for e in trace.events.clone().iter().cloned() {
                 if match (*e.clone()).clone() {
@@ -184,7 +185,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
     }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> String {
+pub fn format_span(sp: Arc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -197,7 +198,7 @@ pub fn format_span(sp: Rc<SourceSpan>) -> String {
     )
 }
 
-pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
+pub fn format_trace_event(event: Arc<TraceEvent>) -> String {
     match (*event.clone()).clone() {
         TraceEvent::TraceEnter {
             node_id: id,
@@ -249,8 +250,8 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
     }
 }
 
-pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
-    Rc::new({
+pub fn format_trace(trace: Arc<Trace>) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for e in trace.events.clone().iter().cloned() {
             __result.push(format_trace_event(e.clone()));
@@ -262,17 +263,17 @@ pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
     pub func_name: String,
-    pub inputs: Rc<HashMap<String, String>>,
+    pub inputs: Arc<HashMap<String, String>>,
     pub expected_output: Option<String>,
-    pub trace: Option<Rc<Trace>>,
+    pub trace: Option<Arc<Trace>>,
 }
 
 pub fn capture_repro(
     func_name: String,
-    inputs: Rc<HashMap<String, String>>,
-    trace: Rc<Trace>,
-) -> Rc<ReproCase> {
-    Rc::new(ReproCase {
+    inputs: Arc<HashMap<String, String>>,
+    trace: Arc<Trace>,
+) -> Arc<ReproCase> {
+    Arc::new(ReproCase {
         func_name: func_name.clone(),
         inputs: inputs.clone(),
         expected_output: None,
@@ -283,11 +284,11 @@ pub fn capture_repro(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
     pub generated_file: String,
-    pub mappings: Rc<Vec<Rc<SpanMapping>>>,
+    pub mappings: Arc<Vec<Arc<SpanMapping>>>,
 }
 
-pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {
-    Rc::new({
+pub fn remap_location(source_map: Arc<SourceMap>, generated_line: i64) -> Option<Arc<SourceSpan>> {
+    Arc::new({
         let mut __result = Vec::new();
         for m in source_map.mappings.clone().iter().cloned() {
             if (m.generated_line.clone() <= generated_line.clone()) {

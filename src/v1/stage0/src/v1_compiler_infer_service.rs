@@ -25,29 +25,30 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UniqueAccum {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub result: Rc<Vec<String>>,
+    pub seen: Arc<HashMap<String, bool>>,
+    pub result: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
     pub name: String,
-    pub outputs: Rc<Vec<Rc<Node>>>,
-    pub params: Rc<Vec<Rc<Node>>>,
+    pub outputs: Arc<Vec<Arc<Node>>>,
+    pub params: Arc<Vec<Arc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
-    pub result_type: Rc<Node>,
-    pub op_params: Rc<Vec<Rc<Node>>>,
+    pub result_type: Arc<Node>,
+    pub op_params: Arc<Vec<Arc<Node>>>,
 }
 
 pub fn is_typed_service_call_receiver(
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    receiver: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
@@ -56,7 +57,7 @@ pub fn is_typed_service_call_receiver(
             match (*b.expr_data.clone()).clone() {
                 ExprData::ExprVar {
                     binding_kind: _, ..
-                } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+                } => match Arc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                     .first()
                     .cloned()
                 {
@@ -71,8 +72,8 @@ pub fn is_typed_service_call_receiver(
 }
 
 pub fn extract_typed_service_name(
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    receiver: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
@@ -96,13 +97,13 @@ pub fn extract_typed_service_name(
 }
 
 pub fn collect_typed_service_calls(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    texpr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
             texpr.clone(),
-            Rc::new(UniqueAccum {
+            Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
@@ -113,10 +114,10 @@ pub fn collect_typed_service_calls(
 }
 
 pub fn collect_typed_service_calls_into(
-    texpr: Rc<Node>,
-    acc: Rc<UniqueAccum>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<UniqueAccum> {
+    texpr: Arc<Node>,
+    acc: Arc<UniqueAccum>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprMethodCall {
@@ -130,7 +131,7 @@ pub fn collect_typed_service_calls_into(
                             if emit_map_has(acc.seen.clone(), service_name.clone()) {
                                 acc.clone()
                             } else {
-                                Rc::new(UniqueAccum {
+                                Arc::new(UniqueAccum {
                                     seen: v1_rt::rc_map_insert(
                                         acc.seen.clone(),
                                         service_name.clone(),
@@ -153,7 +154,7 @@ pub fn collect_typed_service_calls_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: Rc<UniqueAccum>, child: Rc<Node>| {
+            |a: Arc<UniqueAccum>, child: Arc<Node>| {
                 collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -162,10 +163,10 @@ pub fn collect_typed_service_calls_into(
 }
 
 pub fn collect_called_func_names_into(
-    texpr: Rc<Node>,
-    acc: Rc<UniqueAccum>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<UniqueAccum> {
+    texpr: Arc<Node>,
+    acc: Arc<UniqueAccum>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
@@ -173,7 +174,7 @@ pub fn collect_called_func_names_into(
                 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(UniqueAccum {
+                    Arc::new(UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), f.clone(), true),
                         result: v1_rt::rc_list_push(acc.result.clone(), f.clone()),
                     })
@@ -183,7 +184,7 @@ pub fn collect_called_func_names_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: Rc<UniqueAccum>, child: Rc<Node>| {
+            |a: Arc<UniqueAccum>, child: Arc<Node>| {
                 collect_called_func_names_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -192,13 +193,13 @@ pub fn collect_called_func_names_into(
 }
 
 pub fn collect_called_func_names(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    texpr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     {
         let result = collect_called_func_names_into(
             texpr.clone(),
-            Rc::new(UniqueAccum {
+            Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
@@ -209,10 +210,10 @@ pub fn collect_called_func_names(
 }
 
 pub fn expand_transitive_services_once(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+    modules: Arc<Vec<Arc<TypedModule>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+) -> Arc<HashMap<String, Arc<ItemInfo>>> {
+    modules.clone().iter().cloned().fold(registry.clone(), |reg: Arc<HashMap<String, Arc<ItemInfo>>>, m: Arc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Arc<HashMap<String, Arc<ItemInfo>>>, item: Arc<Node>| {
         let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -222,11 +223,11 @@ if has_no_body.clone() {
             } else {
                 {
                     let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
-let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
+let extra = Arc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Arc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -235,7 +236,7 @@ let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().l
 if same_count.clone() {
                         reg2.clone()
                     } else {
-                        v1_rt::rc_map_insert(reg2.clone(), item_name.clone(), Rc::new(ItemInfo {
+                        v1_rt::rc_map_insert(reg2.clone(), item_name.clone(), Arc::new(ItemInfo {
     name: info.name.clone(),
     module_name: info.module_name.clone(),
     kind: info.kind.clone(),
@@ -254,20 +255,20 @@ if same_count.clone() {
 }))
 }
 
-pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
-    Rc::new(v1_rt::map_values(&registry))
+pub fn total_service_count(registry: Arc<HashMap<String, Arc<ItemInfo>>>) -> i64 {
+    Arc::new(v1_rt::map_values(&registry))
         .iter()
         .cloned()
-        .fold(0, |acc: i64, info: Rc<ItemInfo>| {
+        .fold(0, |acc: i64, info: Arc<ItemInfo>| {
             (acc + (info.service_names.clone().len() as i64))
         })
 }
 
 pub fn expand_transitive_services(
-    mut modules: Rc<Vec<Rc<TypedModule>>>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut modules: Arc<Vec<Arc<TypedModule>>>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     mut remaining_passes: i64,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+) -> Arc<HashMap<String, Arc<ItemInfo>>> {
     loop {
         if (remaining_passes.clone() <= 0) {
             break registry.clone();
@@ -291,11 +292,11 @@ pub fn expand_transitive_services(
 }
 
 pub fn check_service_field_access_node(
-    base_type: Rc<Node>,
+    base_type: Arc<Node>,
     field: String,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    service_registry: Arc<HashMap<String, Arc<Vec<Arc<OpEntry>>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective)
         && ((base_type.children.clone().len() as i64) == 0))
     {
@@ -318,11 +319,11 @@ pub fn check_service_field_access_node(
 }
 
 pub fn check_service_method_call_node(
-    receiver_type: Rc<Node>,
+    receiver_type: Arc<Node>,
     method: String,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<ServiceMethodResult>> {
+    service_registry: Arc<HashMap<String, Arc<Vec<Arc<OpEntry>>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective)
         && ((receiver_type.children.clone().len() as i64) == 0))
     {
@@ -331,7 +332,7 @@ pub fn check_service_method_call_node(
             authored_name_at(source_indices.clone(), receiver_type.clone()),
         ) {
             Some(ops) => {
-                let matching = Rc::new({
+                let matching = Arc::new({
                     let mut __result = Vec::new();
                     for op in ops.clone().iter().cloned() {
                         if (op.name.clone() == method.clone()) {
@@ -343,27 +344,27 @@ pub fn check_service_method_call_node(
                 match matching.clone().first().cloned() {
                     Some(op) => {
                         if ((op.outputs.clone().len() as i64) == 0) {
-                            Some(Rc::new(ServiceMethodResult {
+                            Some(Arc::new(ServiceMethodResult {
                                 result_type: unit_type(),
                                 op_params: op.params.clone(),
                             }))
                         } else {
-                            Some(Rc::new(ServiceMethodResult {
-                                result_type: Rc::new(Node {
+                            Some(Arc::new(ServiceMethodResult {
+                                result_type: Arc::new(Node {
                                     name: "".to_string(),
                                     span: no_span(),
                                     ident_span: None,
-                                    children: Rc::new({
+                                    children: Arc::new({
                                         let mut __result = Vec::new();
                                         for f in op.outputs.clone().iter().cloned() {
-                                            __result.push(Rc::new(Node {
+                                            __result.push(Arc::new(Node {
                                                 name: f.name.clone(),
                                                 span: f.span.clone(),
                                                 ident_span: f.ident_span.clone(),
                                                 children: Rc::new(vec![]),
                                                 connective: Connective::NoConnective,
                                                 params: Rc::new(vec![]),
-                                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                                inferred: Some(Arc::new(InferredNode::Resolved {
                                                     node: param_node_type_expr(f.clone()),
                                                 })),
                                                 return_cardinality: Cardinality::Required,
@@ -375,7 +376,7 @@ pub fn check_service_method_call_node(
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
-                                                expr_data: Rc::new(ExprData::NoExprData),
+                                                expr_data: Arc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
                                         }
@@ -393,7 +394,7 @@ pub fn check_service_method_call_node(
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    expr_data: Arc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
                                 op_params: op.params.clone(),
@@ -411,10 +412,10 @@ pub fn check_service_method_call_node(
 }
 
 pub fn service_op_entry(
-    child: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<OpEntry> {
-    Rc::new(OpEntry {
+    child: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<OpEntry> {
+    Arc::new(OpEntry {
         name: authored_name_at(source_indices.clone(), child.clone()),
         outputs: inferred_to_outputs(
             child.inferred.clone(),

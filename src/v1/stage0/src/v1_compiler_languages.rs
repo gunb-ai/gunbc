@@ -68,6 +68,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -79,8 +80,8 @@ pub enum ReservedWordStrategy {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReservedWords {
-    pub keywords: Rc<Vec<String>>,
-    pub strategy: Rc<ReservedWordStrategy>,
+    pub keywords: Arc<Vec<String>>,
+    pub strategy: Arc<ReservedWordStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -134,7 +135,7 @@ pub enum ImportTrigger {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
-    pub trigger: Rc<ImportTrigger>,
+    pub trigger: Arc<ImportTrigger>,
     pub import_path: String,
 }
 
@@ -222,7 +223,7 @@ pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub match_value_form: MatchValueForm,
     pub wildcard_case: Option<String>,
-    pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
+    pub variant_pattern: Option<Arc<VariantPatternSyntax>>,
     pub guard_prefix: Option<String>,
     pub empty_return_value: String,
     pub return_suffix: String,
@@ -289,14 +290,14 @@ impl ServiceReturnStrategy {
     }
 }
 
-pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
+pub fn service_self_param(spec: Arc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
 
-pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
+pub fn service_receiver_str(spec: Arc<LanguageSpec>, service_name: String) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v1_rt::concat(
@@ -309,21 +310,21 @@ pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> Str
     }
 }
 
-pub fn service_method_depth(spec: Rc<LanguageSpec>) -> i64 {
+pub fn service_method_depth(spec: Arc<LanguageSpec>) -> i64 {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => 1,
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => 0,
     }
 }
 
-pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
+pub fn service_methods_inside_class(spec: Arc<LanguageSpec>) -> bool {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => true,
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => false,
     }
 }
 
-pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
+pub fn service_return_str(spec: Arc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
             v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type.clone())
@@ -356,9 +357,9 @@ pub struct ItemKeywords {
     pub import_from_keyword: String,
 }
 
-pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
+pub fn item_keyword_for_kind(forms: Arc<Vec<Arc<ItemForm>>>, kind: ItemFormKind) -> String {
     {
-        let matching = Rc::new({
+        let matching = Arc::new({
             let mut __result = Vec::new();
             for f in forms.clone().iter().cloned() {
                 if (f.kind.clone() == kind.clone()) {
@@ -377,20 +378,20 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
-    pub reserved_words: Rc<ReservedWords>,
-    pub scaffold: Rc<ProjectScaffold>,
-    pub serialization: Rc<SerializationSpec>,
-    pub test_conventions: Rc<TestConventions>,
-    pub visibility: Rc<VisibilitySpec>,
-    pub sharing: Rc<SharingStrategy>,
-    pub indexing: Rc<IndexingSemantics>,
-    pub annotations: Rc<AnnotationRequirements>,
-    pub service_fields: Rc<ServiceFieldTemplates>,
-    pub block_syntax: Rc<BlockSyntax>,
-    pub for_each_syntax: Rc<ForEachSyntax>,
-    pub tco: Rc<TcoSyntax>,
-    pub items: Rc<ItemKeywords>,
-    pub expression_semantics: Rc<ExpressionSemantics>,
+    pub reserved_words: Arc<ReservedWords>,
+    pub scaffold: Arc<ProjectScaffold>,
+    pub serialization: Arc<SerializationSpec>,
+    pub test_conventions: Arc<TestConventions>,
+    pub visibility: Arc<VisibilitySpec>,
+    pub sharing: Arc<SharingStrategy>,
+    pub indexing: Arc<IndexingSemantics>,
+    pub annotations: Arc<AnnotationRequirements>,
+    pub service_fields: Arc<ServiceFieldTemplates>,
+    pub block_syntax: Arc<BlockSyntax>,
+    pub for_each_syntax: Arc<ForEachSyntax>,
+    pub tco: Arc<TcoSyntax>,
+    pub items: Arc<ItemKeywords>,
+    pub expression_semantics: Arc<ExpressionSemantics>,
     pub lambda_template: String,
     pub error_expr_template: String,
     pub list_literal_empty: String,
@@ -400,17 +401,17 @@ pub struct LanguageSpec {
     pub type_arg_open: String,
     pub type_arg_close: String,
     pub void_type: String,
-    pub tuple_syntax: Rc<TupleSyntax>,
-    pub string_interp: Rc<StringInterpSyntax>,
+    pub tuple_syntax: Arc<TupleSyntax>,
+    pub string_interp: Arc<StringInterpSyntax>,
     pub callable_type_template: Option<String>,
     pub naming_case: NamingCase,
     pub async_call_prefix: String,
     pub bridge_method_prefix: String,
     pub bridge_method_case: NamingCase,
-    pub bridge_method_overrides: Rc<HashMap<String, String>>,
-    pub record_lit: Rc<RecordLitSyntax>,
-    pub service_method: Rc<ServiceMethodStrategy>,
-    pub service_return: Rc<ServiceReturnStrategy>,
+    pub bridge_method_overrides: Arc<HashMap<String, String>>,
+    pub record_lit: Arc<RecordLitSyntax>,
+    pub service_method: Arc<ServiceMethodStrategy>,
+    pub service_return: Arc<ServiceReturnStrategy>,
     pub char_sanitization: CharSanitization,
 }
 
@@ -462,10 +463,10 @@ pub struct EscapePair {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
-    pub style: Rc<InterpStyle>,
+    pub style: Arc<InterpStyle>,
     pub format_template: String,
     pub plain_template: String,
-    pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
+    pub escape_pairs: Arc<Vec<Arc<EscapePair>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -474,8 +475,8 @@ pub struct EmojiCharEscape {
     pub suffix: String,
 }
 
-pub fn canonical_emoji_char_escape() -> Rc<EmojiCharEscape> {
-    Rc::new(EmojiCharEscape {
+pub fn canonical_emoji_char_escape() -> Arc<EmojiCharEscape> {
+    Arc::new(EmojiCharEscape {
         prefix: "_Eu".to_string(),
         suffix: "_".to_string(),
     })
@@ -490,22 +491,22 @@ pub enum CharSanitization {
     EmojiEscape,
 }
 
-pub fn rust_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+pub fn rust_spec() -> Arc<LanguageSpec> {
+    Arc::new(LanguageSpec {
         target_name: "rust".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: Arc::new(ReservedWords {
             keywords: rust_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: Arc::new(ReservedWordStrategy::SuffixEscape {
                 suffix: rust_reserved_escape_suffix(),
             }),
         }),
-        scaffold: Rc::new(ProjectScaffold {
+        scaffold: Arc::new(ProjectScaffold {
             manifest_file: Some("Cargo.toml".to_string()),
             module_init_file: None,
             source_file_extension: rust_source_extension(),
             source_dir: Some(rust_source_dir()),
         }),
-        serialization: Rc::new(SerializationSpec {
+        serialization: Arc::new(SerializationSpec {
             struct_derives: Some(rust_struct_derives()),
             struct_derives_copy: Some(rust_struct_derives_copy()),
             enum_derives: Some(rust_enum_derives()),
@@ -515,7 +516,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             derive_attribute: None,
             default_value: None,
         }),
-        test_conventions: Rc::new(TestConventions {
+        test_conventions: Arc::new(TestConventions {
             file_prefix: "".to_string(),
             file_suffix: "_test".to_string(),
             file_dir: Some("tests/".to_string()),
@@ -523,10 +524,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: Some("#[tokio::test]".to_string()),
         }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        visibility: Arc::new(VisibilitySpec::KeywordVisibility {
             prefix: rust_visibility(),
         }),
-        sharing: Rc::new(SharingStrategy {
+        sharing: Arc::new(SharingStrategy {
             needs_sharing: true,
             wrap_template: "Arc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
@@ -537,20 +538,20 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             borrow_param_template: "&{0}".to_string(),
             borrow_arg_template: "&{0}".to_string(),
         }),
-        indexing: Rc::new(IndexingSemantics {
+        indexing: Arc::new(IndexingSemantics {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: None,
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
         }),
-        annotations: Rc::new(AnnotationRequirements {
+        annotations: Arc::new(AnnotationRequirements {
             let_binding_inferred: "let {0} = {1};".to_string(),
             let_binding_annotated: "let {0}: {1} = {2};".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
         }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        service_fields: Arc::new(ServiceFieldTemplates {
             rest_decl: "    pub base_url: String,\n".to_string(),
             auth_decl: "    pub auth_token: String,\n".to_string(),
             shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
@@ -560,7 +561,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             shell_ctor: "        working_dir: None,\n".to_string(),
             file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
         }),
-        block_syntax: Rc::new(BlockSyntax {
+        block_syntax: Arc::new(BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -570,11 +571,11 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             stmt_terminator: ";".to_string(),
             significant_whitespace: false,
         }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        for_each_syntax: Arc::new(ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
         }),
-        tco: Rc::new(TcoSyntax {
+        tco: Arc::new(TcoSyntax {
             loop_keyword: "loop".to_string(),
             break_return: "break".to_string(),
             continue_str: "continue;".to_string(),
@@ -582,7 +583,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             temp_decl_prefix: "let ".to_string(),
             temp_assign_op: " = ".to_string(),
         }),
-        items: Rc::new(ItemKeywords {
+        items: Arc::new(ItemKeywords {
             func_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::FuncForm),
             async_prefix: rust_async_prefix(),
             struct_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::StructForm),
@@ -598,11 +599,11 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             import_keyword: rust_import_keyword(),
             import_from_keyword: rust_import_from_keyword(),
         }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        expression_semantics: Arc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(Arc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
                 binding_sep: ": ".to_string(),
@@ -622,7 +623,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         type_arg_open: rust_type_arg_open(),
         type_arg_close: rust_type_arg_close(),
         void_type: rust_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: Arc::new(TupleSyntax {
             empty: rust_tuple_empty(),
             pair_template: rust_tuple_pair_template(),
             multi_template: rust_tuple_multi_template(),
@@ -630,18 +631,18 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
         }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::FormatArgs {
+        string_interp: Arc::new(StringInterpSyntax {
+            style: Arc::new(InterpStyle::FormatArgs {
                 placeholder: "{}".to_string(),
             }),
             format_template: "format!(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\".to_string()".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
                 }),
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "}".to_string(),
                     to: "}}".to_string(),
                 }),
@@ -653,7 +654,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: Arc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
             named_empty: " {}".to_string(),
@@ -664,30 +665,30 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
         }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        service_method: Arc::new(ServiceMethodStrategy::SelfInParams {
             self_param: "&self".to_string(),
         }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        service_return: Arc::new(ServiceReturnStrategy::ArrowReturn),
         char_sanitization: CharSanitization::EmojiEscape,
     })
 }
 
-pub fn python_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+pub fn python_spec() -> Arc<LanguageSpec> {
+    Arc::new(LanguageSpec {
         target_name: "python".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: Arc::new(ReservedWords {
             keywords: python_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: Arc::new(ReservedWordStrategy::SuffixEscape {
                 suffix: python_reserved_escape_suffix(),
             }),
         }),
-        scaffold: Rc::new(ProjectScaffold {
+        scaffold: Arc::new(ProjectScaffold {
             manifest_file: Some("requirements.txt".to_string()),
             module_init_file: Some(python_module_init()),
             source_file_extension: python_source_extension(),
             source_dir: None,
         }),
-        serialization: Rc::new(SerializationSpec {
+        serialization: Arc::new(SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -697,7 +698,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             derive_attribute: Some(python_derive_attribute()),
             default_value: Some(python_default_value()),
         }),
-        test_conventions: Rc::new(TestConventions {
+        test_conventions: Arc::new(TestConventions {
             file_prefix: "test_".to_string(),
             file_suffix: "".to_string(),
             file_dir: Some("tests/".to_string()),
@@ -705,10 +706,10 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: None,
         }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        visibility: Arc::new(VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
         }),
-        sharing: Rc::new(SharingStrategy {
+        sharing: Arc::new(SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
             clone_value: "{0}".to_string(),
@@ -719,20 +720,20 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             borrow_param_template: "{0}".to_string(),
             borrow_arg_template: "{0}".to_string(),
         }),
-        indexing: Rc::new(IndexingSemantics {
+        indexing: Arc::new(IndexingSemantics {
             list_index: "{0}[{1}]".to_string(),
             map_index: "{0}[{1}]".to_string(),
             string_index: "{0}[{1}]".to_string(),
             list_slice: Some("{0}[{1}:{2}]".to_string()),
             string_slice: Some("{0}[{1}:{2}]".to_string()),
         }),
-        annotations: Rc::new(AnnotationRequirements {
+        annotations: Arc::new(AnnotationRequirements {
             let_binding_inferred: "{0} = {1}".to_string(),
             let_binding_annotated: "{0}: {1} = {2}".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
         }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        service_fields: Arc::new(ServiceFieldTemplates {
             rest_decl: "base_url: str".to_string(),
             auth_decl: "auth_token: str".to_string(),
             shell_decl: "working_dir: str | None = None".to_string(),
@@ -742,7 +743,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             shell_ctor: "self.working_dir = working_dir".to_string(),
             file_ctor: "self.base_path = base_path".to_string(),
         }),
-        block_syntax: Rc::new(BlockSyntax {
+        block_syntax: Arc::new(BlockSyntax {
             block_open: ":\n".to_string(),
             block_close: "".to_string(),
             else_clause: "else:\n".to_string(),
@@ -752,11 +753,11 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             stmt_terminator: "\n".to_string(),
             significant_whitespace: true,
         }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        for_each_syntax: Arc::new(ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
         }),
-        tco: Rc::new(TcoSyntax {
+        tco: Arc::new(TcoSyntax {
             loop_keyword: "while True".to_string(),
             break_return: "return".to_string(),
             continue_str: "continue\n".to_string(),
@@ -764,7 +765,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " = ".to_string(),
         }),
-        items: Rc::new(ItemKeywords {
+        items: Arc::new(ItemKeywords {
             func_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::FuncForm),
             async_prefix: python_async_prefix(),
             struct_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::StructForm),
@@ -780,11 +781,11 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             import_keyword: python_import_keyword(),
             import_from_keyword: python_import_from_keyword(),
         }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        expression_semantics: Arc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(Arc::new(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
                 binding_sep: "=".to_string(),
@@ -804,7 +805,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         type_arg_open: python_type_arg_open(),
         type_arg_close: python_type_arg_close(),
         void_type: python_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: Arc::new(TupleSyntax {
             empty: python_tuple_empty(),
             pair_template: python_tuple_pair_template(),
             multi_template: python_tuple_multi_template(),
@@ -812,16 +813,16 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             first_accessor: "[0]".to_string(),
             second_accessor: "[1]".to_string(),
         }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::InlineExpr),
+        string_interp: Arc::new(StringInterpSyntax {
+            style: Arc::new(InterpStyle::InlineExpr),
             format_template: "f\"{0}\"".to_string(),
             plain_template: "f\"{0}\"".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
                 }),
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "}".to_string(),
                     to: "}}".to_string(),
                 }),
@@ -837,7 +838,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             "with".to_string(),
             "with_update".to_string(),
         ),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: Arc::new(RecordLitSyntax {
             named_open: "(".to_string(),
             named_close: ")".to_string(),
             named_empty: "()".to_string(),
@@ -848,30 +849,30 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
         }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        service_method: Arc::new(ServiceMethodStrategy::SelfInParams {
             self_param: "self".to_string(),
         }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        service_return: Arc::new(ServiceReturnStrategy::ArrowReturn),
         char_sanitization: CharSanitization::EmojiEscape,
     })
 }
 
-pub fn go_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+pub fn go_spec() -> Arc<LanguageSpec> {
+    Arc::new(LanguageSpec {
         target_name: "go".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: Arc::new(ReservedWords {
             keywords: go_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: Arc::new(ReservedWordStrategy::SuffixEscape {
                 suffix: go_reserved_escape_suffix(),
             }),
         }),
-        scaffold: Rc::new(ProjectScaffold {
+        scaffold: Arc::new(ProjectScaffold {
             manifest_file: Some("go.mod".to_string()),
             module_init_file: None,
             source_file_extension: ".go".to_string(),
             source_dir: None,
         }),
-        serialization: Rc::new(SerializationSpec {
+        serialization: Arc::new(SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -881,7 +882,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             derive_attribute: None,
             default_value: None,
         }),
-        test_conventions: Rc::new(TestConventions {
+        test_conventions: Arc::new(TestConventions {
             file_prefix: "".to_string(),
             file_suffix: "_test".to_string(),
             file_dir: None,
@@ -889,10 +890,10 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             name_style: TestNameStyle::PascalCaseTestNames,
             async_decorator: None,
         }),
-        visibility: Rc::new(VisibilitySpec::CaseVisibility {
+        visibility: Arc::new(VisibilitySpec::CaseVisibility {
             export_case: NamingCase::PascalCase,
         }),
-        sharing: Rc::new(SharingStrategy {
+        sharing: Arc::new(SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
             clone_value: "{0}".to_string(),
@@ -903,20 +904,20 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             borrow_param_template: "{0}".to_string(),
             borrow_arg_template: "{0}".to_string(),
         }),
-        indexing: Rc::new(IndexingSemantics {
+        indexing: Arc::new(IndexingSemantics {
             list_index: "{0}[{1}]".to_string(),
             map_index: "{0}[{1}]".to_string(),
             string_index: "{0}[{1}]".to_string(),
             list_slice: Some("{0}[{1}:{2}]".to_string()),
             string_slice: Some("{0}[{1}:{2}]".to_string()),
         }),
-        annotations: Rc::new(AnnotationRequirements {
+        annotations: Arc::new(AnnotationRequirements {
             let_binding_inferred: "{0} := {1}".to_string(),
             let_binding_annotated: "var {0} {1} = {2}".to_string(),
             lambda_param_typed: "{0} {1}".to_string(),
             lambda_param_untyped: "{0} interface{}".to_string(),
         }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        service_fields: Arc::new(ServiceFieldTemplates {
             rest_decl: "\tBaseURL string".to_string(),
             auth_decl: "\tAuthToken string".to_string(),
             shell_decl: "\tWorkingDir string".to_string(),
@@ -926,7 +927,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             shell_ctor: "".to_string(),
             file_ctor: "".to_string(),
         }),
-        block_syntax: Rc::new(BlockSyntax {
+        block_syntax: Arc::new(BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -936,11 +937,11 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             stmt_terminator: "".to_string(),
             significant_whitespace: false,
         }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        for_each_syntax: Arc::new(ForEachSyntax {
             prefix: "for _, ".to_string(),
             separator: " := range ".to_string(),
         }),
-        tco: Rc::new(TcoSyntax {
+        tco: Arc::new(TcoSyntax {
             loop_keyword: "for".to_string(),
             break_return: "return".to_string(),
             continue_str: "continue".to_string(),
@@ -948,7 +949,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " := ".to_string(),
         }),
-        items: Rc::new(ItemKeywords {
+        items: Arc::new(ItemKeywords {
             func_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::FuncForm),
             async_prefix: go_async_prefix(),
             struct_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::StructForm),
@@ -961,7 +962,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             import_keyword: go_import_keyword(),
             import_from_keyword: go_import_from_keyword(),
         }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        expression_semantics: Arc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
@@ -980,7 +981,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         type_arg_open: go_type_arg_open(),
         type_arg_close: go_type_arg_close(),
         void_type: go_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: Arc::new(TupleSyntax {
             empty: go_tuple_empty(),
             pair_template: go_tuple_pair_template(),
             multi_template: go_tuple_multi_template(),
@@ -988,13 +989,13 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             first_accessor: ".First".to_string(),
             second_accessor: ".Second".to_string(),
         }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::FormatArgs {
+        string_interp: Arc::new(StringInterpSyntax {
+            style: Arc::new(InterpStyle::FormatArgs {
                 placeholder: "%v".to_string(),
             }),
             format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\"".to_string(),
-            escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+            escape_pairs: Rc::new(vec![Arc::new(EscapePair {
                 from: "%".to_string(),
                 to: "%%".to_string(),
             })]),
@@ -1005,7 +1006,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         bridge_method_prefix: "v2rt.".to_string(),
         bridge_method_case: NamingCase::PascalCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: Arc::new(RecordLitSyntax {
             named_open: "{".to_string(),
             named_close: "}".to_string(),
             named_empty: "{}".to_string(),
@@ -1016,30 +1017,30 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             anon_suffix: "}".to_string(),
             anon_field_indent: "\t".to_string(),
         }),
-        service_method: Rc::new(ServiceMethodStrategy::ExternalReceiver {
+        service_method: Arc::new(ServiceMethodStrategy::ExternalReceiver {
             var_name: "c".to_string(),
         }),
-        service_return: Rc::new(ServiceReturnStrategy::ErrorTupleReturn {
+        service_return: Arc::new(ServiceReturnStrategy::ErrorTupleReturn {
             error_type: "error".to_string(),
         }),
         char_sanitization: CharSanitization::EmojiEscape,
     })
 }
 
-pub fn dag_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+pub fn dag_spec() -> Arc<LanguageSpec> {
+    Arc::new(LanguageSpec {
         target_name: "dag".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: Arc::new(ReservedWords {
             keywords: dag_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::NoEscape),
+            strategy: Arc::new(ReservedWordStrategy::NoEscape),
         }),
-        scaffold: Rc::new(ProjectScaffold {
+        scaffold: Arc::new(ProjectScaffold {
             manifest_file: None,
             module_init_file: None,
             source_file_extension: dag_source_extension(),
             source_dir: None,
         }),
-        serialization: Rc::new(SerializationSpec {
+        serialization: Arc::new(SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -1049,7 +1050,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             derive_attribute: None,
             default_value: None,
         }),
-        test_conventions: Rc::new(TestConventions {
+        test_conventions: Arc::new(TestConventions {
             file_prefix: "test_".to_string(),
             file_suffix: "".to_string(),
             file_dir: Some("tests/".to_string()),
@@ -1057,10 +1058,10 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: None,
         }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        visibility: Arc::new(VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
         }),
-        sharing: Rc::new(SharingStrategy {
+        sharing: Arc::new(SharingStrategy {
             needs_sharing: true,
             wrap_template: "Arc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
@@ -1071,20 +1072,20 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             borrow_param_template: "&{0}".to_string(),
             borrow_arg_template: "&{0}".to_string(),
         }),
-        indexing: Rc::new(IndexingSemantics {
+        indexing: Arc::new(IndexingSemantics {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: None,
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
         }),
-        annotations: Rc::new(AnnotationRequirements {
+        annotations: Arc::new(AnnotationRequirements {
             let_binding_inferred: "let {0} = {1}".to_string(),
             let_binding_annotated: "let {0}: {1} = {2}".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
         }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        service_fields: Arc::new(ServiceFieldTemplates {
             rest_decl: "    pub base_url: String,\n".to_string(),
             auth_decl: "    pub auth_token: String,\n".to_string(),
             shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
@@ -1094,7 +1095,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             shell_ctor: "        working_dir: None,\n".to_string(),
             file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
         }),
-        block_syntax: Rc::new(BlockSyntax {
+        block_syntax: Arc::new(BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -1104,11 +1105,11 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             stmt_terminator: ";".to_string(),
             significant_whitespace: false,
         }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        for_each_syntax: Arc::new(ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
         }),
-        tco: Rc::new(TcoSyntax {
+        tco: Arc::new(TcoSyntax {
             loop_keyword: "loop".to_string(),
             break_return: "break".to_string(),
             continue_str: "continue;".to_string(),
@@ -1116,7 +1117,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             temp_decl_prefix: "let ".to_string(),
             temp_assign_op: " = ".to_string(),
         }),
-        items: Rc::new(ItemKeywords {
+        items: Arc::new(ItemKeywords {
             func_keyword: dag_func_keyword(),
             async_prefix: dag_async_prefix(),
             struct_keyword: dag_struct_keyword(),
@@ -1129,11 +1130,11 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             import_keyword: dag_import_keyword(),
             import_from_keyword: dag_import_from_keyword(),
         }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        expression_semantics: Arc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(Arc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
                 binding_sep: ": ".to_string(),
@@ -1153,7 +1154,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         type_arg_open: dag_type_arg_open(),
         type_arg_close: dag_type_arg_close(),
         void_type: dag_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: Arc::new(TupleSyntax {
             empty: dag_tuple_empty(),
             pair_template: dag_tuple_pair_template(),
             multi_template: dag_tuple_multi_template(),
@@ -1161,16 +1162,16 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
         }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::InlineExpr),
+        string_interp: Arc::new(StringInterpSyntax {
+            style: Arc::new(InterpStyle::InlineExpr),
             format_template: "\"{0}\"".to_string(),
             plain_template: "\"{0}\"".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "\\{".to_string(),
                 }),
-                Rc::new(EscapePair {
+                Arc::new(EscapePair {
                     from: "}".to_string(),
                     to: "\\}".to_string(),
                 }),
@@ -1182,7 +1183,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: Arc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
             named_empty: " {}".to_string(),
@@ -1193,15 +1194,15 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
         }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        service_method: Arc::new(ServiceMethodStrategy::SelfInParams {
             self_param: "".to_string(),
         }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        service_return: Arc::new(ServiceReturnStrategy::ArrowReturn),
         char_sanitization: CharSanitization::NoCharSanitization,
     })
 }
 
-pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
+pub fn language_spec_for_target(target: RenderTarget) -> Arc<LanguageSpec> {
     match target.clone() {
         RenderTarget::Rust => rust_spec(),
         RenderTarget::Go => go_spec(),
@@ -1228,7 +1229,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     }
 }
 
-pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn target_operators(target: RenderTarget) -> Arc<Vec<Arc<OperatorSpec>>> {
     match target.clone() {
         RenderTarget::Rust => rust_operators(),
         RenderTarget::Python => python_operators(),
@@ -1244,7 +1245,7 @@ pub fn binop_symbol(
 ) -> Option<String> {
     {
         let ops = target_operators(target.clone());
-        let op_matching = Rc::new({
+        let op_matching = Arc::new({
             let mut __result = Vec::new();
             for spec in ops.clone().iter().cloned() {
                 if match spec.binop.clone() {
@@ -1257,7 +1258,7 @@ pub fn binop_symbol(
             __result
         });
         let specific = match algebra_field.clone() {
-            Some(af) => Rc::new({
+            Some(af) => Arc::new({
                 let mut __result = Vec::new();
                 for spec in op_matching.clone().iter().cloned() {
                     if match spec.algebra_field.clone() {
@@ -1275,7 +1276,7 @@ pub fn binop_symbol(
         };
         let result = match specific.clone() {
             Some(_) => specific.clone(),
-            None => Rc::new({
+            None => Arc::new({
                 let mut __result = Vec::new();
                 for spec in op_matching.clone().iter().cloned() {
                     if (spec.algebra_field.clone() == None) {
@@ -1330,31 +1331,31 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
     }
 }
 
-pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
+pub fn scaffold_for_target(target: RenderTarget) -> Arc<ProjectScaffold> {
     language_spec_for_target(target.clone()).scaffold.clone()
 }
 
-pub fn serialization_for_target(target: RenderTarget) -> Rc<SerializationSpec> {
+pub fn serialization_for_target(target: RenderTarget) -> Arc<SerializationSpec> {
     language_spec_for_target(target.clone())
         .serialization
         .clone()
 }
 
-pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> {
+pub fn test_conventions_for_target(target: RenderTarget) -> Arc<TestConventions> {
     language_spec_for_target(target.clone())
         .test_conventions
         .clone()
 }
 
-pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
+pub fn visibility_for_target(target: RenderTarget) -> Arc<VisibilitySpec> {
     language_spec_for_target(target.clone()).visibility.clone()
 }
 
-pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
+pub fn sharing_for_target(target: RenderTarget) -> Arc<SharingStrategy> {
     language_spec_for_target(target.clone()).sharing.clone()
 }
 
-pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
+pub fn expression_semantics_for_target(target: RenderTarget) -> Arc<ExpressionSemantics> {
     language_spec_for_target(target.clone())
         .expression_semantics
         .clone()

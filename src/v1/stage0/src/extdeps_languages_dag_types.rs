@@ -13,27 +13,28 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn dag_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn dag_type_checkpoints() -> Arc<Vec<Arc<TypeCheckpoint>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
+        static CACHED: Arc<Vec<Arc<TypeCheckpoint>>> = {
             serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "Int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "Float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "Bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<TypeCheckpoint>>>| c.clone())
 }

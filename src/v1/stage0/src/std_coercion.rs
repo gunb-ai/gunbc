@@ -9,6 +9,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeCheckpoint {
@@ -46,7 +47,7 @@ pub struct CastRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
+    pub cast_rules: Arc<Vec<Arc<CastRule>>>,
 }
 
 pub fn grounded_primitive_coproduct_cast_note() -> String {
@@ -58,24 +59,24 @@ pub fn grounded_primitive_coproduct_cast_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
+pub fn dag_cast_rules() -> Arc<Vec<Arc<CastRule>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<CastRule>>> = {
+        static CACHED: Arc<Vec<Arc<CastRule>>> = {
             serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<CastRule>>>| c.clone())
 }
 
-pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
+pub fn grounded_primitive_coproduct_identities() -> Arc<Vec<Arc<CastRule>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<CastRule>>> = {
+        static CACHED: Arc<Vec<Arc<CastRule>>> = {
             serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<CastRule>>>| c.clone())
 }
 
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {

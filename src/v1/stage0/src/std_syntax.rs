@@ -14,6 +14,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -107,37 +108,37 @@ pub struct AlgebraFieldEntry {
     pub field_name: String,
 }
 
-pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
+pub fn algebra_field_entries() -> Arc<Vec<Arc<AlgebraFieldEntry>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<AlgebraFieldEntry>>> = {
-                Rc::new(vec![Rc::new(AlgebraFieldEntry {
+            static CACHED: Arc<Vec<Arc<AlgebraFieldEntry>>> = {
+                Rc::new(vec![Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgAdd,
         field_name: "add".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgMul,
         field_name: "mul".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgReciprocal,
         field_name: "reciprocal".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgQuotient,
         field_name: "quotient".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgRemainder,
         field_name: "remainder".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgCompare,
         field_name: "compare".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgMeet,
         field_name: "meet".to_string(),
-    }), Rc::new(AlgebraFieldEntry {
+    }), Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgJoin,
         field_name: "join".to_string(),
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<AlgebraFieldEntry>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<AlgebraFieldEntry>>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -151,10 +152,10 @@ pub struct OperatorSpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxSpec {
-    pub item_forms: Rc<Vec<Rc<ItemForm>>>,
-    pub operators: Rc<Vec<Rc<OperatorSpec>>>,
-    pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
-    pub keyword_set: Rc<HashMap<String, bool>>,
+    pub item_forms: Arc<Vec<Arc<ItemForm>>>,
+    pub operators: Arc<Vec<Arc<OperatorSpec>>>,
+    pub keyword_literals: Arc<HashMap<String, Arc<LiteralValue>>>,
+    pub keyword_set: Arc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
