@@ -213,15 +213,17 @@ test fn family_crate_digest_differs_from_member_digests_holds() -> Bool {
 }
 
 test fn family_crate_member_change_key_sensitivity_holds() -> Bool {
-  family_crate_native_key(members: family_crate_members())
-    != family_crate_native_key(members: family_crate_alt_members())
+  let key_primary = family_crate_native_key(members: family_crate_members())
+  let key_alt = family_crate_native_key(members: family_crate_alt_members())
+  key_primary != key_alt
 }
 
 test fn family_crate_member_order_key_sensitivity_holds() -> Bool {
   let d_meet = inferred_tree_digest(tree: family_crate_meet_tree())
   let d_join = inferred_tree_digest(tree: family_crate_join_tree())
-  family_closure_digest(members: [d_meet, d_join])
-    != family_closure_digest(members: [d_join, d_meet])
+  let forward = family_closure_digest(members: [d_meet, d_join])
+  let reversed = family_closure_digest(members: [d_join, d_meet])
+  forward != reversed
 }
 
 test fn family_crate_one_build_members_warm_holds() -> Bool {
