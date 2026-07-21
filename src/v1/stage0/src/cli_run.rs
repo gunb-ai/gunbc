@@ -34,8 +34,7 @@ use crate::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
-    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
+    inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
     param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -63,30 +62,6 @@ fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypeche
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
-    }
-}
-
-fn log_discovery_advisory_typecheck(
-    d: &Rc<ErrorNode>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    gate: ResolveTypecheckGate,
-) {
-    if gate != ResolveTypecheckGate::DiscoveryCorpusAdvisory {
-        return;
-    }
-    // Surface ALL discovery-corpus advisory diagnostics, not only those that also
-    // interpreter-block. Every advisory diagnostic except UnlistedImportUse is already
-    // interpreter-blocking, so this is a no-op for them; it wires UnlistedImportUse
-    // (advisory + non-blocking, the diagnostic-collect signal) into the reporting path
-    // instead of leaving it emitted-but-unobservable (§5 spec-without-execution).
-    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-        let span = diagnostic_to_span(d.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, source_indices);
-        eprintln!(
-            "advisory(typecheck): {}: error: {}",
-            loc,
-            diagnostic_to_message(d.diagnostic.clone())
-        );
     }
 }
 
@@ -5829,9 +5804,6 @@ fn resolved_graph_from_sources_with_index(
         s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
-    for d in typed.diagnostics.iter() {
-        log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
-    }
     let has_type_errors = typed
         .diagnostics
         .iter()
@@ -6770,7 +6742,6 @@ fn resolved_graph_from_sources(
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
             if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
-                log_discovery_advisory_typecheck(d, &si, typecheck_gate);
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
