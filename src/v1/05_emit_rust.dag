@@ -3447,7 +3447,7 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
       } else {
         match map_get(type_summaries, type_name) {
           Present { value: summary } =>
-            map_values(summary.field_type_map) |> filter(field_type =>
+            summary.field_import_surface_names |> filter(field_type =>
               field_type != ""
               && name_in_transitive_export_surface(name: field_type, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
               && match map_get(type_summaries, field_type) {

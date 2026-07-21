@@ -425,11 +425,13 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
               )
               let vname = authored_name_at(source_indices: source_indices, node: variant)
               let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
+              let variant_field_types = build_field_type_map(children: variant.children, source_indices: source_indices)
               map_insert(acc, qualified_vname, TypeSummary {
                 name: qualified_vname,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
-                field_type_map: build_field_type_map(children: variant.children, source_indices: source_indices),
+                field_type_map: variant_field_types.field_types,
+                field_import_surface_names: variant_field_types.import_surface_names,
                 variant_name_set: empty_map(),
                 generic_param_names: [],
                 has_fn_fields: v_has_fn
