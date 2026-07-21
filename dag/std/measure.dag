@@ -319,15 +319,17 @@ fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   }
 }
 
-data billing_month_as_hour_count: Nat = 730
+fn billing_month_as_hour_count() -> Nat {
+  730
+}
 
 data billing_month_as_hour_count_note: String = "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote."
 
-data billing_month_as_hour_count_representation_note: String = "Nat divisor, not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
+data billing_month_as_hour_count_representation_note: String = "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
 
 fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
   MoneyPerHour {
-    amount: money_amount_micro(count: money_per_month_micros(q: q) / billing_month_as_hour_count),
+    amount: money_amount_micro(count: money_per_month_micros(q: q) / billing_month_as_hour_count()),
     currency: q.currency,
   }
 }

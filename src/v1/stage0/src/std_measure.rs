@@ -415,12 +415,7 @@ pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
 }
 
 pub fn billing_month_as_hour_count() -> Nat {
-    thread_local! {
-        static CACHED: Nat = {
-            730
-        };
-    }
-    CACHED.with(|c: &Nat| c.clone())
+    730
 }
 
 pub fn billing_month_as_hour_count_note() -> String {
@@ -435,7 +430,7 @@ pub fn billing_month_as_hour_count_note() -> String {
 pub fn billing_month_as_hour_count_representation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Nat divisor, not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
+            "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
