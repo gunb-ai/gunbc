@@ -27,9 +27,24 @@ fn witness_gunbhub_emit_still_green() -> Bool {
     && string_contains(s: gunbhub_node_http_server_source(), pattern: "listen(")
 }
 
+fn witness_emitted_source_has_dispatch_route() -> Bool {
+  let src = roadmap_dashboard_node_http_server_source()
+  string_contains(s: src, pattern: "/dispatch/")
+    && string_contains(s: src, pattern: "execFile")
+    && string_contains(s: src, pattern: "GUNBC_BELT_NODE_ID")
+    && string_contains(s: src, pattern: "belt_dispatch_node_cli")
+}
+
+fn witness_gunbhub_emit_has_no_dispatch_route() -> Bool {
+  !string_contains(s: gunbhub_node_http_server_source(), pattern: "execFile")
+    && !string_contains(s: gunbhub_node_http_server_source(), pattern: "/dispatch/")
+}
+
 test fn roadmap_dashboard_emit_witnesses() -> Bool {
   witness_route_table_serves_daily_and_roadmap()
     && witness_emitted_source_has_root_daily_workspace()
     && witness_emitted_source_has_roadmap_route()
     && witness_gunbhub_emit_still_green()
+    && witness_emitted_source_has_dispatch_route()
+    && witness_gunbhub_emit_has_no_dispatch_route()
 }

@@ -26,8 +26,9 @@ with the toolchain grant (curl, websocat, nbdkit, socat).
 2. **Seeded ISO remaster before serve** — step 0b produces the actuator virtual-media path
    (`gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path` →
    `.../ubuntu-24.04.3-live-server-srv3-seeded.iso`). `srv3_nbd_proxy_serve` binds this authority, not the stock path.
-3. **`srv3_nbd_proxy_serve` is long-running** — runs foreground until Ctrl-C or installer disconnect. Open a second
-   terminal for boot-once.
+3. **`srv3_nbd_proxy_serve` is a held session** — one-shot `host_effect_apply` reconciles `Srv3NbdProxyServe` via
+   systemd transient units (nbdkit + websocat). Units keep serving after the command returns; stop them when install
+   completes. Open a second terminal for boot-once.
 4. **Record receipts** — paste command output and router lease observation into the operator sign-off thread.
 
 ## Step 0a — actuator toolchain ensure (srv1)
@@ -99,11 +100,6 @@ cd "$GUNBC_ROOT"
 
 # Preflight: toolchain (ISO from step 0)
 which curl websocat nbdkit socat jq sha256sum gunbc
-
-# Emit the nbd-proxy serve script to /tmp/srv3_nbd_proxy_serve.sh (review before live)
-gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_os_install_actuate.dag \
-  --function srv3_os_install_actuate_emit_nbd_script
 ```
 
 ### BMCweb login — credential resolution (read before live)
@@ -122,7 +118,7 @@ gunbc run --source-root dag \
 
 Run in **two terminals** on the actuator host.
 
-### Terminal A — virtual media serve (held open)
+### Terminal A — virtual media serve (typed session-lease apply)
 
 ```bash
 gunbc run --source-root dag \
@@ -130,7 +126,8 @@ gunbc run --source-root dag \
   --function srv3_nbd_proxy_serve
 ```
 
-Leave running. The BMC should mount the ISO as virtual CD when the NBD handshake completes.
+Returns on converge (systemd transient units started). Verify port **10809** is listening, then proceed. The BMC
+should mount the ISO as virtual CD when the NBD handshake completes.
 
 ### Terminal B — boot once from CD + force restart (workflow escalation)
 
