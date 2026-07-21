@@ -396,7 +396,12 @@ fn namespace_graft_spine_body_conj(captured: Node) -> Node {
         match list_at_optional(xs: captured.children, index: 0) {
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } => namespace_graft_spine_body_conj(captured: edge.target)
+              Named { name: _ } =>
+                if namespace_graft_node_is_conj(node: edge.target) {
+                  namespace_graft_spine_body_conj(captured: edge.target)
+                } else {
+                  captured
+                }
               Positional => captured
             }
           Absent => captured
