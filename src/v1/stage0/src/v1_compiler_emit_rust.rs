@@ -141,8 +141,8 @@ pub use crate::v1_std_core::{
     let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
     make_span, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
-    service_config_auth, service_config_auth_input, service_config_auth_source,
+    qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
     transport_auth_header_name, transport_auth_token, transport_base_url, transport_env,
     transport_has_auth, transport_headers, transport_method, transport_path_template,
@@ -1637,6 +1637,15 @@ pub fn alias_rhs_container_arg(
     }
 }
 
+pub fn alias_rhs_qualified_name_routing_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.\n\nMeasured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.\n\nFix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the existing authority — a qualified name IS a containment path, and its last segment is the declared name the registry knows). Not a string dot-to-colon rewrite: that would FABRICATE a path from the spelling instead of RESOLVING the declaration, and would silently produce a wrong path whenever the qualifier does not match the defining module. Because qualified_last_segment is the identity on an unqualified name, every bare name renders exactly as before — the seed stays byte-identical by construction, which is why this lands with regen_divergence_count=0 rather than merely hoping for it.\n\nThe v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn render_rust_alias_rhs_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -1751,8 +1760,9 @@ pub fn render_rust_alias_rhs_type(
                     && ((n.children.clone().len() as i64) > 0))
                 {
                     {
+                        let leaf = qualified_last_segment(name.clone());
                         let numeric_host_alias =
-                            rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone());
+                            rust_seed_host_numeric_alias(leaf.clone(), corpus_repr.clone());
                         if (numeric_host_alias.clone() != None) {
                             return match numeric_host_alias.clone() {
                                 Some(host) => host.clone(),
@@ -1761,7 +1771,7 @@ pub fn render_rust_alias_rhs_type(
                         }
                         let local_mod = module_to_filename(module_name.clone());
                         let def_mod = alias_rhs_rust_qualify_module_filename(
-                            name.clone(),
+                            leaf.clone(),
                             module_name.clone(),
                             imports.clone(),
                             scope.clone(),
@@ -1772,7 +1782,7 @@ pub fn render_rust_alias_rhs_type(
                             module_index.clone(),
                         );
                         let base = match rust_seed_host_container_base(
-                            name.clone(),
+                            leaf.clone(),
                             corpus_repr.clone(),
                         ) {
                             Some(host) => host.clone(),
@@ -1783,25 +1793,25 @@ pub fn render_rust_alias_rhs_type(
                                             v1_rt::concat("crate::".to_string(), def_mod.clone()),
                                             "::".to_string(),
                                         ),
-                                        name.clone(),
+                                        leaf.clone(),
                                     )
                                 } else {
-                                    name.clone()
+                                    leaf.clone()
                                 }
                             }
                         };
                         let base_is_zero_param =
-                            ((rust_seed_host_container_base(name.clone(), corpus_repr.clone())
+                            ((rust_seed_host_container_base(leaf.clone(), corpus_repr.clone())
                                 == None)
                                 && alias_base_is_zero_param_decl(
-                                    name.clone(),
+                                    leaf.clone(),
                                     def_mod.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
                                     module_index.clone(),
                                 ));
                         if base_is_zero_param.clone() {
-                            return if (v1_rt::set_contains(&shared_types, name.clone())
+                            return if (v1_rt::set_contains(&shared_types, leaf.clone())
                                 && !rust_type_is_rc_wrapped(base.clone()))
                             {
                                 wrap_shared_type(RenderTarget::Rust, base.clone())
@@ -1810,7 +1820,7 @@ pub fn render_rust_alias_rhs_type(
                             };
                         }
                         let peel = is_parametric_opaque_type_base(
-                            name.clone(),
+                            leaf.clone(),
                             def_mod.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
@@ -1866,7 +1876,7 @@ pub fn render_rust_alias_rhs_type(
                             ),
                             ">".to_string(),
                         );
-                        if (v1_rt::set_contains(&shared_types, name.clone())
+                        if (v1_rt::set_contains(&shared_types, leaf.clone())
                             && !rust_type_is_rc_wrapped(applied_ty.clone()))
                         {
                             wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
