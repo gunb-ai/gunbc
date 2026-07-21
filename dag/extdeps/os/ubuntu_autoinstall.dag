@@ -1,7 +1,8 @@
 module extdeps.os.ubuntu_autoinstall
 
-import std.types { Int, NonEmptyStr, Bool }
+import std.types { Int, NonEmptyStr, Bool, List }
 import std.os.types { UbuntuDistribution }
+import extdeps.access.ssh { SshPublicKey }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
 
@@ -36,5 +37,7 @@ type UbuntuAutoinstallPayload {
   locale: NonEmptyStr
   keyboard_layout: NonEmptyStr
   install_openssh_server: Bool
+  ssh_authorized_keys: List<SshPublicKey>
+  ssh_password_auth: Bool
   storage_policy: AutoinstallStoragePolicy
 }

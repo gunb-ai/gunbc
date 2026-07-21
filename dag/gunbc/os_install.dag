@@ -22,6 +22,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyDirectLayout,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
+import gunbc.fleet_ssh_access { fleet_authorized_keys }
 import product.placement_supply { HostIdentity }
 import product.network_topology { NetworkSegment }
 import extdeps.bmc.types {
@@ -133,6 +134,8 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_password_auth: false,
   storage_policy: StoragePolicyAbsent,
 }
 
@@ -145,6 +148,8 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_password_auth: false,
   storage_policy: StoragePolicyDirectLayout,
 }
 
