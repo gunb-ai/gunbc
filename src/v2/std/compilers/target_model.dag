@@ -9102,11 +9102,17 @@ type TargetRepresentationChoice {
   constraints: List<RequiredTraitWitness>
 }
 
+type TargetTextCarrier {
+  element_carrier: Node
+  emitted_type_node: Node
+}
+
 type TargetCollectionRealization {
   source_carrier: Node
   primary: TargetRepresentationChoice
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic
+  text_carrier: Optional<TargetTextCarrier>
 }
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
