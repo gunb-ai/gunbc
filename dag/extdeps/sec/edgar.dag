@@ -31,7 +31,7 @@ type EdgarErrorEnvelope {
 }
 
 type CompanyConceptResponse {
-  cik: String
+  cik: Cik
   taxonomy: String
   tag: String
   label: String
@@ -47,7 +47,7 @@ type CompanyFactsTaxonomyFacts {
 }
 
 type CompanyFactsResponse {
-  cik: String
+  cik: Cik
   entityName: String
   facts: Map<String, Map<String, CompanyFactsTaxonomyFacts>>
 }

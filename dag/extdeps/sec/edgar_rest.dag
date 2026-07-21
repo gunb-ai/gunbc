@@ -32,7 +32,6 @@ service sec.Edgar {
     }
     output {
       entity_name: String from "entityName"
-      cik: String from "cik"
     }
     readonly
     transport rest {
