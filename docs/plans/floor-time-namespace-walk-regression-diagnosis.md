@@ -73,8 +73,8 @@ peak 12.5 GB, **no** backoffs — same post-#6848 walk class, different host env
 
 Interpretation: #6956+#6972 brought peaks down from the 32 GB class, but the post-#6848
 resolve walk keeps capped hosts **cap-saturated** — throttle cost on the time axis and one
-bad allocation from exit-137. Pairs with §1.1–§1.3 and §6 as the memory-beside-time
-residual (not addressed by #6998/#6999). Pairs with §1.1–§1.3 and §5.
+bad allocation from exit-137. Pairs with §1.1–§1.3 and §5.2 as the memory-beside-time
+residual (not addressed by #6998/#6999).
 
 ### 1.5 Advisory diagnostic volume (typecheck overhead signal)
 
