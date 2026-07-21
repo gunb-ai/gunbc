@@ -1,0 +1,95 @@
+module extdeps.color.srgb
+
+import std.types { Int, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-color-4/#numeric-srgb"
+  }
+}
+
+data color_srgb_note: String = "Cited upstream: W3C CSS Color Module Level 4 (retrieved 2026-07-21) — the sRGB color space (whose normative definition CSS4 cites to IEC 61966-2-1), 8-bit component notation, hex serialization (#rrggbb, section 'The RGB hexadecimal notations'), and the HSL<->sRGB conversion algorithm (section 'HSL Colors'). This module owns COLOR-SPACE facts only: what a color value IS and how representations convert. Perceptual LAW over colors (relative luminance, contrast thresholds) is extdeps.accessibility.wcag_contrast, which imports this module — accessibility consumes the color space, it does not own it (DESIGN sect 3: the conversion previously lived inside wcag_contrast; re-homed 2026-07-21). Srgb8 is the authored identity for catalogued colors — a hex literal is a SERIALIZATION of Srgb8, never the stored fact (decompress the string, DESIGN sect 2). RgbScaled is the scale-10000 integer representation (one unit = 0.0001 of a channel) shared by the integer kernels; conversions here are exact at the representation's precision, no floats, no host math. OKLCH coordinates are the named next representation (design-register-library.md sect 10 Class 2, phase A.2): the cube-root kernel follows the same integer-Newton pattern wcag_contrast proves for the 2.4 exponent."
+
+type Srgb8 {
+  r: Int
+  g: Int
+  b: Int
+}
+
+fn srgb8_admissible(c: Srgb8) -> Bool {
+  c.r >= 0 && c.r <= 255
+    && c.g >= 0 && c.g <= 255
+    && c.b >= 0 && c.b <= 255
+}
+
+fn hex_digit(v: Int) -> String {
+  if v == 0 { "0" }
+  else if v == 1 { "1" }
+  else if v == 2 { "2" }
+  else if v == 3 { "3" }
+  else if v == 4 { "4" }
+  else if v == 5 { "5" }
+  else if v == 6 { "6" }
+  else if v == 7 { "7" }
+  else if v == 8 { "8" }
+  else if v == 9 { "9" }
+  else if v == 10 { "a" }
+  else if v == 11 { "b" }
+  else if v == 12 { "c" }
+  else if v == 13 { "d" }
+  else if v == 14 { "e" }
+  else { "f" }
+}
+
+fn byte_hex(v: Int) -> String {
+  concat(hex_digit(v: v / 16), hex_digit(v: v % 16))
+}
+
+fn srgb8_hex(c: Srgb8) -> String {
+  join(["#", byte_hex(v: c.r), byte_hex(v: c.g), byte_hex(v: c.b)], "")
+}
+
+type RgbScaled {
+  r: Int
+  g: Int
+  b: Int
+}
+
+fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
+  RgbScaled {
+    r: (c.r * 10000) / 255,
+    g: (c.g * 10000) / 255,
+    b: (c.b * 10000) / 255,
+  }
+}
+
+fn iabs(v: Int) -> Int {
+  if v < 0 { 0 - v } else { v }
+}
+
+fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
+  let l = light_pct * 100
+  let s = sat_pct * 100
+  let c = ((10000 - iabs(v: 2 * l - 10000)) * s) / 10000
+  let h2 = ((hue % 360) + 360) % 360
+  let t = ((h2 % 120) * 10000) / 60
+  let x = (c * (10000 - iabs(v: t - 10000))) / 10000
+  let m = l - c / 2
+  let sextant = h2 / 60
+  if sextant == 0 {
+    RgbScaled { r: c + m, g: x + m, b: m }
+  } else if sextant == 1 {
+    RgbScaled { r: x + m, g: c + m, b: m }
+  } else if sextant == 2 {
+    RgbScaled { r: m, g: c + m, b: x + m }
+  } else if sextant == 3 {
+    RgbScaled { r: m, g: x + m, b: c + m }
+  } else if sextant == 4 {
+    RgbScaled { r: x + m, g: m, b: c + m }
+  } else {
+    RgbScaled { r: c + m, g: m, b: x + m }
+  }
+}

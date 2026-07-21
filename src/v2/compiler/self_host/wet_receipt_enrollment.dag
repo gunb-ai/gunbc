@@ -24,10 +24,16 @@ fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
+data falsifier_self_host_wet_emit_class_note: String = "The second template row is NOT a per-module self-host receipt — it is the emit-CLASS receipt for the Gate-1 import-closure derivation (emit_import_closure_root). It enrolls as a template row rather than a SelfHostWetReceiptBinding because it is bound to no single module_path: it proves a property of the EMITTER (an import-free namespace module referencing a sibling cross-module emits cargo-compiling Rust) on a synthetic fixture, so no frontier row flips to gate it. It is required coverage, not redundancy: regen only exercises the seed corpus, which is import-based, so the self-host fixed point is unchanged by the pass and cannot witness this class."
+
 data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     f: "self_host_logic_behavioral_receipt_holds"
+  ),
+  self_host_wet_entry(
+    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
+    f: "namespace_import_closure_receipt_holds"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",

@@ -1,6 +1,6 @@
 # Hierarchical design-register library
 
-Status: **draft for operator review** (DOC-ONLY — no code lands from this doc; no edits to `dag/gunbc/site/` while PR [#6927](https://github.com/gunb-ai/gunbc/pull/6927) is in review). **Follow-on to** [gunb.ai site subsumption (PR #6927)](https://github.com/gunb-ai/gunbc/pull/6927) — sibling plan doc `gunb-ai-site-subsumption-design.md` lands with that PR; link upgrades when #6927 merges. Phase A implementation **fires on #6927 merge** — that PR's dissolution trigger (cutover receipt at `https://gunb.ai/`) is independent; this lane's Phase A trigger is **#6927 merged to main** with the `gunbc.site.*` carriers stable.
+Status: **draft for operator review** (DOC-ONLY for the lift — no `dag/gunbc/site/` moves or edits while PR [#6927](https://github.com/gunb-ai/gunbc/pull/6927) is in review; **exception, operator-directed 2026-07-21:** the palette catalogue of §2.2 landed early as additive modules inside #6927 — new files only, site carriers untouched). **Follow-on to** [gunb.ai site subsumption (PR #6927)](https://github.com/gunb-ai/gunbc/pull/6927) — sibling plan doc `gunb-ai-site-subsumption-design.md` lands with that PR; link upgrades when #6927 merges. Phase A implementation **fires on #6927 merge** — that PR's dissolution trigger (cutover receipt at `https://gunb.ai/`) is independent; this lane's Phase A trigger is **#6927 merged to main** with the `gunbc.site.*` carriers stable.
 
 ## 1. The displaced cost
 
@@ -208,6 +208,21 @@ Sites are **emitted from the graph** (§7). Therefore:
 
 **Rule:** opinions are exactly the rows an operator signs; everything else is **derived or cited**. A preset without a sign-off row is a scaffold with a dissolution trigger, not production authority.
 
+### 2.2 Palette catalogue (landed 2026-07-21 — additive, ahead of the lift)
+
+Operator directive (2026-07-21): **all color palettes derive from one catalogued location**, well-specified, provenance-marked, swappable behind a standard interface. Landed inside #6927 as three additive modules plus a witness (`gunbc.site.*` untouched; lift discipline unchanged):
+
+- **`extdeps.color.srgb` (L0)** — CSS Color 4 cite (sRGB per IEC 61966-2-1 via CSS4's normative reference): `Srgb8` is the authored color identity — **a hex literal is a serialization of `Srgb8`, never the stored fact** (§2 decompress); `RgbScaled` scale-10000 integer representation; the HSL→sRGB conversion **re-homed here from `wcag_contrast`** (accessibility consumes the color space, it does not own it — §3). OKLCH is the named next representation (A.2): its cube root uses the same integer-Newton pattern the WCAG kernel proves for the 2.4 exponent.
+- **`gunbc.design.palette` (L2)** — `SwatchSet` = name × provenance (`HouseAuthored | InspiredByExternal | CitedUpstream`) × swatches; `PairingGrade` (`TextAaa | TextAa | LargeTextOrGraphicsAa | DecorationOnly`) **derived** from the cited WCAG kernel against named thresholds; `graded_pairings` is **total over ordered figure-on-ground pairs by construction** (no Class-3 string roster to fall open on). **Approval IS the computed grade** (§5 construction): an "approved combination" that fails its threshold is unwritable.
+- **`gunbc.design.catalog` (instances)** — one row per set, vendor-style. First entry **`island-pastel`** (operator swatches, ACNH-inspired = inspiration provenance, not citation): four high-key tints + a warm camel anchor + **`loam`**, a **derived** ink — camel's hue projected to depth, `oklch(0.45 0.085 73)` → `#724d15`, computed offline; **dissolution trigger:** A.2 recomputes the projection in-substrate and pins equality.
+- **Witness** (`design_palette_witness_test`, green by execution): hex round-trip of all six == authored; 30/30 ordered pairings graded (totality); the authored five have **no pairing ≥ 3:1** (camel-on-ivory pinned 2.80–2.99, the near-miss); text capability enters **via loam only** (AA over every tint, AAA on ivory, the 8 AA+ pairings counted); discrimination REDs (black-on-white 21.0:1 AAA, self-pair 1.0:1 refused, `Srgb8{256,·,·}` inadmissible).
+
+**Measured HSL-proxy indictment (the §10 Class 2 discriminating witness):** the island tints read HSL S 88–100% — `quiet_envelope` and the `FieldArea` ceiling refuse **all** of them, *ivory included* — while their perceptual chroma is C 0.007–0.164. Sharpest case: **ivory `#fffffa` (OKLCH C 0.007) is refused as "too saturated" while `day_canvas` (C 0.008) passes** — same perceptual chroma, opposite verdicts; the wall judges the representation, not the appearance. A.2's OKLCH re-ground dissolves the class. **And the ceiling cannot be chroma alone:** rejected gamer-cyan measures C 0.088 — *lower* than mint's 0.142 — so the re-ground must model the envelope as a per-area **(L × C) region**, and admissibility stays a computed per-(set × register) fact: island-pastel sits honestly **outside** the quiet instrument register (a different register, not a defect of either — which registers exist is an L1 operator-sign question, §2.1 opinion table).
+
+**Swap interface:** *internal* — `Theme` is already the swap unit (total role→material binding; post-lift, role→**swatch**): swapping palettes = a new binding row, and the coherence laws gate the swap — a set that cannot fill text roles **refuses at binding** while its catalogue row remains a valid fact. *External* — the **W3C DTCG Design Tokens Format Module** (tokens.json; `$type: "color"`, group aliases ≙ role→swatch indirection) is the named interchange standard, read both directions per §4 (emit the catalogue for Figma/Style Dictionary; ingest external palettes as `SwatchSet` candidates). Citation + emit land **with the first external consumer** (§6 second-consumer discipline), not speculatively.
+
+**Phase-A hooks:** `Material` color identity re-grounds onto catalogue swatches; night/day material families become catalogued sets beside island-pastel; the **"no color literal outside the catalogue"** wall extends the existing unthemed-color census from CSS decls to `.dag` carriers.
+
 ## 3. Override semantics
 
 Defaults flow **down** the hierarchy; **nearest-ancestor wins** for parameters.
@@ -259,7 +274,7 @@ Phase A is not only a module move. Operator review (2026-07-21) flagged hardcode
 |---|---|---|---|
 | **A.0** | Lift + key-typing | extract `gunbc.design.*`; closed enums / symbol refs for element and node keys (Class 3) | emission-identical witness; coverage witnesses total by construction |
 | **A.1** | CSS/SVG grammar | `extdeps/languages/{css,svg}` rows; typed `CssDecl` emission (Class 1c) | invalid property/easing unwritable; `paint()` hand-`join()` dissolved |
-| **A.2** | Perceptual re-ground | WCAG thresholds (Class 1b) + OKLCH L1 walls (Class 2) | lightness-gap proxy RED; glare/chroma walls use perceptual chroma ceiling |
+| **A.2** | Perceptual re-ground | WCAG thresholds (Class 1b) + OKLCH L1 walls (Class 2) | lightness-gap proxy RED; glare/chroma walls use perceptual (L × C) region; island-pastel `loam` recompute pinned in-substrate (§2.2) |
 | **A.3** | Stellar derivation | Morgan–Keenan rows with `temperature_kelvin`; color derived (Class 1a) | no-green witness is computed theorem; hand hue-range check dissolves |
 
 A.0 and A.1 may overlap the structural lift; A.2–A.3 land before Phase B. All remain DOC-ONLY in this PR.
@@ -353,6 +368,8 @@ Facts that are **genuine house choices** (not citeable universal law) but today 
 | lightness-gap `40` / `20` | `theme_contrast_ok` | non-WCAG proxy | **dissolves** into Class 1b WCAG compute |
 
 **Principle:** L1 rows name the house choice (`GlareEnvelope`, `ChromaByArea`) with a `provenance: HouseChoice { signed: §4k row }` marker; L2 enforcement calls L0 perceptual ops on OKLCH coordinates derived from `Material`, not raw HSL compares.
+
+**Discriminating witness (measured, 2026-07-21):** the island-pastel catalogue receipts (§2.2) — HSL-S reads the pastel tints as neon (all refused, ivory `C 0.007` included) while gamer-cyan (`C 0.088`) sits *below* mint (`C 0.142`) on the chroma axis. Conclusion carried into the re-ground: the envelope is a per-area **(L × C) region**, not a chroma scalar.
 
 **Timing scale exception:** `respond_fast` / `reveal_deliberate` / `restore_gentle` / `reframe_page` stay as **named L2 tokens** (discrete duration/easing rows). A base-time × ratio generator is **purity-trap territory** (§6) until a second consumer needs parametric timing — do not build it in Phase A.
 
