@@ -10,8 +10,6 @@ import v2.extdeps.languages.rust {
 }
 import v2.std.compilers.target_model {
   TargetModel,
-  TargetAtomRealization,
-  TargetTypeExpression,
   char_kernel_type_node,
   target_carrier_free_monoid_node
 }
@@ -29,7 +27,7 @@ import v2.std.logic { Bool }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data receipt_note: String = "Discriminating receipt for the Symbol/String emit grounding (Gate 1, emit_representation_mismatch). The v2 emit path grounds Symbol to native Rust String but realizes modeled String = FreeMonoid<Char> as Vec<char> via the unconditional free-monoid collection choice, so the two text carriers fork (E0308). This projects FreeMonoid<Char> through the staging target model and pins the serialized text. RED baseline: a Vec instantiation. GREEN (after element-conditional FreeMonoid<Char> to native String at the collection-repr choice): the bare String atom. See docs/plans/symbol-string-emit-grounding-design.md."
+data receipt_note: String = "Discriminating receipt for the Symbol/String emit grounding (Gate 1, emit_representation_mismatch): generalizes the numeric-tower grounding (PR 5428, native form == modeled form) to the text carrier. The v2 emit path grounds Symbol to native Rust String, but without this grounding it realizes the modeled String (FreeMonoid of Char) as a Vec via the free-monoid collection choice, so the two text carriers fork (the ~2100 E0308 Symbol-vs-String pair; in v1 emit it is corpus_repr HostNative-native vs FaithfulFreeMonoid-rope, 04_infer.dag). The grounding is element-conditional at the collection-repr choice: TargetCollectionRealization carries an optional TargetTextCarrier of element_carrier and emitted_type_node; when a FreeMonoid element content-hash-equals the carrier element (Char), project_free_monoid_collection_type_node in 06_translate emits the native String type_form instead of a Vec. The Char check and String type_form live in the rust.dag realization data, never hardcoded in the target-agnostic stage; a non-Char FreeMonoid still projects to Vec. This test pins that a FreeMonoid of Char projects to the SAME node as Symbol native-String type_form (RED before the grounding, GREEN after). NOTE: the whole-emitter regen is already HostNative-green; the ~4400 E0308 the milestone sizes is the Gate-2 per-module isolated probe (closure-denominated), and the type-pair histogram behind Symbol-String 82pct was never committed."
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
