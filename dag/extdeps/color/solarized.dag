@@ -1,7 +1,7 @@
 module extdeps.color.solarized
 
 import std.types { Int, String }
-import std.color { Srgb8, srgb8 }
+import std.color { Srgb8, PaletteSwatch, srgb8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -12,35 +12,28 @@ data solarized_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; hex and L*a*b values from the published canonical table (White D65, Reference D50). sRGB hex values filed as Srgb8 — the stored authoring form per std.color."
+data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; sRGB hex values filed as Srgb8 per std.color. Canonical L*a*b rows land with the OKLCH reground lane (design-register-library.md sect 10 Class 2) — not prose-blobbed here."
 
 data solarized_version: String = "1.0.0beta2"
 
-type SolarizedSwatchRow {
-  name: String
-  color: Srgb8
-}
+data solarized_base03: PaletteSwatch = PaletteSwatch { name: "base03", color: srgb8(r: 0, g: 43, b: 54) }
+data solarized_base02: PaletteSwatch = PaletteSwatch { name: "base02", color: srgb8(r: 7, g: 54, b: 66) }
+data solarized_base01: PaletteSwatch = PaletteSwatch { name: "base01", color: srgb8(r: 88, g: 110, b: 117) }
+data solarized_base00: PaletteSwatch = PaletteSwatch { name: "base00", color: srgb8(r: 101, g: 123, b: 131) }
+data solarized_base0: PaletteSwatch = PaletteSwatch { name: "base0", color: srgb8(r: 131, g: 148, b: 150) }
+data solarized_base1: PaletteSwatch = PaletteSwatch { name: "base1", color: srgb8(r: 147, g: 161, b: 161) }
+data solarized_base2: PaletteSwatch = PaletteSwatch { name: "base2", color: srgb8(r: 238, g: 232, b: 213) }
+data solarized_base3: PaletteSwatch = PaletteSwatch { name: "base3", color: srgb8(r: 253, g: 246, b: 227) }
+data solarized_yellow: PaletteSwatch = PaletteSwatch { name: "yellow", color: srgb8(r: 181, g: 137, b: 0) }
+data solarized_orange: PaletteSwatch = PaletteSwatch { name: "orange", color: srgb8(r: 203, g: 75, b: 22) }
+data solarized_red: PaletteSwatch = PaletteSwatch { name: "red", color: srgb8(r: 220, g: 50, b: 47) }
+data solarized_magenta: PaletteSwatch = PaletteSwatch { name: "magenta", color: srgb8(r: 211, g: 54, b: 130) }
+data solarized_violet: PaletteSwatch = PaletteSwatch { name: "violet", color: srgb8(r: 108, g: 113, b: 196) }
+data solarized_blue: PaletteSwatch = PaletteSwatch { name: "blue", color: srgb8(r: 38, g: 139, b: 210) }
+data solarized_cyan: PaletteSwatch = PaletteSwatch { name: "cyan", color: srgb8(r: 42, g: 161, b: 152) }
+data solarized_green: PaletteSwatch = PaletteSwatch { name: "green", color: srgb8(r: 133, g: 153, b: 0) }
 
-data solarized_base03: SolarizedSwatchRow = SolarizedSwatchRow { name: "base03", color: srgb8(r: 0, g: 43, b: 54) }
-data solarized_base02: SolarizedSwatchRow = SolarizedSwatchRow { name: "base02", color: srgb8(r: 7, g: 54, b: 66) }
-data solarized_base01: SolarizedSwatchRow = SolarizedSwatchRow { name: "base01", color: srgb8(r: 88, g: 110, b: 117) }
-data solarized_base00: SolarizedSwatchRow = SolarizedSwatchRow { name: "base00", color: srgb8(r: 101, g: 123, b: 131) }
-data solarized_base0: SolarizedSwatchRow = SolarizedSwatchRow { name: "base0", color: srgb8(r: 131, g: 148, b: 150) }
-data solarized_base1: SolarizedSwatchRow = SolarizedSwatchRow { name: "base1", color: srgb8(r: 147, g: 161, b: 161) }
-data solarized_base2: SolarizedSwatchRow = SolarizedSwatchRow { name: "base2", color: srgb8(r: 238, g: 232, b: 213) }
-data solarized_base3: SolarizedSwatchRow = SolarizedSwatchRow { name: "base3", color: srgb8(r: 253, g: 246, b: 227) }
-data solarized_yellow: SolarizedSwatchRow = SolarizedSwatchRow { name: "yellow", color: srgb8(r: 181, g: 137, b: 0) }
-data solarized_orange: SolarizedSwatchRow = SolarizedSwatchRow { name: "orange", color: srgb8(r: 203, g: 75, b: 22) }
-data solarized_red: SolarizedSwatchRow = SolarizedSwatchRow { name: "red", color: srgb8(r: 220, g: 50, b: 47) }
-data solarized_magenta: SolarizedSwatchRow = SolarizedSwatchRow { name: "magenta", color: srgb8(r: 211, g: 54, b: 130) }
-data solarized_violet: SolarizedSwatchRow = SolarizedSwatchRow { name: "violet", color: srgb8(r: 108, g: 113, b: 196) }
-data solarized_blue: SolarizedSwatchRow = SolarizedSwatchRow { name: "blue", color: srgb8(r: 38, g: 139, b: 210) }
-data solarized_cyan: SolarizedSwatchRow = SolarizedSwatchRow { name: "cyan", color: srgb8(r: 42, g: 161, b: 152) }
-data solarized_green: SolarizedSwatchRow = SolarizedSwatchRow { name: "green", color: srgb8(r: 133, g: 153, b: 0) }
-
-data solarized_lab_table_note: String = "Canonical L*a*b (D65/D50) from Schoonover's published table: base03 L15 A-12 B-12; base02 L20; base01 L45; base00 L50; base0 L60; base1 L65; base2 L92; base3 L97; yellow L60 A10 B65; orange L50 A50 B55; red L50 A65 B45; magenta L50 A65 B-05; violet L50 A15 B-45; blue L55 A-10 B-45; cyan L60 A-35 B-05; green L60 A-20 B65."
-
-data solarized_swatches: List<SolarizedSwatchRow> = [
+data solarized_swatches: List<PaletteSwatch> = [
   solarized_base03, solarized_base02, solarized_base01, solarized_base00,
   solarized_base0, solarized_base1, solarized_base2, solarized_base3,
   solarized_yellow, solarized_orange, solarized_red, solarized_magenta,

@@ -20,6 +20,13 @@ fn srgb8_admissible(c: Srgb8) -> Bool {
     && c.b >= 0 && c.b <= 255
 }
 
+type PaletteSwatch {
+  name: String
+  color: Srgb8
+}
+
+data hsl_note: String = "Hsl fields: h = hue in degrees [0, 360); s = saturation percent [0, 100]; l = lightness percent [0, 100]. Projected from Srgb8 via CSS Color 4 integer algorithm."
+
 type Hsl {
   h: Int
   s: Int
