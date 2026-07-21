@@ -1,0 +1,205 @@
+module gunbc.host_hygiene_reaper
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, Terminal }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile_grounded,
+}
+import extdeps.os.systemd {
+  SystemdUnitActiveState,
+  Active,
+  Inactive,
+  Activating,
+  Deactivating,
+  Reloading,
+  Failed,
+}
+import gunbc.host_build_cache_provision {
+  BuildCacheServerPlacement,
+  ServerUnitOwned,
+  ServerLazySpawned,
+  ServerPlacementUnknown,
+}
+
+data gunbc_host_hygiene_reaper_scope_disposition: Disposition = Terminal {
+  reason: "Brief 4 deliverable (a): residual reaper decision core. Extends the ctrl-runner-reclaim.timer pattern (a hand-deployed host timer with no prior .dag model) to dead-slot residue: processes surviving KillMode=process in an INACTIVE unit's cgroup, plus stale system.control override dirs for disabled instances. NON-GOAL: reaping anything in an ACTIVE unit's cgroup. CRITICAL SEQUENCING (the incident this guards against): a naive reap-everything-inactive would have killed the shared sccache server, which PR 7019 (host_build_cache_provision.dag) found lazily auto-spawned into dead slot srv1-10's cgroup. This module refuses to touch a build-cache-server occupant regardless of its BuildCacheServerPlacement, typed and counted, never a silent skip — fixing placement is PR 7019's separate concern, not this reaper's."
+}
+
+type CgroupOccupant
+  = CgroupEmpty
+  | CgroupOrdinaryProcesses
+  | CgroupBuildCacheServer { placement: BuildCacheServerPlacement }
+
+type ResidualSlotObservation {
+  unit: NonEmptyStr
+  unit_active_state: SystemdUnitActiveState
+  occupant: CgroupOccupant
+  has_control_override: Bool
+}
+
+type ReapRefusalCause
+  = RefusalUnitActive
+  | RefusalBuildCacheLazySpawned { observed_cgroup: NonEmptyStr }
+  | RefusalBuildCacheUnitOwnedInStaleCgroup { slice_unit: NonEmptyStr }
+  | RefusalPlacementUnknown { detail: NonEmptyStr }
+
+type ResidualReapAction
+  = NoActionNeeded
+  | RemoveOverrideOnly
+  | KillOccupantAndRemoveOverride
+  | ReapRefused { cause: ReapRefusalCause }
+
+fn unit_is_inactive_for_reap(s: SystemdUnitActiveState) -> Bool {
+  match s {
+    Active => false
+    Activating => false
+    Deactivating => false
+    Reloading => false
+    Inactive => true
+    Failed => true
+  }
+}
+
+fn reap_refusal_cause_for_placement(p: BuildCacheServerPlacement) -> ReapRefusalCause {
+  match p {
+    ServerUnitOwned { slice_unit: su } => RefusalBuildCacheUnitOwnedInStaleCgroup { slice_unit: su }
+    ServerLazySpawned { observed_cgroup: cg } => RefusalBuildCacheLazySpawned { observed_cgroup: cg }
+    ServerPlacementUnknown { detail: d } => RefusalPlacementUnknown { detail: d }
+  }
+}
+
+fn residual_reap_action_for_inactive(obs: ResidualSlotObservation) -> ResidualReapAction {
+  match obs.occupant {
+    CgroupEmpty => if obs.has_control_override { RemoveOverrideOnly } else { NoActionNeeded }
+    CgroupOrdinaryProcesses => KillOccupantAndRemoveOverride
+    CgroupBuildCacheServer { placement: p } => ReapRefused { cause: reap_refusal_cause_for_placement(p) }
+  }
+}
+
+fn residual_reap_action(obs: ResidualSlotObservation) -> ResidualReapAction {
+  if unit_is_inactive_for_reap(s: obs.unit_active_state) {
+    residual_reap_action_for_inactive(obs: obs)
+  } else {
+    ReapRefused { cause: RefusalUnitActive }
+  }
+}
+
+data residual_reap_absorbing_fallback_widen_sketch_disposition: Disposition = Terminal {
+  reason: "deliberately-naive sibling of residual_reap_action, kept ONLY as a RED-control fixture: it reaps every occupant of an inactive unit's cgroup, including a build-cache-server occupant, reproducing the exact incident PR 7019 diagnosed. host_hygiene_reaper_test.dag proves this sketch kills the stranded sccache server on the cited fixture while the real decision function refuses. Never call this from an effect path."
+}
+
+fn residual_reap_action_absorbing_fallback_widen_sketch(obs: ResidualSlotObservation) -> ResidualReapAction {
+  if unit_is_inactive_for_reap(s: obs.unit_active_state) {
+    match obs.occupant {
+      CgroupEmpty => if obs.has_control_override { RemoveOverrideOnly } else { NoActionNeeded }
+      CgroupOrdinaryProcesses => KillOccupantAndRemoveOverride
+      CgroupBuildCacheServer { placement: _ } => KillOccupantAndRemoveOverride
+    }
+  } else {
+    ReapRefused { cause: RefusalUnitActive }
+  }
+}
+
+fn action_kills_build_cache_server(a: ResidualReapAction, obs: ResidualSlotObservation) -> Bool {
+  match obs.occupant {
+    CgroupBuildCacheServer { placement: _ } => match a {
+      KillOccupantAndRemoveOverride => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+type ResidualReapCheck
+  = ReapCheckPass
+  | ReapCheckFail { reason: String }
+
+fn residual_reap_check(obs: ResidualSlotObservation) -> ResidualReapCheck {
+  match residual_reap_action(obs: obs) {
+    NoActionNeeded => ReapCheckPass
+    ReapRefused { cause: _ } => ReapCheckPass
+    RemoveOverrideOnly =>
+      ReapCheckFail { reason: concat("stale system.control override dir still present for inactive unit ", obs.unit) }
+    KillOccupantAndRemoveOverride =>
+      ReapCheckFail { reason: concat("residual occupant still present in inactive unit's cgroup for ", obs.unit) }
+  }
+}
+
+fn first_reap_check_failure(checks: List<ResidualReapCheck>) -> String? {
+  fold(checks, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match c {
+        ReapCheckPass => none
+        ReapCheckFail { reason: r } => Present { value: r }
+      }
+    }
+  })
+}
+
+fn exempt_cause_of(obs: ResidualSlotObservation) -> ReapRefusalCause? {
+  match residual_reap_action(obs: obs) {
+    ReapRefused { cause: c } => match c {
+      RefusalUnitActive => none
+      _ => Present { value: c }
+    }
+    _ => none
+  }
+}
+
+fn collect_exempt_causes(obs_list: List<ResidualSlotObservation>) -> List<ReapRefusalCause> {
+  fold(obs_list, init: [], f: fn(acc, obs) {
+    match exempt_cause_of(obs: obs) {
+      Present { value: c } => concat(acc, [c])
+      Absent => acc
+    }
+  })
+}
+
+type ResidualReapEvidence {
+  exempt_causes: List<ReapRefusalCause>
+}
+
+fn ground_residual_reap(obs_list: List<ResidualSlotObservation>) -> Grounding<ResidualReapEvidence> {
+  let checks = fold(obs_list, init: [], f: fn(acc, obs) { concat(acc, [residual_reap_check(obs: obs)]) })
+  match first_reap_check_failure(checks: checks) {
+    Absent => Grounds { evidence: ResidualReapEvidence { exempt_causes: collect_exempt_causes(obs_list: obs_list) } }
+    Present { value: reason } => DoesNotGround { reason: reason }
+  }
+}
+
+fn reconcile_residual_reap(
+  read: ShowEffectiveRead<List<ResidualSlotObservation>>,
+) -> Reconciliation<String, ResidualReapEvidence> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: "host_hygiene_reaper.timer",
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: obs_list } =>
+      reconcile_grounded(
+        apply_effect: "host_hygiene_reaper.timer",
+        show_read: read,
+        grounding: ground_residual_reap(obs_list: obs_list)
+      )
+  }
+}
+
+data gunbc_host_hygiene_reaper_show_effective_read: ShowEffectiveRead<List<ResidualSlotObservation>> = ReadAbsent {
+  reason: "no live per-slot cgroup/system.control read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+}
+
+fn gunbc_host_hygiene_reaper_evidence() -> Reconciliation<String, ResidualReapEvidence> {
+  reconcile_residual_reap(read: gunbc_host_hygiene_reaper_show_effective_read)
+}
