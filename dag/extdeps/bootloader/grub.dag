@@ -1,0 +1,54 @@
+module extdeps.bootloader.grub
+
+import std.types { NonEmptyStr, String, Int, List }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_render }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/grub/manual/grub/grub.html#Simple-configuration"
+  }
+}
+
+type GrubMenuEntry {
+  title: NonEmptyStr
+  linux_image: NonEmptyStr
+  linux_cmdline: List<KernelCmdlineArg>
+  initrd_image: NonEmptyStr
+}
+
+type GrubConfig {
+  timeout_seconds: Int
+  default_entry: Int
+  entries: List<GrubMenuEntry>
+}
+
+fn grub_linux_line(entry: GrubMenuEntry) -> String {
+  join(["  linux", entry.linux_image as String, kernel_cmdline_render(args: entry.linux_cmdline)], " ")
+}
+
+fn grub_menuentry_render(entry: GrubMenuEntry) -> String {
+  join(
+    [
+      concat(concat("menuentry \"", entry.title as String), "\" {"),
+      grub_linux_line(entry: entry),
+      join(["  initrd", entry.initrd_image as String], " "),
+      "}",
+    ],
+    "\n"
+  )
+}
+
+fn grub_config_render(cfg: GrubConfig) -> String {
+  let header = join(
+    [
+      join(["set timeout=", to_string(cfg.timeout_seconds)], ""),
+      join(["set default=", to_string(cfg.default_entry)], ""),
+    ],
+    "\n"
+  )
+  let body = join(map(cfg.entries, e => grub_menuentry_render(entry: e)), "\n")
+  join([header, body], "\n")
+}

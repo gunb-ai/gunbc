@@ -1,0 +1,42 @@
+module extdeps.tools.busybox
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_busybox }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "busybox.net/downloads/BusyBox.html"
+  }
+}
+
+data busybox_pinned_version: VersionConstraint = ">= 1.36"
+
+data busybox_cli_tool: CliTool = CliTool {
+  name: "busybox",
+  min_version: Present { value: busybox_pinned_version },
+  installable_via: [SourceApt { package: package_busybox }],
+}
+
+service busybox.Httpd {
+  operation Serve {
+    input { document_root: NonEmptyStr, port: Int }
+    output { success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "busybox",
+        "httpd",
+        "-p", "{port}",
+        "-h", "{document_root}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "busybox httpd serve failed"
+    }
+  }
+}

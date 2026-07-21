@@ -1,23 +1,25 @@
 module test.claim.bmc_netboot_serve
 
 import std.logic { Bool }
+import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
 import gunbc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
-  bmc_netboot_grub_cfg,
-  bmc_netboot_serve_command,
+  bmc_netboot_grub_cfg_text,
+  bmc_netboot_http_boot_entry,
   bmc_netboot_nocloud_user_data,
 }
 
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
-  let cfg = bmc_netboot_grub_cfg(plan: srv4_bmc_netboot_serve_plan)
-  string_contains(s: cfg, pattern: "linux /vmlinuz")
-    && string_contains(s: cfg, pattern: "url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso")
-    && string_contains(s: cfg, pattern: "ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/")
+  let cfg = bmc_netboot_grub_cfg_text(plan: srv4_bmc_netboot_serve_plan)
+  string_contains(s: cfg, pattern: "linux /vmlinuz ip=dhcp url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso autoinstall ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/ ---")
     && string_contains(s: cfg, pattern: "initrd /initrd")
+    && string_contains(s: cfg, pattern: "set timeout=1")
 }
 
-test fn srv4_serve_command_is_busybox_httpd() -> Bool {
-  bmc_netboot_serve_command(plan: srv4_bmc_netboot_serve_plan) == "/tmp/netboot/busybox httpd -f -p 8080 -h /tmp/netboot"
+test fn srv4_http_boot_entry_targets_bmc() -> Bool {
+  let entry = bmc_netboot_http_boot_entry(plan: srv4_bmc_netboot_serve_plan)
+  string_contains(s: uefi_http_boot_uri_wire(entry: entry), pattern: "http://192.168.1.195:8080/grubaa64.efi")
+    && entry.interface_name == "eth0"
 }
 
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
