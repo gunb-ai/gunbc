@@ -28,7 +28,7 @@ import gunbc.ci_floor_measurement {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.runner_slot_oom_policy { gunbc_runner_slot_oom_pressure_limit }
+import gunbc.runner_slot_oom_policy { gunbc_runner_slot_oom_pressure_limit, gunbc_runner_slot_oom_pressure_duration }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import extdeps.os.systemd {
@@ -41,9 +41,11 @@ import extdeps.os.systemd {
 import extdeps.os.oomd {
   oomd_managed_oom_memory_pressure_property,
   oomd_managed_oom_memory_pressure_limit_property,
+  oomd_managed_oom_memory_pressure_duration_property,
   managed_oom_action_value,
   managed_oom_pressure_limit_show_value,
   managed_oom_pressure_is_kill,
+  managed_oom_pressure_duration_apply_value,
 }
 
 
@@ -451,6 +453,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
   let kill_value = managed_oom_action_value(a: gunbc_runner_slot_desired().managed_oom_memory_pressure)
   let pct = to_string(percent_count(p: gunbc_runner_slot_oom_pressure_limit()))
+  let duration_value = managed_oom_pressure_duration_apply_value(duration: gunbc_runner_slot_oom_pressure_duration())
   [
     slice_numeric_knob(
       slice: RunnerSlice,
@@ -512,6 +515,17 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         property: oomd_managed_oom_memory_pressure_limit_property,
         apply_value: concat(pct, "%"),
         expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_runner_slot_oom_pressure_limit())),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_oom_pressure_duration_sec",
+      desired: duration_value,
+      target: SliceProperty {
+        unit: gunbc_runner_unit_template,
+        property: oomd_managed_oom_memory_pressure_duration_property,
+        apply_value: duration_value,
+        expected_effective: duration_value,
       }
     ),
     slice_numeric_knob(

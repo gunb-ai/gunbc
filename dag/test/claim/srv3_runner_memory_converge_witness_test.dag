@@ -15,6 +15,10 @@ fn srv3_oom_pressure_limit_knob_name() -> String {
   "per_slot_oom_pressure_limit_pct"
 }
 
+fn srv3_oom_pressure_duration_knob_name() -> String {
+  "per_slot_oom_pressure_duration_sec"
+}
+
 fn srv3_oom_pressure_kill_knob_name() -> String {
   "per_slot_oom_pressure_kill"
 }
@@ -148,6 +152,28 @@ fn witness_srv3_oom_pressure_limit_knob_grounds_policy() -> Bool {
   }
 }
 
+fn witness_srv3_oom_pressure_duration_knob_grounds_policy() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } =>
+      match srv3_memory_knob(host: host, name: srv3_oom_pressure_duration_knob_name()) {
+        Present { value: knob } =>
+          knob.desired == managed_oom_pressure_duration_apply_value(duration: gunbc_runner_slot_oom_pressure_duration())
+            && match knob.target {
+              SliceProperty {
+                unit: gunbc_runner_unit_template,
+                property: p,
+                apply_value: av,
+                expected_effective: ev,
+              } =>
+                p == oomd_managed_oom_memory_pressure_duration_property && av == knob.desired && ev == knob.desired
+              _ => false
+            }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
   converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
 }
@@ -169,6 +195,7 @@ fn witness_provision_includes_oom_pressure_knobs() -> Bool {
     Present { value: host } =>
       fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_kill_knob_name())
         && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_limit_knob_name())
+        && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_oom_pressure_duration_knob_name())
     Absent => false
   }
 }
@@ -205,6 +232,7 @@ test fn srv3_runner_memory_converge_holds() -> Bool {
     && witness_srv3_memory_high_knob_grounds_authority()
     && witness_srv3_oom_pressure_kill_knob_is_thrash_not_fail()
     && witness_srv3_oom_pressure_limit_knob_grounds_policy()
+    && witness_srv3_oom_pressure_duration_knob_grounds_policy()
     && witness_srv3_memory_high_is_throttle_line_below_max()
     && witness_srv3_apply_mode_is_fresh_standup()
     && witness_srv3_memory_knobs_precede_runner_width_widen()
