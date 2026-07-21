@@ -34,17 +34,17 @@ type ServiceNotReady {
   last_probe: String
 }
 
-data live_deploy_srv1_arm_wet_compile_measured_s: Int = 32
+data live_deploy_srv1_arm_wet_compile_measured: Second = second(count: 32)
 
 data live_deploy_readiness_cold_start_headroom_factor: Int = 3
 
-fn live_deploy_roadmap_unit_expected_startup_derived_count() -> Int {
-  live_deploy_srv1_arm_wet_compile_measured_s * live_deploy_readiness_cold_start_headroom_factor
+fn live_deploy_roadmap_unit_expected_startup_derived() -> Second {
+  second(count: second_count(s: live_deploy_srv1_arm_wet_compile_measured) * live_deploy_readiness_cold_start_headroom_factor)
 }
 
-data live_deploy_roadmap_unit_expected_startup: Second = second(count: live_deploy_roadmap_unit_expected_startup_derived_count())
+data live_deploy_roadmap_unit_expected_startup: Second = second(count: 96)
 
-data live_deploy_service_ready_poll_bound_reason: String = "INTERIM belt-B cold-start bound for gunbc-roadmap.service (scaffold until roadmap_serve_interpreted_scaffold dissolves — gunbc-served-dashboard-design §3/§dissolution: emit-on-demand of the serve closure replaces interpreted compile-before-bind). gunbc serve compiles the entry closure BEFORE bind (cli_run handle_serve), so Type=simple start ≠ listening yet. Measured receipt: deploy run 29868103362 post-#7011 — live_deploy_apply_srv1_wet compile.reconcile.done t_ms≈31944 (~32s) on srv1 ARM; prior bound 30s falsely refused. Bound = live_deploy_srv1_arm_wet_compile_measured_s × live_deploy_readiness_cold_start_headroom_factor (3× headroom, not a tunable magic constant). Still fail-closed — no fabricated convergence."
+data live_deploy_service_ready_poll_bound_reason: String = "INTERIM belt-B cold-start bound for gunbc-roadmap.service (scaffold until roadmap_serve_interpreted_scaffold dissolves — gunbc-served-dashboard-design §3/§dissolution: emit-on-demand of the serve closure replaces interpreted compile-before-bind). gunbc serve compiles the entry closure BEFORE bind (cli_run handle_serve), so Type=simple start ≠ listening yet. Measured receipt: deploy run 29868103362 post-#7011 — live_deploy_apply_srv1_wet compile.reconcile.done t_ms≈31944 (~32s) on srv1 ARM; prior bound 30s falsely refused. Bound = live_deploy_srv1_arm_wet_compile_measured × live_deploy_readiness_cold_start_headroom_factor (3× headroom, not a tunable magic constant). Still fail-closed — no fabricated convergence."
 
 data live_deploy_readiness_poll_bound_interim_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

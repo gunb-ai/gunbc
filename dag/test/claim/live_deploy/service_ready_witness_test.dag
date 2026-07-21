@@ -6,9 +6,10 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_scaffold_dissolution_trigger,
   live_deploy_readiness_poll_bound_interim_scaffold,
   live_deploy_host_sleep_generalization_dissolution_trigger,
-  live_deploy_srv1_arm_wet_compile_measured_s,
+  live_deploy_srv1_arm_wet_compile_measured,
   live_deploy_readiness_cold_start_headroom_factor,
-  live_deploy_roadmap_unit_expected_startup_derived_count,
+  live_deploy_roadmap_unit_expected_startup,
+  live_deploy_roadmap_unit_expected_startup_derived,
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
   service_not_ready_reason,
@@ -50,11 +51,12 @@ fn witness_service_not_ready_reason_is_located() -> Bool {
 }
 
 fn witness_readiness_poll_bound_derived_from_measured_compile() -> Bool {
+  let derived = live_deploy_roadmap_unit_expected_startup_derived()
   live_deploy_readiness_poll_bound_is_positive()
-    && live_deploy_roadmap_unit_expected_startup_derived_count()
-      == live_deploy_srv1_arm_wet_compile_measured_s * live_deploy_readiness_cold_start_headroom_factor
-    && second_count(s: live_deploy_readiness_poll_bound_seconds())
-      == live_deploy_roadmap_unit_expected_startup_derived_count()
+    && live_deploy_roadmap_unit_expected_startup == derived
+    && live_deploy_service_ready_poll_bound == derived
+    && second_count(s: derived)
+      == second_count(s: live_deploy_srv1_arm_wet_compile_measured) * live_deploy_readiness_cold_start_headroom_factor
 }
 
 fn witness_readiness_poll_bound_interim_scaffold_binds_serve_emit_on_demand() -> Bool {
@@ -118,7 +120,10 @@ fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
 
 fn witness_poll_max_attempts_tracks_startup_bound() -> Bool {
   live_deploy_service_ready_poll_max_attempts()
-    == live_deploy_roadmap_unit_expected_startup_derived_count()
+    == measure_fit_count_floor(
+      capacity: live_deploy_roadmap_unit_expected_startup_derived(),
+      each: live_deploy_service_ready_poll_cadence
+    )
 }
 
 fn witness_poll_max_attempts_tracks_cadence() -> Bool {
