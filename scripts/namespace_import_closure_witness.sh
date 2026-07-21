@@ -51,6 +51,8 @@ fn pilot_consumer_flag() -> Bool { pilot_provider_flag() }
 fn pilot_consumer_default() -> PilotColor { pilot_provider_default() }
 DAG
 
+# Emit the fixture closure with $bin, cargo-build it, and echo GREEN / RED / EMIT_FAIL.
+# Oracle = cargo's exit code (0 = compiles), the honest by-execution signal.
 emit_and_build() {
   local bin="$1" out="$2"
   rm -rf "$out"; mkdir -p "$out"
@@ -58,28 +60,28 @@ emit_and_build() {
     --entry "$FIX/witness/pilot/emit_consumer.dag" \
     --output-dir "$out" --target rust --dependency-pool-index primary-precedence \
     >/dev/null 2>&1
-  ( cd "$out" && RUSTC_WRAPPER="" cargo build 2>&1 | grep -qE 'error\[E[0-9]+\]' )
-  # returns 0 (found errors -> RED) / 1 (no errors -> GREEN)
+  if [ ! -f "$out/src/lib.rs" ] || [ ! -f "$out/Cargo.toml" ]; then
+    echo EMIT_FAIL; return
+  fi
+  if ( cd "$out" && RUSTC_WRAPPER="" cargo build >/dev/null 2>&1 ); then
+    echo GREEN
+  else
+    echo RED
+  fi
 }
 
 TMP="$(mktemp -d)"
 echo "== WITH pass ($WITH_PASS): expect cargo GREEN =="
-if emit_and_build "$WITH_PASS" "$TMP/with"; then
-  echo "FAIL: with-pass closure did NOT compile (found rustc errors)"; WITH_RED=1
-else
-  echo "OK: with-pass namespace closure cargo-compiles"; WITH_RED=0
-fi
+WITH="$(emit_and_build "$WITH_PASS" "$TMP/with")"
+echo "  with-pass -> $WITH"
 
 echo "== WITHOUT pass ($NO_PASS): expect cargo RED (E0425/E0433 unresolved refs) =="
-if emit_and_build "$NO_PASS" "$TMP/without"; then
-  echo "OK: no-pass closure FAILS to compile (regression reproduced)"; WITHOUT_RED=1
-else
-  echo "FAIL: no-pass closure compiled — witness is VACUOUS"; WITHOUT_RED=0
-fi
+WITHOUT="$(emit_and_build "$NO_PASS" "$TMP/without")"
+echo "  no-pass  -> $WITHOUT"
 
 rm -rf "$FIX" "$TMP"
-if [ "$WITH_RED" = 0 ] && [ "$WITHOUT_RED" = 1 ]; then
+if [ "$WITH" = GREEN ] && [ "$WITHOUT" = RED ]; then
   echo "WITNESS PASS: greens-with / reds-without (non-vacuous)"; exit 0
 else
-  echo "WITNESS FAIL"; exit 1
+  echo "WITNESS FAIL (with=$WITH without=$WITHOUT; both EMIT_FAIL => a binary/emit problem, not the pass)"; exit 1
 fi
