@@ -1,0 +1,66 @@
+module v2.test.emit.zzz_qualified_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe_atom(spelling: String) -> Node {
+  rust_inhabitant_atom(id: spelling)
+}
+
+fn probe_qn_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: probe_atom(spelling: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_type_expr_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: probe_qn_emitted(type_name: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_decl_emitted(name: String, type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: probe_atom(spelling: name) },
+      Edge { label: Positional, target: probe_type_expr_emitted(type_name: type_name) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_emit(emitted: Node) -> Outcome<String> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(
+      rules: rust_type_alias_decl_productions_only_translation_rules(),
+      emitted: emitted
+    ),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: rust_type_alias_decl_structural_target_model(), tokens: tokens),
+                f: fn(medium) { outcome_accepted(value: medium.carried) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+test fn probe_qualified_emit_shows() -> String {
+  match probe_emit(emitted: probe_decl_emitted(name: "CoreNode", type_name: "v2.std.node.Node")) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
