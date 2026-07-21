@@ -4228,13 +4228,38 @@ pub fn reference_derived_use_lines(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
+    let trace = std::env::var("GUNBC_REFUSE_TRACE").is_ok()
+        && this_module_name.contains("materialization_carriers");
     if v1_rt::map_is_empty(&source_visible_names) {
+        if trace {
+            eprintln!("[reftrace] {} SVN EMPTY -> skip", this_module_name);
+        }
         Rc::new(vec![])
     } else {
         let referenced = unique_strings(crate::v1_compiler_emit::collect_type_names_from_items(
             items.clone(),
             source_indices.clone(),
         ));
+        if trace {
+            eprintln!(
+                "[reftrace] {} svn={} referenced={}",
+                this_module_name,
+                source_visible_names.len(),
+                referenced.len()
+            );
+            for n in ["Materialization", "Disposition", "FrameDemand", "CacheInterfaceId"] {
+                let in_ref = referenced.iter().any(|x| x == n);
+                let in_svn = v1_rt::map_has(&source_visible_names, n.to_string());
+                let reg = match v1_rt::map_get(&registry, n.to_string()) {
+                    Some(info) => info.module_name.clone(),
+                    None => "<absent>".to_string(),
+                };
+                eprintln!(
+                    "[reftrace]   {}: in_referenced={} in_svn={} registry_module={}",
+                    n, in_ref, in_svn, reg
+                );
+            }
+        }
         let mut pairs: Vec<(String, String)> = Vec::new();
         for name in referenced.iter().cloned() {
             if v1_rt::map_has(&source_visible_names, name.clone()) {
@@ -4248,6 +4273,9 @@ pub fn reference_derived_use_lines(
                 }
                 None => {}
             }
+        }
+        if trace {
+            eprintln!("[reftrace] {} pairs={:?}", this_module_name, pairs);
         }
         let providers = unique_strings(Rc::new(
             pairs.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>(),
@@ -4273,11 +4301,20 @@ pub fn reference_derived_use_lines(
                 source_indices.clone(),
                 module_index.clone(),
             );
+            if trace {
+                eprintln!(
+                    "[reftrace] {} provider={} block={:?}",
+                    this_module_name, provider, block
+                );
+            }
             if (block.clone() != "".to_string()) {
                 for l in block.split(&"\n".to_string()) {
                     lines.push(l.to_string());
                 }
             }
+        }
+        if trace {
+            eprintln!("[reftrace] {} final_lines={:?}", this_module_name, lines);
         }
         Rc::new(lines)
     }
