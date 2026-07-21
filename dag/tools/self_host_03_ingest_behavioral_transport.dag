@@ -1,0 +1,27 @@
+module tools.self_host_03_ingest_behavioral_transport
+
+import tools.self_host_curated_seed_linked_harness { cssl_seed_linked_behavioral_receipt }
+import v2.std.collection { List }
+import std.logic { Bool }
+
+data si_doc: String = "Gate-A flip prep scaffold (03_ingest self-emit, neat-swift-795 post-KeySource discharge): curated seed-linked behavioral receipt via tools.self_host_curated_seed_linked_harness. Emit ONLY v2.compiler.ingest via gunbc compile --entry; runtime gunbc closure (empty shim_lib + shim_writes). Seed oracle: unwired until re-flip (flip-wave stub removed; pub mod absent per frontier-derived crate layout). Witness compares emitted vs seed on ingest_module_note with inject-fault perturbing emitted side. Frontier SeedRetained (honest refresh 2026-07-20): Jul-19 SelfEmitted flip retracted per honest_frontier_refresh_probe_note — CSSL curated probe 0/6 cargo-green post-#6848. Offline behavioral scaffold (witness_exclusion_substrings in gunbc.ci_layer_roots); re-flip gated on emit regression + per-module cargo-green receipt."
+
+data si_source_rel: String = "src/v2/compiler/03_ingest.dag"
+
+data si_shim_driver_rel: String = "dag/tools/self_host_03_ingest_shims/witness_main.rs"
+
+data si_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_03_ingest_shims/witness_main.rs + si harness transport. DISSOLVES WHEN modeled self-host behavioral-equivalence harness emits comparison driver + manifest."
+
+data si_receipt_pass_marker: String = "SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS"
+
+fn si_behavioral_receipt_holds() -> Bool {
+  cssl_seed_linked_behavioral_receipt(
+    source_rel: si_source_rel,
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: si_shim_driver_rel,
+    pass_marker: si_receipt_pass_marker,
+    claim_entry_rel: "",
+    claim_function: ""
+  )
+}

@@ -1255,6 +1255,29 @@ pub fn qualified_all_but_last(name: String) -> String {
     }
 }
 
+pub fn record_global_bare_ambiguous_silent_pick(
+    env_module_path: String,
+    name: String,
+    cands: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> () {
+    {
+        let cand_count = (cands.clone().len() as i64);
+        match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
+            Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+                env_module_path.clone(),
+                name.clone(),
+                cand_count.clone(),
+                cand.module_path.clone(),
+            ),
+            None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
+                env_module_path.clone(),
+                name.clone(),
+                cand_count.clone(),
+            ),
+        }
+    }
+}
+
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
@@ -1265,7 +1288,16 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()),
+        }) => {
+            if (v1_rt::resolution_silent_pick_is_enabled() && ((cands.clone().len() as i64) >= 2)) {
+                record_global_bare_ambiguous_silent_pick(
+                    env.module_path.clone(),
+                    name.clone(),
+                    cands.clone(),
+                )
+            }
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+        }
         None => None,
     }
 }
