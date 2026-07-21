@@ -4,19 +4,19 @@
 //! explicitly armed via `build_multi_entry_index_with_shared_caches`. Parse, normalize,
 //! ownership memos, and the **intern table** stay per-index on each worker.
 //!
-//! Normal indexes keep typed results as per-index `Rc` maps (main memory path). This
+//! Normal indexes keep typed results as per-index `Arc` maps (main memory path). This
 //! module holds the interim **serde byte transport** for cross-worker share only.
 //! When armed, the shared store is the sole typed-cache authority — `index_insert_typed`
 //! never writes per-index `typed_module_cache` (reads decode shared bytes only; avoids
-//! Rc+JSON double retention). 🟡 dissolve-on:
-//! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2).
+//! Arc+JSON double retention). 🟡 dissolve-on:
+//! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2);
+//! `cli_run` typed-cache seam flipped in slice 2/7 (#6955).
 //!
 //! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type
 //! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
 //! worker A's byte snapshot against its own intern table without a cross-representation straddle.
 
 use std::collections::HashMap as StdHashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::v1_compiler_infer::TypecheckModuleResult;
@@ -46,10 +46,10 @@ impl SharedTypecheckCaches {
 
     /// Decode a typed snapshot **without** holding the store lock.
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
-    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
+    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Arc<TypecheckModuleResult>, String> {
         let value: TypecheckModuleResult = serde_json::from_slice(bytes)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
-        Ok(Rc::new(value))
+        Ok(Arc::new(value))
     }
 
     /// Encode a typed result **without** holding the store lock.
@@ -64,7 +64,7 @@ impl SharedTypecheckCaches {
         self.typed_module_cache.insert(typed_key, bytes);
     }
 
-    pub fn get_typed(&self, typed_key: &str) -> Result<Option<Rc<TypecheckModuleResult>>, String> {
+    pub fn get_typed(&self, typed_key: &str) -> Result<Option<Arc<TypecheckModuleResult>>, String> {
         let Some(bytes) = self.clone_typed_bytes(typed_key) else {
             return Ok(None);
         };
@@ -74,7 +74,7 @@ impl SharedTypecheckCaches {
     pub fn insert_typed(
         &mut self,
         typed_key: String,
-        result: Rc<TypecheckModuleResult>,
+        result: Arc<TypecheckModuleResult>,
     ) -> Result<(), String> {
         let bytes = Self::encode_typed_snapshot(&result)?;
         self.insert_typed_preencoded(typed_key, bytes);
