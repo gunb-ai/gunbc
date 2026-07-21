@@ -1,0 +1,33 @@
+module extdeps.sec.issuer.rollins
+
+import extdeps.sec.types {
+  Cik,
+  IssuerCatalogRow,
+  Nyse,
+  StockTicker,
+}
+import extdeps.vendor.rollins { rollins }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0000084839"
+  }
+}
+
+data rollins_cik_digits: NonEmptyStr = "84839"
+
+data rollins_cik: Cik = Cik { digits: rollins_cik_digits }
+
+data rollins_ticker: StockTicker = StockTicker { symbol: "ROL" }
+
+data rollins_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+  cik: rollins_cik,
+  legal_name: "Rollins, Inc.",
+  primary_ticker: rollins_ticker,
+  exchange: Nyse,
+  vendor: rollins,
+}
