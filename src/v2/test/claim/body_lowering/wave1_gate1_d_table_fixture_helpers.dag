@@ -1,5 +1,25 @@
 module v2.test.claim.body_lowering.wave1_gate1_d_table_fixture_helpers
 
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.node_query { find_arrow_body_child }
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body,
+  table_fixture_add_arrow_with_body_swapped_operands
+}
+import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+  table_fixture_bind_arrow_with_body
+}
+import v2.test.complexity_gate.table_fixture_branch_subject_producer {
+  table_fixture_pick_if_arrow_with_body
+}
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body
+}
+import v2.test.complexity_gate.table_fixture_match_subject_producer {
+  table_fixture_match_arrow_with_body
+}
 
 data wave1_gate1_d_table_fixture_note: String = "Wave 1 Gate 1 Stage D fast-lane helpers: static table_fixture producers only (no census-ingest import closure). Census ingest + behavioral proofs live in long/ witnesses."
 

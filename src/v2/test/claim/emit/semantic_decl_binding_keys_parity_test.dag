@@ -1,5 +1,14 @@
 module v2.test.emit.semantic_decl_binding_keys_parity
 
+import v2.extdeps.languages.rust { rust_decl_derive_binding_spellings, rust_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  semantic_decl_profile_binding_spellings
+}
+import v2.std.compilers.target_model { bound_spelling_from_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 fn binding_pair_matches(binding: Symbol) -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {

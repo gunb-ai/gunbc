@@ -1,5 +1,19 @@
 module v2.test.claim.effect_reach_test
 
+import v2.lens.effect_reach {
+  effect_reach_classification_from_facts,
+  derived_host_reading,
+  classification_is_local,
+  effect_reach_flow_count,
+  effect_reach_touched_by_paths
+}
+import v2.lens.witness_cost_locality { ModuleImportFact }
+import v2.std.collection { List }
+import v2.std.data_index { DataInitDecl }
+import v2.std.effect_reach { EffectReachClassification }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.text { String }
 
 data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
 

@@ -1,5 +1,20 @@
 module v2.test.emit.semantic_decl_profile_path_parity
 
+import v2.extdeps.languages.rust {
+  rust_decl_general_lex,
+  rust_semantic_decl_serialize_profile_bundle_node,
+  rust_target_model
+}
+import v2.std.compilers.semantic_decl_emission {
+  decode_semantic_decl_serialize_profile_bundle,
+  semantic_decl_emission_from_target,
+  semantic_decl_profile_lex_rules
+}
+import v2.std.compilers.lexing { LexRules }
+import v2.std.compilers.target_model { lex_rules_literal_for_class }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: rules, token_class: token_class)

@@ -1,5 +1,16 @@
 module v2.test.claim.discovery_enumeration_test
 
+import v2.compiler.discovery_enumeration {
+  OwnedBoolWitnessClaimInit,
+  OwnedDataDeclInitializer,
+  OwnedDataDiscoveryReceipt,
+  OwnedNodeCorpusInit,
+  OwnedOtherInit,
+  ResolvedDeclRef,
+  unified_claim_arm_bool_witness_claim_module,
+  unified_claim_arm_node_corpus_module
+}
+import std.types { Bool }
 
 test fn discovery_enumeration_unified_claim_arm_modules_holds() -> Bool {
   unified_claim_arm_bool_witness_claim_module == "v2.std.verification"

@@ -1,5 +1,17 @@
 module v2.test.emit.semantic_decl_decoration_binding_test
 
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclDecorationLine,
+  semantic_decl_emission_from_target,
+  target_semantic_decl_coproduct_decoration_lines
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
+import v2.std.collection { List, fold_list }
+import v2.std.text { is_empty }
+import std.algebra { Empty }
 
 fn bool_coproduct() -> Node {
   Node {

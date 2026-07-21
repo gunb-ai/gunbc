@@ -1,5 +1,22 @@
 module v2.test.emit.semantic_decl_lex_binding_parity
 
+import v2.extdeps.languages.rust {
+  rust_decl_derive_binding_spellings,
+  rust_decl_general_lex,
+  rust_target_model
+}
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  semantic_decl_profile_binding_spellings,
+  semantic_decl_profile_lex_rules
+}
+import v2.std.compilers.lexing { LexRules }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { bound_spelling_from_map, lex_rules_literal_for_class }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
 
 fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: rules, token_class: token_class)

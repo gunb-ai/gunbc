@@ -1,5 +1,15 @@
 module v2.test.emit.semantic_decl_all_lex_parity
 
+import v2.extdeps.languages.rust { rust_decl_general_lex, rust_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  semantic_decl_profile_lex_rules
+}
+import v2.std.compilers.lexing { LexRules }
+import v2.std.compilers.target_model { lex_rules_literal_for_class }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 fn lex_pair_matches(token_class: Symbol) -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {

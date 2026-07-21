@@ -1,5 +1,31 @@
 module v2.test.claim.body_lowering.wave1_gate1_d_ingested_fixture_helpers
 
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_arrow_with_body,
+  ingested_add_arrow_with_body_swapped_operands,
+  ingested_bind_arrow_with_body,
+  ingested_bind_arrow_with_body_wrong_value,
+  ingested_loop_arrow_with_body,
+  ingested_loop_arrow_with_body_wrong_value,
+  ingested_match_arrow_with_body,
+  ingested_match_arrow_with_body_swapped_arms,
+  ingested_pick_if_arrow_with_body,
+  ingested_pick_if_arrow_with_body_swapped_arms
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Bind,
+  Branch,
+  ComputationNode,
+  Loop,
+  Match,
+  Node,
+  Transform,
+  TypeNode,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
 
 data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D long-lane helpers: census ingest via ingested_fixture_arrows. Well-formedness + behavior-kind checks here; ingested bind/loop execution+RED in long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution in general_body_producer + pick_ingested + classical_not witnesses."
 
