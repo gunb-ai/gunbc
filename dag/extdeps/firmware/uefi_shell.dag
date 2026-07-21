@@ -35,12 +35,20 @@ fn bcfg_target_word(target: BcfgTarget) -> String {
   }
 }
 
+type UefiIfconfigAction
+  = IfconfigList
+  | IfconfigSetDhcp { interface: NonEmptyStr }
+  | IfconfigSetStatic { interface: NonEmptyStr, address: NonEmptyStr, netmask: NonEmptyStr, gateway: NonEmptyStr }
+
 type UefiShellCommand
   = BcfgDump { target: BcfgTarget }
   | BcfgAdd { target: BcfgTarget, index: Int, file: NonEmptyStr, description: NonEmptyStr }
   | BcfgMove { target: BcfgTarget, from_index: Int, to_index: Int }
   | BcfgRemove { target: BcfgTarget, index: Int }
   | MapDevices { refresh: Bool }
+  | ConnectRecursive
+  | ListDevices
+  | Ifconfig { action: UefiIfconfigAction }
   | Reset { mode: UefiResetMode }
 
 fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
@@ -64,9 +72,59 @@ fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
       concat("bcfg ", concat(bcfg_target_word(target: t), concat(" rm ", to_string(i))))
     MapDevices { refresh: r } =>
       if r { "map -r" } else { "map" }
+    ConnectRecursive => "connect -r"
+    ListDevices => "devices"
+    Ifconfig { action: a } =>
+      match a {
+        IfconfigList => "ifconfig -l"
+        IfconfigSetDhcp { interface: i } =>
+          concat("ifconfig -s ", concat(i as String, " dhcp"))
+        IfconfigSetStatic { interface: i, address: addr, netmask: nm, gateway: gw } =>
+          concat(
+            concat("ifconfig -s ", concat(i as String, " static ")),
+            concat(concat(addr as String, " "), concat(concat(nm as String, " "), gw as String)),
+          )
+      }
     Reset { mode: m } =>
       concat("reset ", uefi_reset_flag(mode: m))
   }
+}
+
+type UefiMediaState
+  = MediaPresent
+  | MediaDisconnected
+
+type UefiNetworkInterface {
+  name: NonEmptyStr
+  media: UefiMediaState
+  ipv4: NonEmptyStr
+}
+
+fn uefi_interface_has_link(iface: UefiNetworkInterface) -> Bool {
+  match iface.media {
+    MediaPresent => true
+    MediaDisconnected => false
+  }
+}
+
+type UefiBootOption {
+  index: Int
+  variable: NonEmptyStr
+  description: String
+  device_path: String
+  optional: Bool
+}
+
+type UefiDeviceMapping {
+  fs_alias: String
+  block_aliases: String
+  device_path: NonEmptyStr
+}
+
+type UefiShellEnvironment {
+  mappings: List<UefiDeviceMapping>
+  boot_options: List<UefiBootOption>
+  interfaces: List<UefiNetworkInterface>
 }
 
 fn uefi_shell_script(commands: List<UefiShellCommand>) -> String {

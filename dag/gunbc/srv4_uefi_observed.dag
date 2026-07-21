@@ -1,0 +1,43 @@
+module gunbc.srv4_uefi_observed
+
+import std.types { List }
+import extdeps.firmware.uefi_shell {
+  UefiShellEnvironment,
+  UefiNetworkInterface,
+  UefiBootOption,
+  UefiDeviceMapping,
+  MediaPresent,
+  MediaDisconnected,
+}
+
+data srv4_uefi_observed_environment: UefiShellEnvironment = UefiShellEnvironment {
+  mappings: [
+    UefiDeviceMapping {
+      fs_alias: "FS0",
+      block_aliases: "HD0b;BLK1",
+      device_path: "PcieRoot(0x40000)/Pci(0x1,0x0)/Pci(0x0,0x0)/NVMe(0x1,04-4A-B4-81-58-38-25-00)/HD(1,GPT,3C65AC38-871A-4633-BE76-2F1FB65522D7,0x800,0x32000)" as NonEmptyStr,
+    },
+  ],
+  boot_options: [
+    UefiBootOption {
+      index: 0,
+      variable: "Boot0002",
+      description: "Windows Boot Manager",
+      device_path: "HD(1,GPT,3C65AC38-871A-4633-BE76-2F1FB65522D7,0x800,0x32000)/\\EFI\\MICROSOFT\\BOOT\\BOOTMGFW.EFI",
+      optional: true,
+    },
+    UefiBootOption {
+      index: 1,
+      variable: "Boot0001",
+      description: "UEFI: Built-in EFI Shell",
+      device_path: "VenMedia(5023B95C-DB26-429B-A648-BD47664C8012)",
+      optional: true,
+    },
+  ],
+  interfaces: [
+    UefiNetworkInterface { name: "eth0", media: MediaPresent, ipv4: "169.254.0.18" },
+    UefiNetworkInterface { name: "eth1", media: MediaDisconnected, ipv4: "0.0.0.0" },
+    UefiNetworkInterface { name: "eth2", media: MediaPresent, ipv4: "0.0.0.0" },
+    UefiNetworkInterface { name: "eth3", media: MediaDisconnected, ipv4: "0.0.0.0" },
+  ],
+}
