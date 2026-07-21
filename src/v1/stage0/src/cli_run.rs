@@ -1,5 +1,5 @@
 use im::HashMap;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -4750,6 +4750,10 @@ pub struct MultiEntryIndex {
     /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Counted evictions from the host-budget-derived typed-cache entry cap (width=1
+    /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
+    /// a silent widen (§5).
+    typed_cache_evictions: Cell<u64>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4859,6 +4863,16 @@ pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
     index.parse_cache.borrow().keys().cloned().collect()
 }
 
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
+    index.typed_module_cache.borrow().len()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
+    index.typed_cache_evictions.get()
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4868,6 +4882,7 @@ fn new_multi_entry_index_shell(
         source_files,
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        typed_cache_evictions: Cell::new(0),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
@@ -5160,6 +5175,176 @@ fn note_interface_hash(
     );
 }
 
+/// Interim width=1 floor-drain retention (v1-run-stability throughline, parent
+/// governor lane): instrument accumulation + host-budget entry cap on the private
+/// `typed_module_cache` only. Whole-row eviction here is a counted safety backstop,
+/// not cross-entry-typed-module-memo-sketch PR-β (`SpacePacked` + interface-summary
+/// payload). Dissolve-on: PR-β lands the content-keyed outer ring.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IndexRetentionSnapshot {
+    pub typed_module_cache_entries: usize,
+    pub parse_cache_entries: usize,
+    pub resolved_graph_memo_entries: usize,
+    pub normalize_diag_cache_entries: usize,
+    pub ownership_diag_cache_entries: usize,
+    pub intern_table_entries: usize,
+    pub typed_cache_evictions: u64,
+    pub peak_rss_bytes: Option<u64>,
+}
+
+/// Conservative per-entry estimate for deriving a typed-cache cap from the host
+/// memory envelope (v1-run-stability M0/M1 receipts: ~2–11 MiB/module; 3 MiB is
+/// the interim declared fraction denominator until measured space lands).
+const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
+const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
+const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
+
+/// Host-budget-derived cap on `typed_module_cache` entries for the private
+/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
+pub fn typed_module_cache_max_entries() -> usize {
+    if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            if n > 0 {
+                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+            }
+            // Zero override is invalid — fall through to derived cap.
+        }
+        // Malformed override — fall through to derived cap (fail-closed).
+    }
+    let (budget, _) = crate::memory_governor::read_host_budget_bytes();
+    budget
+        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
+        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
+        .clamp(
+            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+        )
+}
+
+pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
+    IndexRetentionSnapshot {
+        typed_module_cache_entries: index.typed_module_cache.borrow().len(),
+        parse_cache_entries: index.parse_cache.borrow().len(),
+        resolved_graph_memo_entries: index.resolved_graph_memo.borrow().len(),
+        normalize_diag_cache_entries: index.normalize_diag_cache.borrow().len(),
+        ownership_diag_cache_entries: index.ownership_diag_cache.borrow().len(),
+        intern_table_entries: index.intern_table.borrow().index.len(),
+        typed_cache_evictions: index.typed_cache_evictions.get(),
+        peak_rss_bytes: peak_rss_vhwm_bytes(),
+    }
+}
+
+fn floor_drain_retention_detail_enabled() -> bool {
+    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
+        .ok()
+        .as_deref()
+        .map(|v| matches!(v, "1" | "true" | "TRUE"))
+        .unwrap_or(false)
+}
+
+fn retention_snapshot_peak(
+    a: &IndexRetentionSnapshot,
+    b: &IndexRetentionSnapshot,
+) -> IndexRetentionSnapshot {
+    IndexRetentionSnapshot {
+        typed_module_cache_entries: a
+            .typed_module_cache_entries
+            .max(b.typed_module_cache_entries),
+        parse_cache_entries: a.parse_cache_entries.max(b.parse_cache_entries),
+        resolved_graph_memo_entries: a
+            .resolved_graph_memo_entries
+            .max(b.resolved_graph_memo_entries),
+        normalize_diag_cache_entries: a
+            .normalize_diag_cache_entries
+            .max(b.normalize_diag_cache_entries),
+        ownership_diag_cache_entries: a
+            .ownership_diag_cache_entries
+            .max(b.ownership_diag_cache_entries),
+        intern_table_entries: a.intern_table_entries.max(b.intern_table_entries),
+        typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
+        peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
+            (Some(x), Some(y)) => Some(x.max(y)),
+            (Some(x), None) => Some(x),
+            (None, Some(y)) => Some(y),
+            (None, None) => None,
+        },
+    }
+}
+
+fn emit_floor_drain_group_line(
+    group_idx: usize,
+    total_groups: usize,
+    prev: &IndexRetentionSnapshot,
+    cur: &IndexRetentionSnapshot,
+) {
+    eprintln!(
+        "[floor-drain] group={group_idx}/{total_groups} \
+         typed_cache={}({:+}) parse_cache={}({:+}) resolved_memo={}({:+}) \
+         intern_table={}({:+}) evictions={} peak_rss={}",
+        cur.typed_module_cache_entries,
+        cur.typed_module_cache_entries as i64 - prev.typed_module_cache_entries as i64,
+        cur.parse_cache_entries,
+        cur.parse_cache_entries as i64 - prev.parse_cache_entries as i64,
+        cur.resolved_graph_memo_entries,
+        cur.resolved_graph_memo_entries as i64 - prev.resolved_graph_memo_entries as i64,
+        cur.intern_table_entries,
+        cur.intern_table_entries as i64 - prev.intern_table_entries as i64,
+        cur.typed_cache_evictions,
+        cur.peak_rss_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+    );
+}
+
+fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot) {
+    eprintln!(
+        "[floor-drain] receipt: groups={total_groups} \
+         typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
+         intern_table_peak={} evictions={} peak_rss={} cap_entries={}",
+        peaks.typed_module_cache_entries,
+        peaks.parse_cache_entries,
+        peaks.resolved_graph_memo_entries,
+        peaks.intern_table_entries,
+        peaks.typed_cache_evictions,
+        peaks
+            .peak_rss_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        typed_module_cache_max_entries(),
+    );
+}
+
+/// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
+/// are counted and logged — a typed, located diagnostic, never a silent widen.
+/// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
+/// correctness is preserved by content-key recompute on miss; only cost/frequency
+/// is affected if a hot entry is dropped.
+fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
+    if index.cross_worker_store.is_some() {
+        return;
+    }
+    let cap = typed_module_cache_max_entries();
+    let mut cache = index.typed_module_cache.borrow_mut();
+    let mut evicted = 0u64;
+    while cache.len() > cap {
+        let Some(key) = cache.keys().next().cloned() else {
+            break;
+        };
+        cache.remove(&key);
+        evicted += 1;
+    }
+    drop(cache);
+    if evicted > 0 {
+        let total = index.typed_cache_evictions.get() + evicted;
+        index.typed_cache_evictions.set(total);
+        eprintln!(
+            "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
+        );
+    }
+}
+
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
 /// cross-worker store is armed (no local duplicate — serde transport is one authority).
 /// `typed_key` is the content key from `typed_module_content_key`, never a module name.
@@ -5200,6 +5385,7 @@ fn index_insert_typed(
             .typed_module_cache
             .borrow_mut()
             .insert(typed_key, result.clone());
+        enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
     if let Some(bytes) = {
@@ -12148,7 +12334,11 @@ pub fn run_discovery_corpus_with_options(
                     stream: floor_stream,
                 };
                 let mut summaries = Vec::new();
-                for group_indices in groups {
+                let drain_detail = floor_drain_retention_detail_enabled();
+                let total_groups = groups.len();
+                let mut drain_prev = index_retention_snapshot(&index);
+                let mut drain_peaks = drain_prev;
+                for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
                     summaries.push(run_discovery_rows(
@@ -12163,7 +12353,19 @@ pub fn run_discovery_corpus_with_options(
                         options.witness_budget_policy(),
                         style,
                     )?);
+                    let snap = index_retention_snapshot(&index);
+                    if drain_detail {
+                        emit_floor_drain_group_line(
+                            group_idx + 1,
+                            total_groups,
+                            &drain_prev,
+                            &snap,
+                        );
+                    }
+                    drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
+                    drain_prev = snap;
                 }
+                emit_floor_drain_receipt(total_groups, &drain_peaks);
                 return Ok(attach_deferred_discovery_rows(
                     merge_discovery_summaries(summaries),
                     deferred_rows,
