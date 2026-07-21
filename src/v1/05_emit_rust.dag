@@ -4,7 +4,7 @@ import v1.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items,
   param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
+  authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
@@ -725,6 +725,14 @@ fn alias_rhs_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
+data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
+
+Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.
+
+Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the existing authority — a qualified name IS a containment path, and its last segment is the declared name the registry knows). Not a string dot-to-colon rewrite: that would FABRICATE a path from the spelling instead of RESOLVING the declaration, and would silently produce a wrong path whenever the qualifier does not match the defining module. Because qualified_last_segment is the identity on an unqualified name, every bare name renders exactly as before — the seed stays byte-identical by construction, which is why this lands with regen_divergence_count=0 rather than merely hoping for it.
+
+The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.type_annotation {
@@ -762,25 +770,26 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
-    let numeric_host_alias = rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr)
+    let leaf = qualified_last_segment(name: name)
+    let numeric_host_alias = rust_seed_host_numeric_alias(name: leaf, corpus_repr: corpus_repr)
     if numeric_host_alias != none {
       return match numeric_host_alias { Present { value: host } => host  Absent => "" }
     }
     let local_mod = module_to_filename(name: module_name)
-    let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let base = match rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) {
+    let def_mod = alias_rhs_rust_qualify_module_filename(name: leaf, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let base = match rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent => if def_mod != local_mod {
-        concat("crate::", def_mod, "::", name)
+        concat("crate::", def_mod, "::", leaf)
       } else {
-        name
+        leaf
       }
     }
-    let base_is_zero_param = rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let base_is_zero_param = rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     if base_is_zero_param {
-      return if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+      return if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
     }
-    let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
@@ -789,7 +798,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
       applied_ty
@@ -3349,7 +3358,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         }
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
-        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         let merged_specific = unique_strings(items: concat(specific_names, synth_for_module))
         emit_specific_import_block(
           import_module: import_module,
@@ -3408,8 +3417,15 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
-fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
-  let mod_filename = module_to_filename(name: import_module)
+data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).
+
+The predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.
+
+`name_in_transitive_export_surface` is the existing authority for that question (get_exported_names counts specific-import names as exports, which is exactly re-export), so this reuses it rather than minting a second reachability rule. Routing needs no change: graph_type_import_module_filename already groups emitted use-lines by the type's DEFINING module, so admitting the candidate yields a braced use-line against crate::extdeps_cache_catalog_io on its own.
+
+INCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the resolved field-type NODE TREE via collect_type_node_import_surface_names (04_emit_info.dag), populating TypeSummary.field_import_surface_names; this synth consumes that list so List<CacheEvidence> admits CacheEvidence (field_type_map still maps field→HEAD for lookup). Witness: field_import_surface_generic_arg_test. Re-probe 2026-07-21: materialization_carriers CacheEvidence E0422 cleared; first error advanced to E0425 cannot find value extdeps (namespace/dotted-path class — distinct blocker)."
+
+fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
     |> filter(item => is_data_def_item(item: item))
     |> flat_map(item => {
@@ -3422,9 +3438,9 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
       } else {
         match map_get(type_summaries, type_name) {
           Present { value: summary } =>
-            map_values(summary.field_type_map) |> filter(field_type =>
+            summary.field_import_surface_names |> filter(field_type =>
               field_type != ""
-              && has_physical_type_def_in_module_filename(rhs_name: field_type, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+              && name_in_transitive_export_surface(name: field_type, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
               && match map_get(type_summaries, field_type) {
                 Present { value: ft } =>
                   match ft.repr {
