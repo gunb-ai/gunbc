@@ -1,0 +1,123 @@
+module extdeps.pricing.github_actions
+
+import extdeps.pricing.types { MoneyPerMinute }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import std.currency { CurrencyCode, Usd }
+import std.measure {
+  HardwareThreadCount,
+  hardware_thread_count,
+  money_amount_micro,
+}
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/billing/reference/actions-runner-pricing"
+  }
+}
+
+data github_actions_pricing_provenance_note: String = "Per-minute rates live-fetched 2026-07-21 from the Actions runner pricing reference (anchor above). Baseline hosted-runner SKUs only; larger-runner tables extend on demand as rows."
+
+type GithubActionsBillingSku
+  = ActionsLinuxSlim
+  | ActionsLinux
+  | ActionsLinuxArm
+  | Linux4Core
+  | Linux8Core
+  | Linux16Core
+
+type GithubActionsRunnerPriceRow {
+  billing_sku: GithubActionsBillingSku
+  sku_wire_label: NonEmptyStr
+  vcpus: HardwareThreadCount
+  cpu_architecture: Architecture
+  per_minute: MoneyPerMinute
+  pricing_citation: NonEmptyStr
+}
+
+data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: ActionsLinuxSlim,
+  sku_wire_label: "actions_linux_slim",
+  vcpus: hardware_thread_count(1),
+  cpu_architecture: X86_64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 2000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 1-core (x64) $0.002/min",
+}
+
+data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: ActionsLinux,
+  sku_wire_label: "actions_linux",
+  vcpus: hardware_thread_count(2),
+  cpu_architecture: X86_64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 6000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 2-core (x64) $0.006/min",
+}
+
+data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: ActionsLinuxArm,
+  sku_wire_label: "actions_linux_arm",
+  vcpus: hardware_thread_count(2),
+  cpu_architecture: Aarch64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 5000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 2-core (arm64) $0.005/min",
+}
+
+data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: Linux4Core,
+  sku_wire_label: "linux_4_core",
+  vcpus: hardware_thread_count(4),
+  cpu_architecture: X86_64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 12000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 4-core $0.012/min",
+}
+
+data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: Linux8Core,
+  sku_wire_label: "linux_8_core",
+  vcpus: hardware_thread_count(8),
+  cpu_architecture: X86_64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 22000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 8-core $0.022/min",
+}
+
+data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: Linux16Core,
+  sku_wire_label: "linux_16_core",
+  vcpus: hardware_thread_count(16),
+  cpu_architecture: X86_64,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 42000),
+    currency: Usd,
+  },
+  pricing_citation: "actions-runner-pricing: Linux 16-core $0.042/min",
+}
+
+fn github_actions_runner_price_catalog() -> List<GithubActionsRunnerPriceRow> {
+  [
+    github_actions_linux_slim_price,
+    github_actions_linux_2core_price,
+    github_actions_linux_arm_2core_price,
+    github_actions_linux_4core_price,
+    github_actions_linux_8core_price,
+    github_actions_linux_16core_price,
+  ]
+}

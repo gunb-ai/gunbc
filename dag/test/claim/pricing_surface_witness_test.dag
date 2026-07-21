@@ -1,0 +1,53 @@
+module test.claim.pricing_surface_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_github_2core_per_hour_derived_not_stored() -> Bool {
+  let derived = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  money_per_hour_micros(q: derived) == 360000
+}
+
+fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool {
+  let github_hourly = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  let aws_hourly = aws_ec2_m7a_large_us_east_1.per_hour
+  money_per_hour_micros(q: github_hourly) > money_per_hour_micros(q: aws_hourly)
+    && money_per_hour_micros(q: github_hourly) == 360000
+    && money_per_hour_micros(q: aws_hourly) == 115920
+}
+
+fn witness_ubicloud_premium_2core_undercuts_github_2core_per_minute() -> Bool {
+  money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
+    < money_per_minute_micros(q: github_actions_linux_2core_price.per_minute)
+    && money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) == 1600
+    && money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) == 6000
+}
+
+fn witness_hetzner_ax41_monthly_matches_cited_price() -> Bool {
+  money_per_month_micros(q: hetzner_ax41_1_ltd_price.monthly) == 57300000
+    && hetzner_dedicated_setup_fee_micros(row: hetzner_ax41_1_ltd_price) == 0
+}
+
+fn witness_hetzner_ax41_hourly_equivalent_derived() -> Bool {
+  let derived = per_hour_equivalent_from_per_month(q: hetzner_ax41_1_ltd_price.monthly)
+  money_per_hour_micros(q: derived) == 57300000 / hours_per_billing_month
+}
+
+data wrong_github_2core_per_minute_fixture: MoneyPerMinute = MoneyPerMinute {
+  amount: money_amount_micro(count: 5999),
+  currency: Usd,
+}
+
+fn witness_wrong_github_per_minute_red_control() -> Bool {
+  let derived = per_hour_equivalent_from_per_minute(q: wrong_github_2core_per_minute_fixture)
+  money_per_hour_micros(q: derived) != 360000
+}
+
+test fn pricing_surface_witness_holds() -> Bool {
+  witness_github_2core_per_hour_derived_not_stored()
+    && witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand()
+    && witness_ubicloud_premium_2core_undercuts_github_2core_per_minute()
+    && witness_hetzner_ax41_monthly_matches_cited_price()
+    && witness_hetzner_ax41_hourly_equivalent_derived()
+    && witness_wrong_github_per_minute_red_control()
+}

@@ -1,0 +1,116 @@
+module extdeps.pricing.hetzner_dedicated
+
+import extdeps.pricing.types { MoneyPerMonth }
+import std.currency { CurrencyCode, Eur }
+import std.measure {
+  ByteSize,
+  byte_size,
+  MoneyAmountMicro,
+  money_amount_micro,
+  money_amount_micro_count,
+}
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/"
+  }
+}
+
+data hetzner_dedicated_pricing_provenance_note: String = "Monthly prices excl. VAT live-fetched 2026-07-21 from Hetzner price-adjustment doc GE-D9256 (anchor above, Limited offerings table). Hardware specs cross-checked against robot.hetzner.com/order (same date). EUR only — no currency conversion."
+
+type HetznerDedicatedServerType
+  = Ax41_1_Ltd
+  | Ax42_1_Ltd
+  | Ax42_1
+  | Ax102_1_Ltd
+
+type HetznerDedicatedServerPriceRow {
+  server_type: HetznerDedicatedServerType
+  server_type_wire_label: NonEmptyStr
+  cpu_description: NonEmptyStr
+  memory_bytes: ByteSize
+  storage_bytes: ByteSize
+  monthly: MoneyPerMonth
+  setup_fee: MoneyAmountMicro
+  currency: CurrencyCode
+  pricing_citation: NonEmptyStr
+}
+
+data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: Ax41_1_Ltd,
+  server_type_wire_label: "AX41-1-LTD",
+  cpu_description: "AMD Ryzen 5 3600 Hexa-Core Matisse (Zen2)",
+  memory_bytes: byte_size(68719476736),
+  storage_bytes: byte_size(1099511627776),
+  monthly: MoneyPerMonth {
+    amount: money_amount_micro(count: 57300000),
+    currency: Eur,
+  },
+  setup_fee: money_amount_micro(count: 0),
+  currency: Eur,
+  pricing_citation: "GE-D9256 Limited offerings: AX41-1-LTD €57.30/mo excl. VAT, €0.00 setup",
+}
+
+data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: Ax42_1_Ltd,
+  server_type_wire_label: "AX42-1-LTD",
+  cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
+  memory_bytes: byte_size(68719476736),
+  storage_bytes: byte_size(1099511627776),
+  monthly: MoneyPerMonth {
+    amount: money_amount_micro(count: 77300000),
+    currency: Eur,
+  },
+  setup_fee: money_amount_micro(count: 39000000),
+  currency: Eur,
+  pricing_citation: "GE-D9256 Limited offerings: AX42-1-LTD €77.30/mo excl. VAT, €39.00 setup",
+}
+
+data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: Ax42_1,
+  server_type_wire_label: "AX42-1",
+  cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
+  memory_bytes: byte_size(68719476736),
+  storage_bytes: byte_size(1099511627776),
+  monthly: MoneyPerMonth {
+    amount: money_amount_micro(count: 97300000),
+    currency: Eur,
+  },
+  setup_fee: money_amount_micro(count: 49000000),
+  currency: Eur,
+  pricing_citation: "GE-D9256 Falkenstein/Helsinki: AX42-1 €97.30/mo excl. VAT, €49.00 setup",
+}
+
+data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: Ax102_1_Ltd,
+  server_type_wire_label: "AX102-1-LTD",
+  cpu_description: "AMD Ryzen 9 7950X3D 16-Core Raphael (Zen4)",
+  memory_bytes: byte_size(137438953472),
+  storage_bytes: byte_size(4123168604160),
+  monthly: MoneyPerMonth {
+    amount: money_amount_micro(count: 157300000),
+    currency: Eur,
+  },
+  setup_fee: money_amount_micro(count: 39000000),
+  currency: Eur,
+  pricing_citation: "GE-D9256 Limited offerings: AX102-1-LTD €157.30/mo excl. VAT, €39.00 setup",
+}
+
+fn hetzner_dedicated_price_catalog() -> List<HetznerDedicatedServerPriceRow> {
+  [
+    hetzner_ax41_1_ltd_price,
+    hetzner_ax42_1_ltd_price,
+    hetzner_ax42_1_price,
+    hetzner_ax102_1_ltd_price,
+  ]
+}
+
+fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> Nat {
+  money_amount_micro_count(m: row.setup_fee)
+}

@@ -1,0 +1,104 @@
+module extdeps.pricing.aws_ec2
+
+import extdeps.cloud.cloud { AwsRegion, UsEast1 }
+import extdeps.pricing.types { MoneyPerHour }
+import std.currency { CurrencyCode, Usd }
+import std.measure {
+  HardwareThreadCount,
+  hardware_thread_count,
+  money_amount_micro,
+}
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json"
+  }
+}
+
+data aws_ec2_pricing_provenance_note: String = "On-demand Linux Shared tenancy prices live-fetched 2026-07-21 from the AWS Price List API (anchor above, us-east-1, preInstalledSw=NA). m7a general-purpose family only — 3-5 comparable instances, not full catalog coverage."
+
+type AwsEc2InstanceFamily = M7a
+
+type AwsEc2OnDemandPriceRow {
+  instance_type: NonEmptyStr
+  family: AwsEc2InstanceFamily
+  region: AwsRegion
+  vcpus: HardwareThreadCount
+  per_hour: MoneyPerHour
+  pricing_citation: NonEmptyStr
+}
+
+data aws_ec2_m7a_medium_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
+  instance_type: "m7a.medium",
+  family: M7a,
+  region: UsEast1,
+  vcpus: hardware_thread_count(1),
+  per_hour: MoneyPerHour {
+    amount: money_amount_micro(count: 57960),
+    currency: Usd,
+  },
+  pricing_citation: "Price List API 2026-07-21: $0.05796/hr On Demand Linux m7a.medium us-east-1",
+}
+
+data aws_ec2_m7a_large_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
+  instance_type: "m7a.large",
+  family: M7a,
+  region: UsEast1,
+  vcpus: hardware_thread_count(2),
+  per_hour: MoneyPerHour {
+    amount: money_amount_micro(count: 115920),
+    currency: Usd,
+  },
+  pricing_citation: "Price List API 2026-07-21: $0.11592/hr On Demand Linux m7a.large us-east-1",
+}
+
+data aws_ec2_m7a_xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
+  instance_type: "m7a.xlarge",
+  family: M7a,
+  region: UsEast1,
+  vcpus: hardware_thread_count(4),
+  per_hour: MoneyPerHour {
+    amount: money_amount_micro(count: 231840),
+    currency: Usd,
+  },
+  pricing_citation: "Price List API 2026-07-21: $0.23184/hr On Demand Linux m7a.xlarge us-east-1",
+}
+
+data aws_ec2_m7a_2xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
+  instance_type: "m7a.2xlarge",
+  family: M7a,
+  region: UsEast1,
+  vcpus: hardware_thread_count(8),
+  per_hour: MoneyPerHour {
+    amount: money_amount_micro(count: 463680),
+    currency: Usd,
+  },
+  pricing_citation: "Price List API 2026-07-21: $0.46368/hr On Demand Linux m7a.2xlarge us-east-1",
+}
+
+data aws_ec2_m7a_4xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {
+  instance_type: "m7a.4xlarge",
+  family: M7a,
+  region: UsEast1,
+  vcpus: hardware_thread_count(16),
+  per_hour: MoneyPerHour {
+    amount: money_amount_micro(count: 927360),
+    currency: Usd,
+  },
+  pricing_citation: "Price List API 2026-07-21: $0.92736/hr On Demand Linux m7a.4xlarge us-east-1",
+}
+
+fn aws_ec2_m7a_on_demand_catalog() -> List<AwsEc2OnDemandPriceRow> {
+  [
+    aws_ec2_m7a_medium_us_east_1,
+    aws_ec2_m7a_large_us_east_1,
+    aws_ec2_m7a_xlarge_us_east_1,
+    aws_ec2_m7a_2xlarge_us_east_1,
+    aws_ec2_m7a_4xlarge_us_east_1,
+  ]
+}
