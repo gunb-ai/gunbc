@@ -1,0 +1,74 @@
+module gunbc.bmc_netboot_serve
+
+import std.types { NonEmptyStr, String, Int }
+import extdeps.uri { Uri, Https, uri_wire }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
+import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
+import gunbc.os_install_emit { autoinstall_user_data }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data bmc_netboot_serve_scope: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.bmc.serial_console",
+    decl_name: "SolConsoleSendIntent",
+    field: WholeDeclaration,
+  }
+}
+
+data bmc_netboot_serve_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_serve — busybox-httpd-on-BMC serve command + grub.cfg composed as medium-as-string (concat), staged over ssh; the BMC hosts the ~88MB bootstrap (kernel/initrd/grub + our nocloud seed) so a host UEFI-HTTP-boots self-contained and streams the bulk from the Ubuntu mirror (never on the BMC). DISSOLVES WHEN host_effect_apply binds a BmcNetbootServe transport handler without concat runner glue; retire medium_structure_exception_roster entry for dag/gunbc/bmc_netboot_serve.dag"
+
+type BmcNetbootServePlan {
+  bmc_host: NonEmptyStr
+  serve_port: Int
+  netboot_dir: NonEmptyStr
+  httpd_binary: NonEmptyStr
+  nocloud_subdir: NonEmptyStr
+  bulk_iso_url: Uri
+  autoinstall: UbuntuAutoinstallPayload
+}
+
+data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
+  bmc_host: "192.168.1.195",
+  serve_port: 8080,
+  netboot_dir: "/tmp/netboot",
+  httpd_binary: "/tmp/netboot/busybox",
+  nocloud_subdir: "nocloud",
+  bulk_iso_url: Uri {
+    scheme: Https,
+    locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
+  },
+  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+}
+
+fn bmc_netboot_base_url(plan: BmcNetbootServePlan) -> String {
+  concat(concat("http://", plan.bmc_host as String), concat(":", int_to_str(n: plan.serve_port)))
+}
+
+fn int_to_str(n: Int) -> String {
+  to_string(n)
+}
+
+fn bmc_netboot_grub_cfg(plan: BmcNetbootServePlan) -> String {
+  let base = bmc_netboot_base_url(plan: plan)
+  let seed = concat(concat(base, "/"), concat(plan.nocloud_subdir as String, "/"))
+  concat(
+    concat("set timeout=1\nmenuentry \"gunbc netboot install\" {\n  linux /vmlinuz ip=dhcp url=", uri_wire(uri: plan.bulk_iso_url) as String),
+    concat(
+      concat(" autoinstall \"ds=nocloud-net;s=", seed),
+      concat("\" ---\n  initrd /initrd\n}\n", ""),
+    ),
+  )
+}
+
+fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
+  autoinstall_user_data(payload: plan.autoinstall)
+}
+
+fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> String {
+  concat(
+    concat(plan.httpd_binary as String, " httpd -f -p "),
+    concat(int_to_str(n: plan.serve_port), concat(" -h ", plan.netboot_dir as String)),
+  )
+}

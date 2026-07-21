@@ -1,0 +1,28 @@
+module test.claim.bmc_netboot_serve
+
+import std.logic { Bool }
+import gunbc.bmc_netboot_serve {
+  srv4_bmc_netboot_serve_plan,
+  bmc_netboot_grub_cfg,
+  bmc_netboot_serve_command,
+  bmc_netboot_nocloud_user_data,
+}
+
+test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
+  let cfg = bmc_netboot_grub_cfg(plan: srv4_bmc_netboot_serve_plan)
+  string_contains(s: cfg, pattern: "linux /vmlinuz")
+    && string_contains(s: cfg, pattern: "url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso")
+    && string_contains(s: cfg, pattern: "ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/")
+    && string_contains(s: cfg, pattern: "initrd /initrd")
+}
+
+test fn srv4_serve_command_is_busybox_httpd() -> Bool {
+  bmc_netboot_serve_command(plan: srv4_bmc_netboot_serve_plan) == "/tmp/netboot/busybox httpd -f -p 8080 -h /tmp/netboot"
+}
+
+test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
+  let ud = bmc_netboot_nocloud_user_data(plan: srv4_bmc_netboot_serve_plan)
+  string_contains(s: ud, pattern: "hostname: srv4")
+    && string_contains(s: ud, pattern: "allow-pw: false")
+    && string_contains(s: ud, pattern: "fleet-automation@gunbc")
+}
