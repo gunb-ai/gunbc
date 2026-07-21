@@ -33,13 +33,7 @@ fn symbol_index_fill_containment_edge(
 ) -> SymbolIndex {
   match edge.label {
     Named { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
-        symbol_index_fill_containment_node(
-          index: index,
-          path: path,
-          node: edge.target
-        )
-      } else if symbol_index_parse_projection_edge(name: sym) {
+      if symbol_index_parse_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
@@ -67,7 +61,7 @@ fn symbol_index_fill_containment_edge(
   }
 }
 
-data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transparent descent through parse/grammar wrapper nodes (production shells, sequence/repeat spines) at the current qualified path — edges are still filtered by symbol_index_fill_containment_edge (metadata + _node_projection projections skip path extension). Conj/Disj/Arrow retain explicit semantics; this arm is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain reachable. New TypeNode connectives that carry real named bindings must get an explicit arm before relying on this fallback."
+data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transparent descent through parse/grammar wrapper nodes (production shells, sequence/repeat spines) at the current qualified path — edges are still filtered by symbol_index_fill_containment_edge (_node_projection projections skip path extension). Conj/Disj/Arrow retain explicit semantics; this arm is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain reachable. New TypeNode connectives that carry real named bindings must get an explicit arm before relying on this fallback."
 
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,

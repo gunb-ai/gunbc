@@ -8,8 +8,6 @@ import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
-  dag_resolve_preserve_module_metadata_subtree,
-  dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -631,39 +629,27 @@ fn resolve_child_edge(
 ) -> Outcome<Edge> {
   match e.label {
     Named { name: sym } =>
-      if ctx.under_module_root && (
-        dag_surface_module_header_metadata_edge(name: sym)
-          || dag_resolve_preserve_module_metadata_subtree(node: e.target)
-      ) {
-        Accepted { value: e, diagnostics: None }
+      let child_ctx = if ctx.under_module_root {
+        resolve_ctx_snoc_position(ctx: ctx, segment: sym)
       } else {
-        let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(name: sym) {
-          resolve_ctx_snoc_position(ctx: ctx, segment: sym)
-        } else {
-          ctx
-        }
-        match resolve_node(ctx: child_ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
-              value: Edge { label: e.label, target: resolved_target },
-              diagnostics: d
-            }
-        }
+        ctx
+      }
+      match resolve_node(ctx: child_ctx, n: e.target) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_target, diagnostics: d } =>
+          Accepted {
+            value: Edge { label: e.label, target: resolved_target },
+            diagnostics: d
+          }
       }
     Positional =>
-      if ctx.under_module_root
-        && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        Accepted { value: e, diagnostics: None }
-      } else {
-        match resolve_node(ctx: ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
-              value: Edge { label: e.label, target: resolved_target },
-              diagnostics: d
-            }
-        }
+      match resolve_node(ctx: ctx, n: e.target) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_target, diagnostics: d } =>
+          Accepted {
+            value: Edge { label: e.label, target: resolved_target },
+            diagnostics: d
+          }
       }
   }
 }
