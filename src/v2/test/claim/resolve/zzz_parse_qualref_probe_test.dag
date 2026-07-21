@@ -1,0 +1,92 @@
+module v2.test.resolve.zzz_parse_qualref_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  Value,
+  Transform,
+  Branch,
+  Match,
+  Loop
+}
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data probe_source: String = "module v2.test.resolve.zzz_probe_mod\ntype LocalAlias = alpha.beta.Gamma\n"
+
+fn zzz_shape(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => concat("Atom(", id, ")")
+    TypeNode { connective: Conj } => "Conj"
+    TypeNode { connective: Disj } => "Disj"
+    TypeNode { connective: Arrow } => "Arrow"
+    ComputationNode { behavior: Transform } => "Transform"
+    ComputationNode { behavior: Value } => "Value"
+    ComputationNode { behavior: Branch } => "Branch"
+    ComputationNode { behavior: Match } => "Match"
+    ComputationNode { behavior: Loop } => "Loop"
+  }
+}
+
+fn zzz_edge_label(e: Edge) -> String {
+  match e.label {
+    Named { name: nm } => concat("~", nm)
+    Positional => "@"
+  }
+}
+
+fn zzz_render_edges(es: List<Edge>, depth: Int) -> String {
+  fold(
+    es,
+    init: "",
+    f: fn(acc, e) {
+      concat(acc, " {", zzz_edge_label(e: e), ":", zzz_render_tree(n: e.target, depth: depth - 1), "}")
+    }
+  )
+}
+
+fn zzz_render_tree(n: Node, depth: Int) -> String {
+  if depth <= 0 {
+    zzz_shape(n: n)
+  } else {
+    concat(zzz_shape(n: n), zzz_render_edges(es: n.children, depth: depth))
+  }
+}
+
+fn probe_rhs_shape() -> String {
+  let lm = dag_language_model()
+  match tokenize(text: probe_source, file: ^probe_file, rules: lm.lex) {
+    Rejected { diagnostics: d } => concat("TOK_REJ:", d.head.reason)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => concat("PARSE_REJ:", d.head.reason)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => concat("NORM_REJ:", d.head.reason)
+            Accepted { value: tree, diagnostics: _ } => zzz_render_tree(n: tree, depth: 7)
+          }
+      }
+  }
+}
+
+test fn probe_rhs_shape_shows() -> String {
+  probe_rhs_shape()
+}
