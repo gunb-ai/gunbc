@@ -1,6 +1,5 @@
 module std.bit
 
-import std.logic { Classical }
 
 type Bit = Classical
 

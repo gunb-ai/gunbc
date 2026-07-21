@@ -43,6 +43,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn service_atom_conj_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },

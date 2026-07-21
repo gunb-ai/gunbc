@@ -1,40 +1,5 @@
 module v2.lens.unit_modeling
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  TypeNode,
-  ComputationNode,
-  Symbol
-}
-import v2.std.node_query { edge_field_type_name }
-import v2.std.collection {
-  List,
-  Map,
-  Optional,
-  Present,
-  Absent,
-  optional_present,
-  optional_absent,
-  optional_prefer_first_present,
-  empty_map,
-  map_insert,
-  map_get
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Accepted,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  node_locus
-}
-import v2.std.witness { Holds, Witness }
 
 type UnitFieldRow {
   field: Symbol
@@ -86,7 +51,7 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
 }
 
 fn field_name_has_known_carrier(name: Symbol) -> Bool {
-  match map_get(m: unit_field_token_map(), key: name) {
+  match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -106,7 +71,7 @@ fn exemption_marker_set() -> Map<Symbol, Symbol> {
 }
 
 fn name_is_exempt(name: Symbol) -> Bool {
-  match map_get(m: exemption_marker_set(), key: name) {
+  match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }

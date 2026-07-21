@@ -283,9 +283,15 @@ both read the *same* fully-filled `Map<QualifiedName, Node>`. If a policy ever n
 Rule 1 forbids. So the guard is explicit: **policy is a lookup filter; fill is one, complete, and
 shared** — which also keeps the O(M²) fix policy-agnostic (fill-once stands under either policy).
 
-**Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix,
-gated on loyal-heron's scaling receipt per that doc's §7.5). Namespace-only is then a policy
-layer over the settled index — not a from-scratch resolver. Resolution is a **walk over the
+**Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix).
+**LANDED — #6809** ("SymbolIndex / type-env-single-authority — the containment-tree naming
+authority"), carrier `src/v2/std/symbol_index.dag`:
+`SymbolIndex { entries: Map<QualifiedName, Node>, global_bare: Map<Symbol, GlobalBareBindingState> }`
+with `symbol_index_lookup` / `symbol_index_global_unique_lookup` / `symbol_index_lexical_lookup`,
+and `GlobalBareLookup = GlobalBareHit | GlobalBareLookupAmbiguous | GlobalBareLookupUnbound`.
+The loyal-heron scaling gate is **discharged**; this precondition is satisfied and the lane is no
+longer blocked on it. Namespace-only is now a policy layer over a *settled, in-tree* index — not a
+from-scratch resolver. Resolution is a **walk over the
 containment tree** the `SymbolIndex` materializes (§3: lexical lookup up the ancestor chain, `.`
 projection down), not a fuzzy key search; the kernel-`Nat` / `:231` / family-closure /
 `source_visible_names` collapse (§7) all happen *at* this seam. Reconciliation owed: fold the `import-list-visibility` assumption in
@@ -345,15 +351,259 @@ dependency edge (Rule-1 end-state). First concrete census rows from the PR-2 ref
 `parse_with_table`, `default_artifact_plan`, `Rust` — extend by re-running the direct-import experiment and
 collecting every unresolved-name error.
 
+**PR-5b import-line strip (interim host bridge).** Deletes `import` lines from
+`src/v2/workflow/**` and `src/v2/extdeps/**` while bare refs stay; the v1 host keeps
+compile and witness execution working via the **census bare-reference closure**
+(`extend_with_bare_reference_closure` in `src/v1/stage0/src/cli_run.rs`): an
+import-stripped module's bare names resolve through the per-tree census (own tree
+first, whole pool on miss — the same layering typecheck lookup uses), and each
+resolved name pulls its declaring module into the entry closure. Precision guards,
+both declaration-grain: names the referencing file itself binds anywhere (params,
+named-arg keys, `let`/`data` binders) never pull, and a name whose resolved
+declaration is a `test fn`/`test data` row never pulls (an execution root is not a
+dependency). A pulled module missing from module-graph-facts provenance refuses
+loudly. An earlier draft of this paragraph described a git-show import-replay
+scaffold (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER`) that was never
+built — the census closure above is the mechanism that actually shipped, and the
+known residue (the reference producer over-collects; the closure is a second
+authority beside the compile-clean import closure) is tracked as the
+reference-derived dependency-edge lane, the same lane that dissolves this bridge.
+**Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
+above — delete import grammar; container.member references become the sole
+dependency authority).
+
 ## 9. Open / to-verify
 
-- **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`) and whether the `module`
-  declaration is derivable from the path (if so, the declaration is itself a Rule-1 candidate
-  to delete). Note `04_infer.dag:718` already special-cases the `"v2."` prefix — that logic
-  folds into the root map.
+- **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`). ~~Whether the `module`
+  declaration is derivable from the path~~ — RESOLVED THE OTHER WAY (operator, 2026-07-19, §10
+  anti-goal): deriving the namespace position from the file path would harden the
+  storage/identity fusion the module-identity lane dissolves. The declaration stays; its
+  *extent* becomes syntactic (§10). Note `04_infer.dag:718` already special-cases the `"v2."`
+  prefix — that logic folds into the root map.
 - **Non-locality property (accepted, not a bug):** adding `v2.std.other.Symbol` later makes a
   previously-bare `Symbol` in-scope `Ambiguous` — a compile error until qualified. Loud and
   fail-closed (Rule 2), the honest cost of "no ambiguity." The alternative (narrower per-module
   scope) kills the sibling-access ergonomics the operator asked for; not taken.
+
+## 10. Namespace scope is syntactic — the header declares a position AND an extent (operator, 2026-07-19; routed from sharp-bee-290, addendum on #6848)
+
+The defect: `module examples.cost_estimate` declares WHERE the file's declarations sit but not
+HOW FAR that claim reaches — the grammar row (`dag_grammar_module_header_expr`,
+`src/v2/extdeps/languages/dag.dag`) is `kw_module × qualified_name`, no extent token; scope is
+inferred from end-of-file, i.e. from the storage medium's boundary. Operator framing verbatim:
+"there is no scoping on modules right now — we're inferring it from the file boundaries; I'd
+like to make this all very explicit up front." This is the storage/identity fusion
+(module-identity-storage-binding lane) surfacing at the naming layer. Verified downstream
+symptoms of the special-casing: 03_resolve's dedicated metadata edge
+(`dag_surface_module_header_metadata_edge`, `ctx.under_module_root`) instead of ordinary
+containment fill; SymbolIndex fill carrying the qualified name as a string prefix bolted onto
+keys (`module_qn.fn.param`) rather than literal containment nodes; "one file = one module"
+enforced as a file-grain collision key standing in for the tree-grain rule it means.
+
+The explicit form is this design's own semantics applied one level up: `module a.b.c` + body ≡
+the file's declaration forest grafted under `a { b { c { … } } }` — literal containment nodes,
+extent = the brace pair, nothing inferred from storage. In the model there is then no "module"
+concept: containers all the way down (the header is C#'s file-scoped `namespace X;` — a
+placement declaration, never a `using`; that role belongs to `import`, which §7's terminal step
+deletes).
+
+**Staged (each with its trigger):**
+1. **Header as sugar — zero surface migration.** `module a.b.c` desugars at ingest to the
+   containment graft. Frontend builds the tree from nesting (this design's "pure structure,
+   zero resolution logic"); the resolver metadata-edge special case and the SymbolIndex prefix
+   bolt-on dissolve into ordinary containment fill. Every file keeps its header; only the model
+   changes. After this step "modules have no scoping" is false in the model: the scope IS the
+   subtree extent.
+2. **Admit the explicit braced container form at the surface** — a grammar row for top-level
+   containers (a production + fold row per DESIGN.md §4 — rows, never a fold edit).
+   Composition rule (no-ambiguity, operator 2026-07-06): a header, if present, is common-prefix
+   sugar — the forest grafts under its position, explicit braces nest below it; the same
+   position declared from two storage fragments is a typed refusal. The file-grain 1:1
+   collision key becomes the tree-grain rule: one position, one authority. Multi-container
+   files and finer-than-file fragments become expressible (the many-to-many model the
+   module-identity lane stages — `ModuleStorageBinding` is the storage half; this is the naming
+   half; they meet at the binding authority, never fuse). Prefer keyword-free bare containers
+   (`a { … }`, matching `T{a}` notation) so nothing ever needs renaming — the keyword dies with
+   the sugar header (§11).
+3. **Dissolution — existing lanes, no new work.** Import deletion removes the lookup half;
+   delta-first files-as-projections removes the storage half; the header becomes one projection
+   policy's rendering convenience, then deletes. "Where does a module end" is moot: a
+   namespace's extent is its subtree.
+
+**Anti-goals:** never derive the position from the file path (hardens the fusion); never leave
+both the metadata-edge mechanism and containment nodes live past step 1 (dual representation);
+the desugar is exactly-one (header × explicit-brace composition defined; ambiguity refuses).
+
+**Sequencing vs #6848 (this lane's call):** step 1 touches exactly the resolver/SymbolIndex
+machinery the salvage stabilized — it lands as the FIRST follow-up PR on top of the merged
+#6848, not inside it. Step 2 follows once step 1's dissolves (metadata edge, prefix keys) are
+receipted.
+
+## 11. Terminology: "module" → "namespace" (operator-ruled, 2026-07-19)
+
+A namespace is pure naming — a position that qualifies names. A module is classically a
+namespace plus some subset of four extras, and here every extra is absent or deliberately homed
+elsewhere: interface/export boundary — absent (keyword set has no pub/export/private;
+reachability is lexical); dependency unit — being deleted (terminal step removes `import`);
+compilation unit — already de-fused (`CompilationUnit` is its own concept; crate layout derived
+by partition); storage/distribution unit — the fusion being dissolved (`ModuleStorageBinding`
+models it honestly). So in gunbc "module" names the fusion itself — the thing this design
+dissolves. Precedent: `ModulePath` → `QualifiedName` (§3 nickname, renamed);
+`NamespaceOnlyY` / "effect grants over namespaces" are the live vocabulary.
+
+**Ontology (three lines):**
+- **containment** — the single relation; interior nodes include types, fns, params
+  (`T{a}` → `a` is `T.a`; `.` is one projection op).
+- **namespace** — a node that is only a container (no other semantics). What the file header
+  actually declares.
+- **module** — a namespace subtree fused to one storage file. Dissolving; survives, if
+  anywhere, only as the storage-side binding's name.
+
+**Priced consequences:** adopt "namespace" in design language and NEW carriers now; reserve
+"module" strictly for the storage-side binding or retire it as carriers migrate. NO fleet-wide
+keyword rename as its own change (2,258 headers for a dying word displaces no cost, §6). NO
+alias period (two live spellings of one production is the §3 nickname the no-ambiguity rule
+forbids) — if the sugar keyword is renamed at all, it rides the import-strip terminal wave,
+which already touches every header region.
+
+## 12. Runtime dispatch is another consumer of the containment tree — the fork is three-way, not two (zesty-deer-446, 2026-07-19)
+
+**Finding, proven by execution: the import list is already inert. NEITHER typecheck NOR runtime
+binds through it.** This is not "typecheck resolves against imports, runtime against registration
+order" (the framing this lane inherited) — it is *two different arbitrary rules, neither of which
+is the declared import*, plus a declaration nothing reads. §2.1's argument that imports are a
+dual representation is therefore **empirically confirmed and stronger than stated**: they are not
+a redundant-but-working authority to retire, they are a **dead** one.
+
+### 12.1 The evidence
+
+Instrumented probe (not inferred from diagnostics — see §12.2 for why that was necessary). Two
+modules each declare `twin_sig`, distinguishable by arity; a third imports it **from `twin_p`**
+and calls it. Reading what the frontend's own resolver returns:
+
+```
+planted module imports: test.claim.sigprobe.twin_p { twin_sig }     // 1 param
+                        test.claim.sigprobe.twin_q { twin_q_anchor } // twin_q's twin_sig: 3 params
+
+func_env.parents = [twin_q, v2.std.live_tree, std.types, std.algebra,
+                    std.error_primitives, twin_p]
+lookup_resolved_sig(planted.func_env, "twin_sig") -> 3 PARAMS      // == twin_q
+```
+
+`lookup_resolved_sig` (`v1_compiler_infer_sigs.rs:108-119`) checks `local`, then folds `parents`
+taking the **first hit**. `parents` carries *which modules are imported*, never the selective name
+list — `import M { f }` and `import M { g }` are indistinguishable in it — and its order is
+incidental (note the two twins sit at opposite ends with std modules between them). So the
+frontend binds `twin_q`, which the source never imported.
+
+The three claimants:
+
+| claimant | actual rule | honors the import list? |
+|---|---|---|
+| `import M { f }` | declared | **nothing reads it** |
+| typecheck (`lookup_resolved_sig`) | first hit in `func_env.parents`, incidental order | no |
+| runtime (`v1_interpreter fn_nodes`) | last insert into a bare-name map, file-path order | no |
+
+They diverge because the *collections* differ, not because one is right. Consequence for the
+incident that opened this lane (`import_closure` in `effect_reach.dag`): main was green on that
+pair by coincidence at **two** layers, not one.
+
+### 12.2 Why "no diagnostic" proved nothing (method note — do not repeat)
+
+Three black-box probes were run first and all failed to discriminate, because the compiler does
+not reject the mismatches they relied on: a call labelled with a parameter the bound signature
+does not declare resolves clean, **and** a `test fn` declaring `-> Bool` whose callee returns
+`Int` also resolves clean (caught only by the claim harness at runtime). With both label and
+return-type checking inert for this shape, *absence of a diagnostic carries no information about
+which declaration was bound.* Only direct observation of the resolver's return value settles it.
+Two adjacent gaps this surfaced, both independent of naming and worth their own lanes:
+`module_skips_direct_call_arg_check` (`v1_compiler_infer.rs:1233-41`) exempting all `v2.*` and
+`v1.compiler.*` from compile-time direct-call argument checking — the exemption under which 33
+silently-dropped-`diagnostics:` call sites accumulated (fixed #6896) — and the unchecked
+declared-vs-actual return type above.
+
+### 12.3 What "fold runtime dispatch into this lane" means, concretely
+
+DESIGN.md's namespace open thread names three consumers of the one containment tree — resolution
+walks it, content-addressing hashes it, termination reads its sub-value edges (this doc's §3
+derives the tree itself, not that consumer list). **Dispatch is a further consumer, and was
+unmodeled.** No ordinal is asserted here on purpose: effect grants independently claim "fourth"
+(`DESIGN.md:100`, `docs/plans/effect-namespace-grants.md:22`), and an ordinal maintained in three
+places is exactly the §3 second-encoding this lane exists to delete — consumers are *named*, and
+the count is read off the list, never restated. Naming dispatch here is the whole consolidation: it converts component 1 of the bare-name dispatch fork
+from *build a fourth resolver* into *delete a fork*.
+
+- **`v1_interpreter fn_nodes` dissolves.** It is not fixed, re-keyed, or taught about imports — it
+  is deleted. Dispatch reads the same `SymbolIndex` the resolver reads.
+- **Ambiguity already has its typed refusal.** `GlobalBareLookup`'s `GlobalBareLookupAmbiguous` is
+  exactly the §2.4 outcome ("a name resolving to ≥2 nodes is a typed, located error — never a
+  flat-namespace pick"), and it is the direct answer to the dispatch fork's requirement that a
+  bare name ambiguous in the loaded pool refuse rather than pick a winner. Nothing new is minted.
+- **Cost shape is preserved.** Dispatch stays one map hit — on `QualifiedName` into
+  `SymbolIndex.entries` rather than on a bare `String` into `fn_nodes`. It is NOT a per-call
+  ancestor walk; the tree is materialized once by fill (§7.5's fill-once discipline), so §6's
+  "bare minimum cost" is satisfied by construction rather than by measurement. *This is the
+  claim most worth falsifying before implementation — it is the difference between a cheap
+  substitution and a rewrite.*
+- **Migration rides §8 unchanged.** When a subtree flips to `namespace-only-Y`, its runtime
+  dispatch keys on the same index in the same motion. The two cannot drift because there is only
+  one thing; a flip that moved resolution without moving dispatch would re-open the fork.
+
+**Why it must NOT ship standalone.** Every standalone fix threads a *fourth* rule into a system
+that already has three, and two of the three are wrong:
+- threading `ResolvedImport.specific_names` (resolve-stage, `v1_compiler_resolve.rs:37-40`) into
+  the interpreter makes **runtime** honor imports while typecheck still does not — converting
+  shared arbitrariness into a genuine new divergence. Strictly worse.
+- stamping the call site (the shape `MethodSemantics` already uses for algebra/service calls,
+  where plain `CallSemantics` carries no target) is the right *shape*, but a stamp is only as good
+  as the resolver producing it — so it would first require hardening `lookup_resolved_sig` to
+  honor a mechanism §7 deletes. Paying twice.
+
+**Interim, if the flip is not immediate.** The only defensible holding position is *visibility, not
+a fix*: extend the existing binding-fork ledger (`cli_run.rs:5187-98`, which already counts
+declaration-side multiplicity at typecheck, out-of-band, overlay-wins preserved) to also record
+what runtime actually dispatched. Counted and typed, never an arm that widens (§5). The loud
+subset is already closed — the application-site contract wall (#6896) turns the
+mismatched-signature case into a typed `CallContractMismatch`; what remains silent is the
+same-signature case, which only this lane's flip can catch.
+
+### 12.4 NEXT STEP — the divergence census (operator-directed 2026-07-19)
+
+Both resolution mechanisms now exist in-tree simultaneously — `lookup_resolved_sig`
+(`v1_compiler_infer_sigs.rs:108-119`, first-hit over `func_env.parents`) and the containment walk
+over the landed `SymbolIndex` (`symbol_index_lexical_lookup` / `symbol_index_global_unique_lookup`).
+So the question *"which call sites do the two bind differently?"* is **computable today, read-only,
+with no policy flip.** That set IS the blast radius of §8 step 4, and nobody has it.
+
+This is deliberately NOT the §5.1 census. That one counted *declaration* collisions (23 fns, 26
+types, 103 variants). This counts **resolution divergences** — the number that actually decides
+migration risk, and which could be far smaller (most collisions are file-local helpers that never
+co-occur in one closure) or far worse (one divergence on a hot path).
+
+**Method — direct observation, NOT diagnostics.** §12.2 is a standing warning: the compiler
+rejects neither label nor return-type mismatches for the relevant shapes, so "it compiled clean"
+proves nothing about which declaration was bound. Read each mechanism's *return value* and compare
+identity (node pointer, or qualified path). Three probes were wasted learning this.
+
+**Deliverable — a counted, typed inventory,** whole corpus, both source roots. Per call site:
+callee name, calling module, what `lookup_resolved_sig` binds, what the containment walk binds.
+Bucket every site (§5 — a site must land in a named bucket, never be silently skipped):
+
+- `Agree` — both bind the same declaration. The expected bulk; report the count, not the rows.
+- `Diverge` — different declarations. **The deliverable.** Every row listed, with both bindings.
+- `ContainmentAmbiguous` — the walk returns `GlobalBareLookupAmbiguous` where first-hit silently
+  picked. These are the sites §2.4 turns into typed refusals; each needs qualifying before its
+  subtree can flip. Expected to be the main source of migration work.
+- `ContainmentUnresolved` — the walk finds nothing. Either a genuine gap in the index fill or a
+  name that only first-hit reaches; a fill gap is a `SymbolIndex` bug and must be reported as one,
+  not absorbed into the divergence count.
+
+**Second output, nearly free: falsify §12.3's cost claim.** The census exercises exactly the
+lookup dispatch would use, so record its cost shape. §12.3 asserts one map hit on `QualifiedName`,
+not a per-call ancestor walk; if that is wrong, the fold is a rewrite rather than a substitution
+and the lane's shape changes. This is the cheapest moment to find out.
+
+**Do not** flip any policy, edit any resolver, or change dispatch as part of this. The census is an
+artifact the rest of the lane consumes; §8 step 1 starts after it, informed by it.
 
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.

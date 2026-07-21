@@ -15,10 +15,9 @@ use crate::std_computation::CallPattern::{
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
-pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
-pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
+pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget, ShrinkFactor};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
@@ -96,7 +95,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

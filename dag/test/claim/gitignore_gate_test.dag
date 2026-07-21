@@ -1,7 +1,5 @@
 module test.claim.gitignore_gate
 
-import gunbc.gitignore_emit { expected_gitignore, gitignore_drifted }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

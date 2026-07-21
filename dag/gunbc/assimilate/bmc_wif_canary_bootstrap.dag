@@ -1,26 +1,5 @@
 module gunbc.assimilate.bmc_wif_canary_bootstrap
 
-import std.resources { Network }
-import std.types { String, List }
-import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id, ServiceAccountEmail }
-import extdeps.cloud.gcp.serviceusage
-import extdeps.cloud.gcp.iam_admin
-import extdeps.cloud.gcp.secret_manager
-import gunbc.assimilate.bmc_token_federation {
-  bmc_secrets_project_id,
-  bmc_assimilator_account_id,
-  bmc_assimilator_display_name,
-  bmc_wif_pool_id,
-  bmc_wif_pool_display_name,
-  bmc_wif_provider_id,
-  bmc_wif_issuer_uri,
-  bmc_wif_attribute_mapping,
-  bmc_wif_attribute_condition
-}
-import gunbc.assimilate.bmc_wif_delegation_chain {
-  wif_canary_secret_name,
-  bmc_wif_bootstrap_bindings
-}
 
 data bmc_wif_bootstrap_service_deps: List<GcpService> = [
   GcpServiceUsage,
@@ -39,7 +18,7 @@ pattern bmc_wif_canary_bootstrap() -> {
   pool_op: String,
   provider_op: String
 }
-  uses net: Network
+  uses net: std.resources.Network
 {
   node auth: shell.GCloud.AuthPrintAccessToken()
 

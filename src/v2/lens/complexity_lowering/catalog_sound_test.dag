@@ -1,9 +1,5 @@
 module v2.test.lens_complexity_lowering.catalog_sound
 
-import v2.lens.complexity_lowering { ComplexityLowering, catalog_is_sound, strictly_lowers }
-import v2.lens.cost { ClassLinear, ClassPolynomial, polynomial_degree_two }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

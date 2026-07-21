@@ -23,6 +23,7 @@ import v2.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

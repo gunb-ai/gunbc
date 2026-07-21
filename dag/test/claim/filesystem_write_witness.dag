@@ -1,6 +1,5 @@
 module test.claim.filesystem_write_witness
 
-import extdeps.filesystem.filesystem_io
 
 func witness_write_then_read_roundtrip() -> Bool {
   let target = "/tmp/gunbc_fs_write_witness.txt"

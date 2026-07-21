@@ -1,28 +1,5 @@
 module v2.lens.enforcement.receipts
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { any, contains }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.node { Atom, ComputationNode, Edge, Loop, Named, Node, Positional, SyntheticOccurrence, TypeNode }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.decl_index { DeclFact, decl_facts_is_fn_like }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import v2.lens.cost { SymbolicCost, cost_lens }
-import v2.lens.enforcement.vocab {
-  SubjectRoster, ScopeRoster, scope_roster_covers,
-  ConsumerKind, FloorGate, PrePushHook, WitnessOnly, NoConsumer,
-  ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
-  ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
-  NarrowingReason, TypeReflectionUnavailable,
-  RedControlStatus, RedControlPassed, RedControlFailedToFlip,
-  SelfApplicationStatus, SelfAppliesObserved, SelfApplicationAbsent,
-  ReceiptRef, HasReceiptRef, NoReceiptRef
-}
-import v2.lens.enforcement.contract { LensContract, CoverageReceipt }
-import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
 
 type SubjectJudgment
   = BodyJudged { verdict: Witness<SymbolicCost> }

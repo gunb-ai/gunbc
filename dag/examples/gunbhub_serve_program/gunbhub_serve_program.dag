@@ -1,24 +1,5 @@
 module examples.gunbhub_serve_program
 
-import gunbc.gunbhub_serve {
-  GunbhubServeRequest,
-  GunbhubPageSource,
-  ReactPage,
-  Served,
-  RenderRejectedBeforeServe,
-  RouteNotFound,
-  MethodNotAllowed,
-  gunbhub_hostile_page,
-  serve_gunbhub_request,
-  serve_gunbhub_page_source,
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  EmitOk,
-  EmitRejected,
-}
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
-import std.types { GET }
 
 fn wa_unknown_path_is_not_found() -> Bool {
   match serve_gunbhub_request(

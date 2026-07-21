@@ -1,20 +1,5 @@
 module v2.test.manual.grammar_choice_ambiguity_audit
 
-import v2.compiler.parse {
-  grammar_choice_ambiguity_count,
-  grammar_choice_ambiguity_roster,
-  grammar_has_choice_ambiguity,
-  grammar_nullable_ambiguity_rows,
-  grammar_validate_for_parse
-}
-import v2.extdeps.languages.dag { dag_grammar_root }
-import v2.extdeps.languages.python { python_grammar_root }
-import v2.std.collection { list_at_optional, Present, Absent }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.algebra { is_empty, length }
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
-import v2.std.node { Symbol }
 
 fn witness_python_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: python_grammar_root())

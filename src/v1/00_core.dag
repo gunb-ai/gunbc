@@ -85,7 +85,7 @@ type MethodSemantics
   | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
-type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
+type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
 type ExprData
   = NoExprData
@@ -772,6 +772,29 @@ fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
 
+type FieldAccessSpine {
+  root: String
+  dotted: String
+}
+
+fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+      Present { value: FieldAccessSpine { root: name, dotted: name } }
+    ExprFieldAccess { summary: _ } =>
+      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
+        Present { value: base_spine } =>
+          Present { value: FieldAccessSpine {
+            root: base_spine.root,
+            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+          } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
@@ -1355,4 +1378,21 @@ fn with_optional_cardinality(n: Node) -> Node {
 
 fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+}
+
+fn module_path_segments(path: String) -> List<String> {
+  if path == "" { [] } else { path |> split(delimiter: ".") }
+}
+
+fn qualified_last_segment(name: String) -> String {
+  match module_path_segments(path: name) |> last {
+    Present { value: s } => s
+    Absent => name
+  }
+}
+
+fn type_name_compatible(a: String, b: String) -> Bool {
+  if a == b { true }
+  else if contains(a, ".") && contains(b, ".") { false }
+  else { qualified_last_segment(name: a) == qualified_last_segment(name: b) }
 }

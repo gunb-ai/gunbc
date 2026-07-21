@@ -1,9 +1,5 @@
 module shared.dag_util
 
-import std.types {
-  StageResult,
-  Summary
-}
 
 fn aggregate_results(stages: List<StageResult>) -> Summary {
   let passed_list = filter(stages, s => s.success)

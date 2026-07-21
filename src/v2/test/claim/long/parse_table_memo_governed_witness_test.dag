@@ -1,26 +1,5 @@
 module v2.test.long.parse_table_memo_governed_witness
 
-import v2.compiler.parse {
-  ParseTable,
-  ParseTableRealization,
-  ParsePositionKey,
-  ParseMemoEntry,
-  ParseMemoRejected,
-  parse_table_empty,
-  parse_table_insert,
-  parse_table_subject,
-  parse_table_memo_lookup_refuses_store,
-  parse_table_memo_insert_refused,
-}
-import v2.compiler.materialization_carriers { materialization_allows_memo_store }
-import v2.test.long.parse_table_memo_amortization {
-  witness_parse_table_memo_hit_path_content_hash_stable,
-}
-import v2.std.collection { Absent, Present, map_get, map_insert, empty_map }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import std.realization { Memoize, Recompute }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -107,7 +86,7 @@ fn witness_door_order_independent_for_recompute_table() -> Bool {
 }
 
 fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
-  match map_get(m: table.entries, key: key) {
+  match v2.std.collection.map_get(m: table.entries, key: key) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: Absent } => false
     Rejected { diagnostics: _ } => false

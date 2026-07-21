@@ -1,19 +1,5 @@
 module v2.test.claim.use_site_verdict_test
 
-import v2.compiler.use_site_verdict {
-  Borrow,
-  CloneShared,
-  MoveField,
-  MoveWhole,
-  Unclassified,
-  UseSiteVerdict,
-  VerdictAbsent,
-  VerdictFound,
-  attach_use_site_verdict,
-  use_site_verdict_lookup
-}
-import v2.std.node { Behavior, ComputationNode, Node, Value, node_synthetic }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

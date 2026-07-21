@@ -1,8 +1,8 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im::HashMap;
+use im::OrdSet as BTreeSet;
 use serde_json::Value;
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -1359,6 +1359,267 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
 }
 
 #[test]
+fn pool_parse_heads_only_does_not_prefill_parse_cache() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, parse_cache_contains_path_for_test, parse_cache_paths_for_test,
+        resolve_entry_with_index,
+    };
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_pool_heads_only_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    let huge_body = format!(
+        "module huge\nfn big() -> Int {{\n{}\n}}\n",
+        (0..50_000)
+            .map(|i| format!("  let x{i} = {i}\n"))
+            .collect::<String>()
+    );
+    std::fs::write(dir.join("huge.dag"), huge_body).expect("write huge.dag");
+    std::fs::write(
+        dir.join("entry.dag"),
+        "module entry\nfn main() -> Int { 0 }\n",
+    )
+    .expect("write entry.dag");
+    let entry_path = dir.join("entry.dag").to_string_lossy().into_owned();
+    let huge_path = dir.join("huge.dag").to_string_lossy().into_owned();
+
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
+    resolve_entry_with_index(&index, &entry_path)
+        .expect("entry must resolve after heads-only pool census");
+    assert!(
+        !parse_cache_contains_path_for_test(&index, &huge_path),
+        "pool census must not retain full-body ASTs in parse_cache for uncompiled pool modules"
+    );
+    assert!(
+        parse_cache_contains_path_for_test(&index, &entry_path),
+        "closure resolve must still cache full bodies for compiled modules (entry_path={entry_path:?}, parse_cache_keys={:?})",
+        parse_cache_paths_for_test(&index),
+    );
+    cleanup();
+}
+
+#[test]
+fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
+    use v1_compiler::cli_run::{
+        census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
+        is_census_heads_fn_stand_in,
+    };
+    use v1_compiler::v1_std_core::{ExprData, ExprErrorKind};
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    assert!(
+        is_census_heads_fn_stand_in(&stand_in),
+        "stand-in must be identifiable by name/pointer"
+    );
+    assert!(
+        matches!(
+            &*stand_in.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "stand-in must carry CensusHeadsBodyStripped so infer_expr raises a hard diagnostic"
+    );
+    assert!(
+        stand_in.children.is_empty() && stand_in.body.is_none(),
+        "stand-in must not masquerade as a real expression tree"
+    );
+    assert!(
+        census_heads_body_traversal_refusal(&stand_in).is_some(),
+        "query API must refuse stand-in body traversal"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::{census_heads_module_node_for_test, is_census_heads_fn_stand_in};
+    use v1_compiler::v1_compiler_infer::local_binding_for_item;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, module_items};
+
+    let source = "module test.census_heads_fn_disc\nfn foo(x: Int) -> Int { x }\n";
+    let path = "test_census_heads_fn_disc.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let shrunk = census_heads_module_node_for_test(module);
+    let item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "foo")
+        .expect("foo decl")
+        .clone();
+    assert!(
+        item.body.is_some(),
+        "caveat (A): stripped fn decl must keep body.is_some() for local_binding_for_item routing"
+    );
+    assert!(
+        is_census_heads_fn_stand_in(item.body.as_ref().expect("body")),
+        "stripped fn body must be the fail-loud stand-in, not empty"
+    );
+    let binding = local_binding_for_item(item.clone(), Rc::new(HashMap::new()))
+        .expect("fn decl must bind as a function, not type/alias");
+    assert_eq!(
+        binding.resolved.params.len(),
+        1,
+        "misroute to type/alias would drop fn params"
+    );
+}
+
+#[test]
+fn census_heads_preserves_declaration_children_for_types() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_module_node_for_test;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{
+        build_newline_index, empty_intern_table, module_items, Connective,
+    };
+
+    let source = "module test.census_heads_children\ntype Color = Red | Green\n";
+    let path = "test_census_heads_children.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let item = module_items(module.clone())
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl")
+        .clone();
+    let child_names: Vec<String> = item.children.iter().map(|c| c.name.clone()).collect();
+    assert!(
+        !child_names.is_empty(),
+        "fixture must carry variant children"
+    );
+    let shrunk = census_heads_module_node_for_test(module);
+    let shrunk_item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl after shrink")
+        .clone();
+    assert_ne!(
+        shrunk_item.connective,
+        Connective::NoConnective,
+        "type decl must remain structural, not fn-shaped"
+    );
+    let shrunk_child_names: Vec<String> = shrunk_item
+        .children
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+    assert_eq!(
+        shrunk_child_names, child_names,
+        "caveat (B): declaration children (variant heads) must survive heads-only shrink"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_fn_stand_in_for_test;
+    use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
+    use v1_compiler::v1_compiler_infer_env::empty_type_env;
+    use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
+    use v1_compiler::v1_std_core::{
+        diagnostic_to_message, is_error_diagnostic, ExprData, ExprErrorKind,
+    };
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    let scope = Rc::new(InferScope {
+        type_env: empty_type_env(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            name: "test.census_heads_naive".to_string(),
+            local: Rc::new(HashMap::new()),
+            parents: Rc::new(im::vector![]),
+        }),
+        locals: Rc::new(HashMap::new()),
+        body_locals: Rc::new(HashMap::new()),
+        match_bound_names: Rc::new(HashMap::new()),
+        module_name: "test.census_heads_naive".to_string(),
+        service_registry: Rc::new(HashMap::new()),
+        item_registry: Rc::new(HashMap::new()),
+        lambda_param_provenance: Rc::new(HashMap::new()),
+    });
+    let result = infer_expr(stand_in, scope, None);
+    assert!(
+        matches!(
+            &*result.typed.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "naive infer_expr traversal must return CensusHeadsBodyStripped, not fabricate a resolved type"
+    );
+    let diag_msgs: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|diag| diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        !diag_msgs.is_empty(),
+        "naive infer_expr on stand-in must raise a hard diagnostic without calling predicates"
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| is_error_diagnostic(d.diagnostic.clone())),
+        "stand-in inference diagnostic must be hard/blocking, not advisory"
+    );
+    assert!(
+        diag_msgs
+            .iter()
+            .any(|msg| msg.contains("pool census heads-only")),
+        "diagnostic must locate the stripped-body refusal, got {diag_msgs:?}"
+    );
+}
+
+// 🟡 dissolve-on (B): replace this ignored scaffold with a corpus scan that every
+// `pool.nodes_by_file` consumer refuses non-inference body/ExprData descent.
+#[test]
+#[ignore = "follow-up (B): standing wall forbidding pool.nodes_by_file non-inference body descent"]
+fn pool_nodes_by_file_consumers_must_not_descend_into_body() {
+    panic!(
+        "not implemented: static census of pool.nodes_by_file consumers must prove no \
+         non-inference ExprData/body descent on census-head nodes"
+    );
+}
+
+#[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
@@ -1391,7 +1652,18 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     let index = build_multi_entry_index(std::slice::from_ref(&root));
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
-    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
+    // Namespace-only resolution (wave-1): the pool census must parse every pool file
+    // before ANY entry resolves — an unparsed sibling could hide a homonym that would
+    // change bare-name resolution, so the census refuses fail-closed with a typed,
+    // located diagnostic instead of resolving against a partial name universe.
+    // (Pre-wave-1 this arm asserted the good entry resolved despite the broken
+    // non-imported sibling; that locality is unsound once resolution is census-driven.)
+    let err = good_resolve
+        .expect_err("pool census must refuse fail-closed while any pool file fails parse");
+    assert!(
+        err.contains("broken.dag") && err.contains("parse failed"),
+        "census refusal must be typed and located at the unparsable file; got: {err}"
+    );
 
     std::fs::create_dir_all(&dir).expect("recreate temp dir");
     std::fs::write(
@@ -1929,7 +2201,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-fn normalize_typed_graph(value: &Value, name_map: &im_rc::HashMap<&str, String>) -> Value {
+fn normalize_typed_graph(value: &Value, name_map: &im::HashMap<&str, String>) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
@@ -1999,8 +2271,8 @@ fn assert_scrambled_name_structural_eq(
     let graph_a = typed_graph_json(source_a);
     let graph_b = typed_graph_json(source_b);
 
-    let mut map_a = im_rc::HashMap::new();
-    let mut map_b = im_rc::HashMap::new();
+    let mut map_a = im::HashMap::new();
+    let mut map_b = im::HashMap::new();
     for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
         let ordinal = format!("__T{}", i);
         map_a.insert(*na, ordinal.clone());
@@ -5939,7 +6211,7 @@ fn review_dag_compiles_to_rust() {
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    let mut categories: im_rc::HashMap<String, usize> = im_rc::HashMap::new();
+    let mut categories: im::HashMap<String, usize> = im::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
@@ -6705,12 +6977,17 @@ type RealEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    // The missing-field presence wall now stops the line at TYPECHECK (the
+    // census-ambiguity skip that used to let this literal through was an
+    // absorbing arm, closed on #6848) — strictly earlier than the decode-time
+    // compile_error! backstop this test previously pinned. The malformed
+    // contract must refuse loudly, naming the omitted field.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a literal tag_field"),
-        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'tag_field'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed InternallyTaggedObject contracts must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -6741,13 +7018,17 @@ type MissingPrefixEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    // Same wall-promotion as the tag_field twin above: the omitted `naming`
+    // field refuses at typecheck now. The bare `StripPrefixAndSnakeCase`
+    // (missing `prefix`) is an ExprVar, not a record literal, so it stays
+    // decode-time enforced — that compile_error! arm remains the backstop for
+    // shapes the literal wall cannot see.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a naming policy")
-            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
-        "malformed naming policies must fail closed at decode time; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'naming'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed naming policies must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -7902,7 +8183,7 @@ data tool_results: List<AnthropicChatMessage> = [
     content: [
       UserToolResultBlock {
         tool_use_id: "toolu_text",
-        content: ToolResultText { text: "15 degrees" },
+        content: ToolResultText("15 degrees"),
         is_error: none
       },
       UserToolResultBlock {
@@ -9450,9 +9731,10 @@ fn dump_complexity_report() {
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
         Rc::new(all_sources.into()),
         RenderTarget::Rust,
-        v1_compiler::v1_compiler_compile::CompilePipelineOptions {
+        Rc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
-        },
+            census_only_sources: Rc::new(im::Vector::new()),
+        }),
     );
 
     let cx = &result.complexity;

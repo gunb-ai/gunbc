@@ -42,6 +42,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"

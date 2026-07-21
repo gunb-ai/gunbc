@@ -1,19 +1,5 @@
 module v2.test.manual.fact_density_anchor
 
-import v2.lens.fact_density {
-  carrier_spec_fact,
-  SourceSpecReadFact
-}
-import v2.std.node {
-  Node,
-  TypeNode,
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Symbol,
-  SyntheticOccurrence
-}
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: [],

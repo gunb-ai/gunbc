@@ -19,27 +19,48 @@ import v1.std.core {
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
   InternTable, empty_intern_table, pre_intern_tokens
 }
+
 import v1.compiler.tokenize { tokenize }
+
 import v1.compiler.parse { parse_with_table, ParseResult }
+
 import v1.compiler.resolve { resolve_modules, ModuleGraph }
+
 import v1.compiler.normalize { normalize_graph, NormalizeResult }
+
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
-import v1.compiler.infer { reconcile }
+
+import v1.compiler.infer { reconcile, reconcile_with_census_extra }
+
 import v1.compiler.infer_types { algebra_field_kind_name }
+
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
+
 import v1.compiler.emit_rust { emit_rust }
+
 import v1.compiler.emit_python { emit_python }
+
 import v1.compiler.emit_go { emit_go }
+
 import v1.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
-import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+
+import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown, InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+
+import std.computation { ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink }
+
 import std.termination {
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
+
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
+
 import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
+
 
 type SourceFile {
   path: String
@@ -118,11 +139,14 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 }
 
 type CompilePipelineOptions {
-  analyze_complexity: Bool
+  analyze_complexity: Bool,
+  census_only_sources: List<SourceFile>
 }
 
+data census_only_sources_note: String = "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class)."
+
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false }
+  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -309,6 +333,7 @@ fn expr_error_kind_name(value: ExprErrorKind) -> String {
     ParseRecoveryError => "ParseRecoveryError"
     SemanticExprError => "SemanticExprError"
     InternalExprError => "InternalExprError"
+    CensusHeadsBodyStripped => "CensusHeadsBodyStripped"
   }
 }
 
@@ -921,6 +946,41 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   }
 }
 
+type CensusFillParse {
+  modules: List<Node>,
+  newline_indices: List<NewlineIndex>,
+  diagnostics: List<ErrorNode>
+}
+
+data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
+
+fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+  let prepared = sources |> map(s =>
+    let tokens = tokenize(source: s.content, file: s.path)
+    let si = build_newline_index(file: s.path, source: s.content)
+    FrontendPrepared { tokens: tokens, newline_index: si }
+  )
+  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
+    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+    FrontendAccum {
+      parse_results: list_push(acc.parse_results, parsed.result),
+      newline_indices: list_push(acc.newline_indices, p.newline_index),
+      intern_table: parsed.intern_table
+    }
+  )
+  let parse_results = parsed.parse_results
+  let modules = parse_results |> flat_map(p => match p.module {
+    Present { value: m } => [m]
+    Absent => []
+  })
+  CensusFillParse {
+    modules: modules,
+    newline_indices: parsed.newline_indices,
+    diagnostics: collect_diagnostics(parse_results: parse_results)
+  }
+}
+
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
   let frontend = front_end_sources(sources: sources)
   CompileResult { files: [], diagnostics: frontend.diagnostics }
@@ -1017,7 +1077,9 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let fill = parse_census_fill_sources(sources: options.census_only_sources)
+      let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
+      let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1036,7 +1098,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
+        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags),
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,

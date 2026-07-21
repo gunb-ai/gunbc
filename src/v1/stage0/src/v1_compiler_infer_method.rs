@@ -17,7 +17,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -407,6 +407,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "import_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "reference_resolution_facts".to_string(),
             list_of_type_variable("import_resolution_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(

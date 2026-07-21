@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -660,7 +660,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(
+            // A group whose resolve fails is COUNTED — every enrolled witness in
+            // it reports FAIL and the batch continues (exit stays 1 via
+            // any_failed). Aborting the whole batch on the first red entry
+            // truncated the measurement: each run revealed only the NEXT red
+            // class, and everything alphabetically after it went unmeasured.
+            if run_witnesses(
                 &index,
                 group,
                 execution_mode,
@@ -669,7 +674,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eval_budget_ms,
                 &mut any_failed,
                 &mut timings,
-            )?;
+            )
+            .is_err()
+            {
+                for function in &group.functions {
+                    println!("FAIL {} (entry resolve failed: {})", function, group.entry);
+                }
+                any_failed = true;
+            }
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);

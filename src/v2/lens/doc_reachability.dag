@@ -1,8 +1,5 @@
 module v2.lens.doc_reachability
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import v2.std.logic { Bool }
 
 fn doc_graph_orphan_clean_for_count(orphan_count: Int) -> Bool {
   orphan_count == 0

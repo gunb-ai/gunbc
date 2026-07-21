@@ -1,9 +1,5 @@
 module v2.lens.subsumption
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.collection { List, Set }
-import v2.std.node { Symbol }
 type DiffId {
   id: Symbol
 }

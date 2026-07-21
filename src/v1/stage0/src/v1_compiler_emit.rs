@@ -118,7 +118,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -574,6 +574,7 @@ pub fn emit_simple_string_interp(
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
+            module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -592,6 +593,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             parents: Rc::new(vec![]),
         }),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
@@ -605,6 +607,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
@@ -653,7 +656,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig(scope.func_env.clone(), name.clone())
+    lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())
 }
 
 pub fn typed_named_arg_matches(

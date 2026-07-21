@@ -1,22 +1,5 @@
 module v2.test.loop_linear_bound.rung_0_to_2_three_targets
 
-import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  CompilesClaim,
-  manual_claim_anchor
-}
-import v2.test.computation_shapes.loop_linear_bound {
-  claim_loop_linear_bound_content_hash_stable,
-  claim_loop_linear_bound_equals_refl,
-  claim_loop_linear_bound_well_formed,
-  loop_linear_bound_subject
-}
 data phase4_loop_linear_bound_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_loop_linear_bound_rung_subject_symbol } },
   children: [],

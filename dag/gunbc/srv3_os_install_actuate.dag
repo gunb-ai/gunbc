@@ -1,41 +1,8 @@
 module gunbc.srv3_os_install_actuate
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_bmc_credential_resolve {
-  srv3_os_install_actuate_credential_intent,
-  observe_and_resolve_srv3_bmc_credential,
-  materialize_bmc_login_password,
-  bmcweb_login_body_content,
-  BmcCredentialResolution,
-  CredentialResolutionRefused,
-  UseFactoryCredential,
-  UseRotatedSecretRef,
-}
-import gunbc.srv3_host_effect_apply {
-  srv3_bmcweb_session_login_apply,
-  srv3_bmcweb_token_extract_apply,
-  srv3_nbd_proxy_serve_apply,
-  srv3_reconciliation_to_process_exit,
-}
-import gunbc.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
-  srv3_bmcweb_login_response_path,
-  srv3_bmcweb_token_path,
-}
-import gunbc.nbd_proxy_virtual_media_install {
-  srv3_os_install_actuator_plan,
-  os_install_actuator_step_count,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, NonEmptyStr }
-import std.resources { Network }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = Terminal {
-  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is long-running foreground."
+data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
 }
 
 data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
@@ -73,7 +40,7 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
 }
 
 func srv3_bmcweb_session_login() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
   return match resolution {
@@ -84,7 +51,7 @@ func srv3_bmcweb_session_login() -> ProcessExit
 }
 
 func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let password = match materialize_bmc_login_password(resolution: resolution) {
     Absent =>
@@ -130,7 +97,7 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
 }
 
 func srv3_nbd_proxy_serve() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_nbd_proxy_serve_apply(),

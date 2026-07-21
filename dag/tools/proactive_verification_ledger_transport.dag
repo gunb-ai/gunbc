@@ -2,17 +2,16 @@ module tools.proactive_verification_ledger_transport
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.proactive_verification_ledger {
-  VerificationLedgerRow,
+  FamilyVerificationLedgerRow,
   VerificationExecutionShape,
   ClaimWitness,
-  ExecutableNow,
-  ledger_rows_with_disposition
+  ledger_executable_family_rows
 }
 import tools.host_prelude { ClaimRun, run_gunbc_claims }
 import v2.std.algebra { fold_list }
 import v2.std.logic { Bool }
 
-fn run_ledger_claim_row(row: VerificationLedgerRow) -> Bool {
+fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
   match row.execution {
     ClaimWitness { entry: e, function: f } =>
       run_gunbc_claims(
@@ -27,8 +26,8 @@ fn run_ledger_claim_row(row: VerificationLedgerRow) -> Bool {
 
 fn run_executable_ledger_rows() -> Bool {
   fold_list(
-    xs: ledger_rows_with_disposition(d: ExecutableNow),
+    xs: ledger_executable_family_rows(),
     empty: true,
-    cons: fn(acc, row) { acc && run_ledger_claim_row(row: row) }
+    cons: fn(acc, row) { acc && run_family_ledger_row(row: row) }
   )
 }

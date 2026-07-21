@@ -1,7 +1,5 @@
 module std.workflow_recursive
 
-import std.types { List }
-import std.reducible { ReduceVerdict, reduce_verdicts_located }
 
 type VerdictTree
   = Leaf { verdict: ReduceVerdict }

@@ -16,7 +16,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -1428,6 +1428,39 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
     ])
+}
+
+pub fn algebra_method_template_name(name: String) -> bool {
+    {
+        let mut __found = false;
+        for p in Rc::new(vec![
+            AlgebraProfile::OrderedRingProfile,
+            AlgebraProfile::ApproximateFieldProfile,
+            AlgebraProfile::BooleanAlgebraProfile,
+            AlgebraProfile::BooleanAlgebraCollectionProfile,
+            AlgebraProfile::FreeMonoidScalarProfile,
+            AlgebraProfile::FreeMonoidCollectionProfile,
+            AlgebraProfile::PartialFunctionProfile,
+        ])
+        .iter()
+        .cloned()
+        {
+            if {
+                let mut __found = false;
+                for t in algebra_templates_for_profile(p.clone()).iter().cloned() {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {

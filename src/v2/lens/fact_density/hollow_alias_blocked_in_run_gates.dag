@@ -23,6 +23,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+
 data hollow_alias_run_gates_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_run_gates_subject } },
   children: [],

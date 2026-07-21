@@ -1,41 +1,12 @@
 module test.claim.gha_expression_roundtrip
 
-import extdeps.github.expressions {
-  Expression,
-  ContextAccess,
-  FunctionCall,
-  StringLiteral,
-  LogicalOr,
-  ExpressionTemplate,
-  TemplateSegment,
-  LiteralText,
-  Interpolation,
-  ExpressionSpellings,
-  default_expression_spellings,
-  serialize_expression,
-  serialize_expression_with,
-  serialize_template,
-  serialize_template_with,
-  ingest_expression,
-  ingest_expression_with,
-  ingest_template,
-  Github,
-  Runner,
-  HashFiles,
-  Contains,
-  FromJSON,
-  Format,
-}
-import extdeps.communication.fidelity_carriers { source_medium_carried }
-import extdeps.communication.medium { Lossless }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn core_expr() -> Expression {
   LogicalOr {
     left: LogicalOr {
-      left: FunctionCall {
+      left: extdeps.github.expressions.FunctionCall {
         function: HashFiles,
         args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
       },
@@ -149,11 +120,11 @@ fn frontier_string_with_or() -> Expression {
 }
 
 fn frontier_nested_multiarg_call() -> Expression {
-  FunctionCall {
-    function: Contains,
+  extdeps.github.expressions.FunctionCall {
+    function: extdeps.github.expressions.Contains,
     args: [
       ContextAccess { context: Github, path: ["event"] },
-      FunctionCall {
+      extdeps.github.expressions.FunctionCall {
         function: Format,
         args: [
           StringLiteral { value: "v" },

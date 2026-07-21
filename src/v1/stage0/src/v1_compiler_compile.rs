@@ -31,7 +31,7 @@ pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust;
-pub use crate::v1_compiler_infer::reconcile;
+pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::normalize_graph;
@@ -86,7 +86,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -287,15 +287,26 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
+    pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
 }
 
-pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
-        analyze_complexity: false,
+pub fn census_only_sources_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class).".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(vec![]),
+    })
 }
 
 pub fn run_complexity_analysis(
@@ -642,6 +653,7 @@ pub fn expr_error_kind_name(value: ExprErrorKind) -> String {
         ExprErrorKind::ParseRecoveryError => "ParseRecoveryError".to_string(),
         ExprErrorKind::SemanticExprError => "SemanticExprError".to_string(),
         ExprErrorKind::InternalExprError => "InternalExprError".to_string(),
+        ExprErrorKind::CensusHeadsBodyStripped => "CensusHeadsBodyStripped".to_string(),
     }
 }
 
@@ -2323,6 +2335,97 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CensusFillParse {
+    pub modules: Rc<Vec<Rc<Node>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn parse_census_fill_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
+    {
+        let prepared = Rc::new({
+            let mut __result = Vec::new();
+            for s in sources.clone().iter().cloned() {
+                __result.push({
+                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let si = build_newline_index(s.path.clone(), s.content.clone());
+                    Rc::new(FrontendPrepared {
+                        tokens: tokens.clone(),
+                        newline_index: si.clone(),
+                    })
+                });
+            }
+            __result
+        });
+        let intern_table = prepared.clone().iter().cloned().fold(
+            empty_intern_table(),
+            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
+        );
+        let parsed = prepared.clone().iter().cloned().fold(
+            Rc::new(FrontendAccum {
+                parse_results: Rc::new(vec![]),
+                newline_indices: Rc::new(vec![]),
+                intern_table: intern_table.clone(),
+            }),
+            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+                let acc = v1_rt::take_owned(acc);
+                {
+                    let parsed = parse_with_table(
+                        p.tokens.clone(),
+                        v1_rt::rc_map_insert(
+                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                            p.newline_index.clone().file.clone(),
+                            p.newline_index.clone(),
+                        ),
+                        acc.intern_table,
+                    );
+                    Rc::new(FrontendAccum {
+                        parse_results: v1_rt::rc_list_push(
+                            acc.parse_results,
+                            parsed.result.clone(),
+                        ),
+                        newline_indices: v1_rt::rc_list_push(
+                            acc.newline_indices,
+                            p.newline_index.clone(),
+                        ),
+                        intern_table: parsed.intern_table.clone(),
+                    })
+                }
+            },
+        );
+        let parse_results = parsed.parse_results.clone();
+        let modules = Rc::new({
+            let mut __result = Vec::new();
+            for p in parse_results.clone().iter().cloned() {
+                __result.extend(
+                    (*match p.module.clone() {
+                        Some(m) => Rc::new(vec![m.clone()]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        Rc::new(CensusFillParse {
+            modules: modules.clone(),
+            newline_indices: parsed.newline_indices.clone(),
+            diagnostics: collect_diagnostics(parse_results.clone()),
+        })
+    }
+}
+
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
     {
         let frontend = front_end_sources(sources.clone());
@@ -2347,7 +2450,7 @@ pub fn compile_sources(
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target(
         compile_to_resolved_with_options(sources.clone(), options.clone()),
@@ -2448,7 +2551,7 @@ pub fn compile_to_resolved_discovery_corpus_advisory(
 
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
@@ -2474,10 +2577,19 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let typed = reconcile(
+                let fill = parse_census_fill_sources(options.census_only_sources.clone());
+                let census_si = fill.newline_indices.clone().iter().cloned().fold(
+                    source_indices.clone(),
+                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                        v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+                    },
+                );
+                let typed = reconcile_with_census_extra(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
+                    fill.modules.clone(),
+                    census_si.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
@@ -2499,7 +2611,13 @@ pub fn compile_to_resolved_with_options(
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    frontend.diagnostics.clone(),
+                                    fill.diagnostics.clone(),
+                                ),
+                                norm_diags.clone(),
+                            ),
                             all_diags.clone(),
                         ),
                         ownership_diags.clone(),

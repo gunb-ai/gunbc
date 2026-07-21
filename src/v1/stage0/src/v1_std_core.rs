@@ -43,7 +43,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -240,6 +240,7 @@ pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
     InternalExprError,
+    CensusHeadsBodyStripped,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1807,6 +1808,44 @@ pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
         ExprData::ExprFieldAccess { summary: s, .. } => s.clone(),
         _ => None,
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldAccessSpine {
+    pub root: String,
+    pub dotted: String,
+}
+
+pub fn field_access_spine(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FieldAccessSpine>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                let name = expr_var_name_at(texpr.clone(), source_indices.clone());
+                Some(Rc::new(FieldAccessSpine {
+                    root: name.clone(),
+                    dotted: name.clone(),
+                }))
+            }
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
+                    Some(base_spine) => Some(Rc::new(FieldAccessSpine {
+                        root: base_spine.root.clone(),
+                        dotted: v1_rt::concat(
+                            v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
+                            field_access_field_at(texpr.clone(), source_indices.clone()),
+                        ),
+                    })),
+                    None => None,
+                }
+            }
+            _ => None,
+        }
+    })
 }
 
 pub fn expr_call_func_at(
@@ -3760,6 +3799,40 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
+    if (path.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(
+            path.clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+pub fn qualified_last_segment(name: String) -> String {
+    match module_path_segments(name.clone()).last().cloned() {
+        Some(s) => s.clone(),
+        None => name.clone(),
+    }
+}
+
+pub fn type_name_compatible(a: String, b: String) -> bool {
+    if (a.clone() == b.clone()) {
+        true
+    } else {
+        if (v1_rt::contains(a.clone(), ".".to_string())
+            && v1_rt::contains(b.clone(), ".".to_string()))
+        {
+            false
+        } else {
+            (qualified_last_segment(a.clone()) == qualified_last_segment(b.clone()))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShKeyword;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -3882,6 +3955,8 @@ pub struct ParseRecoveryError;
 pub struct SemanticExprError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InternalExprError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CensusHeadsBodyStripped;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Not;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

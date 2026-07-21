@@ -94,6 +94,8 @@ per worker thread:
 
 **C1 realization note (2026-07-14, implementation attempt):** `SharedTypecheckCaches` must use `std::collections::HashMap` shells (not `im_rc::HashMap`) and **`Arc` not `Rc` for every payload** — `Rc<T>` is `!Send`, so a `Mutex` holding `Rc`-backed typecheck results cannot be shared across OS threads even with exclusive locking. Increment C host wiring (`cli_run.rs` worker spawn) is **blocked on store-path `Rc`→`Arc` migration** for `TypecheckModuleResult` / nested infer carriers; the design and process-wide `typecheck_compute_count` (atomic) land in #6561; worker rewire follows in C1-host PR once Arc bridge exists. Eval stays on-thread (`Rc<ResolvedGraph>` unchanged).
 
+**C1 addendum (2026-07-20, PR #6929 — collection half addressed):** the corpus swapped `im-rc` for `im`, its Arc-backed sibling (same crate source; `build.rs` sets `cfg(threadsafe)` on package name, flipping the crate-internal `Ref<A>` from `std::rc::Rc` to `std::sync::Arc`). So the "must use `std::collections::HashMap` shells, not `im_rc::HashMap`" half above no longer holds: `im::HashMap<K, V>` / `im::Vector<A>` are `Send`/`Sync` whenever their contents are, so the collection carrier is no longer the obstacle. **The `Arc`-not-`Rc` payload half STANDS unchanged** — `TypecheckModuleResult` and the nested infer carriers are still `Rc`-backed and therefore still `!Send`, so Increment C host wiring remains blocked on the store-path `Rc`→`Arc` migration scoped in §4.2. That migration is the next step; #6929 changed no `Rc`.
+
 ### 4.2 `Rc`→`Arc` migration scope (seed boundary)
 
 **In scope (store-carried, cross-thread):**
@@ -206,7 +208,7 @@ Receipt both axes on the same falsifier run: `typecheck_compute` down, `peak_cur
 ## 9. Open decisions for operator
 
 1. **C1 landing gate:** host-only first (oracles green) before model declaration — recommended yes, same pattern as S1.
-2. **Arc migration depth:** store-path-only (minimal seed touch) vs whole-seed `Rc`→`Arc` — recommend store-path-only for increment C; whole-seed is S2b/S7 frontier-eviction co-migration if needed.
+2. **Arc migration depth:** store-path-only (minimal seed touch) vs whole-seed `Rc`→`Arc` — recommend store-path-only for increment C; whole-seed is S2b/S7 frontier-eviction co-migration if needed. **Receipt (2026-07-20):** [Rc→Arc share spike](rc-to-arc-share-spike.md) — serde byte transport ~318 ms/module decode on 7.8% sample (§3.6); evidence against shipping increment C on serde transport; in-memory Arc share wall-clock not measured.
 3. **Memory trade acceptance:** proceed with shared retention on the falsifier evidence that width stays > 1; escalate to M2 only if governor receipts regress — recommend proceed (time prize dominates; M2 is pre-authorized).
 
 ---

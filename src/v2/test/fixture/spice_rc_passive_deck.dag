@@ -1,17 +1,5 @@
 module v2.test.fixture.spice_rc_passive_deck
 
-import v2.extdeps.formats.spice {
-  Capacitor,
-  DeckComponent,
-  DeckDirective,
-  Ground,
-  Named,
-  NamedNode,
-  Op,
-  Resistor,
-  SpiceNetlist,
-  SpiceValue
-}
 
 data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
   title: "RC passive series deck",

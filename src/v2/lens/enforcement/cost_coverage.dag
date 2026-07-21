@@ -1,36 +1,5 @@
 module v2.lens.enforcement.cost_coverage
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_language_model,
-  dag_node_is_fn_decl,
-  parse_subtree_find_production_captured
-}
-import v2.lens.cost {
-  AsymptoticClass,
-  ClassUnknown,
-  asymptotic_class_of_cost
-}
-import v2.lens.enforcement.grammar_coverage {
-  grammar_coverage_distinct_rel_paths,
-  grammar_coverage_paths_for_tree
-}
-import v2.lens.enforcement.receipts { BodyJudged, BodyUnavailable, judge_subject_node }
-import v2.lens.enforcement.standing_intent { whole_corpus_scope }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, length, list_append }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.decl_index { decl_facts }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.witness { Holds, Violates }
 
 type CostCoverageIngestVerdict
   = IngestParsedClean

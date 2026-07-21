@@ -1,0 +1,93 @@
+module extdeps.sec.facts
+
+import std.types { Int, NonEmptyStr, String, List, Float }
+import std.nat { Nat }
+import std.measure { MoneyAmount, One, measure_count }
+import extdeps.sec.types { FilingForm, AnnualReport, EdgarCalendarDate }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/edgar/sec-api-documentation"
+  }
+}
+
+data filed_facts_derive_not_store_note: String = "Store ONLY filed monetary facts with accession + fiscal-period citations. Margins and other ratios are DERIVED projections computed from stored facts at read time (DESIGN section 2 derive-not-store) — never stored fields on the fact row."
+
+data usd_whole_dollars_note: String = "SEC XBRL monetary facts report USD in whole dollars (companyfacts/companyconcept `val` field). Grounded on std.measure MoneyAmount<One, Currency> — not bare Int — so currency is in the type, not the field name."
+
+type UsdWholeDollars = MoneyAmount<One>
+
+fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+  UsdWholeDollars { count: count }
+}
+
+fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
+  measure_count(m)
+}
+
+type FiledFactCitation {
+  accession: NonEmptyStr
+  fiscal_year: Int
+  fiscal_period: NonEmptyStr
+  form: FilingForm
+  period_start: EdgarCalendarDate
+  period_end: EdgarCalendarDate
+  filed_date: EdgarCalendarDate
+}
+
+type FiledAmount
+  = Filed { amount: UsdWholeDollars }
+  | Unfiled { cause: NonEmptyStr }
+
+type FiledMonetaryFact {
+  element: NonEmptyStr
+  amount: FiledAmount
+  citation: FiledFactCitation?
+}
+
+fn filed_amount(fact: FiledMonetaryFact) -> UsdWholeDollars? {
+  match fact.amount {
+    Filed { amount: a } => Present { value: a }
+    Unfiled { cause: _ } => none
+  }
+}
+
+fn filed_gross_profit_matches_revenue_minus_cost(
+  revenue: UsdWholeDollars,
+  cost_of_revenue: UsdWholeDollars,
+  gross_profit: UsdWholeDollars
+) -> Bool {
+  usd_whole_dollars_count(gross_profit) == (usd_whole_dollars_count(revenue) - usd_whole_dollars_count(cost_of_revenue))
+}
+
+fn derive_gross_margin_ratio(revenue: UsdWholeDollars, gross_profit: UsdWholeDollars) -> Float? {
+  let rev = usd_whole_dollars_count(revenue)
+  let gp = usd_whole_dollars_count(gross_profit)
+  if rev <= 0 {
+    none
+  } else {
+    Present { value: (gp * 1.0) / (rev * 1.0) }
+  }
+}
+
+fn derive_gross_margin_ratio_from_facts(
+  revenue: FiledMonetaryFact,
+  gross_profit: FiledMonetaryFact
+) -> Float? {
+  match filed_amount(fact: revenue) {
+    Present { value: rev } =>
+      match filed_amount(fact: gross_profit) {
+        Present { value: gp } => derive_gross_margin_ratio(revenue: rev, gross_profit: gp)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn gross_margin_ratio_in_band(ratio: Float, low: Float, high: Float) -> Bool {
+  (ratio >= low) && (ratio < high)
+}

@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::rc::Rc;
@@ -75,14 +75,18 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
     let def_sig = lookup_resolved_sig(def_mod.func_env.clone(), "shared_fn".to_string())
         .expect("definer local shared_fn");
-    let use_sig = lookup_func_sig(use_mod.func_env.clone(), "shared_fn".to_string())
-        .expect("consumer lookup shared_fn");
+    let use_sig = lookup_func_sig(
+        use_mod.func_env.clone(),
+        use_mod.type_env.clone(),
+        "shared_fn".to_string(),
+    )
+    .expect("consumer lookup shared_fn");
     assert!(
         Rc::ptr_eq(&def_sig, &use_sig),
         "import chain must reach the defining module's Rc, not a fresh clone"
@@ -98,7 +102,7 @@ fn collect_func_sig_ptrs(env: &ResolvedFuncEnv, out: &mut HashSet<*const Resolve
     }
 }
 
-fn unique_func_sig_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
+fn unique_func_sig_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_func_sig_ptrs(&m.func_env, &mut ptrs);
@@ -106,7 +110,7 @@ fn unique_func_sig_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -
     ptrs.len()
 }
 
-fn sum_local_func_sig_defs_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
+fn sum_local_func_sig_defs_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
     modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
@@ -139,8 +143,8 @@ fn compile_modules(
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a im_rc::Vector<Rc<TypedModule>>,
-    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    modules: &'a im::Vector<Rc<TypedModule>>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
 ) -> &'a Rc<TypedModule> {
     modules
@@ -286,17 +290,36 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         "test.func_env_rc_consumer",
     );
     assert!(
-        lookup_func_sig(consumer.func_env.clone(), "shared_fn".to_string()).is_some(),
+        lookup_func_sig(
+            consumer.func_env.clone(),
+            consumer.type_env.clone(),
+            "shared_fn".to_string()
+        )
+        .is_some(),
         "sanity: imported shared_fn must resolve with intact parent chain"
     );
 
     let stripped = Rc::new(ResolvedFuncEnv {
         name: consumer.func_env.name.clone(),
         local: consumer.func_env.local.clone(),
-        parents: Rc::new(im_rc::vector![]),
+        parents: Rc::new(im::vector![]),
+    });
+    // The global-bare census fallback (namespace wave-1) would rescue a stripped
+    // chain through type_env; withhold it so the perturbation isolates the chain-walk.
+    let census_stripped_env = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: Rc::new(HashMap::new()),
+        str_bindings: Rc::new(HashMap::new()),
+        ancestry_str_bindings: Rc::new(HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        ..(*consumer.type_env).clone()
     });
     assert!(
-        lookup_func_sig(stripped.clone(), "shared_fn".to_string()).is_none(),
+        lookup_func_sig(
+            stripped.clone(),
+            census_stripped_env.clone(),
+            "shared_fn".to_string()
+        )
+        .is_none(),
         "perturbation: stripping parents from a real import consumer must break \
          imported name lookup (chain-walk is load-bearing, not decorative)"
     );
@@ -310,9 +333,10 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         .expect("call_shared item in rc_identity consumer fixture");
     let body = call_shared.body.clone().expect("call_shared body expr");
     let stripped_scope = Rc::new(InferScope {
-        type_env: consumer.type_env.clone(),
+        type_env: census_stripped_env,
         func_env: stripped,
         locals: Rc::new(HashMap::new()),
+        body_locals: Rc::new(HashMap::new()),
         match_bound_names: Rc::new(HashMap::new()),
         module_name: "test.func_env_rc_consumer".to_string(),
         service_registry: Rc::new(HashMap::new()),

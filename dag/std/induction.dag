@@ -1,24 +1,9 @@
 module std.induction
 
-import std.termination {
-  DescentEvidence, Strict, NonIncreasing, DescentUnknown,
-  RankingDimension, TreeSize,
-  PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  proportional_divisor_to_int,
-  positive_descent_amount_from_positive_int,
-  proportional_divisor_from_int_at_least_two,
-  peano_literal_materialization_cap,
-  positive_descent_count
-}
-import std.computation {
-  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
-  ArithmeticSubtractCall, ArithmeticDivideCall,
-  LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  CollectionSize, ArithmeticParam, Forever,
-  tree_size_bound
-}
+import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int }
+
+import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound }
+
 
 type RecursionShape
   = DirectRecursion

@@ -1,36 +1,5 @@
 module v2.test.language_model.typescript_r3_external
 
-import v2.lens.leaf_model_verification {
-  typescript_r3_external_fixture,
-  typescript_r3_external_falsification_fixture_source,
-  typescript_r3_external_happy_fixture_source
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_ts_r3_external_symbol_projection,
-  TargetTypeScriptCompileVerdict,
-  TargetTypeScriptCompileRejected,
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn typescript_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r3_external_claim_bool_true } }, children: [],

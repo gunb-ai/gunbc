@@ -1,6 +1,5 @@
 module test.claim.m4_universal_corpus_witness
 
-import test.fixture.m4_universal_governed_probe { GovernedUniversalProbe }
 
 func witness_universal_published_realizes() -> Bool {
   let r = GovernedUniversalProbe.Allowed()
