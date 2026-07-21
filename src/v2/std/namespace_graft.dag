@@ -231,6 +231,13 @@ fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
   }
 }
 
+fn namespace_graft_node_is_conj(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
 fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -241,7 +248,12 @@ fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
           Absent => optional_absent()
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } => optional_present(value: edge)
+              Named { name: _ } =>
+                if namespace_graft_node_is_conj(node: edge.target) {
+                  optional_present(value: edge)
+                } else {
+                  optional_absent()
+                }
               Positional => optional_absent()
             }
         }
