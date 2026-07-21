@@ -1,0 +1,78 @@
+module extdeps.firmware.uefi_shell
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "uefi.org/sites/default/files/resources/UEFI_Shell_2_2.pdf"
+  }
+}
+
+type UefiResetMode
+  = ResetWarm
+  | ResetCold
+  | ResetShutdown
+
+fn uefi_reset_flag(mode: UefiResetMode) -> String {
+  match mode {
+    ResetWarm => "-w"
+    ResetCold => "-c"
+    ResetShutdown => "-s"
+  }
+}
+
+type BcfgTarget
+  = BcfgBoot
+  | BcfgDriver
+
+fn bcfg_target_word(target: BcfgTarget) -> String {
+  match target {
+    BcfgBoot => "boot"
+    BcfgDriver => "driver"
+  }
+}
+
+type UefiShellCommand
+  = BcfgDump { target: BcfgTarget }
+  | BcfgAdd { target: BcfgTarget, index: Int, file: NonEmptyStr, description: NonEmptyStr }
+  | BcfgMove { target: BcfgTarget, from_index: Int, to_index: Int }
+  | BcfgRemove { target: BcfgTarget, index: Int }
+  | MapDevices { refresh: Bool }
+  | Reset { mode: UefiResetMode }
+
+fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
+  match cmd {
+    BcfgDump { target: t } =>
+      concat("bcfg ", concat(bcfg_target_word(target: t), " dump -v"))
+    BcfgAdd { target: t, index: i, file: f, description: d } =>
+      concat(
+        concat("bcfg ", concat(bcfg_target_word(target: t), " add ")),
+        concat(
+          concat(to_string(i), concat(" ", f as String)),
+          concat(" \"", concat(d as String, "\"")),
+        ),
+      )
+    BcfgMove { target: t, from_index: a, to_index: b } =>
+      concat(
+        concat("bcfg ", concat(bcfg_target_word(target: t), " mv ")),
+        concat(to_string(a), concat(" ", to_string(b))),
+      )
+    BcfgRemove { target: t, index: i } =>
+      concat("bcfg ", concat(bcfg_target_word(target: t), concat(" rm ", to_string(i))))
+    MapDevices { refresh: r } =>
+      if r { "map -r" } else { "map" }
+    Reset { mode: m } =>
+      concat("reset ", uefi_reset_flag(mode: m))
+  }
+}
+
+fn uefi_shell_script(commands: List<UefiShellCommand>) -> String {
+  fold(
+    commands,
+    init: "",
+    f: (acc, cmd) => concat(acc, concat(uefi_shell_command_line(cmd: cmd), "\n"))
+  )
+}
