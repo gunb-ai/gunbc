@@ -69,14 +69,14 @@ fn srgb8_to_hsl(c: Srgb8) -> Hsl {
     let denom = 10000 - iabs(v: 2 * l_scaled - 10000)
     let sat_scaled = if denom == 0 { 0 } else { (delta * 10000) / denom }
     let sat_pct = pct_round_from_scaled(v_scaled: sat_scaled)
-    let hue_scaled = if maxc == rs {
-      ((gs - bs) * 600000) / delta
+    let hue_milli = if maxc == rs {
+      ((gs - bs) * 60000) / delta
     } else if maxc == gs {
-      (((bs - rs) * 600000) / delta) + 120000
+      (((bs - rs) * 60000) / delta) + 120000
     } else {
-      (((rs - gs) * 600000) / delta) + 240000
+      (((rs - gs) * 60000) / delta) + 240000
     }
-    let hue_deg = ((hue_scaled % 360000) + 360000) % 360000 / 1000
+    let hue_deg = ((hue_milli % 360000) + 360000) % 360000 / 1000
     Hsl { h: hue_deg, s: sat_pct, l: light_pct }
   }
 }
