@@ -368,40 +368,73 @@ fn main() {
                 let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
                 cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
 
-                let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-                let mut entry_for_queue = Vec::new();
-                for (path, content) in &entry_files {
-                    if let Some(mod_path) = extract_module_path(content) {
-                        let source = Rc::new(v1_compiler_compile::SourceFile {
-                            path: path.clone(),
-                            content: content.clone(),
-                        });
-                        seen.insert(mod_path, source);
-                        entry_for_queue.push((path.clone(), content.clone()));
+                // Namespace Rule-1 (emit_import_closure_root): with imports
+                // stripped, a namespace-only module's cross-module deps are
+                // derivable ONLY from its references, not import edges. For a
+                // single --entry compile use the reference-derived closure (the
+                // SAME authority the witness loaders use — load_sources_for_entry
+                // → extend_with_bare_reference_closure + extend_with_reference_
+                // closure) so referenced PROVIDER modules enter the COMPILED +
+                // EMITTED set (emit needs their type/fn defs, not just a census
+                // name-lookup). This unifies compile with the witness closure and
+                // kills the import-only-vs-reference §3 fork that let a bare
+                // cross-module type ref (e.g. materialization_carriers →
+                // std.realization.Materialization) fall silently to census-only
+                // and render invalid dotted Rust. Without --entry (whole first
+                // root) the import-edge walk stays the authority — every module
+                // is already an entry, so reference derivation would only over-
+                // pull. Fill (whole-tree name census) is unchanged below.
+                let resolved = if let Some(entry_path) = &entry {
+                    cli_run::load_sources_for_entry(&source_roots, entry_path).unwrap_or_else(|e| {
+                        eprintln!("error: reference-derived closure load failed: {e}");
+                        std::process::exit(1);
+                    })
+                } else {
+                    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+                        HashMap::new();
+                    let mut entry_for_queue = Vec::new();
+                    for (path, content) in &entry_files {
+                        if let Some(mod_path) = extract_module_path(content) {
+                            let source = Rc::new(v1_compiler_compile::SourceFile {
+                                path: path.clone(),
+                                content: content.clone(),
+                            });
+                            seen.insert(mod_path, source);
+                            entry_for_queue.push((path.clone(), content.clone()));
+                        }
                     }
-                }
-
-                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
-                for (path, content) in entry_files {
-                    if extract_module_path(&content).is_none() {
-                        continue;
+                    let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                    for (path, content) in entry_files {
+                        if extract_module_path(&content).is_none() {
+                            continue;
+                        }
+                        let already_there = resolved.iter().any(|s| s.path == path);
+                        if !already_there {
+                            resolved
+                                .push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+                        }
                     }
-                    let already_there = resolved.iter().any(|s| s.path == path);
-                    if !already_there {
-                        resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
-                    }
-                }
+                    resolved
+                };
                 eprintln!(
                     "resolved {} sources (transitive import closure)",
                     resolved.len()
                 );
                 // Everything indexed but outside the closure enters the census only.
                 {
-                    let closure_paths: std::collections::HashSet<String> =
-                        resolved.iter().map(|s| s.path.clone()).collect();
+                    // Key closure membership on MODULE PATH, not file path: the
+                    // reference-derived loader (cli_run) normalizes paths
+                    // differently from this handler's index, so a file-path
+                    // compare would fail to exclude closure modules and double-
+                    // load them into the census. Module path is the format-
+                    // independent identity.
+                    let closure_modules: std::collections::HashSet<String> = resolved
+                        .iter()
+                        .filter_map(|s| extract_module_path(&s.content))
+                        .collect();
                     let mut pool_rest: Vec<(String, std::path::PathBuf)> = index
                         .iter()
-                        .filter(|(_, p)| !closure_paths.contains(&p.to_string_lossy().to_string()))
+                        .filter(|(m, _)| !closure_modules.contains(*m))
                         .map(|(m, p)| (m.clone(), p.clone()))
                         .collect();
                     pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
