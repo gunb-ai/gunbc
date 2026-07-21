@@ -329,13 +329,15 @@ fn hour_count(h: Hour) -> Nat {
   measure_count(h)
 }
 
-data billing_month_as_hours: Hour = hour(count: 730)
+fn billing_month_as_hours() -> Hour {
+  hour(count: 730)
+}
 
 data billing_month_as_hours_note: String = "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote."
 
 fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
   MoneyPerHour {
-    amount: money_amount_micro(count: money_per_month_micros(q: q) / hour_count(h: billing_month_as_hours)),
+    amount: money_amount_micro(count: money_per_month_micros(q: q) / hour_count(h: billing_month_as_hours())),
     currency: q.currency,
   }
 }
