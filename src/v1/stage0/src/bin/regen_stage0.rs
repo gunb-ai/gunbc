@@ -721,32 +721,22 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
-    // The bootstrap fresh crate is a minimal package (lib + bin only). `cargo fmt` on it
-    // never reaches the emitted module files under src/, so verify would compare flattened
-    // emit to rustfmt_workspace-shaped committed files. Format each registered output
-    // directly instead.
-    let fresh_src = dir.join("src");
-    for file_name in GENERATED_STAGE0_FILES {
-        let path = fresh_src.join(file_name);
-        if !path.is_file() {
-            continue;
-        }
-        let output = Command::new("rustfmt")
-            .arg("--edition")
-            .arg("2021")
-            .arg(&path)
-            .output()
-            .map_err(|e| format!("spawn rustfmt for {}: {e}", path.display()))?;
-        if output.status.success() {
-            continue;
-        }
-        return Err(format!(
-            "rustfmt failed for {}:\n{}",
-            path.display(),
+    let output = Command::new("cargo")
+        .arg("fmt")
+        .arg("--all")
+        .arg("--manifest-path")
+        .arg(dir.join("Cargo.toml"))
+        .output()
+        .map_err(|e| format!("spawn cargo fmt for {}: {e}", dir.display()))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo fmt failed for {}:\n{}",
+            dir.display(),
             String::from_utf8_lossy(&output.stderr)
-        ));
+        ))
     }
-    Ok(())
 }
 
 /// A HAND_MAINTAINED file's status relative to what the emitter would produce for it.
