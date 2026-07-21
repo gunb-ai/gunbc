@@ -1,12 +1,28 @@
-# repr_mismatch E0308 discriminant — does #6959 move the curated/CSSL probe histogram?
-# Method: scripts/repr_mismatch_e0308_discriminant.sh (bright-lynx-868, 2026-07-21)
-# Module: src/v2/compiler/04_infer.dag (deep lane 1; materialization_carriers emit-failed pre/post)
-# PRE  = a222c70a46 (parent of #6959 merge)
-# POST = ab3683cfc0 (#6959 squash merge — TargetTextCarrier / 06_translate grounding)
-# CSSL path: gunbc compile (v2-only closure, has_v1_seed=false → FaithfulFreeMonoid) + CSSL_STD_SEED_LINK=1 assemble + cargo build --lib
-# HostNative path: cargo check -p v1-compiler --lib (committed seed, HostNative corpus_repr)
-path	module	pre_head	post_head	pre_e0308	post_e0308	delta	first_error_class_notes
-CSSL_FaithfulFreeMonoid	src/v2/compiler/04_infer.dag	a222c70a46	ab3683cfc0	3873	3873	0	emit_shape blocks before E0308 ranking; total_rustc_errors=4382 both sides
-HostNative_whole_tree_seed	src/v2/compiler/04_infer.dag	a222c70a46	ab3683cfc0	0	0	0	cargo check clean; infer files e0308_infer_files=0
-
-# Disposition: #6959 grounds the v2-EMIT target model (06_translate type projection); it does NOT touch the v1-seed FaithfulFreeMonoid CSSL probe artifact. zesty right. The ~4261 repr-mismatch histogram is this probe class (E0308≈3873 on 04_infer today, pre-import-closure/generic-T peel). Histogram-drop receipt for the lever is NOT satisfied by #6959; mechanism landed for v2 translate path only (rust_freemonoid_char_string_grounding_test GREEN). Real CSSL histogram lever = v1 emit HostNative text-carrier grounding (parallel #5428), not v2 TargetTextCarrier alone.
+# repr_mismatch E0308 discriminant — bright-lynx-868, 2026-07-21
+# Part A: does #6959 move the isolated CSSL/FaithfulFreeMonoid probe histogram?
+# Part B (A/B disposition): E0308 on EMITTED .rs output vs committed seed lib
+#
+# PRE  = a222c70a46 (parent of #6959)  POST = ab3683cfc0 (#6959)
+# EMITTED rows: warm-lark-815 gunbc (namespace reference-closure --entry), head f355017edc
+#   Invocation (warm-lark-815, repr-independent of import-use-lines pass):
+#     gunbc compile --source-root dag --source-root src/v2 --entry <module.dag> \
+#       --output-dir <OUT> --target rust --dependency-pool-index primary-precedence
+#     (cd <OUT> && RUSTC_WRAPPER="" cargo build)  # histogram: grep error\[E…\]
+#   Notes: closure is reference-derived (namespace Rule-1); corpus_repr stays FaithfulFreeMonoid
+#   on v2-only closure (has_v1_seed=false) — HostNative-attempted but CSSL-Faithful String/Symbol
+#   surface → E0308 repr lane. E0308=652 stable with/without warm-lark use-lines pass.
+#
+path	module	head	emit_ok	cargo	e0308	total_rustc_errors	first_error_notes
+CSSL_FaithfulFreeMonoid_isolated	src/v2/compiler/04_infer.dag	a222c70a46→ab3683cfc0	1	refuse	3873→3873 (Δ0)	4382	emit_shape before E0308 rank; CSSL_STD_SEED_LINK=1 assemble
+HostNative_SEED_LIB_WRONG_CONTROL	src/v2/compiler/04_infer.dag	main	1	green	0	0	cargo check -p v1-compiler --lib — committed SEED, NOT emitted output (INVALID control)
+EMITTED_namespace_reference_closure	src/v2/compiler/materialization_carriers.dag	f355017edc	1	refuse	652	982	emit_shape first; E0308=652 reconciles warm-lark-815
+EMITTED_namespace_reference_closure	src/v2/compiler/04_infer.dag	f355017edc	1	refuse	3410	3908	emit_shape first; emitted deep module NOT E0308-clean
+#
+# A/B DISPOSITION: WORLD B
+# Emitted .rs output E0308>0 (652 on materialization_carriers; 3410 on 04_infer) on the
+# namespace reference-closure path — NOT the going-away isolated-probe artifact alone.
+# The prior HostNative=0 row measured seed lib and does not establish emitted-path cleanliness.
+# v1-emit HostNative text-carrier grounding (String<->Symbol / is_host_text_carrier) stays a
+# LIVE lever for the repr brick (parallel #5428), not optional seed-shrink.
+# #6959 (v2 TargetTextCarrier / 06_translate) remains valid for the v2-emit target model but
+# does NOT discharge the emitted-path E0308 residual measured here.

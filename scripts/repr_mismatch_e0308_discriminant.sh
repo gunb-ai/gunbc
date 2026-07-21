@@ -70,15 +70,15 @@ measure_cssl_faithful() {
   rm -rf "$out"
 }
 
-measure_hostnative_whole_tree() {
+measure_seed_lib_control() {
   local build_log
   build_log="$(mktemp "${TMPDIR:-/tmp}/repr-host.XXXXXX.log")"
 
   local ran=0
   if (cd "$ROOT" && RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0 cargo check -p v1-compiler --lib 2>"$build_log"); then
-    ran=1
+    ran=green
   else
-    ran=1
+    ran=refuse
   fi
 
   local e0308_all e0308_infer
@@ -87,12 +87,22 @@ measure_hostnative_whole_tree() {
   local total
   total="$(count_rustc_errors "$build_log")"
 
-  printf 'path=HostNative_whole_tree_seed\tmodule=%s\thead=%s\tcargo_ran=%s\te0308_all=%s\te0308_infer_files=%s\ttotal_rustc_errors=%s\tfirst_error=%s\n' \
+  printf 'path=HostNative_SEED_LIB_WRONG_CONTROL\tmodule=%s\thead=%s\tcargo=%s\te0308_all=%s\te0308_infer_files=%s\ttotal_rustc_errors=%s\tfirst_error=%s\n' \
     "$MODULE_PATH" "$HEAD" "$ran" "$e0308_all" "$e0308_infer" "$total" "$(first_rustc_error "$build_log")"
 
   rm -f "$build_log"
 }
 
+measure_emitted_namespace() {
+  local probe="$ROOT/scripts/repr_mismatch_emitted_e0308_probe.sh"
+  if [[ ! -x "$probe" ]]; then
+    printf 'path=EMITTED_namespace\tmodule=%s\thead=%s\tprobe=missing\n' "$MODULE_PATH" "$HEAD"
+    return
+  fi
+  "$probe" "$MODULE_PATH" namespace
+}
+
 echo "# repr_mismatch E0308 discriminant head=$HEAD module=$MODULE_PATH"
 measure_cssl_faithful
-measure_hostnative_whole_tree
+measure_seed_lib_control
+measure_emitted_namespace
