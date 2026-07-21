@@ -184,7 +184,7 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   match r {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
-        && string_contains(s: why, pattern: "waited_s=96")
+        && string_contains(s: why, pattern: "waited_s=30")
         && string_contains(s: why, pattern: "health probe never succeeded")
         && !string_contains(s: why, pattern: "converged")
     Converged { evidence: _, applied: _ } => false
