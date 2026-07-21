@@ -4200,6 +4200,89 @@ pub fn build_module_export_sets(
     )
 }
 
+// Reference-derived use-lines (emit_import_closure_root, §5).
+//
+// The import-derived block (emit_imports) wires a use-line only for names that
+// appear in an authored `import ... { name }` list. Namespace-only resolution
+// (#6848) lets a module reference a cross-module name WITHOUT importing it, so
+// those references got NO use-line and the emitter merely advised
+// `UnlistedImportUse` (is_error_diagnostic = false) -- a §5 fail-open: the ref
+// is KNOWN yet the use-line is declined, producing invalid Rust (E0422/E0433/
+// E0425 downstream). This derives the missing use-lines from the reference set,
+// the same closure that pulls the provider modules in.
+//
+// Zero-drift property: `source_visible_names` already contains locals + kernel +
+// imported specific-names + type-params, so any name it holds is skipped -- a
+// module whose references are all already visible adds nothing. Only genuinely
+// unlisted-but-registry-resolvable names produce new lines. Empty SVN mirrors
+// the resolver's own mask guard (skip), preserving current behavior there.
+pub fn reference_derived_use_lines(
+    items: Rc<Vec<Rc<Node>>>,
+    this_module_name: String,
+    source_visible_names: Rc<HashMap<String, bool>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    local_type_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<String>> {
+    if v1_rt::map_is_empty(&source_visible_names) {
+        Rc::new(vec![])
+    } else {
+        let referenced = unique_strings(crate::v1_compiler_emit::collect_type_names_from_items(
+            items.clone(),
+            source_indices.clone(),
+        ));
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        for name in referenced.iter().cloned() {
+            if v1_rt::map_has(&source_visible_names, name.clone()) {
+                continue;
+            }
+            match v1_rt::map_get(&registry, name.clone()) {
+                Some(info) => {
+                    if (info.module_name.clone() != this_module_name.clone()) {
+                        pairs.push((info.module_name.clone(), name.clone()));
+                    }
+                }
+                None => {}
+            }
+        }
+        let providers = unique_strings(Rc::new(
+            pairs.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>(),
+        ));
+        let mut lines: Vec<String> = Vec::new();
+        for provider in providers.iter().cloned() {
+            let names = Rc::new(
+                pairs
+                    .iter()
+                    .filter(|(m, _)| (*m == provider))
+                    .map(|(_, n)| n.clone())
+                    .collect::<Vec<_>>(),
+            );
+            let block = emit_specific_import_block(
+                provider.clone(),
+                module_to_filename(provider.clone()),
+                names,
+                emit_info.clone(),
+                registry.clone(),
+                local_type_names.clone(),
+                export_sets.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            );
+            if (block.clone() != "".to_string()) {
+                for l in block.split(&"\n".to_string()) {
+                    lines.push(l.to_string());
+                }
+            }
+        }
+        Rc::new(lines)
+    }
+}
+
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -4309,9 +4392,21 @@ pub fn emit_module_full(
         } else {
             Rc::new(vec![])
         };
+        let reference_use_lines = reference_derived_use_lines(
+            typed_module.items.clone(),
+            authored_name(scope.type_env.clone(), m.clone()),
+            scope.type_env.clone().source_visible_names.clone(),
+            registry.clone(),
+            emit_info.clone(),
+            local_type_names.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            module_index.clone(),
+        );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
-            dag_import_lines.clone(),
-            carrier_import_lines.clone(),
+            v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
+            reference_use_lines.clone(),
         ))
         .join(&"\n".to_string());
         let imports_section = if (merged_imports.clone() == "".to_string()) {
