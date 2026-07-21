@@ -542,8 +542,7 @@ pub fn collect_type_node_import_surface_names(
     } else {
         false
     };
-    let own = if ((name.clone() != "".to_string())
-        && (name.clone() != "Dynamic".to_string()))
+    let own = if ((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
         && !is_tv
     {
         vec![name]
@@ -553,16 +552,14 @@ pub fn collect_type_node_import_surface_names(
     let mut child_names = Vec::new();
     for ch in peeled.children.clone().iter().cloned() {
         child_names.extend(
-            collect_type_node_import_surface_names(
-                child_type_node(ch),
-                source_indices.clone(),
-            )
-            .iter()
-            .cloned(),
+            collect_type_node_import_surface_names(child_type_node(ch), source_indices.clone())
+                .iter()
+                .cloned(),
         );
     }
     let mut inferred_names = Vec::new();
-    if let Some(InferredNode::Resolved { node: rt, .. }) = peeled.inferred.clone().as_deref().cloned()
+    if let Some(InferredNode::Resolved { node: rt, .. }) =
+        peeled.inferred.clone().as_deref().cloned()
     {
         inferred_names.extend(
             collect_type_node_import_surface_names(rt, source_indices.clone())
@@ -585,42 +582,46 @@ pub fn build_field_type_map(
             field_types: v1_rt::rc_empty_map::<String, String>(),
             import_surface_names: Rc::new(vec![]),
         }),
-        |acc: Rc<FieldTypeMapBuild>, child: Rc<Node>| {
-            match child.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ft, .. }) => {
-                    let resolved_name = authored_name_at(
-                        source_indices.clone(),
-                        normalize_access_type_node(ft.clone()),
-                    );
-                    let ft_is_type_var = if ft.inferred.clone().is_some() {
-                        is_type_variable(ft.inferred.clone().unwrap())
-                    } else {
-                        false
-                    };
-                    let key = authored_name_at(source_indices.clone(), child.clone());
-                    let surface_names =
-                        collect_type_node_import_surface_names(ft.clone(), source_indices.clone());
-                    let next_field_types =
-                        if ((resolved_name.clone() != "".to_string()) && !ft_is_type_var)
-                            && (resolved_name.clone() != "Dynamic".to_string())
-                        {
-                            v1_rt::rc_map_insert(
-                                acc.field_types.clone(),
-                                key.clone(),
-                                resolved_name.clone(),
-                            )
-                        } else {
-                            acc.field_types.clone()
-                        };
-                    let mut merged_surfaces = acc.import_surface_names.iter().cloned().collect::<Vec<_>>();
-                    merged_surfaces.extend(surface_names.iter().cloned());
-                    Rc::new(FieldTypeMapBuild {
-                        field_types: next_field_types,
-                        import_surface_names: dedupe_nonempty_strings(Rc::new(merged_surfaces)),
-                    })
-                }
-                _ => acc,
+        |acc: Rc<FieldTypeMapBuild>, child: Rc<Node>| match child
+            .inferred
+            .clone()
+            .as_deref()
+            .cloned()
+        {
+            Some(InferredNode::Resolved { node: ft, .. }) => {
+                let resolved_name = authored_name_at(
+                    source_indices.clone(),
+                    normalize_access_type_node(ft.clone()),
+                );
+                let ft_is_type_var = if ft.inferred.clone().is_some() {
+                    is_type_variable(ft.inferred.clone().unwrap())
+                } else {
+                    false
+                };
+                let key = authored_name_at(source_indices.clone(), child.clone());
+                let surface_names =
+                    collect_type_node_import_surface_names(ft.clone(), source_indices.clone());
+                let next_field_types = if ((resolved_name.clone() != "".to_string())
+                    && !ft_is_type_var)
+                    && (resolved_name.clone() != "Dynamic".to_string())
+                {
+                    v1_rt::rc_map_insert(
+                        acc.field_types.clone(),
+                        key.clone(),
+                        resolved_name.clone(),
+                    )
+                } else {
+                    acc.field_types.clone()
+                };
+                let mut merged_surfaces =
+                    acc.import_surface_names.iter().cloned().collect::<Vec<_>>();
+                merged_surfaces.extend(surface_names.iter().cloned());
+                Rc::new(FieldTypeMapBuild {
+                    field_types: next_field_types,
+                    import_surface_names: dedupe_nonempty_strings(Rc::new(merged_surfaces)),
+                })
             }
+            _ => acc,
         },
     )
 }
@@ -870,10 +871,9 @@ pub fn add_emit_item_summary(
                                                     field_type_map: variant_field_types
                                                         .field_types
                                                         .clone(),
-                                                    field_import_surface_names:
-                                                        variant_field_types
-                                                            .import_surface_names
-                                                            .clone(),
+                                                    field_import_surface_names: variant_field_types
+                                                        .import_surface_names
+                                                        .clone(),
                                                     variant_name_set: v1_rt::rc_empty_map::<
                                                         String,
                                                         bool,

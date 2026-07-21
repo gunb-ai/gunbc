@@ -8526,7 +8526,8 @@ pub fn module_data_field_struct_import_names(
                         match v1_rt::map_get(&type_summaries, type_name.clone()) {
                             Some(summary) => Rc::new({
                                 let mut __result = Vec::new();
-                                for field_type in summary.field_import_surface_names.clone().iter().cloned()
+                                for field_type in
+                                    summary.field_import_surface_names.clone().iter().cloned()
                                 {
                                     if (((field_type.clone() != "".to_string())
                                         && name_in_transitive_export_surface(
