@@ -219,6 +219,88 @@ This doc does **not** duplicate the §4k seventeen-row checklist or accent-study
 - **WCAG vs OKLCH:** pick one primary L0 contrast oracle for Phase A; the other is optional second cite.
 - **Mark in L3 vs shared L2 geometry:** Confluence geometry is brand-neutral; only candidate *selection* is L3. Shared `gunbc.design.mark` spec is likely.
 
+## 10. Constants provenance and de-stringing (operator addendum 2026-07-21)
+
+The #6927 stack works but carries three classes of **constants-without-provenance** and **string-as-model** defects. The library lift is the moment to fix them — phased, doc-only here, implementation in Phase A sub-phases (§5).
+
+**Priority by displaced cost:** (1) CSS/SVG grammar rows — every future page benefits, aligns with bash-AST confinement precedent (#6854); (2) OKLCH regrounding — three proxy laws become perceptual; (3) stellar derivation — medium effort, high story value; (4) key-typing rides the lift itself (A.0).
+
+### Class 1 — Cited-fact constants → extdeps (L0)
+
+Facts that already have a real upstream authority. Today they are hand literals; the library grounds them once and **derives** downstream values.
+
+#### 1a. Stellar-class colors (`starlight.dag`)
+
+**Today:** each `StellarClass` row carries hand-eyeballed HSL `hue`/`sat_pct`/`light_pct`; `perceived` is a bare `String`. The no-green witness uses a hand hue-range check (`90`–`170`).
+
+**Target:** each row carries `temperature_kelvin` cited to the Morgan–Keenan framework (letter + effective temperature per the cited tables). **Color is derived**, not stored:
+
+```text
+temperature_kelvin → Planckian locus → CIE 1931 chromaticity → sRGB
+```
+
+Each step cites a real standard (Planck blackbody, CIE 1931, sRGB transfer). The grounded row stores temperature and letter; `figure`/`lit_variant`/`edge_variant` are **projections** of the derivation under the L1 glare envelope and L2 `AreaClass` ceilings.
+
+**Witness upgrade:** `no_green_stellar_class` becomes a **computed theorem** over the derivation (no blackbody peak in the green band that survives sRGB gamut mapping) — not a magic hue interval. The `90`–`170` range constant **dissolves**.
+
+**Phase:** A.3. **L3 residue:** which class letter is the live accent (G-class for gunb.ai) stays in `gunbc.site.identity`; only the cite + derivation live in L0.
+
+#### 1b. WCAG contrast thresholds
+
+**Today:** `theme_contrast_ok` uses HSL lightness-gap proxies (`>= 40` text/canvas, `>= 20` figure/canvas) — already flagged for dissolution in §2.
+
+**Target:** `extdeps/perception/wcag.dag` (or equivalent) rows citing WCAG 2.x ratio thresholds (`4.5` normal text, `3.0` large text / UI components — exact cite to the spec section). `theme_contrast_ok` becomes `wcag_contrast_ratio(fg, bg) >= threshold_for(role_pair)` over **computed** sRGB luminance from the L0 oracle.
+
+**Phase:** A.2 (paired with OKLCH regrounding).
+
+#### 1c. CSS and SVG vocabulary
+
+**Today:** `CssDecl.prop`, easing names, `scheme`, selectors, and markup `tag` are bare `String`. Emission uses hand `join()` serializers in `tokens.dag` `paint()` / `paint_alpha()` and `theme_transition.dag` rule folds. An invalid property name or easing string is writable and fails only at browser parse time (or never).
+
+**Target:** `extdeps/languages/css/` and `extdeps/languages/svg/` grammar rows on the same pattern as `extdeps/languages/yaml/` — §4 one-grammar-read-both-directions. `CssDecl` carries a typed property/easing variant (or a grammar-owned atom); emission is `serialize_css` over typed decls, not string concat. Invalid property, easing, or SVG attribute becomes **unwritable** at model time.
+
+**Precedent:** bash-AST confinement (`realization_vocabulary_containment`) — language construction vocab lives in `extdeps/languages/`, not workflow/site modules.
+
+**Phase:** A.1 — **highest displaced cost** (every page and dashboard surface inherits).
+
+### Class 2 — House-choice constants → named L1 rows, regrounded perceptually
+
+Facts that are **genuine house choices** (not citeable universal law) but today operate on **non-perceptual HSL proxies**. They stay as L1 walls with explicit provenance rows; the lift **re-grounds the axes** in OKLCH.
+
+| Constant (today) | Location | Proxy problem | Target |
+|---|---|---|---|
+| `45` / `68` glare cutoffs | `quiet_envelope` | HSL `sat_pct` + `light_pct` | OKLCH **chroma ceiling** + **lightness ceiling** per envelope arm (bright ∨ chromatic, never both) |
+| `area_max_sat` per `AreaClass` | `chroma_admissible` | HSL saturation % | OKLCH **chroma ceiling per area class** — fewer knobs, perceptually uniform |
+| lightness-gap `40` / `20` | `theme_contrast_ok` | non-WCAG proxy | **dissolves** into Class 1b WCAG compute |
+
+**Principle:** L1 rows name the house choice (`GlareEnvelope`, `ChromaByArea`) with a `provenance: HouseChoice { signed: §4k row }` marker; L2 enforcement calls L0 perceptual ops on OKLCH coordinates derived from `Material`, not raw HSL compares.
+
+**Timing scale exception:** `respond_fast` / `reveal_deliberate` / `restore_gentle` / `reframe_page` stay as **named L2 tokens** (discrete duration/easing rows). A base-time × ratio generator is **purity-trap territory** (§6) until a second consumer needs parametric timing — do not build it in Phase A.
+
+**Phase:** A.2 (after or in parallel with WCAG rows; must complete before Phase B archetypes).
+
+### Class 3 — String-as-identity keys → typed refs (construction)
+
+The substrate's own lesson applies: a load-bearing string literal is an edge living in prose ([module identity vs storage](module-identity-storage-binding-design.md)) — invisible to totality checks, typo-prone, fail-open on coverage.
+
+| Site (today) | String key | Defect | Target |
+|---|---|---|---|
+| `interaction.dag` `row_covers` | `element: String` on `BehaviorRow` / `InteractiveElement` | typo silently misses coverage | closed `ElementId` enum (or `SymbolRef`) — one variant per archetype element; `coverage_gaps` **total by construction** |
+| `mark.dag` edges | `from_key` / `to_key: String` | severed fork can compile | `MarkNodeId` enum aligned with `mark_nodes` rows |
+| `constellation.dag` edges | `from_key` / `to_key: String` | same | `StarId` enum aligned with `layer_stars` (L5 facts supply rows; L4 generator is parameterized over typed ids) |
+
+**Phase:** A.0 — **rides the structural lift**. No separate schedule; untyped keys are inadmissible in `gunbc.design.*` from the first commit.
+
+### Class → layer → phase summary
+
+```text
+Class 1 (cite + derive)  → L0 extdeps     → A.1 (css/svg) · A.2 (WCAG) · A.3 (stellar)
+Class 2 (house + OKLCH)  → L1 walls       → A.2
+Class 3 (typed keys)     → L2/L4 machinery → A.0 (lift)
+```
+
+Every item names a **dissolution trigger**: hand hue-range removed when A.3 greens; lightness-gap removed when A.2 greens; `join()` paint removed when A.1 greens; string element keys removed at A.0 lift.
+
 ## Dissolution trigger (DESIGN §6)
 
 This document dissolves when Phase C is complete **or** when the library carriers subsume all sections and this md re-registers as a `gunbc.plan.Plan` row. Until Phase A lands, the mark on the carrier is this file plus the #6927 `gunbc.site.*` modules.
