@@ -682,27 +682,35 @@ fn qualified_all_but_last(name: String) -> String {
   }
 }
 
+fn record_global_bare_ambiguous_silent_pick(
+  env_module_path: String,
+  name: String,
+  cands: List<GlobalBareCandidate>
+) -> Unit {
+  let cand_count = cands |> count
+  match global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: cands) {
+    Present { value: cand } =>
+      resolution_silent_pick_record_global_bare_lcp_pick(
+        env_module_path: env_module_path,
+        name: name,
+        candidate_count: cand_count,
+        chosen_module_path: cand.module_path
+      )
+    Absent =>
+      resolution_silent_pick_record_global_bare_lcp_tie(
+        env_module_path: env_module_path,
+        name: name,
+        candidate_count: cand_count
+      )
+  }
+}
+
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if resolution_silent_pick_is_enabled() && (cands |> count) >= 2 {
-        let cand_count = cands |> count
-        match global_bare_nearest_ancestor_candidate(env_module_path: env.module_path, candidates: cands) {
-          Present { value: cand } =>
-            let _ = resolution_silent_pick_record_global_bare_lcp_pick(
-              env_module_path: env.module_path,
-              name: name,
-              candidate_count: cand_count,
-              chosen_module_path: cand.module_path
-            )
-          Absent =>
-            let _ = resolution_silent_pick_record_global_bare_lcp_tie(
-              env_module_path: env.module_path,
-              name: name,
-              candidate_count: cand_count
-            )
-        }
+        record_global_bare_ambiguous_silent_pick(env_module_path: env.module_path, name: name, cands: cands)
       }
       global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
     }

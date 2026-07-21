@@ -79,13 +79,17 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
       Absent => acc
     }
   )
-  if scan.match_count >= 2 && scan.sig != none && scan.first_parent != none {
-    let _ = resolution_silent_pick_record_fn_parent_first_hit(
-      env_module_path: env.name,
-      name: name,
-      parent_match_count: scan.match_count,
-      chosen_parent_module: scan.first_parent.value
-    )
+  if scan.match_count >= 2 && scan.sig != none {
+    match scan.first_parent {
+      Present { value: chosen_parent } =>
+        resolution_silent_pick_record_fn_parent_first_hit(
+          env_module_path: env.name,
+          name: name,
+          parent_match_count: scan.match_count,
+          chosen_parent_module: chosen_parent
+        )
+      Absent => {}
+    }
   }
   scan.sig
 }

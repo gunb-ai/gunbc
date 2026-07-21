@@ -8,9 +8,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
-use std::cell::Cell;
-
-#[cfg(feature = "text_lookup_work_counter")]
 thread_local! {
     static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);
 }

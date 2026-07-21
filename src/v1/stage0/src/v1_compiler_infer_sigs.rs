@@ -105,11 +105,57 @@ pub fn flatten_parent_envs(
     }
 }
 
-#[derive(Default)]
-struct ParentSigScan {
-    sig: Option<Rc<ResolvedFuncSig>>,
-    match_count: usize,
-    first_parent: Option<String>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentSigScan {
+    pub sig: Option<Rc<ResolvedFuncSig>>,
+    pub match_count: i64,
+    pub first_parent: Option<String>,
+}
+
+pub fn lookup_resolved_sig_with_telemetry(
+    env: Rc<ResolvedFuncEnv>,
+    name: String,
+) -> Option<Rc<ResolvedFuncSig>> {
+    {
+        let scan = env.parents.clone().iter().cloned().fold(
+            Rc::new(ParentSigScan {
+                sig: None,
+                match_count: 0,
+                first_parent: None,
+            }),
+            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+                &p.local.clone(),
+                name.clone(),
+            ) {
+                Some(sig) => Rc::new(ParentSigScan {
+                    sig: if (acc.sig.clone() != None) {
+                        acc.sig.clone()
+                    } else {
+                        Some(sig.clone())
+                    },
+                    match_count: (acc.match_count.clone() + 1),
+                    first_parent: if (acc.first_parent.clone() != None) {
+                        acc.first_parent.clone()
+                    } else {
+                        Some(p.name.clone())
+                    },
+                }),
+                None => acc.clone(),
+            },
+        );
+        if ((scan.match_count.clone() >= 2) && (scan.sig.clone() != None)) {
+            match scan.first_parent.clone() {
+                Some(chosen_parent) => v1_rt::resolution_silent_pick_record_fn_parent_first_hit(
+                    env.name.clone(),
+                    name.clone(),
+                    scan.match_count.clone(),
+                    chosen_parent.clone(),
+                ),
+                None => {}
+            }
+        }
+        scan.sig.clone()
+    }
 }
 
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
@@ -117,37 +163,12 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
         Some(sig) => Some(sig.clone()),
         None => {
             if v1_rt::resolution_silent_pick_is_enabled() {
-                let scan = env.parents.clone().iter().cloned().fold(
-                    ParentSigScan::default(),
-                    |mut acc: ParentSigScan, p: Rc<ResolvedFuncEnv>| {
-                        if let Some(sig) = v1_rt::map_get(&p.local.clone(), name.clone()) {
-                            acc.match_count += 1;
-                            if acc.first_parent.is_none() {
-                                acc.first_parent = Some(p.name.clone());
-                            }
-                            if acc.sig.is_none() {
-                                acc.sig = Some(sig);
-                            }
-                        }
-                        acc
-                    },
-                );
-                if scan.match_count >= 2 && scan.sig.is_some() {
-                    if let Some(chosen_parent) = scan.first_parent.clone() {
-                        let _ = v1_rt::resolution_silent_pick_record_fn_parent_first_hit(
-                            env.name.clone(),
-                            name.clone(),
-                            scan.match_count as i64,
-                            chosen_parent,
-                        );
-                    }
-                }
-                scan.sig
+                lookup_resolved_sig_with_telemetry(env.clone(), name.clone())
             } else {
                 env.parents.clone().iter().cloned().fold(
                     none_resolved_sig(),
-                    |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc {
-                        Some(sig) => Some(sig),
+                    |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
+                        Some(sig) => Some(sig.clone()),
                         None => v1_rt::map_get(&p.local.clone(), name.clone()),
                     },
                 )

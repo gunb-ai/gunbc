@@ -13,8 +13,6 @@ fn rt_header() -> String {
 fn rt_text_lookup_work_counter() -> String {
   concat(
     "#[cfg(feature = \"text_lookup_work_counter\")]\n",
-    "use std::cell::Cell;\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
     "thread_local! {\n",
     "    static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);\n",
     "}\n\n",
@@ -520,9 +518,9 @@ fn rt_resolution_silent_pick_telemetry() -> String {
     "}\n\n",
     "#[derive(Clone, Debug, Default, PartialEq, Eq)]\n",
     "pub struct SilentPickTelemetry {\n",
-    "    pub global_bare_lcp_picks: Vec<GlobalBareLcpPickSite>,\n",
-    "    pub global_bare_lcp_ties: Vec<GlobalBareLcpTieSite>,\n",
-    "    pub fn_parent_first_hits: Vec<FnParentFirstHitSite>,\n",
+    "    pub global_bare_lcp_picks: std::vec::Vec<GlobalBareLcpPickSite>,\n",
+    "    pub global_bare_lcp_ties: std::vec::Vec<GlobalBareLcpTieSite>,\n",
+    "    pub fn_parent_first_hits: std::vec::Vec<FnParentFirstHitSite>,\n",
     "}\n\n",
     "thread_local! {\n",
     "    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };\n",
