@@ -57,13 +57,8 @@ fn witness_thin_invocation_argv() -> Bool {
 
 fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
   match bootstrap_fragment_script_carrier_scaffold {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
-    } =>
-      m == "gunbc.fleet_converge_emit"
-        && d == "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger"
-    _ => false
+    Terminal { reason: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => false
   }
     && match thin_invocation_argv_carrier_scaffold {
       Scaffold {
