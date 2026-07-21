@@ -1,0 +1,102 @@
+module gunbc.site.starlight
+
+import std.types { String, Int, List, Bool }
+import gunbc.site.tokens { Material, PointArea, HairlineArea, chroma_admissible }
+import extdeps.astronomy.stellar_classification {
+  SpectralClass, harvard_main_sequence_classes,
+  o_class, b_class, a_class, f_class, g_class, k_class, m_class,
+  no_green_stellar_class, temperature_label,
+}
+
+data starlight_note: String = "Projection layer (ninth/tenth passes): the night accent IS starlight, so the accent candidates are the Morgan-Keenan spectral classes — whose FACTS (letters, temperatures, chromaticity strings, shares) live in extdeps.astronomy.stellar_classification, cited to its upstream. This module owns only the PERCEPTUAL PROJECTION: one envelope-constrained Material per class, approximating the source's Vega-relative chromaticity under the register's glare envelope (bright or chromatic, never both). Green is excluded upstream (the source: no green, cyan, indigo, or violet stars), so green enters the register only as MATERIAL — verdigris patina on hairlines. The M class prunes itself: its lit variant violates the envelope (witnessed). The brand-color decision is therefore a cited framework row plus a projection row — never a marketing hex."
+
+type StarlightRender {
+  spectral: SpectralClass
+  figure: Material
+}
+
+fn cap100(v: Int) -> Int {
+  if v > 100 { 100 } else { v }
+}
+
+fn floor0(v: Int) -> Int {
+  if v < 0 { 0 } else { v }
+}
+
+fn lit_variant(m: Material) -> Material {
+  Material {
+    name: concat(m.name, "-lit"),
+    hue: m.hue,
+    sat_pct: cap100(v: m.sat_pct + 8),
+    light_pct: cap100(v: m.light_pct + 9),
+    area: PointArea,
+  }
+}
+
+fn edge_variant(m: Material) -> Material {
+  Material {
+    name: concat(m.name, "-edge"),
+    hue: m.hue,
+    sat_pct: floor0(v: m.sat_pct - 12),
+    light_pct: 64,
+    area: HairlineArea,
+  }
+}
+
+data o_render: StarlightRender = StarlightRender { spectral: o_class, figure: Material { name: "o-starlight", hue: 228, sat_pct: 26, light_pct: 88, area: PointArea } }
+
+data b_render: StarlightRender = StarlightRender { spectral: b_class, figure: Material { name: "b-starlight", hue: 226, sat_pct: 20, light_pct: 89, area: PointArea } }
+
+data a_render: StarlightRender = StarlightRender { spectral: a_class, figure: Material { name: "a-starlight", hue: 222, sat_pct: 12, light_pct: 91, area: PointArea } }
+
+data f_render: StarlightRender = StarlightRender { spectral: f_class, figure: Material { name: "f-starlight", hue: 50, sat_pct: 14, light_pct: 90, area: PointArea } }
+
+data g_render: StarlightRender = StarlightRender { spectral: g_class, figure: Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
+
+data k_render: StarlightRender = StarlightRender { spectral: k_class, figure: Material { name: "k-starlight", hue: 33, sat_pct: 34, light_pct: 81, area: PointArea } }
+
+data m_render: StarlightRender = StarlightRender { spectral: m_class, figure: Material { name: "m-starlight", hue: 15, sat_pct: 42, light_pct: 66, area: PointArea } }
+
+data starlight_renders: List<StarlightRender> = [o_render, b_render, a_render, f_render, g_render, k_render, m_render]
+
+data study_candidates: List<StarlightRender> = [o_render, a_render, g_render, k_render]
+
+data accent_signed_note: String = "Checklist row 4 SIGNED (operator via review verdict on PR 6927, 2026-07-21): the night accent is the G class — the Sun's own class, the one star humans have a relationship with; harmonizes with the brass/clay warm family; O/A read near-neutral (low identity, drifting back toward the rejected cool register) and K sits close to brass in hue, softening the figure-vs-focus distinction. The decision is a row: signed_accent_render below, witnessed equal to the live night theme figure (tokens.warm_starlight), so a palette drift away from the signed class is a red witness, not a quiet restyle."
+
+data signed_accent_render: StarlightRender = StarlightRender { spectral: g_class, figure: Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
+
+data verdigris_patina: Material = Material { name: "verdigris-patina", hue: 165, sat_pct: 28, light_pct: 52, area: HairlineArea }
+
+fn hue_is_green(hue: Int) -> Bool {
+  hue >= 90 && hue <= 170
+}
+
+fn no_green_starlight_projection(renders: List<StarlightRender>) -> Bool {
+  all(renders, r => !hue_is_green(hue: r.figure.hue))
+}
+
+fn candidate_admissible(r: StarlightRender) -> Bool {
+  chroma_admissible(m: r.figure)
+    && chroma_admissible(m: lit_variant(m: r.figure))
+    && chroma_admissible(m: edge_variant(m: r.figure))
+}
+
+fn candidates_admissible(rs: List<StarlightRender>) -> Bool {
+  all(rs, r => candidate_admissible(r: r))
+}
+
+fn render_has_class(renders: List<StarlightRender>, code: String) -> Bool {
+  fold(renders, init: false, f: (acc, r) => acc || r.spectral.code as String == code)
+}
+
+fn renders_cover_classification(renders: List<StarlightRender>, classes: List<SpectralClass>) -> Bool {
+  all(classes, c => render_has_class(renders: renders, code: c.code as String))
+    && renders.length() == classes.length()
+}
+
+fn render_label(r: StarlightRender) -> String {
+  join([
+    r.spectral.code as String, " — ", r.spectral.vega_chromaticity,
+    " · ", temperature_label(r: r.spectral.temperature),
+  ], "")
+}
