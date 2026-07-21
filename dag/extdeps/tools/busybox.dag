@@ -1,11 +1,12 @@
 module extdeps.tools.busybox
 
-import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { NonEmptyStr, String, Int }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { package_busybox }
+import extdeps.exec.command { ShellCommand }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -22,21 +23,8 @@ data busybox_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_busybox }],
 }
 
-service busybox.Httpd {
-  operation Serve {
-    input { document_root: NonEmptyStr, port: Int }
-    output { success: Bool from "exit_success" }
-    transport shell {
-      argv: [
-        "busybox",
-        "httpd",
-        "-p", "{port}",
-        "-h", "{document_root}",
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "busybox httpd serve failed"
-    }
+fn busybox_httpd_command(document_root: NonEmptyStr, port: Int) -> ShellCommand {
+  ShellCommand {
+    argv: ["busybox", "httpd", "-p", to_string(port), "-h", document_root as String],
   }
 }

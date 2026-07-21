@@ -6,7 +6,15 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
-import extdeps.tools.busybox { busybox_cli_tool }
+import extdeps.tools.busybox { busybox_cli_tool, busybox_httpd_command }
+import extdeps.exec.command {
+  ShellCommand,
+  CommandTransport,
+  LocalShell,
+  SshExec,
+  command_over_transport,
+  shell_command_render,
+}
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
 
@@ -85,6 +93,25 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
 
 fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
   autoinstall_user_data(payload: plan.autoinstall)
+}
+
+fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
+  SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as NonEmptyStr }
+}
+
+fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ShellCommand {
+  busybox_httpd_command(document_root: plan.netboot_dir, port: plan.serve_port)
+}
+
+fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> ShellCommand {
+  command_over_transport(
+    command: bmc_netboot_serve_command_local(plan: plan),
+    transport: bmc_transport(plan: plan),
+  )
+}
+
+fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> String {
+  shell_command_render(command: bmc_netboot_serve_command(plan: plan))
 }
 
 data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc/artifacts/netboot"
