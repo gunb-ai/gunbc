@@ -18632,9 +18632,7 @@ pub struct WalkTargetAliasPlan {
     pub modules_excluded: usize,
 }
 
-fn build_module_type_env_map(
-    ctx: &v1_interpreter::InterpContext,
-) -> HashMap<String, Rc<TypeEnv>> {
+fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Rc<TypeEnv>> {
     ctx.modules
         .iter()
         .map(|tm| (tm.type_env.module_path.clone(), tm.type_env.clone()))
@@ -18647,12 +18645,7 @@ fn ground_walk_target_global_bare_lcp(
     name: &str,
     chosen_module_path: &str,
 ) -> Result<String, String> {
-    match type_env
-        .symbol_index
-        .global_bare
-        .get(name)
-        .map(|s| &**s)
-    {
+    match type_env.symbol_index.global_bare.get(name).map(|s| &**s) {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates, .. }) => {
             let cand = candidates
                 .iter()
@@ -18673,9 +18666,9 @@ fn ground_walk_target_global_bare_lcp(
                 None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
             }
         }
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
-            Err(format!("global_bare not ambiguous for '{name}' at silent-pick site"))
-        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => Err(format!(
+            "global_bare not ambiguous for '{name}' at silent-pick site"
+        )),
         None => Err(format!("name '{name}' not in global_bare index")),
     }
 }
@@ -18725,9 +18718,7 @@ pub fn walk_target_alias_plan_from_census(
                 };
                 *event_counts.entry(key.clone()).or_insert(0) += 1;
                 verified.entry(key.clone()).or_insert(true);
-                pre_flip_paths
-                    .entry(key)
-                    .or_insert(qualified_path);
+                pre_flip_paths.entry(key).or_insert(qualified_path);
             }
             Err(reason) => refused.push(WalkTargetAliasPlanRefused {
                 class,
