@@ -77,8 +77,6 @@ data v1_deletion_milestones: List<PlanMilestone> = [
   PlanMilestone { id: ^v1_delete, title: "Delete src/v1 + stage0 when the PROACTIVE VERIFICATION LEDGER is green by execution — no calendar soak (operator 2026-07-20: suspicious of soaking; test/verify proactively). Ledger = enumerated executed receipts, each a deliberate run, none an elapsed-time claim", gate: GateDeletion, brick_state: Gated, role: BarBrick, parallelism: ForciblySerial, fan_width: 1, days_low: 1, days_high: 1, lane_state: "blocked on v1_quarantine, which transitively requires the executed verification ledger: Gate 3 (ledger_projection + cold parity + compile-clean + regen fixed point) gates the ci_floor_cutover that gates quarantine, so no DAG path reaches delete without the ledger green by execution (per-family receipts included). No calendar soak", confidence: ConfidenceBasis { basis: "A mechanical removal once quarantine holds and the ledger is green BY EXECUTION", risk: "Deleting too early on a soak-substituted green (the operator's explicit worry)", antagonize: "gate on the enumerated executed receipts, never elapsed time — the ledger is the wall" } }
 ]
 
-data emit_representation_mismatch_residual_site_map_doc_provenance: String = "bind: docs/probes/emitter_residual_site_map_2026-07-21.md — post-#6981 emitted deep-module E0308 probe: emitter function-site map for the generic-T fold-closure class (crisp-fox-839); feeds ^emit_representation_mismatch triage."
-
 data v1_deletion_dependencies: List<PlanDependency> = [
   PlanDependency { before: ^std_dup_assembly_fix, after: ^probe_flip_fanout },
   PlanDependency { before: ^std_dup_assembly_fix, after: ^deep_module_lanes },
