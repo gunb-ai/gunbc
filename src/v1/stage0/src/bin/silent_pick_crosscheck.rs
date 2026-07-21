@@ -14,8 +14,8 @@ use v1_compiler::cli_run::{
 };
 
 fn main() {
-    let census = resolution_divergence_census_live_closure_scoped()
-        .expect("closure-scoped census resolve");
+    let census =
+        resolution_divergence_census_live_closure_scoped().expect("closure-scoped census resolve");
 
     // Distinct silent-pick sites across all three classes, keyed (module, name).
     let mut sites: HashMap<(String, String), usize> = HashMap::new();
