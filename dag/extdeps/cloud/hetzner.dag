@@ -1,19 +1,5 @@
 module extdeps.cloud.hetzner
 
-import extdeps.toolchain.types { Architecture }
-import std.currency { CurrencyCode, Eur }
-import std.measure {
-  MoneyAmountMicro,
-  money_amount_micro,
-  ByteSize,
-  byte_size,
-  HardwareThreadCount,
-  hardware_thread_count,
-}
-import std.types { NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

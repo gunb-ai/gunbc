@@ -105,16 +105,75 @@ pub fn flatten_parent_envs(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentSigScan {
+    pub sig: Option<Rc<ResolvedFuncSig>>,
+    pub match_count: i64,
+    pub first_parent: Option<String>,
+}
+
+pub fn lookup_resolved_sig_with_telemetry(
+    env: Rc<ResolvedFuncEnv>,
+    name: String,
+) -> Option<Rc<ResolvedFuncSig>> {
+    {
+        let scan = env.parents.clone().iter().cloned().fold(
+            Rc::new(ParentSigScan {
+                sig: None,
+                match_count: 0,
+                first_parent: None,
+            }),
+            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+                &p.local.clone(),
+                name.clone(),
+            ) {
+                Some(sig) => Rc::new(ParentSigScan {
+                    sig: if (acc.sig.clone() != None) {
+                        acc.sig.clone()
+                    } else {
+                        Some(sig.clone())
+                    },
+                    match_count: (acc.match_count.clone() + 1),
+                    first_parent: if (acc.first_parent.clone() != None) {
+                        acc.first_parent.clone()
+                    } else {
+                        Some(p.name.clone())
+                    },
+                }),
+                None => acc.clone(),
+            },
+        );
+        if ((scan.match_count.clone() >= 2) && (scan.sig.clone() != None)) {
+            match scan.first_parent.clone() {
+                Some(chosen_parent) => v1_rt::resolution_silent_pick_record_fn_parent_first_hit(
+                    env.name.clone(),
+                    name.clone(),
+                    scan.match_count.clone(),
+                    chosen_parent.clone(),
+                ),
+                None => {}
+            }
+        }
+        scan.sig.clone()
+    }
+}
+
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
-        None => env.parents.clone().iter().cloned().fold(
-            none_resolved_sig(),
-            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
-                Some(sig) => Some(sig.clone()),
-                None => v1_rt::map_get(&p.local.clone(), name.clone()),
-            },
-        ),
+        None => {
+            if v1_rt::resolution_silent_pick_is_enabled() {
+                lookup_resolved_sig_with_telemetry(env.clone(), name.clone())
+            } else {
+                env.parents.clone().iter().cloned().fold(
+                    none_resolved_sig(),
+                    |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
+                        Some(sig) => Some(sig.clone()),
+                        None => v1_rt::map_get(&p.local.clone(), name.clone()),
+                    },
+                )
+            }
+        }
     }
 }
 

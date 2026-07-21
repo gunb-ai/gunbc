@@ -1,7 +1,16 @@
 module v2.std.symbol_index
 
 
-import v2.std.algebra { is_empty }
+import v2.std.algebra {
+  Empty,
+  FreeMonoid,
+  HeadAbsent,
+  HeadFound,
+  is_empty,
+  length,
+  list_head,
+  list_snoc_item
+}
 import v2.std.collection {
   Absent,
   Map,
@@ -31,6 +40,16 @@ type GlobalBareLookup
   = GlobalBareHit { node: Node }
   | GlobalBareLookupAmbiguous
   | GlobalBareLookupUnbound
+
+type LexicalBindingCandidate {
+  path: QualifiedName
+  node: Node
+}
+
+type LexicalLookup
+  = LexicalHit { node: Node, path: QualifiedName }
+  | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
+  | LexicalUnbound
 
 type SymbolIndex {
   entries: Map<QualifiedName, Node>
@@ -126,22 +145,54 @@ fn symbol_index_try_lexical_at(
   symbol_index_lookup(index: index, qualified_path: candidate_path)
 }
 
+fn symbol_index_lexical_collect(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol,
+  acc: FreeMonoid<LexicalBindingCandidate>
+) -> FreeMonoid<LexicalBindingCandidate> {
+  let with_current = match symbol_index_try_lexical_at(index: index, position: position, name: name) {
+    Present { value: node } =>
+      list_snoc_item(
+        xs: acc,
+        item: LexicalBindingCandidate {
+          path: qualified_name_snoc(qn: position, segment: name),
+          node: node
+        }
+      )
+    Absent => acc
+  }
+  if is_empty(xs: position) {
+    with_current
+  } else {
+    symbol_index_lexical_collect(
+      index: index,
+      position: qualified_name_init(qn: position),
+      name: name,
+      acc: with_current
+    )
+  }
+}
+
 fn symbol_index_lexical_lookup(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol
-) -> Optional<Node> {
-  match symbol_index_try_lexical_at(index: index, position: position, name: name) {
-    Present { value: node } => optional_present(value: node)
-    Absent =>
-      if is_empty(xs: position) {
-        optional_absent()
-      } else {
-        symbol_index_lexical_lookup(
-          index: index,
-          position: qualified_name_init(qn: position),
-          name: name
-        )
+) -> LexicalLookup {
+  let candidates = symbol_index_lexical_collect(
+    index: index,
+    position: position,
+    name: name,
+    acc: Empty
+  )
+  match length(xs: candidates) {
+    0 => LexicalUnbound
+    1 =>
+      match list_head(xs: candidates) {
+        HeadFound { value: candidate } =>
+          LexicalHit { node: candidate.node, path: candidate.path }
+        HeadAbsent => LexicalUnbound
       }
+    _ => LexicalAmbiguous { candidates: candidates }
   }
 }
