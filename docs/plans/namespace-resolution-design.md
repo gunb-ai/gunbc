@@ -607,3 +607,72 @@ and the lane's shape changes. This is the cheapest moment to find out.
 artifact the rest of the lane consumes; §8 step 1 starts after it, informed by it.
 
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
+
+## 13. Resolution is unique-on-chain, not nearest (operator ruling, ratified 2026-07-21)
+
+**Ratification.** The operator ruled the amended lookup semantics in-session (2026-07-21): *"fail
+loudly"*; *"full path required at all times + users can alias"*; *"familiar frontend, very
+strict/precise underneath"* — and on the shape below, *"this looks good."* Wording here is the
+lane's; the semantics are ruled. This section **supersedes** the nearest-wins reading the executing
+seed still carries (§7.5, §12) and tightens §3/§6 from "exactly one *nearest*" to "exactly one, full
+stop."
+
+**The rule.** Resolve a reference's **first segment** to the **unique binder on its ancestor chain**:
+
+- **zero** binders → `Unresolved` — a loud, located refusal, never a fabricated bind;
+- **two or more** → a located, typed `Ambiguous` carrying the **full candidate list** plus the fix
+  menu (qualify by containment path / introduce an alias / rename);
+- **exactly one** → project the remaining segments downward (§3's one projection op).
+
+A bare name is the zero-extra-segments case of the *same* rule — not a special "global" tier; this
+is the §7.5 seed invariant's own framing ("the shallowest level of the same walk") made terminal by
+removing the nearest-wins fallback beneath it. **Amends §3/§6:** "finds exactly one nearest binding"
+→ "finds exactly one binding on the chain; multiple = refusal." **No nearest-wins; shadowing is a
+refusal, not a silent rebind** (Elm precedent). The refusal is raised at the **reference site**, not
+the declaration site.
+
+**The invariant (the why).** No edit anywhere in the program can silently **change what an existing
+reference means** — it can only loudly break it. That is exactly the property nearest-wins forfeits:
+adding a *nearer* homonym silently rebinds every reference below it. Fallback chains — nearest-wins,
+global-unique-fallback, first-hit, any silent-pick — are rejected **as a class**; a uniqueness
+constraint replaces a priority order (Rule 2 of §1, applied to the ancestor chain). This is §1/A3 at
+the reference layer: a reference's meaning must stay stable under edits elsewhere.
+
+**Aliases — binding-not-gate.** An alias is an **ordinary binding node**, not a visibility gate —
+§6's "binding edge, not a scan" taken literally. `alias A = m.path.A` is a node at the declaring
+position; references resolve *through* it by the same unique-on-chain rule. It is Rule-1-clean: the
+target is encoded **once** (no dual representation), an unused alias is lintable dead code, and the
+surface form is a grammar row (DESIGN.md §4, one grammar read both directions). **Import→alias
+transmutation** is the migration mechanism — an `import` becomes an alias node at the importing
+position, and the **source of truth is the walk's resolved target**, with the old import list
+demoted to a cross-check. Grounded by #6936's buckets: agree=38138 / import_unresolved=1854 /
+neither_bound=739 / ambiguous=53.
+
+**`global_bare` dies as a mechanism.** The terminal state **deletes**
+`symbol_index_global_unique_lookup` / `GlobalBareLookup` as *resolution* mechanisms — they survive
+only as a migration oracle (computing the §12.4 divergence census), then are removed. This
+supersedes §7's "the wall moves to *is it unique?*": the wall is *is it unique **on your chain?***
+The executing seed's two interim gaps are named, not hidden: the fn path (`lookup_resolved_sig`,
+`v1_compiler_infer_sigs.rs:111-117` — first-hit over `func_env.parents`, **no refusal arm at all**)
+and the type/data LCP nearest-arm (`global_bare_lookup`, `v1_compiler_infer_env.rs` — refuses only
+on an exact tie). The §5 interim backstop plus still-hawk-65's slice-2 per-class silent-pick counts
+gate any widening (§12.4; do not widen blind — refusing where nothing refuses today reds latent
+homonyms at scale, and fn is the larger class since it has *no* refusal today).
+
+**Builtins bind at root.** The root namespace is on **every** chain, so builtins bound at root are
+unique-on-chain everywhere — this **structurally dissolves** the prelude-shaped `neither_bound`
+class (#6936, 739) rather than special-casing it, pending still-hawk's confirmation of the (c)
+subclass.
+
+**Flagged, NOT ruled — the (Y) expected-type filter (§4).** Type-directed disambiguation (an
+expected type filtering a variant set to one) sits *adjacent* to the rejected fallback class: it,
+too, lets context pick among candidates. It is **not** covered by this ruling and needs a separate
+operator ruling before it survives into the flip — §4's "filters, never picks" claim must be
+re-adjudicated against this invariant.
+
+**Sequencing.** §10 step-1 (header-as-sugar → containment graft) is in flight (stern-newt-142,
+#6968); slice-2's per-class counts gate the §5 backstop widening; import→alias transmutation lands
+**with or before** the strict flip, **never** imports-deleted-first (else references break before
+their aliases exist — the ~20k `agree` sites are the empirical weight, §12.4); the flip is
+per-subtree behind the §8 policy. This section is the authority the alias-grammar model PR and the
+§3/§6 walk amendment consume.
