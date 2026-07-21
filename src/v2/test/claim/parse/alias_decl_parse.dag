@@ -1,0 +1,92 @@
+module v2.test.parse.alias_decl_parse
+
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.node { Node }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.extdeps.languages.dag {
+  alias_binding_row_from_decl_node,
+  dag_language_model,
+  parse_production_emitted_identity_optional
+}
+
+data alias_decl_parse_source: String = "module v2.test.parse.alias_decl_probe\n\nalias NodeAlias = v2.std.node.Node\n"
+
+fn alias_decl_parse_tree() -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(
+      text: alias_decl_parse_source,
+      file: ^alias_decl_parse_probe,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      parse(tokens: token_stream, grammar: lm.grammar)
+    }
+  )
+}
+
+fn alias_decl_find_in_children(tree: Node) -> Optional<Node> {
+  fold(tree.children, init: optional_absent(), f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => alias_decl_find_node(tree: edge.target)
+    }
+  })
+}
+
+fn alias_decl_find_node(tree: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: tree) {
+    Present { value: id } =>
+      if id == ^dag_surface_alias_decl {
+        optional_present(value: tree)
+      } else {
+        alias_decl_find_in_children(tree: tree)
+      }
+    Absent => alias_decl_find_in_children(tree: tree)
+  }
+}
+
+fn alias_decl_expected_row() -> AliasBindingRow {
+  AliasBindingRow {
+    binding: ^NodeAlias,
+    target: qualified_name_from_dotted_string(dotted: "v2.std.node.Node")
+  }
+}
+
+fn alias_decl_parse_and_binding_row_holds() -> Bool {
+  match alias_decl_parse_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match alias_decl_find_node(tree: tree) {
+        Absent => false
+        Present { value: decl } =>
+          match alias_binding_row_from_decl_node(decl: decl, module_root: tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: row, diagnostics: _ } =>
+              (row.binding == alias_decl_expected_row().binding)
+                && (row.target == alias_decl_expected_row().target)
+          }
+      }
+  }
+}
+
+fn alias_decl_keyword_reserved_in_binding_position_red_control_holds() -> Bool {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(
+      text: "module probe\nalias alias = v2.std.node.Node\n",
+      file: ^alias_decl_reserved_keyword_probe,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      parse(tokens: token_stream, grammar: lm.grammar)
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

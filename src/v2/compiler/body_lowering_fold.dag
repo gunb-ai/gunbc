@@ -384,6 +384,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_module)
     || (emitted == ^dag_surface_module_header)
     || (emitted == ^dag_surface_import_decl)
+    || (emitted == ^dag_surface_alias_decl)
     || (emitted == ^dag_surface_qualified_name)
     || (emitted == ^dag_surface_top_level_item)
     || (emitted == ^dag_surface_generic_params)
