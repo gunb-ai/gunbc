@@ -17053,8 +17053,7 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((is_bare_container.clone()
-            || acc_type_is_type_var.clone())
+        let lambda_acc_type_str = if (((is_bare_container.clone() || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
         {
