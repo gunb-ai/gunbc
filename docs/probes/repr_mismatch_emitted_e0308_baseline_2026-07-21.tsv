@@ -1,0 +1,32 @@
+# repr_mismatch emitted E0308 baseline + post-#6981 — crisp-fox-839, 2026-07-21
+# Oracle: scripts/repr_mismatch_emitted_e0308_probe.sh (merry-newt / bright-lynx-868)
+# Path: EMITTED_namespace (gunbc compile --entry namespace reference-closure, cargo build emitted .rs)
+#
+# PRE-#6981 head=3bd736d230 (post-#6983 repr grounding + #6986 UNRESOLVED fix)
+# POST-#6981 head=144e21f586 (main @ b896d9065 dotted qualified-alias emit fix merged)
+# Prior receipt (f355017edc, pre-#6983): materialization_carriers E0308=652, 04_infer E0308=3410
+#
+phase	module	head	emit_ok	emit_summary	cargo	e0308_all	e0308_module_rs	total_rustc_errors	first_error	error_histogram
+PRE	src/v2/compiler/materialization_carriers.dag	3bd736d230	1	41 files, 46 diag	refuse	83	0	316	E0425 extdeps
+PRE	src/v2/compiler/04_infer.dag	3bd736d230	1	50 files, 0 diag	refuse	0	0	110	dotted-alias (found .)
+POST	src/v2/compiler/materialization_carriers.dag	144e21f586	1	41 files, 46 diag	refuse	83	0	316	E0425 extdeps (unchanged)
+POST	src/v2/compiler/04_infer.dag	144e21f586	1	50 files, 0 diag	refuse	0	0	106	E0255 Witness dup
+POST	src/v2/compiler/06_translate.dag	144e21f586	1	74 files, 75 diag	refuse	0	0	149	E0255 Witness dup
+#
+# POST-#6981 04_infer residual histogram (total=106, dotted-alias=0):
+#   E0425=66  E0422=13  E0433=10  E0109=8  E0107=6  E0391=1  E0255=1
+# POST-#6981 06_translate residual histogram (total=149):
+#   E0425=79  E0433=23  E0422=18  E0107=18  E0109=8  E0391=1  E0255=1
+#
+# DISPOSITION:
+# - E0308 (repr brick) DISSOLVED by #6983: 04_infer 3410->0, materialization_carriers module_rs 652->0.
+# - #6981 CLEARED dotted-alias on 04_infer (110->106; 0 'found .' errors remain).
+#   Layer N+1 exposed: generic-T (E0425 cannot find type T), dup Witness import (E0255), missing types (E0422/E0433).
+# - 04_infer/06_translate NOT cargo-green post-#6981. Fan-out NOT green-lit yet.
+#
+# materialization_carriers E0425 characterization (execution):
+#   emitted line: extdeps.realization.parse_table_memo.parse_table_memo_id.clone()
+#   -> (a) VALUE-position qualified-name rendering (dotted value ref, not :: path or imported bare name)
+#   -> NOT (b) import-closure gap (types have use-lines; value refs rendered as invalid Rust field chain)
+# Gating: materialization_carriers.rs NOT in 04_infer or 06_translate emitted closure (sidecar module).
+#   E0425 does NOT gate fan-out targets; parallel cleanup on 00_compile/02_parse closure only.
