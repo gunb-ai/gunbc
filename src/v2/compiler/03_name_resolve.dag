@@ -22,6 +22,7 @@ import v2.std.resolution_policy {
 import v2.extdeps.languages.dag { dag_language_model_canonical_symbols }
 import v2.std.namespace_graft {
   module_header_containment_graft,
+  namespace_graft_export_collection_root,
   namespace_graft_is_graft_candidate,
   qualified_name_from_module_node_graft_aware
 }
@@ -375,10 +376,11 @@ fn admit_named_exports(
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match root.kind {
+  let export_root = namespace_graft_export_collection_root(root: root)
+  match export_root.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
-        n: root,
+        n: export_root,
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,

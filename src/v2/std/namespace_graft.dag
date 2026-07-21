@@ -389,6 +389,36 @@ fn namespace_graft_already_grafted(root: Node) -> Bool {
   }
 }
 
+fn namespace_graft_spine_body_conj(captured: Node) -> Node {
+  match captured.kind {
+    TypeNode { connective: Conj } =>
+      if count(captured.children) == 1 {
+        match list_at_optional(xs: captured.children, index: 0) {
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: _ } => namespace_graft_spine_body_conj(captured: edge.target)
+              Positional => captured
+            }
+          Absent => captured
+        }
+      } else {
+        captured
+      }
+    _ => captured
+  }
+}
+
+fn namespace_graft_export_collection_root(root: Node) -> Node {
+  if namespace_graft_already_grafted(root: root) {
+    match parse_production_captured_child_optional(node: root) {
+      Present { value: captured } => namespace_graft_spine_body_conj(captured: captured)
+      Absent => root
+    }
+  } else {
+    root
+  }
+}
+
 fn namespace_graft_dual_position_refused(root: Node) -> Bool {
   if !namespace_graft_is_graft_candidate(root: root) {
     false
