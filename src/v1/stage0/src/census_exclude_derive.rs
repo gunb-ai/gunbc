@@ -237,25 +237,14 @@ pub fn derive_census_exclude_closure(
 
                 let before_len = derived_module_paths.len();
                 for failure in &failures {
-                    if derived_module_paths.insert(failure.clone()) {
-                        for importer in transitive_importers_of(failure, &reverse_adjacency) {
-                            if derived_module_paths.insert(importer.clone()) {
-                                live_importers_excluded.push(LiveImporterExclusion {
-                                    module_path: importer,
-                                    seed_chain: failure.clone(),
-                                    round,
-                                });
-                            }
-                        }
-                    } else {
-                        for importer in transitive_importers_of(failure, &reverse_adjacency) {
-                            if derived_module_paths.insert(importer.clone()) {
-                                live_importers_excluded.push(LiveImporterExclusion {
-                                    module_path: importer,
-                                    seed_chain: failure.clone(),
-                                    round,
-                                });
-                            }
+                    derived_module_paths.insert(failure.clone());
+                    for importer in transitive_importers_of(failure, &reverse_adjacency) {
+                        if derived_module_paths.insert(importer.clone()) {
+                            live_importers_excluded.push(LiveImporterExclusion {
+                                module_path: importer,
+                                seed_chain: failure.clone(),
+                                round,
+                            });
                         }
                     }
                 }
