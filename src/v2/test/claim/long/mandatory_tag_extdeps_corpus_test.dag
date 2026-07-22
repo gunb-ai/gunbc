@@ -1,0 +1,93 @@
+module v2.test.long.mandatory_tag_extdeps_corpus_test
+
+import extdeps.filesystem.filesystem_io
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.mandatory_tag { mandatory_tag_findings }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data corpus_witness_note: String = "The corpus grain of the mandatory-tag wall: walk dag/extdeps/** with the modeled Filesystem.List/filesystem_read operations, ingest each module through the v2 grammar (tokenize -> parse_module), and run the SAME mandatory_tag_findings fold the compile gate runs - one authority, two consumption grains. This witness replaces the deleted cli_run.rs host text-scan (extdeps_external_authority_module_facts and its six interpreter builtins): enumeration is derived from the live tree, parsing is the v2 grammar (the Node-tree projection the scaffold's dissolution trigger named), and the verdict fold is the lens itself. Fail-closed accounting: a file that fails tokenize/parse counts as a stage refusal (never skipped), a directory walk failure counts as a walk refusal, and the module-count floor (> 150, the old roster_module_count parity bar) makes an accidentally-empty walk red rather than vacuously green. The per-file RED discrimination (misnamed anchor, non-external scheme, wrong type) is witnessed at the shared-fold grain in v2.lens.mandatory_tag.gate_witness_test - the corpus walker's own refusal arms are red-controlled here via the nonexistent-root probe."
+
+type CorpusScan {
+  module_count: Int
+  finding_count: Int
+  stage_reject_count: Int
+  walk_failure_count: Int
+}
+
+fn corpus_scan_zero() -> CorpusScan {
+  CorpusScan { module_count: 0, finding_count: 0, stage_reject_count: 0, walk_failure_count: 0 }
+}
+
+fn corpus_scan_add(a: CorpusScan, b: CorpusScan) -> CorpusScan {
+  CorpusScan {
+    module_count: a.module_count + b.module_count,
+    finding_count: a.finding_count + b.finding_count,
+    stage_reject_count: a.stage_reject_count + b.stage_reject_count,
+    walk_failure_count: a.walk_failure_count + b.walk_failure_count
+  }
+}
+
+fn scan_dag_file(path: String) -> CorpusScan {
+  let text = filesystem_read(path: path).content
+  let lm = dag_language_model()
+  match tokenize(text: text, file: ^mandatory_tag_corpus_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      CorpusScan { module_count: 1, finding_count: 0, stage_reject_count: 1, walk_failure_count: 0 }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } =>
+          CorpusScan { module_count: 1, finding_count: 0, stage_reject_count: 1, walk_failure_count: 0 }
+        Accepted { value: artifact, diagnostics: _ } =>
+          CorpusScan {
+            module_count: 1,
+            finding_count: length(xs: mandatory_tag_findings(root: artifact.tree)),
+            stage_reject_count: 0,
+            walk_failure_count: 0
+          }
+      }
+  }
+}
+
+fn walk_extdeps_dir(path: String) -> CorpusScan {
+  let l = Filesystem.List(path: path)
+  if l.success {
+    if l.entries == "" {
+      corpus_scan_zero()
+    } else {
+      fold(split(l.entries, separator: "\n"), init: corpus_scan_zero(), f: fn(acc, name) {
+        let child = concat(path, "/", name)
+        if name.ends_with(suffix: ".dag") {
+          corpus_scan_add(a: acc, b: scan_dag_file(path: child))
+        } else {
+          corpus_scan_add(a: acc, b: walk_extdeps_dir(path: child))
+        }
+      })
+    }
+  } else {
+    CorpusScan { module_count: 0, finding_count: 0, stage_reject_count: 0, walk_failure_count: 1 }
+  }
+}
+
+test fn mandatory_tag_extdeps_corpus_wall_holds() -> Bool {
+  let scan = walk_extdeps_dir(path: "dag/extdeps")
+  scan.finding_count == 0
+    && scan.stage_reject_count == 0
+    && scan.walk_failure_count == 0
+    && scan.module_count > 150
+}
+
+test fn mandatory_tag_corpus_walker_refuses_missing_root() -> Bool {
+  let scan = walk_extdeps_dir(path: "dag/extdeps_nonexistent_probe_root")
+  scan.walk_failure_count == 1 && scan.module_count == 0
+}
