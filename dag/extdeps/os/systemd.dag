@@ -35,6 +35,8 @@ data systemd_memory_high_property: NonEmptyStr = "MemoryHigh"
 
 data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
 
+data systemd_memory_current_property: NonEmptyStr = "MemoryCurrent"
+
 type SystemdCgroupMemoryLimit
   = MemoryLimitUnbounded
   | MemoryLimitBytes { bytes: ByteSize }
