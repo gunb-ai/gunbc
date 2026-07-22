@@ -1,5 +1,7 @@
 module v2.test.claim.realization_schedule_witness
 
+import v2.workflow.ci_floor_plan { cheap_floor_gate_step_labels }
+
 
 fn witness_batches_are_plan_schedule() -> Bool {
   schedule_generates_identical_schedule(
@@ -18,7 +20,8 @@ fn witness_batches_identical_to_inner_schedule() -> Bool {
 fn witness_schedule_lens_holds_on_floor_plan() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
-    compile_gate_fn: ci_floor_compile_gate_fn
+    compile_gate_fn: ci_floor_compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
   ) {
     Holds => true
     Violation { diagnostic: _ } => false
@@ -42,7 +45,11 @@ fn witness_schedule_lens_red_when_corpus_runs_first_on_live_floor() -> Bool {
     schedule: perturbed_schedule_wrong_order(inner: inner)
     total: cost_account_predicted_zero()
   }
-  match schedule_lens_verdict_for_ci_floor(plan: perturbed, compile_gate_fn: ci_floor_compile_gate_fn) {
+  match schedule_lens_verdict_for_ci_floor(
+    plan: perturbed,
+    compile_gate_fn: ci_floor_compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
+  ) {
     Holds => false
     Violation { diagnostic: _ } => true
     NotApplicable { diagnostic: _ } => false

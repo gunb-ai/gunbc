@@ -16,6 +16,7 @@ import v2.workflow.ci_floor_plan {
   gate_runnable,
   gunbc_ci_cheap_floor_gate_membership,
   gate_in_cheap_floor_membership,
+  floor_batch_has_any_cheap_gate,
   gate_node,
   floor_resource_anchor_node,
   witness_floor_corpus_exclusion_edges_exist,
@@ -162,14 +163,8 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
   let batches = gunbc_ci_floor_batches()
   let compile_idx = batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes")
   (compile_idx == 1)
-    && schedule_lens_batch_has_any_cheap_gate(batch: batches.first())
+    && floor_batch_has_any_cheap_gate(batch: batches.first())
     && !list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
-}
-
-fn schedule_lens_batch_has_any_cheap_gate(batch: List<Runnable>) -> Bool {
-  list_contains_str(xs: batch_functions(b: batch), target: "layering_imports_gate_passes")
-    || list_contains_str(xs: batch_functions(b: batch), target: "extdeps_external_authority_gate_passes")
-    || list_contains_str(xs: batch_functions(b: batch), target: "generated_artifact_drift_gate_passes")
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
