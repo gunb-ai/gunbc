@@ -13,6 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data sudo_nopasswd_execute_probe_note: String = "Non-interactive sudo execute probe: sudo -n <command_path> <check_argv>. Interface shape only — argv transport is realized in gunbc.host_effect_deploy_access_probe_script, never as a shell string in intent."
 
+data sudo_nopasswd_grant_list_probe_note: String = "Non-interactive sudoers grant probe: sudo -n -l <command_path> (lists allowed command, no exec). Used when the binary may be absent before package ensure — exec failure would mis-diagnose as grant miss (review 41039)."
+
 type SudoNopasswdExecuteProbeShape {
   command_path: NonEmptyStr
   check_argv: NonEmptyStr

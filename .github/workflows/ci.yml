@@ -164,6 +164,20 @@ jobs:
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
         timeout-minutes: 5
+      - name: gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          git fetch --no-tags origin main 2>/dev/null || true
+          # Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 immediately (a required step that passes because the self-host fixed-point is provably unchanged — regen runs before the floor so emitter drift fails fast, with no floor or merge-admission dependency). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            _ci_regen_skip=$("$ROOT/target/release/regen_floor_skip_witness" 2>/dev/null || echo run_regen)
+            if [ "$_ci_regen_skip" = "regen_not_affected_skip" ]; then
+                echo "gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)"
+                exit 0
+            fi
+          fi
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
+        timeout-minutes: 270
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
@@ -239,20 +253,6 @@ jobs:
           if test "$_disp" = "documentation_only_skipped"; then echo "merge-admission gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; merge-admission stamp already recorded Skipped disposition)"; exit 0; fi; fi
           "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_gate.dag --function main
         timeout-minutes: 5
-      - name: gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          git fetch --no-tags origin main 2>/dev/null || true
-          # Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 (a required step that passes because regen is provably not stale — merge-admission ran before this trailing step). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control.
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            _ci_regen_skip=$("$ROOT/target/release/regen_floor_skip_witness" 2>/dev/null || echo run_regen)
-            if [ "$_ci_regen_skip" = "regen_not_affected_skip" ]; then
-                echo "gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)"
-                exit 0
-            fi
-          fi
-          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
-        timeout-minutes: 270
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
