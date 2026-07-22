@@ -108,10 +108,10 @@ fn runner_memory_cap_verify_tally_from_read(
 }
 
 fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally, knob_count: Int) -> ConvergeVerdict {
-  if tally.absent > 0 {
-    Absent
-  } else { if tally.drifted > 0 {
+  if tally.drifted > 0 {
     Drifted
+  } else { if tally.absent > 0 {
+    Absent
   } else { if tally.converged == knob_count && knob_count > 0 {
     VerdictConverged
   } else {
