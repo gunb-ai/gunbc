@@ -31,6 +31,8 @@ data src_file_scheme: String = "module extdeps.gate_probe_file_scheme\n\ndata ex
 
 data src_wrong_type: String = "module extdeps.gate_probe_wrong_type\n\ndata extdeps_external_authority_anchor: SomethingElse = SomethingElse {\n  note: \"not an authority\"\n}\n"
 
+data src_bogus_scheme: String = "module extdeps.gate_probe_bogus_scheme\n\ndata extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {\n  uri: Uri {\n    scheme: Gopher\n    locator: \"gopher.example.org/authority\"\n  }\n}\n"
+
 data src_off_region: String = "module probe.gate_probe_offregion\n\ndata gate_probe_unrelated_row: Int = 7\n"
 
 data src_exempt_fixture: String = "module extdeps.fixture.gate_probe_planted\n\ndata gate_probe_unrelated_row: Int = 7\n"
