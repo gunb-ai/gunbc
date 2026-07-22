@@ -237,7 +237,7 @@ pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
     python_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

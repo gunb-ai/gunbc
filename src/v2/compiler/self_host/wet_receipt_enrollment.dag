@@ -34,8 +34,87 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
     f: "namespace_import_closure_receipt_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
+    f: "emit_on_demand_kernel_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
+    f: "emit_on_demand_field_access_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    f: "emit_on_demand_complement_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
+    f: "emit_on_demand_match_loop_fold_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    f: "emit_on_demand_meet_join_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    f: "emit_on_demand_variant_construct_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    f: "emit_on_demand_classical_not_ingested_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    f: "emit_on_demand_family_crate_witnesses"
   )
 ]
+
+data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): the 9 standalone emit_host_<family>_equals_eval_test.dag agreement witnesses — emit->build->run->equals-oracle with no compile_skipped assertion, so every leg is COLD-VALID under the control. The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named."
+
+data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    f: "emit_host_add_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    f: "emit_host_field_access_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    f: "emit_host_complement_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    f: "emit_host_match_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    f: "emit_host_loop_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    f: "emit_host_fold_closure_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    f: "emit_host_meet_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    f: "emit_host_variant_construct_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    f: "emit_host_classical_not_ingested_equals_eval_holds"
+  )
+]
+
+fn falsifier_native_cache_cold_roster() -> List<ScheduleWitnessEntry> {
+  falsifier_native_cache_cold_entries
+}
+
+data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand family aggregates (9 witness families: add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) enroll on this nightly Wet cadence 2026-07-21: each emits real Rust, cargo-builds under the admitted build_workspace_grant envelope, runs the native binary, and compares against the interpreted oracle. Enrolled after the 2026-07-20 regression proved the class was invisible to CI (test/claim/execution/ excluded from hermetic discovery AND offline roster - the enrolled-but-never-run coverage-by-illusion class): the sorted_fields interner-order bug broke all 9 families' wet legs and nothing red-ed. This cadence is the rot-detector. Per-PR stays hermetic; the full CI-on-v2 cutover (P6) additionally needs the is_hermetic blanket refusal in emit_host_run_transport replaced by the Admitted verdict (effect-grants seam) plus the content-keyed result store so builds amortize."
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = [
   SelfHostWetReceiptBinding {

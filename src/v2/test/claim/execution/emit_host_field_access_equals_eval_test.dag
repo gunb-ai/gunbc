@@ -13,8 +13,6 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_arrow_with_body_node,
-  dag_field_access_arrow_domain_conj_node,
   dag_field_access_arrow_with_body_fixture,
   dag_field_access_body_fixture,
   dag_type_atom_node
@@ -83,21 +81,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data emit_field_eval_subgraph_node: Node = dag_field_access_body_fixture
 
-fn emit_field_eval_generic_facts(node: Node) -> InferredFacts {
+fn emit_field_eval_facts_with_descent(node: Node, descent_symbol: Symbol) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: ^emit_field_eval_generic_descent }
+        strict: RankingDimension { measured: descent_symbol }
       }
     }
   )
 }
 
+fn emit_field_eval_generic_facts(node: Node) -> InferredFacts {
+  emit_field_eval_facts_with_descent(
+    node: node,
+    descent_symbol: ^emit_field_eval_generic_descent
+  )
+}
+
 fn emit_field_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
   Holds { value: emit_field_eval_generic_facts(node: key) }
+}
+
+fn emit_field_eval_alt_descent_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: emit_field_eval_facts_with_descent(
+      node: key,
+      descent_symbol: ^emit_field_eval_alt_descent
+    )
+  }
 }
 
 fn rust_field_access_emit_host_wrong_field_body() -> Node {
@@ -121,14 +135,6 @@ fn rust_field_access_emit_host_wrong_field_body() -> Node {
   }
 }
 
-fn rust_field_access_emit_host_wrong_field_root() -> Node {
-  dag_arrow_with_body_node(
-    domain: dag_field_access_arrow_domain_conj_node(),
-    return_type_binding: ^dag_binding_type_int,
-    body: rust_field_access_emit_host_wrong_field_body()
-  )
-}
-
 fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
@@ -138,11 +144,13 @@ fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   )
 }
 
-fn emit_field_eval_wrong_field_producer_tree() -> Outcome<InferredTree> {
+data emit_field_eval_alt_descent_producer_note: String = "Valid alternative tree for the emit-on-demand content-change probe, mirroring kernel_alt_subject_tree: same root, different facts (descent ranking symbol) -> different inferred_tree_digest -> new native key, while the emitted Rust stays the valid fn get(r: (i32,)) -> i32 { r.0 } producing octet 9. The wrong-field tree (r.1 on a 1-tuple) is NOT a valid alt: it is the semantic-mismatch RED fixture and does not compile natively (rustc E0609)."
+
+fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
-      root: rust_field_access_emit_host_wrong_field_root(),
-      facts: Map { lookup: emit_field_eval_composed_facts }
+      root: dag_field_access_arrow_with_body_fixture,
+      facts: Map { lookup: emit_field_eval_alt_descent_composed_facts }
     }
   )
 }
