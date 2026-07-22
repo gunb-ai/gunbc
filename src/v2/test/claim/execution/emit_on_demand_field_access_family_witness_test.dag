@@ -27,8 +27,9 @@ import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
+  emit_host_no_run_args,
   run_emit_host_cached,
-  run_test_claim_emit_vs_eval,
+  run_test_claim_from_source_emit_vs_eval_cached,
 }
 import v2.compiler.eval {
   Inputs,
@@ -52,7 +53,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_field_access_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_field_access family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap)."
+data emit_on_demand_field_access_family_note: String = "Witness-realization lane 2 (witness_family_fanout), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_field_access_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (octet 9), the eval-anchored agreement AND the wrong-fixture semantic-mismatch RED (wrong-field subject over the primary build) run WARM on the same build, then the wrong-field alt tree colds in the SAME root with the flipped octet 1. Formerly ~7 crate builds per pass; now 2. Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap). Pure receipts unchanged."
 
 data field_access_family_cache_root: String = "/tmp/gunbc_emit_on_demand_field_access"
 data field_access_family_emitter: String = "v2.compiler.emit"
@@ -185,11 +186,28 @@ fn field_access_family_cache_root_for(test_id: String) -> String {
   concat(field_access_family_cache_root, "/", test_id)
 }
 
-fn field_access_family_evict_and_workspace(test_id: String, tree: InferredTree) -> String {
-  let key = field_access_family_native_key_for(tree: tree)
-  let root = field_access_family_cache_root_for(test_id: test_id)
-  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
-  native_cache_workspace_root(cache_root: root, key: key)
+fn field_access_cached_agreement_pass(workspace: String, tree: InferredTree) -> Bool {
+  emit_field_eval_verdict_is_pass(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: emit_field_eval_subject(tree: tree),
+      source_outcome: emit(tree: tree, target: rust_field_access_target_model_staging()),
+      target: rust_field_access_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
+  )
+}
+
+fn field_access_cached_wrong_fixture_mismatch(workspace: String, tree: InferredTree) -> Bool {
+  emit_field_eval_verdict_is_semantic_mismatch(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: emit_field_eval_wrong_fixture_subject(tree: tree),
+      source_outcome: emit(tree: tree, target: rust_field_access_target_model_staging()),
+      target: rust_field_access_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
+  )
 }
 
 fn field_access_family_cached_run_checks(
@@ -248,12 +266,12 @@ test fn emit_on_demand_field_access_closure_keys_differ_for_distinct_trees_holds
   }
 }
 
-test fn emit_on_demand_field_access_native_content_change_cold_rebuild_holds() -> Bool {
+test fn emit_on_demand_field_access_native_one_build_holds() -> Bool {
   match field_access_family_primary_tree() {
     Accepted { value: tree_primary, diagnostics: _ } =>
       match field_access_family_alt_tree() {
         Accepted { value: tree_alt, diagnostics: _ } =>
-          let shared_parent = field_access_family_cache_root_for(test_id: "content_change_miss")
+          let shared_parent = field_access_family_cache_root_for(test_id: "native_one_build")
           let key_primary = field_access_family_native_key_for(tree: tree_primary)
           let key_alt = field_access_family_native_key_for(tree: tree_alt)
           if key_primary == key_alt {
@@ -294,67 +312,6 @@ test fn emit_on_demand_field_access_native_content_change_cold_rebuild_holds() -
   }
 }
 
-test fn emit_on_demand_field_access_agreement_holds() -> Bool {
-  match field_access_family_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_field_eval_verdict_is_pass(
-        run: run_test_claim_emit_vs_eval(
-          subject: emit_field_eval_subject(tree: tree),
-          target: rust_field_access_target_model_staging()
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_on_demand_field_access_wrong_fixture_refuses_holds() -> Bool {
-  match emit_field_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_field_eval_verdict_is_semantic_mismatch(
-        run: run_test_claim_emit_vs_eval(
-          subject: emit_field_eval_wrong_fixture_subject(tree: tree),
-          target: rust_field_access_target_model_staging()
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_on_demand_field_access_native_cold_holds() -> Bool {
-  match field_access_family_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      let workspace = field_access_family_evict_and_workspace(test_id: "native_cold", tree: tree)
-      field_access_family_cached_run_checks(
-        workspace: workspace,
-        tree: tree,
-        expect_compile_skipped: false,
-        expected_octet: 9
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_on_demand_field_access_native_warm_holds() -> Bool {
-  match field_access_family_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      let workspace = field_access_family_evict_and_workspace(test_id: "native_warm", tree: tree)
-      field_access_family_cached_cold_then_warm(workspace: workspace, tree: tree, expected_octet: 9)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_on_demand_field_access_native_cold_then_warm_holds() -> Bool {
-  match field_access_family_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      let workspace = field_access_family_evict_and_workspace(
-        test_id: "native_cold_then_warm",
-        tree: tree
-      )
-      field_access_family_cached_cold_then_warm(workspace: workspace, tree: tree, expected_octet: 9)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn emit_on_demand_field_access_materialize_share_on_hit_holds() -> Bool {
   match field_access_family_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -377,11 +334,6 @@ test fn emit_on_demand_field_access_family_witnesses() -> Bool {
     && emit_on_demand_field_access_interpreter_roles_bounded_holds()
     && emit_on_demand_field_access_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_field_access_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_field_access_agreement_holds()
-    && emit_on_demand_field_access_wrong_fixture_refuses_holds()
-    && emit_on_demand_field_access_native_content_change_cold_rebuild_holds()
-    && emit_on_demand_field_access_native_cold_holds()
-    && emit_on_demand_field_access_native_warm_holds()
-    && emit_on_demand_field_access_native_cold_then_warm_holds()
+    && emit_on_demand_field_access_native_one_build_holds()
     && emit_on_demand_field_access_materialize_share_on_hit_holds()
 }
