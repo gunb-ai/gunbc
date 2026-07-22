@@ -243,7 +243,12 @@ data lever_a_local_receipt_witness_exclusion_note: String = "dag/test/claim/leve
 
 data whole_tree_strict_resolve_scaffold_exclusion_note: String = "The per-file rows below (everything after the three blanket prefixes and the two lens/application rows) are the strict-resolve-broken set, baked as single authority per operator ruling 2026-07-13 ('just make it single authority') — previously re-derived per probe run as --exclude-subpath args (M0/M1a receipts, docs/plans/v1-run-stability-throughline.md), a parallel representation this bake dissolves. Audited file-by-file 2026-07-13 (24 files, 5-group sweep with per-file execution receipts): 7 genuinely dead scaffolds were DELETED with their rows (the four Wave-A rung evals, the A.1.5a inprocess_equivalence one-shot, manual_corpus_eval, lens/idempotency/subject_roster — none witness-enrolled, zero importers, absent from the 1,776-witness cold corpus run); every row remaining guards a LIVE file — floor-discovered witnesses or their roster/receipt/lens dependencies, proven green by execution (the lens/testgen/ trio's four test-data witnesses PASS in the cold corpus run, overturning an initial dead-scaffold read). Their strict-resolve reds are universe-relative artifacts, NOT tree rot: each imports modules that EXIST in-tree (v2.test.manual.eval_runtime, v2.test.manual.connective_anchors, test fixtures) but sit behind this list's own blanket '/test/' and 'test/fixture/' rows, so the probe universe drops the import target while keeping the importer. Consumers are probe/instrument/census class only (measure_whole_tree_resolve, capture_func_env_semantic_oracle, wiring_liveness_whole_tree, measure_dependency_view_build, fn_arrow_decl_substrate census) — no witness-discovery or CI-gate coverage narrows. Dissolve each row on: its file relocates under a /test/ path (leaving the probe universe together with its import targets) or the blanket /test/ exclusion policy changes so its resolve repairs; a row that excludes nothing is dead weight, delete it. First relocation receipt (2026-07-14): the spice pair (spice_rc_passive_deck_claims_test, spice_rc_ngspice_oracle_test) re-homed to src/v2/test/claim/extdeps/ — they leave the probe universe with their fixtures, stay witness-discovered, and their two rows deleted per this trigger."
 
+data resolution_divergence_census_roster_excluded_module_prefixes: List<String> = [
+  "v2.test."
+]
+
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
+  "v2.test.",
   "test/fixture/",
   "/test/",
   "nat_semiring_rung",
