@@ -7490,6 +7490,39 @@ fn eval_emit_host_run_transport_cached_builtin(
     )
 }
 
+/// Host-tool program resolution for the emit-host transports (fleet incident
+/// 2026-07-22: srv2 runner env has no `cargo` on PATH — the repo-checkout build
+/// steps get it via the CI prelude, but the transport spawns from an emitted
+/// workspace with only the process env). Resolution order: bare name if it
+/// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
+/// else the bare name (spawn then fails with the existing typed error — refuse,
+/// never fabricate).
+fn resolve_host_tool_program(name: &str) -> String {
+    if name.contains('/') {
+        return name.to_string();
+    }
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in path_var.split(':') {
+            if !dir.is_empty() && std::path::Path::new(dir).join(name).is_file() {
+                return name.to_string();
+            }
+        }
+    }
+    if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
+        let candidate = std::path::Path::new(&cargo_home).join("bin").join(name);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let candidate = std::path::Path::new(&home).join(".cargo/bin").join(name);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    name.to_string()
+}
+
 fn emit_host_run_transport_cached_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -7560,7 +7593,7 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(&argv[0])
+        std::process::Command::new(resolve_host_tool_program(&argv[0]))
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
@@ -7688,7 +7721,7 @@ fn emit_host_run_transport_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(&argv[0])
+        std::process::Command::new(resolve_host_tool_program(&argv[0]))
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)

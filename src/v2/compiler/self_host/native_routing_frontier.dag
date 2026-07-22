@@ -1,0 +1,137 @@
+module v2.compiler.self_host.native_routing_frontier
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { length }
+
+data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA gated by the parity window (v2.compiler.self_host.parity_window): N consecutive green falsifier cadence windows (agreement + warm compile_skipped=true) are required evidence; a refusal or divergence resets the window. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation. All 9 families start InterpretedRetained with reason parity_window_open at landing; the PR ships the machine, receipts flip it."
+
+type NativeRoutingDisposition
+  = NativeRouted
+  | InterpretedRetained { reason: String, dissolve_on: String }
+
+type NativeRoutingFrontierRow {
+  family: String
+  agreement_entry: String
+  agreement_function: String
+  disposition: NativeRoutingDisposition
+}
+
+fn retained_parity_open(family: String, entry: String, f: String) -> NativeRoutingFrontierRow {
+  NativeRoutingFrontierRow {
+    family: family,
+    agreement_entry: entry,
+    agreement_function: f,
+    disposition: InterpretedRetained {
+      reason: "no_cached_no_evict_carrier",
+      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) AND its parity window is green per v2.compiler.self_host.parity_window; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run"
+    }
+  }
+}
+
+fn routed_via_family_crate(family: String) -> NativeRoutingFrontierRow {
+  NativeRoutingFrontierRow {
+    family: family,
+    agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
+    disposition: NativeRouted
+  }
+}
+
+data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
+  retained_parity_open(
+    family: "add",
+    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    f: "emit_host_add_equals_eval_holds"
+  ),
+  retained_parity_open(
+    family: "field_access",
+    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    f: "emit_host_field_access_equals_eval_holds"
+  ),
+  routed_via_family_crate(family: "complement"),
+  retained_parity_open(
+    family: "match",
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    f: "emit_host_match_equals_eval_holds"
+  ),
+  retained_parity_open(
+    family: "loop",
+    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    f: "emit_host_loop_equals_eval_holds"
+  ),
+  retained_parity_open(
+    family: "fold_closure",
+    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    f: "emit_host_fold_closure_equals_eval_holds"
+  ),
+  routed_via_family_crate(family: "meet_join"),
+  retained_parity_open(
+    family: "variant_construct",
+    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    f: "emit_host_variant_construct_equals_eval_holds"
+  ),
+  retained_parity_open(
+    family: "classical_not_ingested",
+    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    f: "emit_host_classical_not_ingested_equals_eval_holds"
+  )
+]
+
+data native_routing_frontier_family_count_expected: Int = 9
+
+fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
+  match row.disposition {
+    NativeRouted => true
+    InterpretedRetained { reason: _, dissolve_on: _ } => false
+  }
+}
+
+fn native_routed_rows() -> List<NativeRoutingFrontierRow> {
+  fold(
+    native_routing_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if routing_row_is_native(row: row) {
+        concat(acc, [row])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn interpreted_retained_rows() -> List<NativeRoutingFrontierRow> {
+  fold(
+    native_routing_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if routing_row_is_native(row: row) {
+        acc
+      } else {
+        concat(acc, [row])
+      }
+    }
+  )
+}
+
+fn routing_frontier_row_for_family(family: String) -> List<NativeRoutingFrontierRow> {
+  fold(
+    native_routing_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if row.family == family {
+        concat(acc, [row])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn routing_frontier_total_holds() -> Bool {
+  let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
+  length(xs: native_routing_frontier_roster) == native_routing_frontier_family_count_expected
+    && split_total == native_routing_frontier_family_count_expected
+}
