@@ -1,5 +1,6 @@
 module gunbc.output_policy
 
+import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
 
 type Verbosity = Quiet | Normal | Verbose
 
@@ -99,4 +100,104 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
     Suppressed => false
     Full => false
   }
+}
+
+data effect_expectation_note: String = "channel_decision above answers how loud a CHANNEL is. It cannot answer whether a given effect's captured streams are worth surfacing, because that needs a fact it was never given: what the caller EXPECTED. Before this row 'failure' was hand-coded downstream as exit != 0 — an untyped proxy that silently assumes every effect expects success (the empty set). Naming the expectation makes the rule one line: DIVERGENCE SURFACES, AGREEMENT COUNTS, where failure means observed differs from declared-expected at the grain that declared it. That closes two leaks in one dispatch. The noisy one: a red-control child failing exactly as declared is AGREEMENT, so its stderr is counted, not replayed — and a subject stderr carrying '::error::' stops minting annotations in the parent run. The silent one, which nobody has hit yet and which is the real payoff: a red control that SUCCEEDS (the wall failing to fire) is divergence, and today logs nothing at all — the single most diagnosis-worthy event in the system is currently the quietest. There is deliberately no ExpectAny arm: an effect whose expectation is unknown would make every observation agree, restoring the empty set (DESIGN 5 — a failure arm must refuse, never widen)."
+
+type ExpectedOutcome = ExpectSuccess | ExpectFailure
+
+type ObservedOutcome = ObservedSuccess | ObservedFailure { exit: Int }
+
+data stream_disposition_distinct_from_output_decision_note: String = "StreamDisposition is NOT a second spelling of OutputDecision (DESIGN 3 — the nicknaming check was run before minting it). They grade different payloads with different obligations: OutputDecision grades a trace LINE this repo authored (Condensed dims and truncates it to shell_trace_summary_max_columns), while StreamDisposition grades a captured SUBJECT stream this repo did not author (SummarizeCounts prints byte counts INSTEAD of content, and SurfaceContent carries the neutralization obligation a rendered line never needs). The third arm is StreamSuppressed rather than a reused Suppressed only because variant names share one namespace here; it is the same grade over the other payload."
+
+type StreamDisposition = SurfaceContent | SummarizeCounts | StreamSuppressed
+
+fn observed_outcome_from_exit(exit: Int) -> ObservedOutcome {
+  if exit == 0 {
+    ObservedSuccess
+  } else {
+    ObservedFailure { exit: exit }
+  }
+}
+
+fn outcome_diverges(expected: ExpectedOutcome, observed: ObservedOutcome) -> Bool {
+  match expected {
+    ExpectSuccess => match observed {
+      ObservedSuccess => false
+      ObservedFailure { exit: exit } => true
+    }
+    ExpectFailure => match observed {
+      ObservedSuccess => true
+      ObservedFailure { exit: exit } => false
+    }
+  }
+}
+
+fn divergence_disposition(diverges: Bool) -> StreamDisposition {
+  if diverges {
+    SurfaceContent
+  } else {
+    SummarizeCounts
+  }
+}
+
+data effect_stream_dispatch_note: String = "Verbosity and divergence compose rather than compete: Quiet suppresses the stream whatever the outcome, Verbose surfaces it whatever the outcome (the operator asked for everything), and the divergence rule decides the Normal middle — which is where CI runs. So the channel's existing authority is consumed, not re-derived, and the new axis only refines the arm that was previously fixed."
+
+fn effect_stream_disposition(
+  channel: OutputChannel,
+  verbosity: Verbosity,
+  expected: ExpectedOutcome,
+  observed: ObservedOutcome
+) -> StreamDisposition {
+  match channel_decision(channel: channel, verbosity: verbosity) {
+    Suppressed => StreamSuppressed
+    Condensed => divergence_disposition(diverges: outcome_diverges(expected: expected, observed: observed))
+    Full => SurfaceContent
+  }
+}
+
+data surface_effect_stream_sole_producer_note: String = "This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (DESIGN 5 — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes."
+
+fn surface_effect_stream(disposition: StreamDisposition, text: String) -> String? {
+  match disposition {
+    SurfaceContent => Present { value: neutralize_workflow_commands(text: text) }
+    SummarizeCounts => Absent
+    StreamSuppressed => Absent
+  }
+}
+
+data effect_stream_policy_projection_note: String = "The four corners of effect_stream_disposition at a fixed channel and verbosity, bundled the way channel_policy bundles the five channels — the seed transports evaluated verdicts across the seed/.dag boundary and holds no rule. The ObservedFailure exit literal below is representative, not fabricated: effect_stream_disposition provably does not read the exit payload, and the witness effect_stream_disposition_is_exit_invariant pins that, so the four corners are the whole function and the projection is total."
+
+type EffectStreamPolicy {
+  expect_success_observed_success: StreamDisposition
+  expect_success_observed_failure: StreamDisposition
+  expect_failure_observed_success: StreamDisposition
+  expect_failure_observed_failure: StreamDisposition
+  subject_line_guard: String
+}
+
+fn shell_trace_stream_policy(verbosity: Verbosity) -> EffectStreamPolicy {
+  EffectStreamPolicy {
+    expect_success_observed_success: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: ExpectSuccess, observed: ObservedSuccess
+    )
+    expect_success_observed_failure: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)
+    )
+    expect_failure_observed_success: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: ExpectFailure, observed: ObservedSuccess
+    )
+    expect_failure_observed_failure: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)
+    )
+    subject_line_guard: subject_text_line_guard
+  }
+}
+
+fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStreamPolicy {
+  shell_trace_stream_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }

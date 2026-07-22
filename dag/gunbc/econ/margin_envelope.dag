@@ -1,0 +1,76 @@
+module gunbc.econ.margin_envelope
+
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  filed_amount,
+  usd_whole_dollars_count,
+}
+import std.measure { BasisPoint, basis_point, basis_point_count }
+import std.nat { Nat }
+
+data margin_envelope_derive_not_store_note: String = "Margin envelopes are DERIVED from filed SEC component rows at read time (extdeps.sec.facts filed_facts_derive_not_store_note) — never stored fields on issuer fact rows. Basis points are integer-derived from whole-dollar filed amounts via std.measure.BasisPoint: (profit * 10000) / revenue."
+
+type MarginKind = GrossMargin | OperatingMargin
+
+type MarginEnvelope {
+  margin_low_bp: BasisPoint
+  margin_high_bp: BasisPoint
+}
+
+type MarginEnvelopeRefusalCause
+  = RevenueUnfiled
+  | ProfitUnfiled
+  | RevenueNonPositive
+  | EnvelopeDerivationRefused
+
+type MarginEnvelopeResult
+  = MarginEnvelopeDerived { envelope: MarginEnvelope, margin_kind: MarginKind }
+  | MarginEnvelopeRefused { cause: MarginEnvelopeRefusalCause }
+
+fn margin_envelope_from_whole_dollar_counts(revenue: Nat, profit: Nat) -> MarginEnvelope? {
+  if revenue <= 0 {
+    none
+  } else {
+    let low_count = (profit * 10000) / revenue
+    let high_count = ((profit * 10000) + revenue - 1) / revenue
+    Present {
+      value: MarginEnvelope {
+        margin_low_bp: basis_point(count: low_count),
+        margin_high_bp: basis_point(count: high_count),
+      }
+    }
+  }
+}
+
+fn derive_margin_envelope_from_filed_facts(
+  revenue: FiledMonetaryFact,
+  profit: FiledMonetaryFact,
+  margin_kind: MarginKind,
+) -> MarginEnvelopeResult {
+  match filed_amount(fact: revenue) {
+    Present { value: rev } =>
+      match filed_amount(fact: profit) {
+        Present { value: prf } => {
+          let rev_count = usd_whole_dollars_count(m: rev)
+          let prf_count = usd_whole_dollars_count(m: prf)
+          if rev_count <= 0 {
+            MarginEnvelopeRefused { cause: RevenueNonPositive }
+          } else {
+            match margin_envelope_from_whole_dollar_counts(revenue: rev_count, profit: prf_count) {
+              Present { value: envelope } =>
+                MarginEnvelopeDerived { envelope: envelope, margin_kind: margin_kind }
+              _ => MarginEnvelopeRefused { cause: EnvelopeDerivationRefused }
+            }
+          }
+        }
+        _ => MarginEnvelopeRefused { cause: ProfitUnfiled }
+      }
+    _ => MarginEnvelopeRefused { cause: RevenueUnfiled }
+  }
+}
+
+fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: BasisPoint, high_bp: BasisPoint) -> Bool {
+  (basis_point_count(bp: envelope.margin_low_bp) >= basis_point_count(bp: low_bp))
+    && (basis_point_count(bp: envelope.margin_high_bp) <= basis_point_count(bp: high_bp))
+    && (basis_point_count(bp: envelope.margin_low_bp) <= basis_point_count(bp: envelope.margin_high_bp))
+}

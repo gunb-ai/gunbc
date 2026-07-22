@@ -74,6 +74,9 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
+    HostIdentityShortHostnameRead => fallback
+    SystemdUnitMemoryMaxRead { unit: _ } => fallback
+    SystemdUnitMemoryPropertiesRead { unit: _ } => fallback
     LiveDeployApply { spec: _ } => fallback
     LiveDeployRetract { spec: _ } => fallback
     LiveDeployEnsureDependency { dep: _ } => fallback

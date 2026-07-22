@@ -1,9 +1,0 @@
-module extdeps.fixture.external_authority_shadow_masked
-
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
-  }
-}
