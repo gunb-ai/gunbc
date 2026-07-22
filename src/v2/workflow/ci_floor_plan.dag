@@ -834,8 +834,7 @@ data gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed: Lis
   falsifier_plan_function,
 ]
 
-data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> =
-  gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
+data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> = gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
 
 fn gunbc_floor_arm_time_budget_refusal_applies(plan_function: String) -> Bool {
   any(gunbc_floor_arm_time_budget_refusal_plan_functions, f => f == plan_function)
