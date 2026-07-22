@@ -678,9 +678,8 @@ mod tests {
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
-        let kept =
-            fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
-                .expect("read");
+        let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
+            .expect("read");
         assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
     }
 
