@@ -21,16 +21,9 @@ struct PrePushStdinRow {
 }
 
 enum ActiveGate {
-    DocWitness {
-        entry: String,
-        function: String,
-    },
-    CargoFmt {
-        fail_recipe: String,
-    },
-    WitnessCorpus {
-        fail_recipe: String,
-    },
+    DocWitness { entry: String, function: String },
+    CargoFmt { fail_recipe: String },
+    WitnessCorpus { fail_recipe: String },
 }
 
 struct PlanCtx {
