@@ -23,8 +23,8 @@ data busybox_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_busybox }],
 }
 
-fn busybox_httpd_command(document_root: NonEmptyStr, port: Int) -> ShellCommand {
+fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Int) -> ShellCommand {
   ShellCommand {
-    argv: ["busybox", "httpd", "-p", to_string(port), "-h", document_root as String],
+    argv: [busybox_bin as String, "httpd", "-p", to_string(port), "-h", document_root as String],
   }
 }

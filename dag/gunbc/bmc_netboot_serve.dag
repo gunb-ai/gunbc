@@ -106,7 +106,11 @@ fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
 }
 
 fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ShellCommand {
-  busybox_httpd_command(document_root: plan.netboot_dir, port: plan.serve_port)
+  busybox_httpd_command(
+    busybox_bin: bmc_netboot_staged_path(plan: plan, name: "busybox"),
+    document_root: plan.netboot_dir,
+    port: plan.serve_port,
+  )
 }
 
 fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> ShellCommand {
@@ -177,7 +181,7 @@ func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   let g = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-grub.cfg", content: bmc_netboot_grub_cfg_text(plan: plan), name: "grub.cfg")
   let ud = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-user-data", content: bmc_netboot_nocloud_user_data(plan: plan), name: "nocloud/user-data")
   let md = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-meta-data", content: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""), name: "nocloud/meta-data")
-  let serve = bmc_netboot_run_bmc(plan: plan, argv: ["busybox", "httpd", "-p", to_string(plan.serve_port), "-h", plan.netboot_dir as String])
+  let serve = bmc_netboot_run_bmc(plan: plan, argv: bmc_netboot_serve_command_local(plan: plan).argv)
   process_exit_first_failure(results: [mk, a1, a2, a3, a4, g, ud, md, serve])
 }
 
