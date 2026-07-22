@@ -14,7 +14,7 @@ data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeS
 }
 
 data extdeps_external_authority_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {
-  lens_module: "v2.lens.extdeps_external_authority"
+  lens_module: "v2.lens.mandatory_tag.corpus_scan"
   host_seam: "cli_run.rs::extdeps_external_authority_module_facts"
   dissolution_trigger: extdeps_external_authority_host_bridge_dissolution_trigger
 }
