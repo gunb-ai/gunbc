@@ -1182,6 +1182,8 @@ const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
+const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
+    "resolution_divergence_census_roster_excluded_module_prefixes";
 
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
@@ -1313,6 +1315,36 @@ pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
         content,
         WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME,
     )
+}
+
+/// Project `resolution_divergence_census_roster_excluded_module_prefixes` out of the
+/// ci_layer_roots authority — modules under these prefixes are test harness / fixture
+/// territory and are excluded from the fn_parent_first_hit ⊆ containment_ambiguous
+/// construction invariant (not from the genuine silent-pick join gate).
+pub(crate) fn resolution_divergence_census_roster_excluded_module_prefixes_from_source(
+    content: &str,
+) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+pub fn resolution_divergence_census_roster_excluded_module_prefixes() -> Vec<String> {
+    static PREFIXES: OnceLock<Vec<String>> = OnceLock::new();
+    PREFIXES
+        .get_or_init(|| {
+            resolution_divergence_census_roster_excluded_module_prefixes_from_source(
+                ci_layer_roots_authority_content(),
+            )
+        })
+        .clone()
+}
+
+pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> bool {
+    resolution_divergence_census_roster_excluded_module_prefixes()
+        .iter()
+        .any(|prefix| module_path.starts_with(prefix.as_str()))
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
@@ -4096,6 +4128,90 @@ struct BareCandidates {
     bound: BTreeSet<String>,
 }
 
+/// Byte offsets of `(` that open an arrow-lambda param list (`(a, b) => ...`,
+/// no `fn` keyword) and of `{` that open a match/destructuring PATTERN
+/// (`Variant { field: name } => ...`) — both shapes bind every leaf identifier
+/// inside, but the single-pass scanner below only recognizes them once it has
+/// already passed the opening delimiter, so a lookahead pre-pass locates the
+/// delimiters whose matching close is followed by `=>`. Measured: `(acc,
+/// step) =>` (no `fn`) in `extdeps/communication/fidelity_carriers.dag` leaked
+/// bare `step`, and `HeadFound { value: h2 } =>` in
+/// `std/cross_tree/resolution.dag` leaked bare `h2` — both census-unique-bound
+/// to unrelated fn decls (`test.claim.materialization_ladder_witness.step`,
+/// `gunbc.plans.md_helpers.h2`), over-pulling those modules into 13 unrelated
+/// compiler-closure entries. String literals are skipped, matching the main
+/// scan.
+fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>) {
+    let bytes = content.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let matching_close = |open_at: usize, open: u8, close: u8| -> Option<usize> {
+        let mut depth = 0i32;
+        let mut j = open_at;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'"' => {
+                    j += 1;
+                    while j < bytes.len() && bytes[j] != b'"' {
+                        if bytes[j] == b'\\' && j + 1 < bytes.len() {
+                            j += 1;
+                        }
+                        j += 1;
+                    }
+                }
+                b if b == open => depth += 1,
+                b if b == close => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(j);
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        None
+    };
+    let mut lambda_paren_starts = BTreeSet::new();
+    let mut pattern_brace_starts = BTreeSet::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'(' && (i == 0 || !is_ident(bytes[i - 1])) {
+            if let Some(close) = matching_close(i, b'(', b')') {
+                let mut j = close + 1;
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if content.as_bytes()[j..].starts_with(b"=>") {
+                    lambda_paren_starts.insert(i);
+                }
+            }
+        } else if bytes[i] == b'{' {
+            if let Some(close) = matching_close(i, b'{', b'}') {
+                let mut j = close + 1;
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if content.as_bytes()[j..].starts_with(b"=>") {
+                    pattern_brace_starts.insert(i);
+                }
+            }
+        }
+        i += 1;
+    }
+    (lambda_paren_starts, pattern_brace_starts)
+}
+
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
@@ -4106,6 +4222,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         dotted_chains: BTreeSet::new(),
         bound: BTreeSet::new(),
     };
+    let (lambda_paren_starts, pattern_brace_starts) = destructuring_bound_spans(content);
     let mut i = 0usize;
     // Previous identifier token on the same run (whitespace-separated): a name
     // directly after a BINDER keyword is a binding occurrence, not a reference —
@@ -4123,14 +4240,23 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         "service",
         "transport",
     ];
-    // Depth of an open `fn(`-literal parameter list: every ident inside is a
-    // BINDER (untyped lambda params — `fn(acc, edge)` — carry no `:` so the
+    // Depth of an open `fn(`-literal parameter list, OR an arrow-lambda param
+    // list (`(a, b) => ...`, no `fn` — see `destructuring_bound_spans`): every
+    // ident inside is a BINDER (untyped lambda params carry no `:` so the
     // key-position rule never sees them; measured: rust_test.dag's `fn(acc,
     // edge)` param leaked 'edge' into the reference set and pulled the
     // unresolvable ownership_movable test module into an unrelated entry).
     // Typed idents inside (`p: T`, and type names in `fn(A) -> B` annotations)
     // over-bind harmlessly: a suppressed pull fails LOUD at typecheck.
     let mut fn_params_depth: usize = 0;
+    // Depth of an open match/destructuring PATTERN brace (`Variant { field:
+    // name } => ...` — see `destructuring_bound_spans`): a bare leaf identifier
+    // directly after `:` inside is a new local binding, not a reference. A
+    // nested variant tag (`field: OtherType { .. }`, itself followed by `{`)
+    // stays a real reference — the declaring module's runtime construction and
+    // variant-tag identity still need it loaded.
+    let mut pattern_depth: usize = 0;
+    let mut just_saw_colon = false;
     while i < bytes.len() {
         if bytes[i] == b'"' {
             i += 1;
@@ -4142,18 +4268,28 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             }
             i += 1;
             prev_token = None;
+            just_saw_colon = false;
             continue;
         }
         if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
         {
             if bytes[i] == b'(' {
-                if prev_token == Some("fn") {
+                if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
                     fn_params_depth = 1;
                 } else if fn_params_depth > 0 {
                     fn_params_depth += 1;
                 }
             } else if bytes[i] == b')' && fn_params_depth > 0 {
                 fn_params_depth -= 1;
+            } else if bytes[i] == b'{' && (pattern_depth > 0 || pattern_brace_starts.contains(&i)) {
+                pattern_depth += 1;
+            } else if bytes[i] == b'}' && pattern_depth > 0 {
+                pattern_depth -= 1;
+            }
+            if bytes[i] == b':' {
+                just_saw_colon = true;
+            } else if !bytes[i].is_ascii_whitespace() {
+                just_saw_colon = false;
             }
             if !bytes[i].is_ascii_whitespace() {
                 prev_token = None;
@@ -4181,9 +4317,12 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             }
             out.dotted_chains.insert(content[start..i].to_string());
             prev_token = None;
+            just_saw_colon = false;
             continue;
         }
         let name = &content[start..i];
+        let was_after_colon = just_saw_colon;
+        just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
         // never a reference to another module's decl.
         if fn_params_depth > 0 {
@@ -4195,6 +4334,23 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
             continue;
+        }
+        // Pattern-value leaf (`Variant { field: name } => ...`): a bare leaf
+        // directly after `:` inside a destructuring pattern brace introduces a
+        // new local binding, never a reference — see `destructuring_bound_spans`.
+        // A nested variant tag (itself followed by `{` or `(`) stays a real
+        // reference.
+        if pattern_depth > 0 && was_after_colon {
+            let mut peek = i;
+            while peek < bytes.len() && (bytes[peek] == b' ' || bytes[peek] == b'\t') {
+                peek += 1;
+            }
+            let is_leaf = !(peek < bytes.len() && (bytes[peek] == b'{' || bytes[peek] == b'('));
+            if is_leaf {
+                out.bound.insert(name.to_string());
+                prev_token = Some(name);
+                continue;
+            }
         }
         // Key position (`repo: value` — field init, named arg, param decl):
         // the name labels a slot; it never references a decl.
@@ -4218,6 +4374,54 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         prev_token = Some(name);
     }
     out
+}
+
+#[cfg(test)]
+mod bare_identifier_candidates_tests {
+    use super::bare_identifier_candidates;
+
+    // Green-by-execution + discriminating RED for the two over-pull shapes fixed by
+    // `destructuring_bound_spans` (measured: `(acc, step) =>` in
+    // `extdeps/communication/fidelity_carriers.dag` and `HeadFound { value: h2 } =>` in
+    // `std/cross_tree/resolution.dag` census-unique-bound `step`/`h2` to unrelated fn
+    // decls, over-pulling 13 compiler-closure entries — `extend_with_bare_reference_closure`
+    // subtracts `candidates.bound` from `candidates.names` file-wide, so a name absent
+    // from `bound` here is a name that still pulls its census homonym downstream).
+    #[test]
+    fn arrow_lambda_param_is_bound_not_referenced() {
+        let content = "module test.lambda_user\n\nfn use_it() -> Bool {\n  fold_list(\n    xs: something,\n    empty: true,\n    cons: (acc, step) => decode_fidelity_merge(left: acc, right: step)\n  )\n}\n";
+        let candidates = bare_identifier_candidates(content);
+        assert!(
+            candidates.bound.contains("step"),
+            "an arrow-lambda param (`(acc, step) => ...`, no `fn`) must be recorded as \
+             bound — a reader that only recognized `fn(...)` params would miss this"
+        );
+        assert!(
+            candidates.bound.contains("acc"),
+            "both arrow-lambda params must be bound, not just the first"
+        );
+    }
+
+    #[test]
+    fn pattern_value_leaf_is_bound_not_referenced() {
+        let content = "module test.pattern_user\n\nfn use_it() -> Bool {\n  match something {\n    HeadFound { value: h2 } => h2\n    HeadAbsent => true\n  }\n}\n";
+        let candidates = bare_identifier_candidates(content);
+        assert!(
+            candidates.bound.contains("h2"),
+            "a pattern-value leaf (`HeadFound {{ value: h2 }} => ...`) must be recorded as \
+             bound — it introduces a new local binding, not a reference to an unrelated \
+             `h2` decl"
+        );
+        assert!(
+            !candidates.bound.contains("HeadFound"),
+            "a nested variant TAG inside a pattern brace is still a real reference to its \
+             declaring module — only the post-colon leaf is bound"
+        );
+        assert!(
+            candidates.names.contains("HeadFound"),
+            "the variant tag must remain a collectable name candidate"
+        );
+    }
 }
 
 /// Extend the closure with the modules the tree census resolves each source's
@@ -10603,7 +10807,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if line.starts_with("diff --git ") {
+            // Section boundary: a file only becomes attributable after its own
+            // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
+            // never re-arms current_file — without this reset its `@@ -1,N +0,0`
+            // hunk attributed to the PRECEDING file at new-side line 1, tripping
+            // the module-line fail-closed refusal for any modified file that
+            // sorts immediately before a whole-file deletion (found live:
+            // lens_module_gate.dag + the deleted extdeps_external_authority.dag).
+            // Departed paths are carried by the name-status observation, never
+            // by hunk attribution.
+            current_file = None;
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -10639,6 +10854,18 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
     let mut new_line: i64 = 0;
     let mut in_hunk = false;
     for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            // Section boundary: only a `+++ b/` header re-arms current_file. A
+            // deleted file's header is `+++ /dev/null`, so without this reset
+            // its `@@ -1,N +0,0` hunk attributed every removed row to the
+            // PRECEDING file at new-side line 1 (zero-width anchor 0 → 0+1),
+            // tripping the module-line fail-closed refusal whenever a modified
+            // file sorts immediately before a whole-file deletion. Departed
+            // paths are carried by the name-status observation, not hunks.
+            current_file = None;
+            in_hunk = false;
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
             in_hunk = false;
@@ -13637,6 +13864,57 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         // Deletion-only hunk `+42,0`: the gap sits between new lines 42 and 43;
         // following-line semantics attribute 43 (see the parser's `+L,0` note).
         assert_eq!(changed.get(file), Some(&HashSet::from([43])));
+    }
+
+    #[test]
+    fn parse_unified_diff_deleted_file_hunk_never_attributes_to_preceding_file() {
+        // RED CONTROL for the deleted-file leak: a whole-file deletion's header is
+        // `+++ /dev/null`, which never re-arms current_file. Before the `diff --git `
+        // section reset, its `@@ -1,N +0,0 @@` hunk attributed to the PRECEDING
+        // modified file at new-side line 1 (zero-width anchor 0 → 0+1 = 1), tripping
+        // the module-line fail-closed refusal ("diff before first declaration") for
+        // any modified file that sorts immediately before a whole-file deletion.
+        let diff = "\
+diff --git a/src/v2/lens/enforcement/lens_module_gate.dag b/src/v2/lens/enforcement/lens_module_gate.dag
+--- a/src/v2/lens/enforcement/lens_module_gate.dag
++++ b/src/v2/lens/enforcement/lens_module_gate.dag
+@@ -9 +9 @@
+-old_import_row
++new_import_row
+diff --git a/src/v2/lens/extdeps_external_authority.dag b/src/v2/lens/extdeps_external_authority.dag
+deleted file mode 100644
+--- a/src/v2/lens/extdeps_external_authority.dag
++++ /dev/null
+@@ -1,3 +0,0 @@
+-module v2.lens.extdeps_external_authority
+-
+-data deleted_row: Int = 1
+";
+        let kept = "src/v2/lens/enforcement/lens_module_gate.dag";
+
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        assert_eq!(
+            changed.get(kept),
+            Some(&HashSet::from([9])),
+            "deleted-file hunk must not leak into the preceding file's changed set"
+        );
+        assert_eq!(
+            changed.len(),
+            1,
+            "the deleted file attributes nowhere: {changed:?}"
+        );
+
+        let ranges = parse_unified_diff_line_ranges(diff);
+        assert_eq!(
+            ranges.get(kept),
+            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            "deleted-file hunk must not extend the preceding file's ranges"
+        );
+        assert_eq!(
+            ranges.len(),
+            1,
+            "the deleted file attributes nowhere: {ranges:?}"
+        );
     }
 
     #[test]
@@ -18709,7 +18987,7 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
-    let roots = witness_layer_roots();
+    let roots = default_source_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
     let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
     let modules_resolved = sources.len();
@@ -18835,6 +19113,71 @@ pub fn resolution_divergence_silent_pick_refusal(
         lines.push(format!(
             "  SILENT-PICK-GATE {} module={} name={} {}",
             row.class, row.module, row.name, row.detail,
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
+/// A `fn_parent_first_hit` telemetry row outside the roster-excluded test harness
+/// prefixes that does NOT land in `containment_ambiguous_rows` for the same
+/// (module, name) site — a violation of the construction invariant the compile-path
+/// proxy gate (`main.rs`) assumes when it red-on-any raw `fn_parent_first_hit` count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FnParentFirstHitSubsetViolation {
+    pub module: String,
+    pub name: String,
+    pub parent_match_count: usize,
+    pub chosen_parent_module: String,
+}
+
+/// Construction invariant (#7013 fast-follow): every in-roster `fn_parent_first_hit`
+/// fire must also be `containment_ambiguous` for the same site (the fn-parent walk IS
+/// the containment walk). Test-harness modules (`v2.test.*` by default) are excluded
+/// via `resolution_divergence_census_roster_excluded_module_prefixes` — intentional
+/// ambiguity fixtures, not production resolver debt.
+pub fn resolution_divergence_fn_parent_first_hit_subset_violations(
+    census: &ResolutionDivergenceCensus,
+) -> Vec<FnParentFirstHitSubsetViolation> {
+    let mut ambig_keys: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    for row in &census.containment_ambiguous_rows {
+        ambig_keys.insert((row.calling_module.clone(), row.callee.clone()));
+    }
+
+    census
+        .silent_pick_fn_parent_first_hit_rows
+        .iter()
+        .filter(|row| !resolution_divergence_module_path_roster_excluded(&row.env_module_path))
+        .filter(|row| !ambig_keys.contains(&(row.env_module_path.clone(), row.name.clone())))
+        .map(|row| FnParentFirstHitSubsetViolation {
+            module: row.env_module_path.clone(),
+            name: row.name.clone(),
+            parent_match_count: row.parent_match_count,
+            chosen_parent_module: row.chosen_parent_module.clone(),
+        })
+        .collect()
+}
+
+/// Fail-closed refusal when the construction invariant is violated — makes the
+/// compile-path raw-count proxy sound by proving its assumption on the live corpus.
+pub fn resolution_divergence_fn_parent_first_hit_subset_refusal(
+    census: &ResolutionDivergenceCensus,
+) -> Option<String> {
+    let violations = resolution_divergence_fn_parent_first_hit_subset_violations(census);
+    if violations.is_empty() {
+        return None;
+    }
+    let mut lines = vec![format!(
+        "SILENT-PICK-GATE: resolution-divergence-census: fn_parent_first_hit subset violation: \
+         {} in-roster fn_parent_first_hit site(s) not in containment_ambiguous (construction \
+         invariant broken — compile-path raw-count proxy is unsound)",
+        violations.len(),
+    )];
+    for row in &violations {
+        lines.push(format!(
+            "  SILENT-PICK-GATE FN_PARENT_FIRST_HIT_NOT_CONTAINMENT_AMBIGUOUS module={} name={} \
+             parent_matches={} chosen_parent={}",
+            row.module, row.name, row.parent_match_count, row.chosen_parent_module,
         ));
     }
     Some(lines.join("\n"))
@@ -19744,6 +20087,92 @@ fn caller() -> Bool {
             "§5 gate must be None on a clean corpus with no silent pick"
         );
         let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Hermetic control guarding the ~483-clean join filter: two pool-wide homonymous
+    /// type declarations in unrelated module trees (NOT both on the consumer's
+    /// parent/import chain) force `global_bare_lcp` telemetry, but the site is benign
+    /// under the containment_ambiguous/diverge join — refusal must stay None.
+    #[test]
+    fn resolution_divergence_silent_pick_benign_global_bare_lcp_filter_control() {
+        let ws = super::process_workspace_root();
+        let fixture = silent_pick_fixture_root("benign-gblcp");
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "near.dag",
+            r#"module test.benigngblcp.near
+
+import std.types { Int }
+
+type PoolDup = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "far.dag",
+            r#"module test.benigngblcp.far.away
+
+import std.types { Int }
+
+type PoolDup = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "consumer.dag",
+            r#"module test.benigngblcp.near.consumer
+
+import std.types { Int }
+
+fn use_pool_dup(x: PoolDup) -> Int {
+  return x
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        assert!(
+            census.silent_pick_global_bare_lcp >= 1,
+            "fixture must fire global_bare_lcp telemetry (pool-wide homonym), got lcp={} tie={}",
+            census.silent_pick_global_bare_lcp,
+            census.silent_pick_global_bare_lcp_tie,
+        );
+        let genuine = super::resolution_divergence_silent_pick_genuine_rows(&census);
+        assert!(
+            genuine.is_empty(),
+            "pool-wide type homonym must be filtered benign by the join, got genuine={genuine:?}"
+        );
+        assert!(
+            resolution_divergence_silent_pick_refusal(&census).is_none(),
+            "§5 gate must be None when only benign global_bare_lcp telemetry fired"
+        );
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Construction invariant on the live closure-scoped corpus: every in-roster
+    /// `fn_parent_first_hit` row must land in `containment_ambiguous_rows` for the
+    /// same (module, name) site. `v2.test.*` modules are roster-excluded.
+    #[test]
+    fn resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus() {
+        let census = super::resolution_divergence_census_live_closure_scoped()
+            .expect("closure-scoped census");
+        let violations =
+            super::resolution_divergence_fn_parent_first_hit_subset_violations(&census);
+        assert!(
+            violations.is_empty(),
+            "fn_parent_first_hit must be subset of containment_ambiguous on in-roster modules \
+             (violations={violations:?}, raw_fn_parent_first_hit={}, containment_ambiguous={})",
+            census.silent_pick_fn_parent_first_hit,
+            census.containment_ambiguous,
+        );
+        assert!(
+            super::resolution_divergence_fn_parent_first_hit_subset_refusal(&census).is_none(),
+            "subset refusal must be None on the live closure-scoped corpus"
+        );
     }
 
     /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
@@ -24042,19 +24471,26 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 }
 
-// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_external_authority (Concern B).
-// Dissolution: when Node-tree anchor projection supersedes module parse (dissolve-on marker in
-// extdeps_external_authority.dag construction_justification), replace this block with a
-// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern B lane.
+// SCAFFOLD (shrunken corpus-consumer core) — host-speed anchor projection for the
+// mandatory-tag extdeps region (v2.lens.mandatory_tag, corpus grain). The VERDICT
+// authority is the modeled lens: v2.lens.mandatory_tag's fold, enrolled in
+// always_required_root_lenses and red/green-controlled at the v2 parse grain
+// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
+// interpreted v2 pipeline prices a whole-corpus witness out of every cadence
+// (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
+// ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// Dissolution: witness realization (docs/plans/witness-realization-plan.md) runs
+// that parse-grain corpus witness at native speed, then this block and its three
+// builtins (facts_for_qualified_name, live_clean_tree_holds,
+// live_roster_module_count) delete. The shadow-mask and backfill sub-machineries
+// dissolved 2026-07-22 onto their grounds: module-path collisions refuse loudly at
+// index build (one module, one authority), and the backfill queue drained to empty.
 
 pub struct ExtdepsExternalAuthorityModuleFacts {
     pub anchor_kind: String,
     pub scheme_identity: String,
     pub locator: String,
-    pub is_backfill_pending: bool,
-    pub is_machinery_exempt: bool,
-    pub is_clean_tree_roster_excluded: bool,
-    pub anchor_shadow_masked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24129,35 +24565,8 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     read_external_authority_anchor_from_items(&items, &source_indices)
 }
 
-fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
-{
-    use std::collections::HashSet;
-    use std::sync::OnceLock;
-    static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
-    PATHS.get_or_init(|| {
-        let path = workspace_root().join("dag/extdeps/external_authority_backfill_pending.txt");
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
-        content
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(str::to_string)
-            .collect()
-    })
-}
-
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
     &["extdeps.uri", "extdeps.external_authority"]
-}
-
-fn external_authority_clean_tree_roster_exclusion_paths() -> &'static [&'static str] {
-    &[
-        "extdeps.fixture.external_authority_bogus_scheme",
-        "extdeps.fixture.external_authority_missing",
-        "extdeps.fixture.external_authority_clean_https_no_anchor",
-        "extdeps.fixture.external_authority_file_anchor",
-    ]
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
@@ -24171,109 +24580,12 @@ pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
     paths
 }
 
-pub fn extdeps_derived_extdeps_modules_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let items: Vec<_> = extdeps_derived_extdeps_module_paths()
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-pub fn extdeps_external_authority_backfill_pending_entries_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let mut paths: Vec<String> = external_authority_backfill_pending_module_paths()
-        .iter()
-        .cloned()
-        .collect();
-    paths.sort();
-    let items: Vec<_> = paths
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-fn external_authority_is_backfill_pending_for_module_path(module_path: &str) -> bool {
-    external_authority_backfill_pending_module_paths().contains(module_path)
-}
-
 fn external_authority_is_machinery_exempt_for_module_path(module_path: &str) -> bool {
     external_authority_machinery_exempt_module_paths().contains(&module_path)
 }
 
 fn external_authority_is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
-    if module_path.starts_with("extdeps.fixture.") {
-        return true;
-    }
-    if module_path.ends_with(".mock_corpus") {
-        return true;
-    }
-    external_authority_clean_tree_roster_exclusion_paths().contains(&module_path)
-}
-
-fn external_authority_anchor_present_in_any_source_root(module_path: &str) -> bool {
-    let ws = workspace_root();
-    for root in default_source_roots() {
-        let root_path = std::path::PathBuf::from(&root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files = Vec::new();
-        collect_dag_files_tolerant(&root_path, &mut files);
-        for file in files {
-            let Ok(content) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let declares = content.lines().find_map(|l| {
-                l.trim()
-                    .strip_prefix("module ")
-                    .map(|m| m.trim().to_string())
-            });
-            if declares.as_deref() != Some(module_path) {
-                continue;
-            }
-            let rel = file
-                .strip_prefix(&ws)
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
-            let (items, source_indices) = parse_extdeps_module_items(&rel);
-            if matches!(
-                read_external_authority_anchor_from_items(&items, &source_indices),
-                ExternalAuthorityAnchorProjection::Present { .. }
-            ) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn external_authority_shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
-    module_path
-        .strip_prefix("test.fixture.")
-        .map(|leaf| format!("extdeps.fixture.{leaf}"))
-}
-
-fn external_authority_anchor_shadow_masked_for_module_path(module_path: &str) -> bool {
-    match project_external_authority_anchor(module_path) {
-        ExternalAuthorityAnchorProjection::Present { .. } => false,
-        ExternalAuthorityAnchorProjection::Absent => {
-            if external_authority_anchor_present_in_any_source_root(module_path) {
-                return true;
-            }
-            if let Some(extdeps_path) =
-                external_authority_shadow_plant_paired_extdeps_module_path(module_path)
-            {
-                return external_authority_anchor_present_in_any_source_root(&extdeps_path);
-            }
-            false
-        }
-    }
+    module_path.starts_with("extdeps.fixture.") || module_path.ends_with(".mock_corpus")
 }
 
 pub fn extdeps_external_authority_module_facts(
@@ -24293,23 +24605,16 @@ pub fn extdeps_external_authority_module_facts(
         anchor_kind,
         scheme_identity,
         locator,
-        is_backfill_pending: external_authority_is_backfill_pending_for_module_path(module_path),
-        is_machinery_exempt: external_authority_is_machinery_exempt_for_module_path(module_path),
-        is_clean_tree_roster_excluded:
-            external_authority_is_clean_tree_roster_excluded_for_module_path(module_path),
-        anchor_shadow_masked: external_authority_anchor_shadow_masked_for_module_path(module_path),
     }
 }
 
 fn external_authority_live_violation_module_paths() -> Vec<String> {
-    let backfill = external_authority_backfill_pending_module_paths();
     let mut violations = Vec::new();
     for path in extdeps_derived_extdeps_module_paths() {
         if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
             continue;
         }
-        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path)
-        {
+        if external_authority_is_machinery_exempt_for_module_path(&path) {
             continue;
         }
         match project_external_authority_anchor(&path) {
@@ -24334,20 +24639,6 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
-}
-
-pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
-    for path in extdeps_derived_extdeps_module_paths() {
-        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path)
-            || external_authority_is_machinery_exempt_for_module_path(&path)
-        {
-            continue;
-        }
-        if external_authority_anchor_shadow_masked_for_module_path(&path) {
-            return false;
-        }
-    }
-    true
 }
 
 #[cfg(test)]
