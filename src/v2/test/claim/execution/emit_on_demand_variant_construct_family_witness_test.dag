@@ -49,7 +49,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_variant_construct_family_note: String = "Witness-realization fan-out lane 4 (variant_construct): emit-on-demand native execution for variant-construct-then-match — extension of #6879 kernel. Wet: interpreted==native equals_eval (emit_host_variant_construct_equals_eval_test.dag — closed by eval_type_node_atom non-Atom TypeNode→allocate_literal, witty-owl-841), native cold/warm receipts, wrong-value fixture RED, closure_digest key sensitivity."
+data emit_on_demand_variant_construct_family_note: String = "Witness-realization fan-out lane 4 (variant_construct), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_variant_construct_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (octet 9), then the wrong-value alt tree colds in the SAME root with the flipped octet 1 — the content-change MISS and the wrong-value RED in one cold rebuild. Formerly 5 crate builds per pass (per-test eviction roots); now 2. Interpreted==native agreement stays in emit_host_variant_construct_equals_eval_test.dag (its own oracle leg). Pure receipts unchanged."
 
 data variant_construct_family_cache_root: String = "/tmp/gunbc_emit_on_demand_variant_construct_family"
 data variant_construct_family_emitter: String = "v2.compiler.emit"
@@ -88,13 +88,6 @@ fn variant_construct_family_fixture_inputs() -> Inputs {
 
 fn variant_construct_family_cache_root_for(test_id: String) -> String {
   concat(variant_construct_family_cache_root, "/", test_id)
-}
-
-fn variant_construct_family_evict_and_workspace(test_id: String, tree: InferredTree) -> String {
-  let key = variant_construct_family_native_key_for(tree: tree)
-  let root = variant_construct_family_cache_root_for(test_id: test_id)
-  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
-  native_cache_workspace_root(cache_root: root, key: key)
 }
 
 fn variant_construct_family_cached_run_with_source(
@@ -231,21 +224,8 @@ test fn emit_on_demand_variant_construct_closure_keys_differ_for_distinct_trees_
   key_primary != key_alt
 }
 
-test fn emit_on_demand_variant_construct_wrong_fixture_refuses_holds() -> Bool {
-  let workspace = variant_construct_family_evict_and_workspace(
-    test_id: "variant_wrong_fixture_native",
-    tree: emit_variant_construct_eval_wrong_value_tree
-  )
-  variant_construct_family_cached_run_checks(
-    workspace: workspace,
-    tree: emit_variant_construct_eval_wrong_value_tree,
-    expect_compile_skipped: false,
-    expected_octet: 1
-  )
-}
-
-test fn emit_on_demand_variant_construct_native_content_change_cold_rebuild_holds() -> Bool {
-  let shared_parent = variant_construct_family_cache_root_for(test_id: "variant_content_change_miss")
+test fn emit_on_demand_variant_construct_native_one_build_holds() -> Bool {
+  let shared_parent = variant_construct_family_cache_root_for(test_id: "native_one_build")
   let tree_primary = emit_variant_construct_eval_tree
   let tree_alt = emit_variant_construct_eval_wrong_value_tree
   let key_primary = variant_construct_family_native_key_for(tree: tree_primary)
@@ -272,40 +252,12 @@ test fn emit_on_demand_variant_construct_native_content_change_cold_rebuild_hold
   }
 }
 
-test fn emit_on_demand_variant_construct_native_cold_holds() -> Bool {
-  let workspace = variant_construct_family_evict_and_workspace(
-    test_id: "variant_native_cold",
-    tree: emit_variant_construct_eval_tree
-  )
-  variant_construct_family_cached_run_checks(
-    workspace: workspace,
-    tree: emit_variant_construct_eval_tree,
-    expect_compile_skipped: false,
-    expected_octet: 9
-  )
-}
-
-test fn emit_on_demand_variant_construct_native_cold_then_warm_holds() -> Bool {
-  let workspace = variant_construct_family_evict_and_workspace(
-    test_id: "variant_native_cold_then_warm",
-    tree: emit_variant_construct_eval_tree
-  )
-  variant_construct_family_cached_cold_then_warm(
-    workspace: workspace,
-    tree: emit_variant_construct_eval_tree,
-    expected_octet: 9
-  )
-}
-
 test fn emit_on_demand_variant_construct_family_witnesses() -> Bool {
   emit_on_demand_variant_construct_grain_keys_differ_holds()
     && emit_on_demand_variant_construct_materialize_recompute_on_miss_holds()
     && emit_on_demand_variant_construct_interpreter_roles_bounded_holds()
     && emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_variant_construct_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_variant_construct_wrong_fixture_refuses_holds()
-    && emit_on_demand_variant_construct_native_content_change_cold_rebuild_holds()
-    && emit_on_demand_variant_construct_native_cold_holds()
-    && emit_on_demand_variant_construct_native_cold_then_warm_holds()
+    && emit_on_demand_variant_construct_native_one_build_holds()
     && emit_on_demand_variant_construct_materialize_share_on_hit_holds()
 }
