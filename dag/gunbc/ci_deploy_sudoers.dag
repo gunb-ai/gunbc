@@ -35,7 +35,7 @@ data refused_generic_mover_paths: List<NonEmptyStr> = [
 ]
 
 fn posix_sudo_grant_is_refused_generic_mover(g: PosixSudoGrant) -> Bool {
-  any(refused_generic_mover_paths, p => p == g.command_path)
+  any(refused_generic_mover_paths, p: NonEmptyStr => p == g.command_path)
 }
 
 fn posix_sudo_grant_is_allowed_roster_command(g: PosixSudoGrant) -> Bool {
