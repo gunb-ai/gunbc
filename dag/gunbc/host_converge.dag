@@ -47,6 +47,7 @@ data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
 data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
 data gunbc_runner_unit_template: String = "actions-runner@.service"
+data gunbc_runner_all_slots_unit_glob: String = "actions-runner@*.service"
 data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
 data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf"
 data gunbc_runner_per_slot_high_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf"
