@@ -1,0 +1,59 @@
+module v2.compiler.self_host.parity_window
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { length }
+
+data parity_window_note: String = "Parity window (P6 routing flip gate, 2026-07-22): a family may flip to NativeRouted in the native-routing frontier ONLY on evidence — N consecutive green falsifier cadence windows, where green means the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root. Any red or divergence RESETS the streak (consecutive, not cumulative). The flip is thereby unwritable without receipts (DESIGN section 5 construction over validation): the frontier row edit that flips a family must cite the window verdict, and the witness test pins the law on synthetic sequences. Receipt rows are authored from falsifier run observations; required_consecutive_green_windows is the single authority for N."
+
+data required_consecutive_green_windows: Int = 3
+
+type ParityWindowReceipt {
+  family: String
+  cadence_window_id: String
+  agreement_green: Bool
+  warm_compile_skipped: Bool
+}
+
+type ParityVerdict
+  = ParityFlipPermitted { family: String, consecutive_green: Int }
+  | ParityFlipRefused { family: String, consecutive_green: Int, required: Int }
+
+fn receipt_is_green(r: ParityWindowReceipt) -> Bool {
+  r.agreement_green && r.warm_compile_skipped
+}
+
+fn trailing_consecutive_green(receipts: List<ParityWindowReceipt>) -> Int {
+  fold(
+    receipts,
+    init: 0,
+    f: fn(acc, r) {
+      if receipt_is_green(r: r) {
+        acc + 1
+      } else {
+        0
+      }
+    }
+  )
+}
+
+fn parity_verdict_for(family: String, receipts: List<ParityWindowReceipt>) -> ParityVerdict {
+  let streak = trailing_consecutive_green(receipts: receipts)
+  if streak >= required_consecutive_green_windows {
+    ParityFlipPermitted { family: family, consecutive_green: streak }
+  } else {
+    ParityFlipRefused {
+      family: family,
+      consecutive_green: streak,
+      required: required_consecutive_green_windows
+    }
+  }
+}
+
+fn parity_flip_permitted(family: String, receipts: List<ParityWindowReceipt>) -> Bool {
+  match parity_verdict_for(family: family, receipts: receipts) {
+    ParityFlipPermitted { family: _, consecutive_green: _ } => true
+    ParityFlipRefused { family: _, consecutive_green: _, required: _ } => false
+  }
+}

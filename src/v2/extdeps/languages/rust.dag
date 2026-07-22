@@ -1881,6 +1881,10 @@ fn rust_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
+data rust_emit_host_toolchain_pin_note: String = "Toolchain pin materialized into every emitted cargo workspace (fleet incident 2026-07-22: runners with no rustup default refuse cargo builds in $RUNNER_TOOL_CACHE workspaces — the repo checkout builds only because rust-toolchain.toml is present there; srv1 masked this via a hand-set default). The channel literal mirrors the sole in-repo authority rust-toolchain.toml; dissolve-on: the emitter derives this row from that file instead of a mirrored literal."
+
+data rust_emit_host_toolchain_pin: String = "[toolchain]\nchannel = \"1.93.0\"\n"
+
 data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
 
 data rust_emit_host_main_suffix: String = "\n\nfn main() { let value = add(2, 3); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
@@ -1892,6 +1896,10 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
