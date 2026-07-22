@@ -10807,7 +10807,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if line.starts_with("diff --git ") {
+            // Section boundary: a file only becomes attributable after its own
+            // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
+            // never re-arms current_file — without this reset its `@@ -1,N +0,0`
+            // hunk attributed to the PRECEDING file at new-side line 1, tripping
+            // the module-line fail-closed refusal for any modified file that
+            // sorts immediately before a whole-file deletion (found live:
+            // lens_module_gate.dag + the deleted extdeps_external_authority.dag).
+            // Departed paths are carried by the name-status observation, never
+            // by hunk attribution.
+            current_file = None;
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -10843,6 +10854,18 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
     let mut new_line: i64 = 0;
     let mut in_hunk = false;
     for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            // Section boundary: only a `+++ b/` header re-arms current_file. A
+            // deleted file's header is `+++ /dev/null`, so without this reset
+            // its `@@ -1,N +0,0` hunk attributed every removed row to the
+            // PRECEDING file at new-side line 1 (zero-width anchor 0 → 0+1),
+            // tripping the module-line fail-closed refusal whenever a modified
+            // file sorts immediately before a whole-file deletion. Departed
+            // paths are carried by the name-status observation, not hunks.
+            current_file = None;
+            in_hunk = false;
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
             in_hunk = false;
@@ -13841,6 +13864,57 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         // Deletion-only hunk `+42,0`: the gap sits between new lines 42 and 43;
         // following-line semantics attribute 43 (see the parser's `+L,0` note).
         assert_eq!(changed.get(file), Some(&HashSet::from([43])));
+    }
+
+    #[test]
+    fn parse_unified_diff_deleted_file_hunk_never_attributes_to_preceding_file() {
+        // RED CONTROL for the deleted-file leak: a whole-file deletion's header is
+        // `+++ /dev/null`, which never re-arms current_file. Before the `diff --git `
+        // section reset, its `@@ -1,N +0,0 @@` hunk attributed to the PRECEDING
+        // modified file at new-side line 1 (zero-width anchor 0 → 0+1 = 1), tripping
+        // the module-line fail-closed refusal ("diff before first declaration") for
+        // any modified file that sorts immediately before a whole-file deletion.
+        let diff = "\
+diff --git a/src/v2/lens/enforcement/lens_module_gate.dag b/src/v2/lens/enforcement/lens_module_gate.dag
+--- a/src/v2/lens/enforcement/lens_module_gate.dag
++++ b/src/v2/lens/enforcement/lens_module_gate.dag
+@@ -9 +9 @@
+-old_import_row
++new_import_row
+diff --git a/src/v2/lens/extdeps_external_authority.dag b/src/v2/lens/extdeps_external_authority.dag
+deleted file mode 100644
+--- a/src/v2/lens/extdeps_external_authority.dag
++++ /dev/null
+@@ -1,3 +0,0 @@
+-module v2.lens.extdeps_external_authority
+-
+-data deleted_row: Int = 1
+";
+        let kept = "src/v2/lens/enforcement/lens_module_gate.dag";
+
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        assert_eq!(
+            changed.get(kept),
+            Some(&HashSet::from([9])),
+            "deleted-file hunk must not leak into the preceding file's changed set"
+        );
+        assert_eq!(
+            changed.len(),
+            1,
+            "the deleted file attributes nowhere: {changed:?}"
+        );
+
+        let ranges = parse_unified_diff_line_ranges(diff);
+        assert_eq!(
+            ranges.get(kept),
+            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            "deleted-file hunk must not extend the preceding file's ranges"
+        );
+        assert_eq!(
+            ranges.len(),
+            1,
+            "the deleted file attributes nowhere: {ranges:?}"
+        );
     }
 
     #[test]
@@ -24397,19 +24471,26 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 }
 
-// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_external_authority (Concern B).
-// Dissolution: when Node-tree anchor projection supersedes module parse (dissolve-on marker in
-// extdeps_external_authority.dag construction_justification), replace this block with a
-// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern B lane.
+// SCAFFOLD (shrunken corpus-consumer core) — host-speed anchor projection for the
+// mandatory-tag extdeps region (v2.lens.mandatory_tag, corpus grain). The VERDICT
+// authority is the modeled lens: v2.lens.mandatory_tag's fold, enrolled in
+// always_required_root_lenses and red/green-controlled at the v2 parse grain
+// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
+// interpreted v2 pipeline prices a whole-corpus witness out of every cadence
+// (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
+// ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// Dissolution: witness realization (docs/plans/witness-realization-plan.md) runs
+// that parse-grain corpus witness at native speed, then this block and its three
+// builtins (facts_for_qualified_name, live_clean_tree_holds,
+// live_roster_module_count) delete. The shadow-mask and backfill sub-machineries
+// dissolved 2026-07-22 onto their grounds: module-path collisions refuse loudly at
+// index build (one module, one authority), and the backfill queue drained to empty.
 
 pub struct ExtdepsExternalAuthorityModuleFacts {
     pub anchor_kind: String,
     pub scheme_identity: String,
     pub locator: String,
-    pub is_backfill_pending: bool,
-    pub is_machinery_exempt: bool,
-    pub is_clean_tree_roster_excluded: bool,
-    pub anchor_shadow_masked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24484,35 +24565,8 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     read_external_authority_anchor_from_items(&items, &source_indices)
 }
 
-fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
-{
-    use std::collections::HashSet;
-    use std::sync::OnceLock;
-    static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
-    PATHS.get_or_init(|| {
-        let path = workspace_root().join("dag/extdeps/external_authority_backfill_pending.txt");
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
-        content
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(str::to_string)
-            .collect()
-    })
-}
-
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
     &["extdeps.uri", "extdeps.external_authority"]
-}
-
-fn external_authority_clean_tree_roster_exclusion_paths() -> &'static [&'static str] {
-    &[
-        "extdeps.fixture.external_authority_bogus_scheme",
-        "extdeps.fixture.external_authority_missing",
-        "extdeps.fixture.external_authority_clean_https_no_anchor",
-        "extdeps.fixture.external_authority_file_anchor",
-    ]
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
@@ -24526,109 +24580,12 @@ pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
     paths
 }
 
-pub fn extdeps_derived_extdeps_modules_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let items: Vec<_> = extdeps_derived_extdeps_module_paths()
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-pub fn extdeps_external_authority_backfill_pending_entries_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let mut paths: Vec<String> = external_authority_backfill_pending_module_paths()
-        .iter()
-        .cloned()
-        .collect();
-    paths.sort();
-    let items: Vec<_> = paths
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-fn external_authority_is_backfill_pending_for_module_path(module_path: &str) -> bool {
-    external_authority_backfill_pending_module_paths().contains(module_path)
-}
-
 fn external_authority_is_machinery_exempt_for_module_path(module_path: &str) -> bool {
     external_authority_machinery_exempt_module_paths().contains(&module_path)
 }
 
 fn external_authority_is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
-    if module_path.starts_with("extdeps.fixture.") {
-        return true;
-    }
-    if module_path.ends_with(".mock_corpus") {
-        return true;
-    }
-    external_authority_clean_tree_roster_exclusion_paths().contains(&module_path)
-}
-
-fn external_authority_anchor_present_in_any_source_root(module_path: &str) -> bool {
-    let ws = workspace_root();
-    for root in default_source_roots() {
-        let root_path = std::path::PathBuf::from(&root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files = Vec::new();
-        collect_dag_files_tolerant(&root_path, &mut files);
-        for file in files {
-            let Ok(content) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let declares = content.lines().find_map(|l| {
-                l.trim()
-                    .strip_prefix("module ")
-                    .map(|m| m.trim().to_string())
-            });
-            if declares.as_deref() != Some(module_path) {
-                continue;
-            }
-            let rel = file
-                .strip_prefix(&ws)
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
-            let (items, source_indices) = parse_extdeps_module_items(&rel);
-            if matches!(
-                read_external_authority_anchor_from_items(&items, &source_indices),
-                ExternalAuthorityAnchorProjection::Present { .. }
-            ) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn external_authority_shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
-    module_path
-        .strip_prefix("test.fixture.")
-        .map(|leaf| format!("extdeps.fixture.{leaf}"))
-}
-
-fn external_authority_anchor_shadow_masked_for_module_path(module_path: &str) -> bool {
-    match project_external_authority_anchor(module_path) {
-        ExternalAuthorityAnchorProjection::Present { .. } => false,
-        ExternalAuthorityAnchorProjection::Absent => {
-            if external_authority_anchor_present_in_any_source_root(module_path) {
-                return true;
-            }
-            if let Some(extdeps_path) =
-                external_authority_shadow_plant_paired_extdeps_module_path(module_path)
-            {
-                return external_authority_anchor_present_in_any_source_root(&extdeps_path);
-            }
-            false
-        }
-    }
+    module_path.starts_with("extdeps.fixture.") || module_path.ends_with(".mock_corpus")
 }
 
 pub fn extdeps_external_authority_module_facts(
@@ -24648,23 +24605,16 @@ pub fn extdeps_external_authority_module_facts(
         anchor_kind,
         scheme_identity,
         locator,
-        is_backfill_pending: external_authority_is_backfill_pending_for_module_path(module_path),
-        is_machinery_exempt: external_authority_is_machinery_exempt_for_module_path(module_path),
-        is_clean_tree_roster_excluded:
-            external_authority_is_clean_tree_roster_excluded_for_module_path(module_path),
-        anchor_shadow_masked: external_authority_anchor_shadow_masked_for_module_path(module_path),
     }
 }
 
 fn external_authority_live_violation_module_paths() -> Vec<String> {
-    let backfill = external_authority_backfill_pending_module_paths();
     let mut violations = Vec::new();
     for path in extdeps_derived_extdeps_module_paths() {
         if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
             continue;
         }
-        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path)
-        {
+        if external_authority_is_machinery_exempt_for_module_path(&path) {
             continue;
         }
         match project_external_authority_anchor(&path) {
@@ -24689,20 +24639,6 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
-}
-
-pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
-    for path in extdeps_derived_extdeps_module_paths() {
-        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path)
-            || external_authority_is_machinery_exempt_for_module_path(&path)
-        {
-            continue;
-        }
-        if external_authority_anchor_shadow_masked_for_module_path(&path) {
-            return false;
-        }
-    }
-    true
 }
 
 #[cfg(test)]

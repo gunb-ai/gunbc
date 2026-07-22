@@ -8598,52 +8598,13 @@ fn eval_builtin_inner(
                         Value::Str(facts.scheme_identity),
                     ),
                     (ctx.sym("locator"), Value::Str(facts.locator)),
-                    (
-                        ctx.sym("is_backfill_pending"),
-                        Value::Bool(facts.is_backfill_pending),
-                    ),
-                    (
-                        ctx.sym("is_machinery_exempt"),
-                        Value::Bool(facts.is_machinery_exempt),
-                    ),
-                    (
-                        ctx.sym("is_clean_tree_roster_excluded"),
-                        Value::Bool(facts.is_clean_tree_roster_excluded),
-                    ),
-                    (
-                        ctx.sym("anchor_shadow_masked"),
-                        Value::Bool(facts.anchor_shadow_masked),
-                    ),
                 ])),
             };
             Ok(Some(result))
         }
 
-        "extdeps_derived_extdeps_modules" => {
-            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
-                    .to_string(),
-            })?;
-            Ok(Some(crate::cli_run::extdeps_derived_extdeps_modules_value(
-                ctx,
-            )))
-        }
-
-        "extdeps_external_authority_backfill_entries" => {
-            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_backfill_entries requires an active interpreter context"
-                    .to_string(),
-            })?;
-            Ok(Some(
-                crate::cli_run::extdeps_external_authority_backfill_pending_entries_value(ctx),
-            ))
-        }
-
         "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
             crate::cli_run::extdeps_external_authority_live_clean_tree_holds(),
-        ))),
-        "extdeps_external_authority_live_shadow_mask_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::extdeps_external_authority_live_shadow_mask_holds(),
         ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
             crate::cli_run::extdeps_external_authority_live_roster_module_count(),
