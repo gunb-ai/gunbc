@@ -9,3 +9,6 @@ src/v2/compiler/05_emit.dag	60 files emitted, 8 diagnostics	refuse	error[E0433]:
 src/v2/compiler/05_emit_orchestration.dag	68 files emitted, 8 diagnostics	refuse	error: expected one of `,` or `>`, found `.`	UNKNOWN_emit_shape	UNKNOWN-error:_expected_one_of_`,`_or_`>`,_found_`.`
 src/v2/compiler/emit_module.dag	61 files emitted, 8 diagnostics	refuse	error[E0433]: cannot find type `UriScheme` in this scope	namespace_resolution	CONFIRMED-namespace
 src/v2/compiler/emit_produced.dag	70 files emitted, 30 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`
+src/v2/compiler/emit_semantic_decl.dag	61 files emitted, 8 diagnostics	refuse	error[E0433]: cannot find type `UriScheme` in this scope	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/emit_host.dag	87 files emitted, 51 diagnostics	refuse	error[E0433]: cannot find type `UriScheme` in this scope	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/fold_lowering.dag	42 files emitted, 0 diagnostics	refuse	error[E0422]: cannot find struct, variant or union type `RuntimePrimitiveValue` in this scope	namespace_resolution	CONFIRMED-namespace
