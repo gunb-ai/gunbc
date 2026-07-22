@@ -311,8 +311,9 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     ]
 
     summary_parts = [f"{k}={v}" for k, v in sorted(counts.items())]
-    lines.append("data cli_run_hollowing_feature_counts_note: String = ")
-    lines.append(f'  "{", ".join(summary_parts)}"')
+    lines.append(
+        f'data cli_run_hollowing_feature_counts_note: String = "{", ".join(summary_parts)}"'
+    )
     lines.append("")
 
     def feature_to_ctor(feature: str) -> str:

@@ -42,8 +42,7 @@ data cli_run_hollowing_production_row_baseline: Int = 621
 data cli_run_hollowing_test_row_baseline: Int = 234
 data cli_run_hollowing_unclassified_baseline: Int = 0
 
-data cli_run_hollowing_feature_counts_note: String = 
-  "AffectedSetSelection=111, CompileCleanGate=34, HostPhysics=22, LensHostBridge=151, ModuleIdentityStorage=16, NamespaceResolutionSymbolIndex=256, RealizationMaterializationScheduling=36, RegenSelfHost=9, SerializationOneGrammar=18, TestReceipt=119, TypedModuleCacheComputationIdentity=34, WitnessDiscoveryExecution=37, WorkflowHostEffect=12"
+data cli_run_hollowing_feature_counts_note: String = "AffectedSetSelection=111, CompileCleanGate=34, HostPhysics=22, LensHostBridge=151, ModuleIdentityStorage=16, NamespaceResolutionSymbolIndex=256, RealizationMaterializationScheduling=36, RegenSelfHost=9, SerializationOneGrammar=18, TestReceipt=119, TypedModuleCacheComputationIdentity=34, WitnessDiscoveryExecution=37, WorkflowHostEffect=12"
 
 data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
   CliRunHollowLedgerRow {
