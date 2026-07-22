@@ -1,0 +1,139 @@
+module tools.walk_target_alias_plan
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, Terminal }
+import std.types { String, Bool, Int, list_length }
+import v2.std.collection { Optional, Absent, Present, optional_absent, optional_present }
+
+data walk_target_alias_plan_authority_note: String = "§13 walk-target alias codemod PLAN phase (namespace-resolution-design.md). Deduped WalkTargetAliasPlanRow set from SymbolIndex walk targets + silent-pick telemetry — never import lists. Stage A pure fold authority; live corpus resolve remains seed-retained in walk_target_alias_plan bin until .dag-callable whole-tree resolve + census bridge lands (seed-gap row 1). Phase 7 (#6984 fold-in): equivalence receipt vs Rust bin required before deleting walk_target_alias_plan bin + cli_run plan block; divergence is a finding, not silent reconcile. dissolve-on: stern-owl-401 Phase 3 refusal flip."
+
+data walk_target_alias_plan_from_census_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: Terminal,
+  bind: DeclarationRef {
+    module_path: "tools.walk_target_alias_plan",
+    decl_name: "walk_target_alias_plan_from_census_refused",
+    field: WholeDeclaration
+  }
+}
+
+data walk_target_alias_plan_from_census_dissolve_trigger: String = "dissolve-on: walk_target_alias_plan_from_census in .dag requires InterpContext type_env map + symbol_index ground_walk_target_* bridge (seed-gap row 1); until landed, equivalence receipt dual-runs Rust bin output against .dag fold on injected census snapshots"
+
+type WalkTargetAliasPlanClass
+  = GlobalBareLcp
+  | FnParentFirstHit
+  | GlobalBareLcpTie
+
+type WalkTargetAliasPlanRowKey {
+  class: WalkTargetAliasPlanClass
+  declaring_module: String
+  binding: String
+  walk_target_qualified_path: String
+}
+
+type WalkTargetAliasPlanRow {
+  key: WalkTargetAliasPlanRowKey
+  pre_flip_qualified_path: String
+  walk_verified: Bool
+  lookup_events: Int
+}
+
+type WalkTargetAliasPlanRefused {
+  class: WalkTargetAliasPlanClass
+  declaring_module: String
+  binding: String
+  reason: String
+}
+
+type WalkTargetAliasPlan {
+  rows: List<WalkTargetAliasPlanRow>
+  refused: List<WalkTargetAliasPlanRefused>
+  source_scope_label: String
+}
+
+fn walk_target_alias_plan_class_label(class: WalkTargetAliasPlanClass) -> String {
+  match class {
+    GlobalBareLcp => "global_bare_lcp"
+    FnParentFirstHit => "fn_parent_first_hit"
+    GlobalBareLcpTie => "global_bare_lcp_tie"
+  }
+}
+
+fn walk_target_alias_plan_row_key_eq(a: WalkTargetAliasPlanRowKey, b: WalkTargetAliasPlanRowKey) -> Bool {
+  (a.class == b.class)
+    && (a.declaring_module == b.declaring_module)
+    && (a.binding == b.binding)
+    && (a.walk_target_qualified_path == b.walk_target_qualified_path)
+}
+
+fn walk_target_alias_plan_row_eq(a: WalkTargetAliasPlanRow, b: WalkTargetAliasPlanRow) -> Bool {
+  walk_target_alias_plan_row_key_eq(a: a.key, b: b.key)
+    && (a.pre_flip_qualified_path == b.pre_flip_qualified_path)
+    && (a.walk_verified == b.walk_verified)
+    && (a.lookup_events == b.lookup_events)
+}
+
+fn walk_target_alias_plan_rows_all_match(
+  expected: List<WalkTargetAliasPlanRow>,
+  actual: List<WalkTargetAliasPlanRow>
+) -> Bool {
+  if list_length(items: expected) != list_length(items: actual) {
+    false
+  } else {
+    fold(
+      expected,
+      init: true,
+      f: fn(ok, exp) {
+        if !ok {
+          false
+        } else {
+          fold(
+            actual,
+            init: false,
+            f: fn(found, act) { found || walk_target_alias_plan_row_eq(a: exp, b: act) }
+          )
+        }
+      }
+    )
+  }
+}
+
+fn walk_target_alias_plan_from_census_refused() -> String {
+  "WALK_TARGET_ALIAS_PLAN: plan_from_census requires whole-tree resolve + InterpContext bridge in .dag workflow (seed-gap row 1 — escalate before Phase 7 Rust deletion)"
+}
+
+fn walk_target_alias_plan_alias_row_tsv(
+  row: WalkTargetAliasPlanRow
+) -> String {
+  concat(
+    "ALIAS_ROW\t",
+    concat(
+      walk_target_alias_plan_class_label(class: row.key.class),
+      concat(
+        "\tmodule=",
+        concat(
+          row.key.declaring_module,
+          concat(
+            "\tbinding=",
+            concat(
+              row.key.binding,
+              concat(
+                "\twalk_target=",
+                concat(
+                  row.key.walk_target_qualified_path,
+                  concat(
+                    "\twalk_verified=",
+                    concat(
+                      if row.walk_verified { "true" } else { "false" },
+                      concat("\tpre_flip_qn=", row.pre_flip_qualified_path)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+

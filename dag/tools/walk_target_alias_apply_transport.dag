@@ -1,0 +1,39 @@
+module tools.walk_target_alias_apply_transport
+
+import tools.host_prelude { run_witness_bin }
+import tools.walk_target_alias_apply {
+  walk_target_alias_apply_plan_pure,
+  walk_target_alias_module_index_seed_gap,
+  WalkTargetAliasPlan
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+data wtaa_transport_doc: String = "§13 walk-target alias APPLY transport: dry-run path runs static oracle + pure apply fold (module_path_index seed-gap until source_authority bridge lands). Wet plan consumption remains on walk_target_alias_plan WitnessBin (#6984 seed-retained). Corpus --write stays refused until #6979 gate clears in workflow."
+
+fn walk_target_alias_apply_dry_run_receipt_holds() -> Bool {
+  let plan = WalkTargetAliasPlan {
+    rows: [],
+    refused: [],
+    source_scope_label: "dry-run-receipt"
+  }
+  match walk_target_alias_apply_plan_pure(plan: plan, write_requested: false) {
+    Accepted { value: report, diagnostics: _ } =>
+      report.binding_identity_oracle_passed
+        && !report.write_requested
+        && (report.refused == [walk_target_alias_apply_module_index_seed_gap])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn run_walk_target_alias_plan_bin_smoke() -> Bool {
+  run_witness_bin(
+    var_name: "WALK_TARGET_ALIAS_PLAN",
+    bin_name: "walk_target_alias_plan",
+    args: ["--source-root", "dag/std"]
+  )
+}
+
+fn run_walk_target_alias_apply_witness() -> Bool {
+  walk_target_alias_apply_dry_run_receipt_holds()
+}

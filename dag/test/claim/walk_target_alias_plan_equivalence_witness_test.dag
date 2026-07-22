@@ -1,0 +1,46 @@
+module test.claim.walk_target_alias_plan_equivalence_witness_test
+
+import tools.walk_target_alias_plan_equivalence_transport {
+  wtaa_plan_equivalence_pure_receipt_holds
+}
+import tools.walk_target_alias_plan {
+  walk_target_alias_plan_alias_row_tsv,
+  walk_target_alias_plan_rows_all_match,
+  WalkTargetAliasPlanRow,
+  WalkTargetAliasPlanRowKey,
+  GlobalBareLcp
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wtaa_plan_equivalence_note: String = "Phase 7 equivalence receipt (operator ruling msg_b6c9153f): golden plan rows match Rust positive-control oracle values; full corpus dual-run gates #6984 Rust deletion once walk_target_alias_plan_from_census lands in .dag."
+
+data wtaa_plan_equivalence_golden_row: WalkTargetAliasPlanRow = WalkTargetAliasPlanRow {
+  key: WalkTargetAliasPlanRowKey {
+    class: GlobalBareLcp,
+    declaring_module: "test.aliasplan.near.consumer",
+    binding: "AmbigType",
+    walk_target_qualified_path: "test.aliasplan.near.AmbigType"
+  },
+  pre_flip_qualified_path: "test.aliasplan.near.AmbigType",
+  walk_verified: true,
+  lookup_events: 1
+}
+
+test fn walk_target_alias_plan_equivalence_golden_row_self_match_holds() -> Bool {
+  walk_target_alias_plan_rows_all_match(
+    expected: [wtaa_plan_equivalence_golden_row],
+    actual: [wtaa_plan_equivalence_golden_row]
+  )
+}
+
+test fn walk_target_alias_plan_equivalence_tsv_shape_holds() -> Bool {
+  string_contains(
+    s: walk_target_alias_plan_alias_row_tsv(row: wtaa_plan_equivalence_golden_row),
+    pattern: "ALIAS_ROW\tglobal_bare_lcp\tmodule=test.aliasplan.near.consumer\tbinding=AmbigType\twalk_target=test.aliasplan.near.AmbigType"
+  )
+}
+
+test fn walk_target_alias_plan_equivalence_pure_receipt_holds() -> Bool {
+  wtaa_plan_equivalence_pure_receipt_holds()
+}

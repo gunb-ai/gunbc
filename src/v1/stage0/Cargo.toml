@@ -142,10 +142,6 @@ name = "walk_target_alias_plan"
 path = "src/bin/walk_target_alias_plan.rs"
 
 [[bin]]
-name = "walk_target_alias_apply"
-path = "src/bin/walk_target_alias_apply.rs"
-
-[[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
 

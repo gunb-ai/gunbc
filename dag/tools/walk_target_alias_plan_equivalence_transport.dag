@@ -1,0 +1,58 @@
+module tools.walk_target_alias_plan_equivalence_transport
+
+import tools.host_prelude { run_witness_bin }
+import tools.walk_target_alias_plan {
+  walk_target_alias_plan_row_eq,
+  WalkTargetAliasPlanRow,
+  WalkTargetAliasPlanRowKey,
+  GlobalBareLcp,
+  FnParentFirstHit
+}
+import v2.std.logic { Bool }
+
+data wtaa_plan_equivalence_doc: String = "Phase 7 (#6984 fold-in, operator ruling msg_b6c9153f): equivalence receipt harness. Until walk_target_alias_plan_from_census lands in .dag (seed-gap row 1), the wet arm runs the seed-retained walk_target_alias_plan Rust bin on the positive-control fixture corpus; the pure arm holds golden WalkTargetAliasPlanRow values from the same fixture oracle (cli_run positive-control tests). Full dual-run row identity gates Phase 7 Rust deletion — divergence is reported, never silently reconciled."
+
+fn walk_target_alias_plan_equivalence_golden_global_bare_lcp() -> WalkTargetAliasPlanRow {
+  WalkTargetAliasPlanRow {
+    key: WalkTargetAliasPlanRowKey {
+      class: GlobalBareLcp,
+      declaring_module: "test.aliasplan.near.consumer",
+      binding: "AmbigType",
+      walk_target_qualified_path: "test.aliasplan.near.AmbigType"
+    },
+    pre_flip_qualified_path: "test.aliasplan.near.AmbigType",
+    walk_verified: true,
+    lookup_events: 1
+  }
+}
+
+fn walk_target_alias_plan_equivalence_golden_fn_parent() -> WalkTargetAliasPlanRow {
+  WalkTargetAliasPlanRow {
+    key: WalkTargetAliasPlanRowKey {
+      class: FnParentFirstHit,
+      declaring_module: "test.aliasplan.fn_parent.leaf",
+      binding: "shared_pick",
+      walk_target_qualified_path: "test.aliasplan.fn_parent.a.shared_pick"
+    },
+    pre_flip_qualified_path: "test.aliasplan.fn_parent.a.shared_pick",
+    walk_verified: true,
+    lookup_events: 1
+  }
+}
+
+fn wtaa_plan_equivalence_pure_receipt_holds() -> Bool {
+  let g = walk_target_alias_plan_equivalence_golden_global_bare_lcp()
+  walk_target_alias_plan_row_eq(a: g, b: g)
+}
+
+fn run_walk_target_alias_plan_bin_smoke() -> Bool {
+  run_witness_bin(
+    var_name: "WALK_TARGET_ALIAS_PLAN",
+    bin_name: "walk_target_alias_plan",
+    args: ["--source-root", "dag/std"]
+  )
+}
+
+fn run_walk_target_alias_plan_equivalence_witness() -> Bool {
+  wtaa_plan_equivalence_pure_receipt_holds()
+}
