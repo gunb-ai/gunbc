@@ -37,7 +37,7 @@ data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
   bmc_host: "192.168.1.195",
   serve_port: 8080,
   netboot_dir: "/tmp/netboot",
-  boot_interface: "eth0",
+  boot_interface: "eth2",
   bulk_iso_url: Uri {
     scheme: Https,
     locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",

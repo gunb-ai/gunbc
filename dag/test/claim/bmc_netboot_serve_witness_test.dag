@@ -27,7 +27,7 @@ test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
 test fn srv4_http_boot_entry_targets_bmc() -> Bool {
   let entry = bmc_netboot_http_boot_entry(plan: srv4_bmc_netboot_serve_plan)
   string_contains(s: uefi_http_boot_uri_wire(entry: entry), pattern: "http://192.168.1.195:8080/grubaa64.efi")
-    && entry.interface_name == "eth0"
+    && entry.interface_name == "eth2"
 }
 
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
