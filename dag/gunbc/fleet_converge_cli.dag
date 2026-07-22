@@ -83,7 +83,43 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
 }
 
 fn converge_cli_routes_to_slice1(host: String) -> Bool {
-  host == (operator_host_srv1 as String)
+  host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
+}
+
+fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
+  let result = host_converge_slice1_converge_srv3()
+  if host_converge_slice1_host_result_all_valid(result: result) {
+    ConvergeCliReceipt {
+      host: operator_host_srv3 as String,
+      applied: host_converge_slice1_host_result_applied_count(result: result),
+      drifted: 0,
+      verdict: VerdictConverged,
+      reason: none,
+    }
+  } else {
+    ConvergeCliReceipt {
+      host: operator_host_srv3 as String,
+      applied: host_converge_slice1_host_result_applied_count(result: result),
+      drifted: 0,
+      verdict: Absent,
+      reason: Present {
+        value: KnobFrontier {
+          reason: match host_converge_slice1_host_result_refusal_reason(result: result) {
+            Present { value: why } => why
+            Absent => "host_converge_slice1: srv3 multi-unit convergence receipt validity gate failed"
+          },
+        },
+      },
+    }
+  }
+}
+
+fn converge_cli_slice1_receipt(host: String) -> ConvergeCliReceipt {
+  if host == (operator_host_srv3 as String) {
+    converge_cli_slice1_srv3_receipt()
+  } else {
+    converge_cli_slice1_srv1_receipt()
+  }
 }
 
 fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
@@ -183,7 +219,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
       }
     ConvergePolicyDerived { hosts: hosts } =>
       if converge_cli_routes_to_slice1(host: host) {
-        converge_cli_slice1_srv1_receipt()
+        converge_cli_slice1_receipt(host: host)
       } else {
         match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
         Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
