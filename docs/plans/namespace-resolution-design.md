@@ -117,6 +117,25 @@ an optional `expected: Node?` — present in checking positions (annotation, scr
 type), absent in synthesis positions; when present *and* the structural candidate set is >1, it
 filters to variants/members of `expected` before declaring `Ambiguous`.
 
+**RE-ADJUDICATED — SUPERSEDED BY §13 (operator ruling, 2026-07-22).** The (X)/(Y) menu above
+presupposed the `global_bare` pool tier: bare `Success` only ever "has 6 structural matches" if
+the whole pool is a candidate set. §13 deletes that tier — a bare name's candidates are the
+binders on its **ancestor chain**, never the pool — so the pool-filter reading of (Y) is *dead,
+not chosen against*. Operator (2026-07-22): similar instances across the repo are **not**
+associated by shared literal name — *"there has to be some kind of logical connection"*; a bare
+name with zero chain binders is `Unresolved` ("what are you referring to?"), never `Ambiguous`
+among pool homonyms. What survives of (Y) is one residue, **demoted to sugar** (§6 amendment):
+in a typed position whose container type is **syntactically local** (a written annotation — an
+annotated scrutinee, `let x: T`, a field/return type), a bare member name desugars to
+`T.<name>` — a grammar-level rewrite, decidable without inference, loud on any edit to the
+local annotation. Flow-typed positions (the container arrives by inference from another
+declaration) get **no sugar** and must qualify or alias: that is exactly where desugaring would
+become type-directed elaboration, and where the silent-rebind hole lives (editing `f`'s return
+type would silently re-target `match f() { Success => .. }` — the §13 edit-stability invariant
+forbids it). The sugar boundary and the safety boundary coincide — which is *why* the residue
+is sugar, not semantics. Implementation consequence updated: `resolve`'s `expected: Node?`
+narrows to the local-annotation projection, or is absent from the core resolver entirely.
+
 ## 5. The collision census (empirical grounding, 2026-07-06)
 
 Declared-name census over 942 `.dag` files (`dag/**` + `src/v1/**`), leaf name × declared
@@ -226,8 +245,12 @@ to all names:
 
 - **Binding edge, not scan.** A constructor's owner still rides its binding (§1c rule 1);
   under namespace-only the "binding" is just the resolved node's parent edge in the tree.
-- **No expected-type picker** (§1c rule 5) — (Y)'s expected-type *filter* is distinct (§4).
-- **Patterns via scrutinee** (§1c rule 4) is the pattern-position instance of (Y).
+- **No expected-type picker** (§1c rule 5) — and per the §4 re-adjudication (2026-07-22) the
+  expected-type *filter* is dead with the pool tier; no expected-type consultation survives in
+  the core resolver.
+- **Patterns via scrutinee** (§1c rule 4) is **demoted to sugar** (§4 re-adjudication): valid
+  only when the scrutinee's container type is syntactically local (a written annotation), where
+  it is a grammar-level desugar to `T.<name>`; a flow-typed scrutinee's arms qualify or alias.
 - **Collision at env construction** (§1c rule 3) becomes the general `Ambiguous` outcome.
 
 ## 7. What dissolves (all Rule-1 dual-representations)
@@ -664,11 +687,14 @@ unique-on-chain everywhere — this **structurally dissolves** the prelude-shape
 class (#6936, 739) rather than special-casing it, pending still-hawk's confirmation of the (c)
 subclass.
 
-**Flagged, NOT ruled — the (Y) expected-type filter (§4).** Type-directed disambiguation (an
-expected type filtering a variant set to one) sits *adjacent* to the rejected fallback class: it,
-too, lets context pick among candidates. It is **not** covered by this ruling and needs a separate
-operator ruling before it survives into the flip — §4's "filters, never picks" claim must be
-re-adjudicated against this invariant.
+**RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The
+re-adjudication this paragraph asked for is done: the pool-filter reading of (Y) dies with the
+`global_bare` tier (there is never a pool candidate set to filter), and the surviving residue —
+bare member names in typed positions — is **sugar gated on a syntactically-local container
+annotation**, never type-directed elaboration from flow-typed positions. The sugar boundary
+coincides with this section's edit-stability invariant, so nothing of the rejected fallback
+class survives into the flip. See §4's re-adjudication note for the full statement and the §6
+mechanics amendment for patterns-via-scrutinee's demotion.
 
 **Sequencing.** §10 step-1 (header-as-sugar → containment graft) is in flight (stern-newt-142,
 #6968); slice-2's per-class counts gate the §5 backstop widening; import→alias transmutation lands
