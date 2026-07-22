@@ -7,6 +7,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
   floor_plan_function,
+  plan_artifact_plan_function,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.ci_gate {
@@ -827,19 +828,35 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
   })
 }
 
-data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> = [
+data gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed: List<String> = [
   floor_plan_function,
-  "gunbc_ci_plan_artifact_batches",
+  plan_artifact_plan_function,
   falsifier_plan_function,
 ]
+
+data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> =
+  gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
 
 fn gunbc_floor_arm_time_budget_refusal_applies(plan_function: String) -> Bool {
   any(gunbc_floor_arm_time_budget_refusal_plan_functions, f => f == plan_function)
 }
 
+fn witness_string_lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
+  (length(xs: a) == length(xs: b))
+    && all(a, item => any(b, x => x == item))
+    && all(b, item => any(a, x => x == item))
+}
+
 fn witness_floor_arm_time_budget_refusal_plan_roster_authority() -> Bool {
   (length(xs: gunbc_floor_arm_time_budget_refusal_plan_functions) == 3)
     && gunbc_floor_arm_time_budget_refusal_applies(plan_function: floor_plan_function)
-    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: "gunbc_ci_plan_artifact_batches")
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: plan_artifact_plan_function)
     && gunbc_floor_arm_time_budget_refusal_applies(plan_function: falsifier_plan_function)
+}
+
+fn witness_floor_arm_time_budget_refusal_seed_mirror_matches_roster() -> Bool {
+  witness_string_lists_have_same_members(
+    a: gunbc_floor_arm_time_budget_refusal_plan_functions,
+    b: gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
+  )
 }

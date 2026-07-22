@@ -1787,7 +1787,9 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
-/// `v2.workflow.ci_floor_plan.gunbc_floor_arm_time_budget_refusal_plan_functions`):
+/// `v2.workflow.ci_floor_plan.gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed`,
+/// symbols `gunbc.ci_spec.floor_plan_function` / `plan_artifact_plan_function` /
+/// `gunbc.falsifier_workflow.falsifier_plan_function`):
 /// plan functions whose schedule is a floor walk and therefore subject to arm-time
 /// `FloorBudgetBelowMinimumFootprint` refusal in claim_executor.
 const FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS: &[&str] = &[
@@ -2239,6 +2241,18 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn floor_arm_time_budget_refusal_plan_functions_match_dag_seed_roster() {
+        assert_eq!(
+            FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS,
+            [
+                "gunbc_ci_floor_batches",
+                "gunbc_ci_plan_artifact_batches",
+                "gunbc_falsifier_batches",
+            ]
+        );
+    }
 
     // The materialization-receipt chain by execution: a real entry resolves, a
     // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger
