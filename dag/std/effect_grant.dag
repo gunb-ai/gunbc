@@ -116,21 +116,34 @@ fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
   verb_eq(a: grant.verb, b: verb) && position_under(target: target, root: grant.root)
 }
 
-fn admit_effect_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> EffectAdmission {
+type CoveringGrant
+  = CoveredBy { grant: Grant }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+
+data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
+
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
   if grants.count() == 0 {
-    EffectOutsideGrant { verb: verb, target: target, frame: frame }
+    NoCoveringGrant { verb: verb, target: target, frame: frame }
   } else {
     let g = grants.first()
     if grant_covers(grant: g, verb: verb, target: target) {
-      Admitted { via_root: grant_root(g: g) }
+      CoveredBy { grant: g }
     } else {
-      admit_effect_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
+      covering_grant_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
     }
   }
 }
 
+fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> CoveringGrant {
+  covering_grant_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
+}
+
 fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> EffectAdmission {
-  admit_effect_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
+  match covering_grant(env: env, verb: verb, target: target) {
+    CoveredBy { grant: g } => Admitted { via_root: grant_root(g: g) }
+    NoCoveringGrant { verb: v, target: t, frame: f } => EffectOutsideGrant { verb: v, target: t, frame: f }
+  }
 }
 
 fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
