@@ -2057,10 +2057,7 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
     Absent => []
   }
   let from_params = item.params |> flat_map(p =>
-    match param_node_type_expr(n: p, source_indices: source_indices) {
-      Present { value: t } => collect_type_node_import_surface_names(n: t, source_indices: source_indices)
-      Absent => []
-    }
+    collect_type_node_import_surface_names(n: param_node_type_expr(n: p), source_indices: source_indices)
   )
   let from_inferred = match item.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
