@@ -1393,11 +1393,31 @@ pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
         .clone()
 }
 
-/// Floor discovery ∪ whole-tree probe policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
+/// Floor discovery ∪ whole-tree probe pattern policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
 pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     let mut excludes = witness_exclusion_substrings();
     excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
     excludes
+}
+
+/// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
+/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
+pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
+    census_exclude_derive::whole_tree_probe_exclusion_substrings()
+}
+
+/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
+/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
+pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
+    let pool_roots = default_source_roots();
+    let facts = build_module_graph_facts_live(&pool_roots);
+    let mut paths = BTreeSet::new();
+    for entry in compile_clean_shard_entry_paths_fast() {
+        for path in import_closure_live_paths_with_facts(&entry, &facts) {
+            paths.insert(path);
+        }
+    }
+    paths.into_iter().collect()
 }
 
 /// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
@@ -15591,6 +15611,19 @@ mod node_frontier_plumbing_controls {
         assert!(err.contains("UnexecutedDeferredWitness"));
     }
 
+    #[test]
+    fn witness_whole_tree_resolve_exclusion_matches_concat_authority() {
+        let mut expected = super::witness_exclusion_substrings();
+        expected.extend(super::whole_tree_strict_resolve_exclusion_substrings());
+        let actual = super::whole_tree_resolve_exclusion_substrings();
+        assert_eq!(
+            actual, expected,
+            "host whole_tree_resolve_exclusion_substrings must equal \
+             witness_exclusion_substrings ∪ whole_tree_strict_resolve_exclusion_substrings \
+             (gunbc.ci_layer_roots single-authority concat)"
+        );
+    }
+
     // Task 5 (declared-source-ref selection): the 03_normalize flagship opts into
     // declared_source_refs on its transport — effect_reach must NOT upgrade it to
     // ReadsLiveTree; selection uses the declared-ref axis instead.
@@ -26302,3 +26335,6 @@ mod compile_clean_loader_closure_fork_regression {
         );
     }
 }
+
+#[path = "census_exclude_derive.rs"]
+pub mod census_exclude_derive;
