@@ -20,19 +20,7 @@ import std.emit_on_demand {
   interpreter_surviving_roles_bounded,
 }
 import v2.std.emit_on_demand { witness_family_realize_width }
-import extdeps.realization.emit_on_demand_host {
-  native_cache_workspace_root, emit_on_demand_evict_native_cache,
-}
-import v2.compiler.emit { emit }
-import extdeps.communication.medium { Medium }
-import v2.compiler.emit_host {
-  emit_host_octets_byte_string,
-  run_emit_host_cached,
-  run_test_claim_emit_vs_eval,
-}
 import v2.compiler.eval {
-  Inputs,
-  inputs_for_emit_host,
   inferred_tree_digest,
 }
 import v2.compiler.infer { InferredTree }
@@ -40,23 +28,15 @@ import v2.extdeps.languages.dag {
   dag_complement_arrow_with_body_fixture,
   dag_complement_arrow_with_body_swapped_arms_fixture,
 }
-import v2.extdeps.languages.rust_test { rust_logic_complement_target_model_staging }
 import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
-  emit_complement_eval_subject,
-  emit_complement_eval_subgraph_node,
-  emit_complement_eval_verdict_is_pass,
-  emit_complement_eval_verdict_is_semantic_mismatch,
 }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.host_run { HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0])."
+data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — PURE receipts only (grain/closure keys, store hit/miss materialization, interpreter role bound, packed-width budget refusal). Native execution + eval-anchored agreement for complement MIGRATED to family grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is emit_on_demand_family_crate_witness_test — complement runs as a warm member of the logic family crate (agreement Pass via run_test_claim_from_source_emit_vs_eval_cached; wrong-fixture discriminator = the all-alt family octet flip 0 -> 1); the equals_eval harness's own mismatch RED stays live in emit_host_complement_equals_eval_test. Residue is pure; the LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on."
 
-data complement_family_cache_root: String = "/tmp/gunbc_emit_on_demand_complement"
 data complement_family_emitter: String = "v2.compiler.emit"
 data complement_family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-complement",
@@ -137,170 +117,8 @@ test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> 
   }
 }
 
-fn complement_family_fixture_inputs() -> Inputs {
-  inputs_for_emit_host(
-    claim_input_root: emit_complement_eval_subgraph_node,
-    expected_eval_root: emit_complement_eval_subgraph_node,
-    claim_pin: ^emit_complement_eval_evaluator_pin
-  )
-}
-
-fn complement_family_cached_run_with_source(
-  workspace: String,
-  tree: InferredTree,
-  source: Medium<String>,
-  expect_compile_skipped: Bool
-) -> Bool {
-  match run_emit_host_cached(
-    workspace_dir: workspace,
-    target: rust_logic_complement_target_model_staging(),
-    source: source,
-    fixture_inputs: complement_family_fixture_inputs()
-  ) {
-    Accepted { value: receipt, diagnostics: _ } =>
-      match receipt.logical_run {
-        Accepted {
-          value: HostLogicalRun { stdout: stdout },
-          diagnostics: None
-        } =>
-          receipt.compile_skipped == expect_compile_skipped
-            && stdout.bytes == emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0])
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn complement_family_cache_root_for(test_id: String) -> String {
-  concat(complement_family_cache_root, "/", test_id)
-}
-
-fn complement_family_evict_and_workspace(test_id: String, tree: InferredTree) -> String {
-  let key = complement_family_native_key_for(tree: tree)
-  let root = complement_family_cache_root_for(test_id: test_id)
-  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
-  native_cache_workspace_root(cache_root: root, key: key)
-}
-
-fn complement_family_cached_run_checks(
-  workspace: String,
-  tree: InferredTree,
-  expect_compile_skipped: Bool
-) -> Bool {
-  match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
-    Accepted { value: source, diagnostics: _ } =>
-      complement_family_cached_run_with_source(
-        workspace: workspace,
-        tree: tree,
-        source: source,
-        expect_compile_skipped: expect_compile_skipped
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn complement_family_cached_cold_then_warm(workspace: String, tree: InferredTree) -> Bool {
-  match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
-    Accepted { value: source, diagnostics: _ } =>
-      complement_family_cached_run_with_source(
-        workspace: workspace,
-        tree: tree,
-        source: source,
-        expect_compile_skipped: false
-      )
-        && complement_family_cached_run_with_source(
-          workspace: workspace,
-          tree: tree,
-          source: source,
-          expect_compile_skipped: true
-        )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds() -> Bool {
   (complement_family_native_key_for(tree: complement_family_primary_tree()) == complement_family_native_key_for(tree: complement_family_alt_tree())) == false
-}
-
-test fn emit_on_demand_complement_native_content_change_cold_rebuild_holds() -> Bool {
-  let shared_parent = complement_family_cache_root_for(test_id: "content_change_miss")
-  let tree_primary = complement_family_primary_tree()
-  let tree_alt = complement_family_alt_tree()
-  let key_primary = complement_family_native_key_for(tree: tree_primary)
-  let key_alt = complement_family_native_key_for(tree: tree_alt)
-  if key_primary == key_alt {
-    false
-  } else {
-    let workspace_primary = native_cache_workspace_root(
-      cache_root: shared_parent,
-      key: key_primary
-    )
-    let _evict_primary = emit_on_demand_evict_native_cache(
-      cache_root: shared_parent,
-      key: key_primary
-    )
-    let _evict_alt = emit_on_demand_evict_native_cache(
-      cache_root: shared_parent,
-      key: key_alt
-    )
-    let warmed = complement_family_cached_cold_then_warm(
-      workspace: workspace_primary,
-      tree: tree_primary
-    )
-    let workspace_alt = native_cache_workspace_root(
-      cache_root: shared_parent,
-      key: key_alt
-    )
-    warmed
-      && complement_family_cached_run_checks(
-        workspace: workspace_alt,
-        tree: tree_alt,
-        expect_compile_skipped: false
-      )
-  }
-}
-
-test fn emit_on_demand_complement_agreement_holds() -> Bool {
-  emit_complement_eval_verdict_is_pass(
-    run: run_test_claim_emit_vs_eval(
-      subject: emit_complement_eval_subject(tree: complement_family_primary_tree()),
-      target: rust_logic_complement_target_model_staging()
-    )
-  )
-}
-
-test fn emit_on_demand_complement_wrong_fixture_refuses_holds() -> Bool {
-  emit_complement_eval_verdict_is_semantic_mismatch(
-    run: run_test_claim_emit_vs_eval(
-      subject: emit_complement_eval_subject(tree: complement_family_alt_tree()),
-      target: rust_logic_complement_target_model_staging()
-    )
-  )
-}
-
-test fn emit_on_demand_complement_native_cold_holds() -> Bool {
-  let tree = complement_family_primary_tree()
-  let workspace = complement_family_evict_and_workspace(test_id: "native_cold", tree: tree)
-  complement_family_cached_run_checks(
-    workspace: workspace,
-    tree: tree,
-    expect_compile_skipped: false
-  )
-}
-
-test fn emit_on_demand_complement_native_warm_holds() -> Bool {
-  let tree = complement_family_primary_tree()
-  let workspace = complement_family_evict_and_workspace(test_id: "native_warm", tree: tree)
-  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
-}
-
-test fn emit_on_demand_complement_native_cold_then_warm_holds() -> Bool {
-  let tree = complement_family_primary_tree()
-  let workspace = complement_family_evict_and_workspace(
-    test_id: "native_cold_then_warm",
-    tree: tree
-  )
-  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
 }
 
 test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool {
@@ -322,11 +140,5 @@ test fn emit_on_demand_complement_family_witnesses() -> Bool {
     && emit_on_demand_complement_interpreter_roles_bounded_holds()
     && emit_on_demand_complement_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_complement_agreement_holds()
-    && emit_on_demand_complement_wrong_fixture_refuses_holds()
-    && emit_on_demand_complement_native_content_change_cold_rebuild_holds()
-    && emit_on_demand_complement_native_cold_holds()
-    && emit_on_demand_complement_native_warm_holds()
-    && emit_on_demand_complement_native_cold_then_warm_holds()
     && emit_on_demand_complement_materialize_share_on_hit_holds()
 }

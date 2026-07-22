@@ -8,25 +8,25 @@ import gunbc.ci_spec {
 import tools.ci_gates { exit_ok, run_spec_gate }
 
 func emit_host_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: EmitHostGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: EmitHostGate))
 }
 
 func layering_imports_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: LayeringImportsGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: LayeringImportsGate))
 }
 
 func extdeps_external_authority_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
 }
 
 func dag_compile_clean_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: DagCompileCleanGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: DagCompileCleanGate))
 }
 
 func generated_artifact_drift_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
 }
 
 func regen_verify_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: RegenVerifyGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: RegenVerifyGate))
 }
