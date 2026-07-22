@@ -362,8 +362,6 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
             "fn cli_run_hollowing_feature_counts_note() -> String {",
             f'  "{", ".join(summary_parts)}"',
             "}",
-            "",
-            f"// Generated from {CLI_RUN.relative_to(REPO)} ({source_loc} LOC). Regenerate via scripts/generate_cli_run_hollowing_ledger.py",
         ]
     )
     return "\n".join(lines) + "\n"
