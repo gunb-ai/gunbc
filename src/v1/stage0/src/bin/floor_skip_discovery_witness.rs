@@ -159,6 +159,8 @@ const FALSIFIER_CONTROL_REL: &str =
 
 const LIVE_TREE_DECLARED_REL: &str = "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
 
+const DOC_REACHABILITY_WITNESS_REL: &str = "dag/test/claim/doc_reachability_witness_test.dag";
+
 fn live_tree_declared_roster() -> Vec<(String, String)> {
     let ws = workspace_root();
     vec![(
@@ -166,6 +168,16 @@ fn live_tree_declared_roster() -> Vec<(String, String)> {
             .to_string_lossy()
             .into_owned(),
         "live_tree_declared_control_holds".to_string(),
+    )]
+}
+
+fn doc_reachability_roster(function: &str) -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![(
+        ws.join(DOC_REACHABILITY_WITNESS_REL)
+            .to_string_lossy()
+            .into_owned(),
+        function.to_string(),
     )]
 }
 
@@ -198,6 +210,40 @@ fn declared_live_tree_row_never_predicted_unaffected() {
         summary.predicted_unaffected.is_empty(),
         "predict-only must never predict a declared ReadsLiveTree row unaffected \
          (live-tree rows never predict-skip)"
+    );
+    assert_eq!(summary.passed, 1);
+}
+
+/// #7023 discriminating witness: a docs-only diff must RUN the doc-graph wall, not bypass it
+/// via the retired `documentation_only_skip` shell shortcut. The entry already declares
+/// `ReadsLiveTree`; selection's never-predict-skip lane is the sole authority — no hand edge.
+fn doc_reachability_runs_on_docs_only_diff() {
+    chdir_workspace();
+    let summary = run_injected_diff_roster(
+        "docs/plans/synthetic-orphan-doc-reachability-red-control.md",
+        1,
+        &doc_reachability_roster("doc_graph_has_no_orphan_docs"),
+    );
+    assert_eq!(summary.total, 1);
+    assert_eq!(
+        summary.skipped, 0,
+        "doc-reachability must RUN on a docs-only diff (ReadsLiveTree never predict-skips; \
+         #7023 class: shell documentation_only_skip bypass retired)"
+    );
+    assert_eq!(summary.passed, 1, "clean tree: orphan wall is green");
+}
+
+fn doc_reachability_never_predicted_unaffected_on_docs_only_diff() {
+    chdir_workspace();
+    let summary = run_injected_diff_roster_with_mode(
+        "docs/plans/synthetic-orphan-doc-reachability-red-control.md",
+        1,
+        &doc_reachability_roster("doc_graph_has_no_orphan_docs"),
+        NodeFrontierSelectionMode::PredictOnly,
+    );
+    assert!(
+        summary.predicted_unaffected.is_empty(),
+        "predict-only must never predict doc-reachability unaffected on a docs-only diff"
     );
     assert_eq!(summary.passed, 1);
 }
@@ -616,6 +662,14 @@ fn main() -> ExitCode {
         (
             "declared_live_tree_row_never_predicted_unaffected",
             declared_live_tree_row_never_predicted_unaffected,
+        ),
+        (
+            "doc_reachability_runs_on_docs_only_diff",
+            doc_reachability_runs_on_docs_only_diff,
+        ),
+        (
+            "doc_reachability_never_predicted_unaffected_on_docs_only_diff",
+            doc_reachability_never_predicted_unaffected_on_docs_only_diff,
         ),
         (
             "node_precise_referenced_runs_orphan_skips_by_execution",
