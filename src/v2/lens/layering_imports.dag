@@ -2,6 +2,13 @@ module v2.lens.layering_imports
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixStd,
+  LayerPrefixExtdeps,
+  LayerPrefixCompiler,
+  LayerPrefixWorkflow,
+}
 
 type LayerImportFact {
   layer: LayerPrefix

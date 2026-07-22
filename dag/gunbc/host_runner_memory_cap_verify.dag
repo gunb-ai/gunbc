@@ -19,16 +19,18 @@ import gunbc.host_runner_memory_provision {
   runner_memory_knobs_from,
   runner_memory_cap_readback_verdict,
 }
-import gunbc.fleet_show_effective_read {
-  runner_unit_memory_live_read_from_stdout,
-  fleet_runner_unit_memory_props_read_script,
+import extdeps.os.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
+import gunbc.systemctl_show_read { systemctl_show_property_read_local }
+import gunbc.runner_unit_live_read {
+  RunnerUnitMemoryLiveRead,
+  RunnerUnitLiveReadRow,
+  runner_unit_live_read_typed,
 }
-import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 
 data runner_memory_cap_verify_probe_unit_assumption: String = "Path (b) verify read-back samples one representative unit (actions-runner@<host>-01.service; precedent: host_converge_slice1_probe_unit) while apply knobs target runner_instance_glob actions-runner@<host>-*.service (5 slots/host per gunbc.runner_slot_allocation). ASSUMPTION glob-uniform: systemd drop-ins apply the same MemoryMax/MemoryHigh/MemorySwapMax to every slot instance, so the knob tally receipt from -01 is the host-level verdict. Drift confined to -02..-05 alone is invisible until multi-unit fold lands (dissolve-on trigger for path (b) verify close)."
 
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
-  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Shell realization is scaffold-marked medium-as-string (host_runner_memory_cap_verify_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; probed_at uses slice-local date -Iseconds. Interim shell.Exec.Run is also rostered on meta_exec_confinement_exception_roster (precedent: host_converge_slice1) until typed host_effect_apply read transport lands. One-unit proxy read (slot -01) under glob-uniform assumption — see runner_memory_cap_verify_probe_unit_assumption."
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Shell realization is scaffold-marked medium-as-string (host_runner_memory_cap_verify_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — memory-prop reads route through gunbc.systemctl_show_read typed ShowProperty local reads (slice1 precedent; re-grounded here after #7064 deleted the concat script module this verify path consumed); probed_at uses slice-local date -Iseconds. Interim shell.Exec.Run is also rostered on meta_exec_confinement_exception_roster (precedent: host_converge_slice1) until typed host_effect_apply read transport lands. One-unit proxy read (slot -01) under glob-uniform assumption — see runner_memory_cap_verify_probe_unit_assumption."
 }
 
 data host_runner_memory_cap_verify_transport_script_scaffold: Disposition = Scaffold {
@@ -156,13 +158,29 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
   let unit = runner_memory_cap_probe_unit(host: host)
   match runner_memory_cap_verify_probed_at() {
     Present { value: probed_at } =>
-      let result = shell.Exec.Run(
-        script: transport_script_from_body(body: fleet_runner_unit_memory_props_read_script(unit: unit))
-      )
-      if result.success {
-        runner_unit_memory_live_read_from_stdout(unit: unit, stdout: result.stdout, probed_at: probed_at)
-      } else {
-        none
+      match systemctl_show_property_read_local(unit: unit, property: MemoryMax) {
+        Present { value: memory_max_raw } =>
+          match systemctl_show_property_read_local(unit: unit, property: MemorySwapMax) {
+            Present { value: memory_swap_max_raw } =>
+              match systemctl_show_property_read_local(unit: unit, property: MemoryHigh) {
+                Present { value: memory_high_raw } =>
+                  Present {
+                    value: runner_unit_live_read_typed(
+                      row: RunnerUnitLiveReadRow {
+                        unit: unit,
+                        memory_max_raw: memory_max_raw,
+                        memory_swap_max_raw: memory_swap_max_raw,
+                        memory_high_raw: memory_high_raw,
+                        memory_current_raw: "",
+                        probed_at: probed_at,
+                      }
+                    )
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+        Absent => none
       }
     Absent => none
   }
