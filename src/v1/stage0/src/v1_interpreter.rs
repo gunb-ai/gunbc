@@ -8843,9 +8843,9 @@ fn eval_builtin_inner(
                 positional.get(1).copied(),
                 "commit_witness_claim_pair_resolvable function",
             )?;
-            Ok(Some(Value::Bool(crate::cli_run::commit_witness_claim_pair_resolvable(
-                entry, function,
-            ))))
+            Ok(Some(Value::Bool(
+                crate::cli_run::commit_witness_claim_pair_resolvable(entry, function),
+            )))
         }
         "non_fold_residue_wildcard_red_fixture_holds" => Ok(Some(Value::Bool(
             crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
@@ -8855,6 +8855,9 @@ fn eval_builtin_inner(
         ))),
         "non_fold_residue_roster_red_fixture_holds" => Ok(Some(Value::Bool(
             crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
+        ))),
+        "non_fold_residue_synthetic_unrostered_red_holds" => Ok(Some(Value::Bool(
+            crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(

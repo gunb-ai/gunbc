@@ -21568,32 +21568,86 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 }
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
+    matches!(
+        commit_witness_claim_pair_resolvability(entry, function),
+        CommitWitnessClaimPairResolvability::Resolvable
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CommitWitnessClaimPairResolvability {
+    Resolvable,
+    EntryMissing { detail: String },
+    EntryResolveFailed { detail: String },
+    FunctionNotFound,
+}
+
+fn commit_witness_claim_pair_resolvability(
+    entry: &str,
+    function: &str,
+) -> CommitWitnessClaimPairResolvability {
     let roots = witness_layer_roots();
     let index = build_multi_entry_index(&roots);
     let entry_path = match resolve_entry_file_under_roots(&roots, entry) {
         Ok(p) => p,
-        Err(_) => return false,
+        Err(detail) => {
+            return CommitWitnessClaimPairResolvability::EntryMissing { detail };
+        }
     };
     let (graph, source_indices) = match resolve_entry_with_index(&index, &entry_path) {
         Ok(r) => r,
-        Err(_) => return false,
+        Err(detail) => {
+            return CommitWitnessClaimPairResolvability::EntryResolveFailed { detail };
+        }
     };
     let ctx = make_eval_context(
         &graph,
         source_indices,
         v1_interpreter::ExecutionMode::Hermetic,
     );
-    ctx.item_registry.contains_key(function)
+    if ctx.item_registry.contains_key(function) {
+        CommitWitnessClaimPairResolvability::Resolvable
+    } else {
+        CommitWitnessClaimPairResolvability::FunctionNotFound
+    }
+}
+
+pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
+    let Ok(pairs) = ci_floor_commit_witness_claim_pairs() else {
+        return vec![(
+            "dag/gunbc/commit_workflow.dag".to_string(),
+            CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN.to_string(),
+            "schedule_projection_failed".to_string(),
+        )];
+    };
+    let mut defects = Vec::new();
+    for (entry, function) in pairs {
+        let cause = match commit_witness_claim_pair_resolvability(&entry, &function) {
+            CommitWitnessClaimPairResolvability::Resolvable => continue,
+            CommitWitnessClaimPairResolvability::EntryMissing { detail } => {
+                format!("entry_missing:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::EntryResolveFailed { detail } => {
+                format!("entry_resolve_failed:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::FunctionNotFound => {
+                "function_not_found".to_string()
+            }
+        };
+        defects.push((entry, function, cause));
+    }
+    defects
 }
 
 pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
-    match ci_floor_commit_witness_claim_pairs() {
-        Ok(pairs) => pairs
-            .iter()
-            .filter(|(entry, function)| !commit_witness_claim_pair_resolvable(entry, function))
-            .count() as i64,
-        Err(_) => i64::MAX,
+    let defects = commit_witness_claim_roster_defects();
+    for (entry, function, cause) in &defects {
+        eprintln!(
+            "COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL count={} entry={entry} function={function} cause={cause}",
+            defects.len()
+        );
     }
+    defects.len() as i64
 }
 
 pub fn commit_witness_claim_roster_holds() -> bool {
@@ -21620,6 +21674,17 @@ pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
 
 pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
     !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
+}
+
+pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
+    let fixture = vec![(
+        "synthetic_red_fixture.dag".to_string(),
+        "module synthetic_red_fixture\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
+            .to_string(),
+    )];
+    let sites = nfr_residue_sites(&fixture);
+    let site = "synthetic_red_fixture.dag::f";
+    sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────

@@ -96,6 +96,31 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "dag/test/claim/commit_witness_claim_roster_witness_test.dag",
+      check_fns: [
+        "commit_witness_claim_roster_holds",
+        "commit_witness_claim_roster_red_control_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/lens/non_fold_residue_test.dag",
+      check_fns: [
+        "non_fold_residue_no_unrostered_or_stale",
+        "non_fold_residue_synthetic_unrostered_red_holds",
+        "non_fold_residue_wildcard_red_fixture_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/github_merge_state_witness_test.dag",
       check_fns: ["witness_clean_and_blocked_are_distinct_variants"],
       kind: CorpusWitnessKind,
@@ -702,6 +727,10 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
 data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
 data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
+
+fn ci_floor_commit_witness_claim_schedule() -> List<ScheduleWitnessEntry> {
+  project_ci_floor_witness_entries(roster: commit_gate_roster)
+}
 
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {

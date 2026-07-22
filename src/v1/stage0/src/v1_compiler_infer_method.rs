@@ -397,10 +397,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "commit_witness_claim_pair_resolvable".to_string(),
-            v1_rt::arrow_type(
-                vec![string_type(), string_type()],
-                bool_type(),
-            ),
+            v1_rt::arrow_type(vec![string_type(), string_type()], bool_type()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -415,6 +412,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_roster_red_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_synthetic_unrostered_red_holds".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(
