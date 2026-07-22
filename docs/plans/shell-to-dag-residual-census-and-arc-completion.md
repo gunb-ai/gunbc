@@ -125,17 +125,20 @@ When Track 1's emitters route through the v2 bash rows and Track 2's runtime-pre
 
 **Why now:** a "migration" wave (#7004, #7006, and the closed srv* cluster) counted **relocations** as progress — it moved `ShellCommand{script: concat(...)}` out of the intent file into a new `*_script.dag` file and realized a typed variant by *calling that concat and stuffing the raw string back into `ShellOnHost{script}`*. Net raw-shell-string construction: unchanged; new §3 coproduct-nickname debt added. This census exists so no site is counted done until the concat is **gone**, not homed elsewhere.
 
+> **Anchoring (addresses review 41399 / DESIGN §6):** rows below are keyed on **file + symbol name** (variant, fn), NOT line numbers — a line-numbered prose ledger drifts from the tree within a commit (it did: the first draft was mis-grounded on a divergent worktree that still had the pre-#7006 `ShellCommand{script}` sites; on `origin/main` those are already the nickname variants). Symbol anchors are stable across line moves. This section is grounded at `origin/main` @ `78f43c38`; it is an interim tracker that dissolves into the enforcement lens (§4.F), which is the drift-proof authority.
+
 ### 4.0 Completeness method (proves this is exhaustive, not sampled)
 
 Every way a shell string is constructed or carried, grep-complete over `dag/**` (excluding `*_test.dag`):
 
 | # | pattern | what it finds |
 | --- | --- | --- |
-| P1 | `ShellCommand *{` | `HostEffect.ShellCommand{script}` construction |
+| P1 | `ShellCommand *{ *script:` | `HostEffect.ShellCommand{script}` construction — **0 live sites on main** (all became nickname variants); residue = the `host_effect_plan.dag` `{script: ""}` placeholder + the `host_effect.dag` type def |
+| P1b | `effect: <Variant>` for the shell-backed `HostEffect` variants | the nickname-variant construction sites that *replaced* P1 (the real §4.A rows) |
 | P2 | `BootstrapFragment *{` | bootstrap-script carrier (0 live construction sites today) |
 | P3 | `command:` in `Run{}` / `Do{run:}` | `std.orchestration.Run.command` string |
 | P4 | `shell.Exec.Run` / `.Check` / `shell_exec_via_bash` | meta-exec bottom-transport calls |
-| P5 | `fn … -> String` in `*_script.dag` + `*_script()`/`*_body()` fns | the concat/relocation script builders |
+| P5 | `fn … -> String` builders — in `*_script.dag` **and inline** (e.g. `fleet_show_effective_read.dag`'s `fleet_runner_unit_property_read_script`/`fleet_runner_width_count_read_script`, `host_converge_slice1.dag`'s `…_memory_max_read_script`/`…_memory_max_set_script`/`…_enumerate_units_script`) — plus any `concat("systemctl …"/"…")` inline | the concat/relocation script builders, wherever they live (not only the `*_script.dag` glob) |
 | P6 | `transport_script_from_body` | the (porous) `TransportScript` brand boundary — 26 sites |
 | P7 | `serialize_bash`/`ShellProgram`/`RawLine`/`ShellStmt` | bash-AST emit vocab (emit-internal) |
 | P8 | `ssh.Session.Exec(` (non-`ExecArgv`) | ssh command-string transport |
