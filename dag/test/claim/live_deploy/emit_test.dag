@@ -179,6 +179,13 @@ fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
     && string_contains(s: apply, pattern: unit)
 }
 
+data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
+
+fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
+}
+
 fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
