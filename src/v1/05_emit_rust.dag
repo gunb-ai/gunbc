@@ -2154,11 +2154,19 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     prelude_imported_names,
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
-  let reference_use_lines = if module_imports(n: m) |> count == 0 {
-    reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
-  } else {
-    []
-  }
+  let reference_use_lines = reference_derived_use_lines(
+    items: typed_module.items,
+    unlisted_type_names: if module_imports(n: m) |> count == 0 { unlisted_type_names } else { [] },
+    this_module_name: authored_name(env: scope.type_env, node: m),
+    registry: registry,
+    emit_info: emit_info,
+    local_type_names: local_type_names,
+    already_imported_names: already_imported_names,
+    export_sets: export_sets,
+    typed_modules: typed_modules,
+    source_indices: scope.type_env.source_indices,
+    module_index: module_index
+  )
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
@@ -5316,17 +5324,21 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
-fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String {
-  if string_contains(s: name, pattern: ".") {
-    let leaf = qualified_last_segment(name: name)
-    match map_get(registry, leaf) {
-      Present { value: info } =>
-        concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
-      Absent =>
-        emit_ident(name: name, target: Rust)
-    }
+fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, this_module_name: String) -> String {
+  let leaf = if string_contains(s: name, pattern: ".") {
+    qualified_last_segment(name: name)
   } else {
-    emit_ident(name: name, target: Rust)
+    name
+  }
+  match map_get(registry, leaf) {
+    Present { value: info } =>
+      if info.module_name != this_module_name {
+        concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+      } else {
+        emit_ident(name: leaf, target: Rust)
+      }
+    Absent =>
+      emit_ident(name: name, target: Rust)
   }
 }
 
