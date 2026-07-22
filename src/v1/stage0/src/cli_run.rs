@@ -690,7 +690,9 @@ mod process_workspace_root_tests {
 
     #[test]
     fn walk_target_alias_apply_write_mode_labels_requested_vs_written() {
-        use super::{format_walk_target_alias_apply, WalkTargetAliasApplyEdit, WalkTargetAliasApplyReport};
+        use super::{
+            format_walk_target_alias_apply, WalkTargetAliasApplyEdit, WalkTargetAliasApplyReport,
+        };
 
         let dry = format_walk_target_alias_apply(&WalkTargetAliasApplyReport {
             write_requested: false,
