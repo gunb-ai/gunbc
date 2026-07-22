@@ -1,0 +1,181 @@
+module gunbc.plans.cli_run_hollowing_plan
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, row, cell }
+
+fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** high-level hollowing map (operator-directed rework of closed #7074) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). **`dag/gunbc/plans/cli_run_hollowing_plan.dag` is the authority**; `docs/plans/cli-run-hollowing-plan.md` is its generated projection (PlanArtifact). Linked from [seed-shrink-census.md](seed-shrink-census.md) Chunk **F** (`cli_run.rs`, ~4,165 LOC HAND) and [v2-self-hosting.md](v2-self-hosting.md) Wave 4 kernel story — cite those for sequencing and LOC receipts; this doc answers *what the file does* and *how each chunk dies*."),
+    quote(blocks: [
+      p(text: "**Read this in 5 minutes.** `cli_run.rs` is the v1 **workflow orchestration kernel**: it walks the `.dag` corpus, drives resolve/typecheck/reconcile, runs the CI floor and witness corpus, bridges host facts into lenses, and pins a shrinking set of HAND-Rust path/grant/discovery scaffolds. It is **not** the compiler front-end (that is already `.dag` + GENERATED Rust). Terminal shape: emit the orchestration from workflow `.dag` + shrink to the pinned bootstrap kernel ([seed-shrink-census.md](seed-shrink-census.md) §6). Deep dive on the resolve/reconcile/discovery *cluster only*: [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) — link, do not duplicate here."),
+    ]),
+    ThematicBreak,
+    h2(text: "0. Scale receipt (live tree)"),
+    ul(items: [
+      li(text: "**~4,165 LOC** HAND_MAINTAINED (`seed-shrink-census.md` Chunk F) · **~635 production fns + ~239 test-only fns** in module scope (order-of-magnitude; not a per-fn ledger)."),
+      li(text: "**Sign-off order:** Chunk F runs **after** emitter chunks A–E and de-fork G per census §4 — orchestration dissolves once the compiler pipeline and host-effect spine can carry the floor without a hand-written driver."),
+    ]),
+    h2(text: "1. Area map (summary)"),
+    TableBlock {
+      header: row(cells: [
+        cell(text: "Area"),
+        cell(text: "v2 subsumption (authority)"),
+        cell(text: "Disposition"),
+        cell(text: "Named trigger"),
+      ]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "Workspace & repo paths"),
+          cell(text: "`gunbc.cli_run_workspace_root_scaffold` · `gunbc.cli_run_repo_grant` · [effect-namespace-grants.md](effect-namespace-grants.md)"),
+          cell(text: "emit-when"),
+          cell(text: "Chunk F → GENERATED `host_effect_apply`; grant presets land"),
+        ]),
+        row(cells: [
+          cell(text: "CLI argv & bin dispatch"),
+          cell(text: "`gunbc` bins + `src/v2/workflow/*` orchestration rows"),
+          cell(text: "seed-kernel-retained"),
+          cell(text: "Wave 4 pinned bootstrap (~8–15k LOC)"),
+        ]),
+        row(cells: [
+          cell(text: "Corpus discovery & file walk"),
+          cell(text: "`gunbc.ci_spec` discovery_scan_dirs · `gunbc.ci_floor_plan`"),
+          cell(text: "emit-when"),
+          cell(text: "CI native routing (#7069) + witness-realization"),
+        ]),
+        row(cells: [
+          cell(text: "Resolve / typecheck entry orchestration"),
+          cell(text: "v2.compiler pipeline (GENERATED) · [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md)"),
+          cell(text: "emit-when"),
+          cell(text: "Reconcile-defork Phase 1–3 + closure equivalence receipt"),
+        ]),
+        row(cells: [
+          cell(text: "Reconcile & env merge"),
+          cell(text: "`v2.compiler` reconcile stage (GENERATED)"),
+          cell(text: "already-subsumed"),
+          cell(text: "Orchestration wrapper deletes with Chunk F"),
+        ]),
+        row(cells: [
+          cell(text: "Typed module cache / memo"),
+          cell(text: "`std.materialize` / duplicate-work lattice ([duplicate-work-graph-lens-design.md](duplicate-work-graph-lens-design.md))"),
+          cell(text: "emit-when"),
+          cell(text: "ComputationIdentity qualifier lands on materialize spine"),
+        ]),
+        row(cells: [
+          cell(text: "Import & module-graph host facts"),
+          cell(text: "`v2.lens.module_graph` · `import_resolution_facts` host seam"),
+          cell(text: "emit-when"),
+          cell(text: "Reconcile-defork Phase 1 repoint + namespace SymbolIndex"),
+        ]),
+        row(cells: [
+          cell(text: "Reference / cross-tree edges"),
+          cell(text: "`v2.std.cross_tree.resolution` · [namespace-resolution-design.md](namespace-resolution-design.md)"),
+          cell(text: "emit-when"),
+          cell(text: "Reference-deps B3 + import grammar deletion (B4)"),
+        ]),
+        row(cells: [
+          cell(text: "Affected-set & diff provenance"),
+          cell(text: "`gunbc.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)"),
+          cell(text: "emit-when"),
+          cell(text: "Declared `SourceRef` boundary + provenance ingest"),
+        ]),
+        row(cells: [
+          cell(text: "Floor / witness execution"),
+          cell(text: "`claim_executor` · `src/v2/workflow/ci_floor_plan.dag` · [witness-realization-plan.md](witness-realization-plan.md)"),
+          cell(text: "emit-when"),
+          cell(text: "Workflow `host_effect_apply` replaces HAND driver"),
+        ]),
+        row(cells: [
+          cell(text: "Compile-clean shard scope"),
+          cell(text: "`tools.dag_compile_clean_scope` · `v2.compiler.compile`"),
+          cell(text: "partial"),
+          cell(text: "Import-closure authority unified on `module_graph`"),
+        ]),
+        row(cells: [
+          cell(text: "Regen oracle & self-host scope"),
+          cell(text: "`regen_stage0` · `v2.compiler.self_host.frontier`"),
+          cell(text: "delete-with-v1"),
+          cell(text: "Wave 4 real-fixpoint cutover (`5-real-fixpoint`)"),
+        ]),
+        row(cells: [
+          cell(text: "Host builtin bridge (interpreter seam)"),
+          cell(text: "`v1_interpreter` builtins · per-lens `*_live` projections"),
+          cell(text: "seed-kernel-retained"),
+          cell(text: "Node-tree readers dissolve seams (#5364 class); kernel keeps physics"),
+        ]),
+        row(cells: [
+          cell(text: "Lens census / hygiene host feeds"),
+          cell(text: "`v2.lens.*` tables · `non_fold_residue` · `fact_cardinality`"),
+          cell(text: "emit-when"),
+          cell(text: "Each lens lands node-tree reader or explicit host row retires"),
+        ]),
+        row(cells: [
+          cell(text: "Floor observability & width"),
+          cell(text: "`gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md)"),
+          cell(text: "partial"),
+          cell(text: "Scheduler emits receipts; HAND timing deletes with floor native routing"),
+        ]),
+        row(cells: [
+          cell(text: "Test-migration debt builtins"),
+          cell(text: "`v2.lens.test_migration_debt`"),
+          cell(text: "delete-with-v1"),
+          cell(text: "v1 `src/v1/tests` deleted at collapse (census §5)"),
+        ]),
+      ],
+    },
+    h2(text: "2. Functional areas (plain language)"),
+    h3(text: "2.1 Workspace & repo paths"),
+    p(text: "**Today:** discovers git checkout root (`workspace_root`, `OnceLock` scaffolds) and enforces repo-relative path containment before filesystem effects (`repo_relative_path*` gates). **Subsumes:** `gunbc.cli_run_workspace_root_scaffold` + `gunbc.cli_run_repo_grant` (effect-grant model). **Disposition:** emit-when — HAND-Rust until Chunk F emits workflow host-effect apply with typed grants. **Trigger:** Chunk F + effect-namespace-grants P-B preset rows."),
+    h3(text: "2.2 CLI argv & bin dispatch"),
+    p(text: "**Today:** `claim_batch`, `claim_executor`, and `gunbc ci` entry routing — argv parse into which `.dag` entry/function runs. **Subsumes:** thin bootstrap bins ([seed-shrink-census.md](seed-shrink-census.md) §6 terminal harness). **Disposition:** seed-kernel-retained — some argv seam survives as pinned bootstrap. **Trigger:** Wave 4 kernel pin; not zero."),
+    h3(text: "2.3 Corpus discovery & file walk"),
+    p(text: "**Today:** walks `dag/` + `src/v2/` for `*_test.dag`, roster entries, and compile-clean shard inputs (`collect_dag_files`, discovery skip arms). **Subsumes:** `gunbc.ci_spec` + floor plan nodes. **Disposition:** emit-when. **Trigger:** CI onto v2 native routing (#7069) + witness realization scheduling."),
+    h3(text: "2.4 Resolve / typecheck entry orchestration"),
+    p(text: "**Today:** `resolve_entry_graph*`, whole-tree resolve drivers, diagnostic gating — orchestrates GENERATED `03_resolve`/`04_infer` but the *closure selection and entry wiring* still live HAND. **Subsumes:** compiler pipeline + [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md). **Disposition:** emit-when. **Trigger:** Phase 1 closure repoint onto `v2.lens.module_graph.import_closure_live` with equivalence receipt; Phases 2–3 cache/reconcile repoint."),
+    h3(text: "2.5 Reconcile & env merge"),
+    p(text: "**Today:** thin wrapper calling GENERATED reconcile — the algorithm is already `.dag`. **Subsumes:** `v2.compiler` reconcile stage. **Disposition:** already-subsumed (logic); HAND wrapper deletes with Chunk F. **Trigger:** Chunk F orchestration emit."),
+    h3(text: "2.6 Typed module cache / memo"),
+    p(text: "**Today:** `typed_module_cache_*`, `resolved_graph_cache` integration — memoizes resolve/typecheck products keyed partly by module path. **Subsumes:** `std.materialize` / duplicate-work identity lattice. **Disposition:** emit-when. **Trigger:** duplicate-work graph lens Half A/B lands on materialize spine."),
+    h3(text: "2.7 Import & module-graph host facts"),
+    p(text: "**Today:** host builtins `import_resolution_facts`, `module_declaration_facts`, `layer_import_facts` regex-scan sources and feed lenses. **Subsumes:** `v2.lens.module_graph`, `v2.lens.layering_imports`. **Disposition:** emit-when. **Trigger:** Reconcile-defork Phase 1 + layering reference-repoint terminal (import grammar deletion)."),
+    h3(text: "2.8 Reference / cross-tree edges"),
+    p(text: "**Today:** `reference_resolution_facts` / `reference_edges_as_import_facts` bridge import-less qualified refs for layering and module graph. **Subsumes:** `v2.std.cross_tree.resolution` + namespace containment tree. **Disposition:** emit-when. **Trigger:** namespace-only resolution terminal ([namespace-resolution-design.md](namespace-resolution-design.md) B3→B4)."),
+    h3(text: "2.9 Affected-set & diff provenance"),
+    p(text: "**Today:** git-diff observation, import-closure shard compile, `ReadsLiveTree` inference bridge, declared-source-ref selection — decides what the floor runs on a PR. **Subsumes:** `gunbc.ci_spec` selection + `v2.lens.effect_reach`. **Disposition:** emit-when. **Trigger:** module-identity-storage-binding Phase 0 enrollment + provenance ingest (`affected_set_reading_from_git_diff_provenance`)."),
+    h3(text: "2.10 Floor / witness execution"),
+    p(text: "**Today:** `run_discovery_corpus`, parallel witness scheduling, governor width — the CI floor runtime. **Subsumes:** `claim_executor` workflow + witness-realization plan. **Disposition:** emit-when. **Trigger:** `host_effect_apply` workflow realization replaces HAND loop ([host-effect-orchestration.md](host-effect-orchestration.md))."),
+    h3(text: "2.11 Compile-clean shard scope"),
+    p(text: "**Today:** decides whole-tree vs import-closure compile for `dag_compile_clean_gate` on PR diffs. **Subsumes:** `tools.dag_compile_clean_scope` + compile gate in `v2.compiler.compile`. **Disposition:** partial — policy modeled, HAND still executes scope walk. **Trigger:** single `module_graph` closure authority end-to-end."),
+    h3(text: "2.12 Regen oracle & self-host scope"),
+    p(text: "**Today:** `regen_input_sources`, regen skip on PR diffs, self-host staleness inputs. **Subsumes:** `regen_stage0` + frontier carrier. **Disposition:** delete-with-v1 — bulk GENERATED cutover, not piecemeal. **Trigger:** `5-real-fixpoint` gate ([v2-self-hosting.md](v2-self-hosting.md) Wave 4)."),
+    h3(text: "2.13 Host builtin bridge"),
+    p(text: "**Today:** dispatches `filesystem_read`, fact builtins, measurement counters from `.dag` eval into Rust host physics. **Subsumes:** interpreter kernel D + witness realization. **Disposition:** seed-kernel-retained — irreducible host physics shrinks but does not hit zero. **Trigger:** per-builtin dissolution rows on frontier carrier."),
+    h3(text: "2.14 Lens census / hygiene host feeds"),
+    p(text: "**Today:** projects `non_fold_residue`, `fact_cardinality`, inert-layer reach, construction-justification census via host-fed rows. **Subsumes:** respective `v2.lens.*` modules. **Disposition:** emit-when — each host feed retires when lens reads node tree. **Trigger:** node-tree reader lands per lens (#5364 class)."),
+    h3(text: "2.15 Floor observability & adaptive width"),
+    p(text: "**Today:** floor materialization receipts, slowest-witness attribution, cgroup/memory governor hooks for parallel width. **Subsumes:** `gunbc.floor_materialization`, `realization_width`, measurement-loop plan. **Disposition:** partial. **Trigger:** scheduler emits receipts natively; HAND stderr-only timing deletes."),
+    h3(text: "2.16 Test-migration debt builtins"),
+    p(text: "**Today:** `test_migration_debt_*` builtins back the v1-test→floor witness migration ratchet. **Subsumes:** `v2.lens.test_migration_debt`. **Disposition:** delete-with-v1. **Trigger:** census §5 — coverage migrated before `src/v1/tests` delete."),
+    h2(text: "3. Gaps (no v2 home yet — named, not invented)"),
+    ul(items: [
+      li(text: "**Union-resolve once-per-node receipt counter** — process-wide resolve counting for union-resolve MUB contract tests; no modeled carrier; stays HAND until resolve orchestration emits from workflow (.dag issue tracked in reconcile-defork fence)."),
+      li(text: "**Pre-resolve discovery skip before modeled `floor_kernel_precompute_would_skip`** — `cli_run_discovery_skip_before_resolve` scaffold; unblock named in ROADMAP `2-provenance-ingest` / affected-set precompute pruning."),
+    ]),
+    h2(text: "4. What this doc is not"),
+    ul(items: [
+      li(text: "Not a per-function ledger (#7074 closed) — area grain only."),
+      li(text: "Not a substitute for [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) on the resolve/reconcile cluster."),
+      li(text: "Not a LOC census — see [seed-shrink-census.md](seed-shrink-census.md) for file-level receipts."),
+    ]),
+  ]
+}
+
+data cli_run_hollowing_plan: Plan = Plan {
+  slug: "cli-run-hollowing-plan",
+  title: "Plan — cli_run.rs hollowing map (Chunk F)",
+  body: cli_run_hollowing_plan_body(),
+  dissolution: HasTrigger {
+    text: "Delete when `cli_run.rs` Chunk F is GENERATED or deleted — orchestration runs from workflow `.dag` + pinned bootstrap kernel only, and this high-level map is redundant with the frontier carrier + seed-shrink census."
+  }
+}
