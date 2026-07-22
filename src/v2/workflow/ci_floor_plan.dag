@@ -1155,3 +1155,7 @@ fn witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed() -> B
     b: gunbc_floor_arm_time_budget_refusal_plan_function_roster()
   )
 }
+
+fn gunbc_pr_native_batches() -> List<List<Runnable>> {
+  [[gunbc_pr_native_batch()]]
+}
