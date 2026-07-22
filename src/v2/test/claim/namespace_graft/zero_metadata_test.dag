@@ -10,7 +10,7 @@ import v2.std.namespace_graft {
   namespace_graft_is_metadata_edge,
   ModuleRootEdgeDissolve,
   ModuleRootEdgeGraftBody,
-  ModuleRootEdgeTransparentDescent
+  ModuleRootEdgeRehomeProvenance
 }
 import v2.std.node { Atom, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.verification {
@@ -51,7 +51,7 @@ test fn namespace_graft_disposition_census_holds() -> Bool {
       match namespace_graft_collect_edge_disposition(
         edge: zm_named_edge(name: ^grammar_production_identity_node_projection)
       ) {
-        ModuleRootEdgeTransparentDescent =>
+        ModuleRootEdgeRehomeProvenance =>
           match namespace_graft_collect_edge_disposition(edge: zm_named_edge(name: ^NgPilotType)) {
             ModuleRootEdgeGraftBody => true
             _ => false

@@ -92,6 +92,8 @@ fn namespace_graft_collect_edge_disposition(edge: Edge) -> ModuleRootEdgeDisposi
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         ModuleRootEdgeDissolve
+      } else if sym == ^grammar_production_identity_node_projection {
+        ModuleRootEdgeRehomeProvenance
       } else if namespace_graft_parse_projection_edge(name: sym) {
         ModuleRootEdgeTransparentDescent
       } else if namespace_graft_is_module_header_subtree(node: edge.target) {
