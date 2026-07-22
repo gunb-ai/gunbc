@@ -192,12 +192,49 @@ RSS); `rc_map_insert` quadratic (bold-crane-271) and advisory suppression are se
 
 ---
 
-## 6. Provenance
+## 6. Residual (post-#6999) — thread-local index reset (this PR)
+
+#6999 (§3) fixed the *within-instance* cost (entry-closure memo, reconcile call-order). It did
+**not** touch the *cross-instance* cost: `resolve_entry_graph` routes each resolve through
+`process_shared_index`, a `thread_local!` `MultiEntryIndex` keyed by `(thread, canonical
+roots)` — the entry-closure memo and `pool_qualified_fill` cache only pay off for calls landing
+on the **same thread**.
+
+`claim_executor::run_walk` partitions batch units into `memo_units` (main thread,
+`run_memo_shared_claims`, shared `walk_memo` across the whole run) vs `thread_units` (each
+individually `thread::spawn`'d — cold `MultiEntryIndex` per spawn). Routing is decided by
+`RunnableResourceProfile.heavy_whole_tree_resolve`, OR-merged across a `group_batch_units`
+coalescing group. `DagCompileCleanGate`, `SourceRootIngestGate`, and `RegenVerifyGate` already
+declared `heavy_whole_tree_resolve: true`; `SelfHostReadsRealBytesGate`,
+`SelfHostStalenessGate`, and `EmitHostGate` (batch 4) did not — so #6999's caches were built and
+then discarded on each of their freshly spawned threads, and batch-4 wall time stayed pinned at
+~18.7min (1123s) after #6999 merged, unchanged from the ~1111s pre-#6999 figure and far off the
+pre-#6848 baseline of 165–342s.
+
+**Fix:** flip `heavy_whole_tree_resolve: false → true` for the three batch-4 gates in
+`gate_runnable_profile` (`src/v2/workflow/ci_floor_plan.dag`) — aligning them with the
+already-established pattern, not a new mechanism. This routes their resolves onto the
+main-thread memo path; `floor_heavy_resolve_chain_resource_edges` already serializes all
+`heavy_whole_tree_resolve` gates pairwise (`floor_plan_at_most_one_heavy_gate_resolve_per_batch`,
+checked by `witness_plan_serializes_heavy_resolves`), so the three newly-heavy gates each land
+in their own batch rather than co-residing — sequential on the main thread, sharing the process
+`walk_memo`/`process_shared_index` cache instead of paying a cold walk each.
+
+**Not in scope (unchanged from §3):** resolver semantics, `rc_map_insert` quadratic,
+`UnlistedImportUse` suppression.
+
+**Verification:** no test/lens found asserting `heavy_whole_tree_resolve: false` for these three
+gates (`ci_floor_plan_witness_test.dag` checked); `runnable_excludes_corpus_co_residence` gates
+on `profile.memory`, orthogonal to this flag. Falsifiable claim pending: a real CI floor run
+must show batch-4 wall time drop from the ~18.7min baseline — not yet obtained at PR-open time.
+
+## 7. Provenance
 
 - Log-diff receipts: bright-seal-219 (this session), by execution on CI logs.
 - Post-landing validation §5: bright-seal-219, runs `29763408563` / `29819122813` / `29855080611` (2026-07-21).
 - Memory-side bisection: eager-pike-178 / #6953 (`c10f4b091`).
 - Parent coordination: sunny-wolf-225 mandate (msg_fdeee8c5); lane close validation (msg_1879f052).
+- §6 residual fix: proud-bear-438 (dashboard `adhoc-21c65e1a-2ff`), PR #7030.
 
 Related: [floor-memory-pool-parse-regression-diagnosis.md](floor-memory-pool-parse-regression-diagnosis.md) ·
 [namespace-resolution-design.md](namespace-resolution-design.md) §PR-5b ·
