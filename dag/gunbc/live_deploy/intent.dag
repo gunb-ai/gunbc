@@ -12,7 +12,7 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
-  live_deploy_unit_diagnosis_unavailable,
+  UnitDiagnosisUnavailable,
 }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
@@ -48,7 +48,7 @@ fn live_deploy_service_ready_gate_for_spec(spec: DeploymentSpec) -> ServiceReady
       endpoint: live_deploy_service_ready_endpoint_authority,
       waited: live_deploy_service_ready_poll_bound,
       last_probe: "health probe never succeeded",
-      unit_diagnosis: live_deploy_unit_diagnosis_unavailable,
+      unit_diagnosis: UnitDiagnosisUnavailable,
     },
   }
 }

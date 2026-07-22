@@ -66,10 +66,10 @@ data live_deploy_service_ready_unit_authority: NonEmptyStr = gunbc_roadmap_unit_
 
 data live_deploy_service_ready_endpoint_authority: NonEmptyStr = roadmap_site_health_path
 
-data live_deploy_unit_diagnosis_capture_placement_note: String = "The capture is performed by the DEPLOY ENTRY (readiness.live_deploy_poll_until_service_ready_for_deploy), never by the recursive poller, and that placement is load-bearing rather than stylistic. The poller is driven directly by claim witnesses; the deploy access it is handed carries an SshShell transport pointed at srv1, so performing the capture inside the poller's exhaustion branch made a hermetic refusal-shape witness attempt a LIVE cross-host SSH from whatever runner executed the corpus. That is non-hermetic by construction and it duly behaved differently per environment -- green locally, and on srv2-03 it returned a value that blew a downstream match (PR 7038, first CI run). So the recursive poller stays free of the capture effect and renders its refusal with the diagnosis-unavailable sentinel, which is the honest statement at that point: nothing has been captured yet. The entry, which only the real deploy reaches, performs the capture once on the refusal and supplies the text. Reason rendering skips the segment entirely when the sentinel is present, so exactly one unit_diagnosis segment ever appears and it is never a placeholder masquerading as an observation."
+data live_deploy_unit_diagnosis_capture_placement_note: String = "The capture is performed by the DEPLOY ENTRY (readiness.live_deploy_poll_until_service_ready_for_deploy), never by the recursive poller, and that placement is load-bearing rather than stylistic. The poller is driven directly by claim witnesses; the deploy access it is handed carries an SshShell transport pointed at srv1, so performing the capture inside the poller's exhaustion branch made a hermetic refusal-shape witness attempt a LIVE cross-host SSH from whatever runner executed the corpus. That is non-hermetic by construction and it duly behaved differently per environment -- green locally, and on srv2-03 it returned a value that blew a downstream match (PR 7038, first CI run). So the recursive poller stays free of the capture effect and builds its refusal with UnitDiagnosisUnavailable, which is the honest statement at that point: nothing has been captured yet. The entry, which only the real deploy reaches, performs the capture once on the refusal and rebuilds it through service_not_ready_with_captured_diagnosis. Rendering matches the variant and emits the segment only for UnitDiagnosisCaptured, so exactly one unit_diagnosis segment ever appears, it is never a placeholder masquerading as an observation, and there is ONE rendering authority rather than a second copy of the format string at the entry."
 
-fn service_not_ready_reason_without_diagnosis(refusal: ServiceNotReady) -> String {
-  concat(
+fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
+  let base = concat(
     concat(
       concat(
         concat("ServiceNotReady unit=", refusal.unit as String),
@@ -79,21 +79,20 @@ fn service_not_ready_reason_without_diagnosis(refusal: ServiceNotReady) -> Strin
     ),
     concat(" last_probe=", refusal.last_probe)
   )
-}
-
-fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
-  if refusal.unit_diagnosis == live_deploy_unit_diagnosis_unavailable {
-    service_not_ready_reason_without_diagnosis(refusal: refusal)
-  } else {
-    concat(
-      service_not_ready_reason_without_diagnosis(refusal: refusal),
-      concat(" unit_diagnosis=", refusal.unit_diagnosis)
-    )
+  match refusal.unit_diagnosis {
+    UnitDiagnosisUnavailable => base
+    UnitDiagnosisCaptured { text: t } => concat(base, concat(" unit_diagnosis=", t))
   }
 }
 
-fn service_not_ready_reason_with_captured_diagnosis(base_reason: String, unit_diagnosis: String) -> String {
-  concat(base_reason, concat(" unit_diagnosis=", unit_diagnosis))
+fn service_not_ready_with_captured_diagnosis(refusal: ServiceNotReady, text: String) -> ServiceNotReady {
+  ServiceNotReady {
+    unit: refusal.unit,
+    endpoint: refusal.endpoint,
+    waited: refusal.waited,
+    last_probe: refusal.last_probe,
+    unit_diagnosis: UnitDiagnosisCaptured { text: text },
+  }
 }
 
 fn live_deploy_readback_ready_set(graph_node: Node) -> List<Node> {
@@ -116,7 +115,7 @@ fn live_deploy_service_ready_poll_cadence_seconds() -> Second {
   live_deploy_service_ready_poll_cadence
 }
 
-fn service_not_ready_refusal_at_poll_bound(last_probe: String, unit_diagnosis: String) -> ServiceNotReady {
+fn service_not_ready_refusal_at_poll_bound(last_probe: String, unit_diagnosis: UnitDiagnosis) -> ServiceNotReady {
   ServiceNotReady {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
@@ -126,4 +125,3 @@ fn service_not_ready_refusal_at_poll_bound(last_probe: String, unit_diagnosis: S
   }
 }
 
-data live_deploy_unit_diagnosis_unavailable: String = "unit diagnosis unavailable"

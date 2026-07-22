@@ -17,13 +17,15 @@ import std.realization_reconcile {
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   service_not_ready_reason,
-  service_not_ready_reason_with_captured_diagnosis,
+  service_not_ready_with_captured_diagnosis,
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
-  live_deploy_unit_diagnosis_unavailable,
+  UnitDiagnosis,
+  UnitDiagnosisUnavailable,
+  UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.intent {
   live_deploy_health_probe_curl_command,
@@ -239,25 +241,37 @@ fn capture_unit_diagnosis(
   )
 }
 
-fn live_deploy_poll_service_ready_after_attempts(
+type ServiceReadyPollOutcome =
+    PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
+  | PollRefusedAtBound { refusal: ServiceNotReady }
+
+fn poll_bound_refusal(last_probe: String) -> ServiceNotReady {
+  ServiceNotReady {
+    unit: live_deploy_service_ready_unit_authority,
+    endpoint: live_deploy_service_ready_endpoint_authority,
+    waited: live_deploy_service_ready_poll_bound,
+    last_probe: last_probe,
+    unit_diagnosis: UnitDiagnosisUnavailable,
+  }
+}
+
+fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  NotConverged {
+    reason: service_not_ready_reason(refusal: refusal),
+    applied: service_ready_apply_effect(),
+  }
+}
+
+fn live_deploy_poll_service_ready_outcome_after_attempts(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
   attempt: Int,
   last_probe: String,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> ServiceReadyPollOutcome {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   if attempt >= max_attempts {
-    NotConverged {
-      reason: service_not_ready_reason(refusal: ServiceNotReady {
-        unit: live_deploy_service_ready_unit_authority,
-        endpoint: live_deploy_service_ready_endpoint_authority,
-        waited: live_deploy_service_ready_poll_bound,
-        last_probe: last_probe,
-        unit_diagnosis: live_deploy_unit_diagnosis_unavailable,
-      }),
-      applied: service_ready_apply_effect(),
-    }
+    PollRefusedAtBound { refusal: poll_bound_refusal(last_probe: last_probe) }
   } else {
     let probe = live_deploy_service_ready_once_for_deploy(
       spec: spec,
@@ -265,11 +279,11 @@ fn live_deploy_poll_service_ready_after_attempts(
       access: access,
     )
     if reconciliation_converged(r: probe) {
-      probe
+      PollSettled { result: probe }
     } else {
       let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
       if delay {
-        live_deploy_poll_service_ready_after_attempts(
+        live_deploy_poll_service_ready_outcome_after_attempts(
           spec: spec,
           transport: transport,
           access: access,
@@ -277,18 +291,30 @@ fn live_deploy_poll_service_ready_after_attempts(
           last_probe: last_probe_from_attempt(attempt: probe)
         )
       } else {
-        NotConverged {
-          reason: service_not_ready_reason(refusal: ServiceNotReady {
-            unit: live_deploy_service_ready_unit_authority,
-            endpoint: live_deploy_service_ready_endpoint_authority,
-            waited: live_deploy_service_ready_poll_bound,
-            last_probe: "sleep between health probes failed",
-            unit_diagnosis: live_deploy_unit_diagnosis_unavailable,
-          }),
-          applied: service_ready_apply_effect(),
+        PollRefusedAtBound {
+          refusal: poll_bound_refusal(last_probe: "sleep between health probes failed")
         }
       }
     }
+  }
+}
+
+fn live_deploy_poll_service_ready_after_attempts(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  attempt: Int,
+  last_probe: String,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  match live_deploy_poll_service_ready_outcome_after_attempts(
+    spec: spec,
+    transport: transport,
+    access: access,
+    attempt: attempt,
+    last_probe: last_probe,
+  ) {
+    PollSettled { result: r } => r
+    PollRefusedAtBound { refusal: refusal } => refusal_to_reconciliation(refusal: refusal)
   }
 }
 
@@ -306,27 +332,25 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  let polled = live_deploy_poll_service_ready_after_attempts(
+  match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
     transport: transport,
     access: access,
     attempt: 0,
     last_probe: "no probe yet",
-  )
-  match polled {
-    Converged { evidence: e, applied: a } => Converged { evidence: e, applied: a }
-    NotConverged { reason: why, applied: a } =>
-      NotConverged {
-        reason: service_not_ready_reason_with_captured_diagnosis(
-          base_reason: why,
-          unit_diagnosis: capture_unit_diagnosis(
+  ) {
+    PollSettled { result: r } => r
+    PollRefusedAtBound { refusal: refusal } =>
+      refusal_to_reconciliation(
+        refusal: service_not_ready_with_captured_diagnosis(
+          refusal: refusal,
+          text: capture_unit_diagnosis(
             spec: spec,
             transport: transport,
             access: access,
           )
-        ),
-        applied: a,
-      }
+        )
+      )
   }
 }
 
