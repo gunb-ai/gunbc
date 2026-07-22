@@ -16091,6 +16091,42 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
+    fn deletion_hunk_after_modified_file_does_not_false_fire_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let modified = "dag/gunbc/ci_workflow.dag";
+        let deleted = "dag/gunbc/host_effect_deploy_access_probe_script.dag";
+        let diff = format!(
+            "diff --git a/{modified} b/{modified}\n\
+             --- a/{modified}\n\
+             +++ b/{modified}\n\
+             @@ -135,6 +135,12 @@ fn ci_prelude_steps() -> List<Step> {{\n\
+              ]\n\
+              }}\n\
+             \n\
+             +data note: String = \"new\"\n\
+             +\n\
+             +fn new_steps() -> List<Step> {{\n\
+             +  [ci_checkout_step()]\n\
+             +}}\n\
+             \n\
+             diff --git a/{deleted} b/{deleted}\n\
+             deleted file mode 100644\n\
+             --- a/{deleted}\n\
+             +++ /dev/null\n\
+             @@ -1,3 +0,0 @@\n\
+             -module gunbc.host_effect_deploy_access_probe_script\n\
+             -\n\
+             -fn gone() -> Bool {{ true }}\n"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("deletion hunk must not leak onto prior modified file: {e}")
+        });
+    }
+
+    #[test]
     fn mixed_dag_and_non_dag_diff_scopes_from_dag_only() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
