@@ -36,20 +36,20 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "variant_construct — variant-construct-then-match emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_variant_construct_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_variant_construct_equals_eval_test.dag), wrong-value RED, closure_digest key sensitivity.",
+    scope_note: "emit_on_demand_variant_construct_family_witness_test: consolidated to ONE-BUILD grain (emit_on_demand_variant_construct_native_one_build_holds — primary cold/warm octet 9 + wrong-value alt cold octet 1 in one root, 2 builds; formerly 5), closure_digest key sensitivity pure.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
     witness_function: "emit_on_demand_variant_construct_family_witnesses",
-    lane_state: "LANDED (wise-fox-351)"
+    lane_state: "LANDED (wise-fox-351); one-build consolidation (merry-pike-487 fan-out)"
   },
   WitnessFamilyLane {
     lane_id: ^witness_family_lane_classical_not_ingested,
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "classical_not_ingested — ingested classical_not emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: interpreted==native equals_eval via run_test_claim_emit_vs_eval, native cold/warm, swapped-source RED, closure_digest key sensitivity.",
+    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: consolidated to ONE-BUILD grain (emit_on_demand_classical_not_native_one_build_holds — primary cold/warm octet 0 + cached eval-anchored agreement warm + swapped-source alt cold octet 1 with cached mismatch RED, 2 builds; formerly ~6), closure_digest key sensitivity pure.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
     witness_function: "emit_on_demand_classical_not_ingested_family_witnesses",
-    lane_state: "LANDED (wise-fox-351)"
+    lane_state: "LANDED (wise-fox-351); one-build consolidation (merry-pike-487 fan-out)"
   },
   WitnessFamilyLane {
     lane_id: ^witness_family_lane_family_crate_grain,
