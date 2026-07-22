@@ -6,6 +6,51 @@ Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits 
 
 **Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor + audit**: the walls that keep both pillars honest, and an execution-grounded audit of what the existing machinery *actually does* (green by execution, red by perturbation). Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now.
 
+## ✦ Concurrent-work task sheet — consolidation snapshot (2026-07-22 CI audit)
+
+Operator-requested consolidation surface (2026-07-22): every lane in flight while the merge wave lands, in ONE place. Each row points at its carrier (PR · branch · issue) — detail stays there (no dual representation); check a row when its lane merges or its issue closes, delete it when the pointer goes stale. DISSOLUTION: this lane is a dated scaffold — delete it when every row is checked or re-homed into §1–§4.
+
+**CI health — acute (audit receipts, 2026-07-22):**
+
+- [ ] **falsifier dark since 2026-07-16 — roster burn-down** — every 4-hourly cold run red on `non_fold_residue_clean_holds` + `non_fold_residue_no_unrostered_or_stale`, logged as predicted=unaffected / actual=red divergences. Root-caused 2026-07-22 by local receipt (`nfr_roster_receipt`): 3 unrostered sites, 0 stale — `dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid` + `::host_converge_slice1_host_result_applied_count` (landed #7009) and `dag/gunbc/host_hygiene_reaper.dag::action_kills_build_cache_server` (landed #7026). Fix = roster rows with reason + dissolution trigger (the #6691 shape) or enumerate the arms; alert issue #7032 auto-closes on the next green run.
+- [ ] **kill the recurrence class — corpus-scan witnesses predict-skipped** — 4th occurrence per the nfr roster's own dated blocks: hygiene witnesses stamped `SubstrateInputsOnly` while their counters walk the whole corpus, so per-PR selection skips them and only the falsifier reds, days later. Decide once: re-stamp `ReadsLiveTree` (never-predict-skip; sub-ms at floor scale) vs falsifier-red as a merge blocker. Census machinery landed #7070.
+- [ ] **deploy tail reds main while the floor is green** — 13 of 2026-07-22's 21 main-run failures are `deploy_dashboard_srv1`, not the floor: `gunbc-tree-sync.service` restart control-process failure (fix in flight: `session/sunny-owl-513`, receipt run 29928424523) after earlier `gunbc-roadmap.service` /healthz ServiceNotReady. Decide whether the deploy verdict should share the ci run's conclusion; the deeper fix is §2's CD-transport node.
+- [ ] **queue + zombie hygiene** — ~18 runs/hour arriving against a 60–97-min green wall; main pushes queue behind PR traffic; cancel zombie queued run 50073 (`session/clever-hawk-862`, queued 2026-07-13); revisit main-push priority.
+- [ ] **floor memory ceiling** — falsifier floor pinned at the 16 GiB cgroup memory.high with ~33 GB swap, sustained PSI stalls, and ~18 min of post-failure residual burn; #7000 (srv3 MemoryHigh/MemoryMax caps) landed 2026-07-22 — confirm the next falsifier runs reflect the caps; residual lineage #6848 → #7030.
+- [ ] **CI is not a merge gate (re-evidence)** — 0–17-minute creation→merge latencies observed in the merge wave while a green run takes 60+ min, so verdicts land post-merge and main is the integration testbed; re-evidences §2's merge-admission HELD-state node — while it stays HELD and the falsifier is dark, the corpus has no pre-merge wall at all.
+- [ ] **overnight main floor breakage healed** — the 00:44–02:04 cluster (DAG compile failure + ci_deploy_sudoers typecheck) was fixed on main by ~02:04; recorded so the day's red accounting separates it from the deploy-tail reds. — ⏳ awaiting sign-off
+- [ ] **ROADMAP.md hand-edit drift healed** — #7071 hand-added its §0 lane-snapshot paragraph to the generated ROADMAP.md without touching `roadmap_authority.dag`, leaving main committed ≠ expected (the drift gate reds whenever it executes). Re-homed verbatim into the authority in this change; the open question — why the per-PR floor let a generated-artifact hand edit through — folds into the predict-skip row above. — ⏳ awaiting sign-off
+
+**Open-PR audit — disposition every open PR (operator ask, 2026-07-22):**
+
+- [ ] **audit the remaining open PRs and decide each one's disposition** — merge · review-then-merge · fold into another lane · close; the 12 open at snapshot (16:30 UTC) are the children below; re-sweep after the merge wave settles.
+  - [ ] #7078 §13 alias APPLY as `.dag` workflow (`session/fierce-crab-363`) — ready; Rust plan side retained until the dual-run equivalence receipt.
+  - [ ] #7077 dag roadmap work (`session/royal-carp-451`) — template body, no brief yet; brief or close.
+  - [ ] #7076 right-size the emitted pre-push hook — move the CI-scale artifact/witness gate out of `githooks_pre_push_emit.dag` (`session/stern-cat-369`) — draft; brief pending.
+  - [ ] #7074 cli_run.rs hollowing ledger — 855 fns mapped to v2 dissolution lanes (`session/quick-moth-273`) — ready; feeds the §1 seed drain.
+  - [ ] #7072 finish #7043 floor budget refusal on FloorOutcome + plan-roster fact (`session/tidy-ibex-424`) — template body; verify receipts then review.
+  - [ ] #7069 CI onto v2 — routing frontier + parity gate + consumption P4/P2/R1/R2 (`session/native-routing-consumption`) — ready; zero behavior change at landing, family flips gated on falsifier parity windows (needs the falsifier green to accumulate them — couples to the roster burn-down row).
+  - [ ] #7068 dissolve cssl_emit_artifact_sanitize v1_rt-strip — dead rule deleted, pub-use-dedupe gap named for crisp-fox-839 — ready.
+  - [ ] #7066 Gate-1 receipt lane B1 — modeled per-module behavioral-receipt producer (`session/nimble-deer-372`) — template body; brief pending.
+  - [ ] #7058 post-merge honest frontier re-sweep — generic-T dead, type-ref-import-missing named successor class (`session/sharp-bee-290-roadmap-converge`) — ready; row corrections with receipts.
+  - [ ] #7050 computation-identity de-fork census R1–R8 (`session/computation-identity-defork`) — doc + bind row only; R2 (durable native cache lacks real toolchain identity in its key) is a soundness repair to schedule.
+  - [ ] #7027 srv4 BMC onboarding G1–G4 — parameterize per-host, gcloud self-provision, operator-token handler (`session/srv4-onboarding-credential-rotation-gap`) — ready; unblocks srv4.
+  - [ ] #7008 Phase-A design-library lift — gunbc.design.* extraction + census frontier (`session/design-library-phase-a`) — ready; waits on co-review and a main merge carrying the #7016 extdeps anchors.
+
+**The stabilization loop — reflect before the next patch:**
+
+- [ ] **name the loop: CI hurts → quick patch at the symptom layer → the patch regresses something else → repeat** — the instances below are receipts, not blame lines; the common shape is a fix landed under pressure without its own red-control, verified against a CI that was itself too slow or too red to check it (and merged before its verdict landed). The house rules already cover this (§5 factory model — analyze the stopped line before restart; §6 — root-cause, never fork-patch); the ask is that the loop's next iteration goes through a lane with a receipt instead of another hotfix, starting with the acute rows above.
+  - [ ] pre-push hooks grew a CI-scale artifact/witness gate because CI was slow → local pushes broke and stalled → #7076 right-sizes the hook back down (in flight).
+  - [ ] nextest (37 GiB, red on main) removed from CI 2026-07-11 with fmt riding along, coverage claimed by the pre-push hook → the hook is absent in fresh clones → a fmt violation landed on main (#6658) → fmt re-enrolled as a standalone fast gate (#6691). — ⏳ awaiting sign-off
+  - [ ] docs-only skip added for speed → silently bypassed the whole witness corpus including the doc-graph wall → retired #7023/#7039; docs-only PRs now run normal selection. — ⏳ awaiting sign-off
+  - [ ] affected-set selection made PRs fast → corpus-read witnesses predict-skip → the falsifier ran red 29+ consecutive times unnoticed → falsifier-alert #7022 made it loud → the red persists pending the roster burn-down row above; loud is necessary, green is the exit.
+  - [ ] the release-build step's EAGAIN retry ladder (jobs=1, then drop RUSTC_WRAPPER) keeps builds green while masking the sccache/host deficit — the srvN build-cache provisioning lane owns the root fix (DESIGN open thread; STEP 2 fallback removal is operator-sequenced after T4).
+  - [ ] deploy-to-srv1 folded into the ci run for CD → srv1 host state now reds main daily independent of code health — the deploy-tail row above is the acute half; the CD-transport §2 node is the root.
+
+**Session branches running CI with no open PR at snapshot:**
+
+- [ ] **each should end as a PR row above or be abandoned deliberately** — `session/sunny-owl-513` (deploy tree-sync fix) · `session/swift-eagle-602` (layering-imports gate P1) · `session/merry-heron-629` (#6985 witness-discovery cascade: pullable() misses arity-zero bare refs) · `session/sleek-crab-621` (fleet_show systemctl via typed extdeps op) · `session/bright-heron-200-work` (exclusion-lane strict-walk closure) · `session/nimble-moth-292-6939` (typed-cache: reference-derived import term in the content key) · `docs/namespace-y-readjudication` (namespace §4 re-adjudication) · `fix/tidy-ibex-merge` (governor fix).
+
 ## 0. Priorities — current execution order (rearranged 2026-07-06)
 
 The two pillars — §1 get off v1, §2 own the compute fabric — stand as the strategic goal. This section is the **current priority ordering** over them and the walls that keep them honest, rearranged 2026-07-06 to **frontload the compile wall and complexity enforcement**: fix what blocks CI now, then make the regression classes *unwritable* before they recur (construction over after-the-fact catching, DESIGN §5). Each item points into the detailed lane; work dispatches from the lane, not from the pointer. Lanes marked *un-shelved* here are moved out of §4 by this ordering.
