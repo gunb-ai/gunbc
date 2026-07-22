@@ -1385,11 +1385,22 @@ pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
         .clone()
 }
 
-/// Floor discovery ∪ whole-tree probe policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
+/// Floor discovery ∪ whole-tree probe pattern policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
 pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     let mut excludes = witness_exclusion_substrings();
     excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
     excludes
+}
+
+/// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
+/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
+pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
+    census_exclude_derive::whole_tree_probe_exclusion_substrings()
+}
+
+/// Live compile-clean shard entry paths for census exclusion silent-loss checks.
+pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
+    compile_clean_shard_entry_paths_fast()
 }
 
 /// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs

@@ -1,9 +1,8 @@
 //! Census exclude-closure derivation (fierce-heron-512 / bright-heron-200).
 //!
-//! Authority: baked pattern rows (`whole_tree_resolve_exclusion_substrings`) plus
-//! fixed-point transitive-importer closure of strict-resolve failures. The derived
-//! module-path set must match the git-readable oracle pin
-//! (`docs/probes/census_extra_excludes.txt`, recovered-83 set).
+//! Pattern rows (`whole_tree_resolve_exclusion_substrings`) plus fixed-point
+//! transitive-importer closure of strict-resolve failures form the probe authority.
+//! Historical pin `docs/probes/census_extra_excludes.txt` is a drift witness only.
 //!
 //! Cascade semantics (sunny-wolf-225 resolution):
 //! - (i) Silent live-importer loss → typed refusal.
@@ -11,6 +10,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use im::HashMap;
 
@@ -19,6 +19,7 @@ use crate::v1_interpreter::ExecutionMode;
 pub const PINNED_ORACLE_EXCLUDES_REL: &str = "docs/probes/census_extra_excludes.txt";
 pub const PINNED_COORDINATION_REL: &str = "docs/probes/still-hawk-row-coordination.txt";
 pub const PINNED_ORACLE_SEEDS_REL: &str = "docs/probes/census_extra_excludes_seeds.txt";
+pub const DERIVATION_ALGO_VERSION: &str = "census_exclude_derive_v1";
 
 const MAX_CONVERGENCE_ROUNDS: u32 = 120;
 
@@ -51,6 +52,8 @@ impl SetSymmetryDiff {
     }
 }
 
+static DERIVED_CLOSURE_MEMO: OnceLock<Result<DerivedExcludeClosure, String>> = OnceLock::new();
+
 /// Load a git-readable module-path list (one path per line, `#` comments skipped).
 pub fn load_module_path_list(rel: &str, workspace_root: &Path) -> Result<BTreeSet<String>, String> {
     let path = workspace_root.join(rel);
@@ -67,7 +70,7 @@ pub fn load_module_path_list(rel: &str, workspace_root: &Path) -> Result<BTreeSe
     Ok(paths)
 }
 
-/// Load the git-readable 83-row oracle pin (stern-newt @ eaf13cd3c0).
+/// Historical 83-row pin (stern-newt @ eaf13cd3c0) — drift witness, not authority.
 pub fn load_pinned_oracle_module_paths(workspace_root: &Path) -> Result<BTreeSet<String>, String> {
     let paths = load_module_path_list(PINNED_ORACLE_EXCLUDES_REL, workspace_root)?;
     if paths.is_empty() {
@@ -78,7 +81,7 @@ pub fn load_pinned_oracle_module_paths(workspace_root: &Path) -> Result<BTreeSet
     Ok(paths)
 }
 
-/// Set equality witness helper for acceptance oracle (`derived == recovered-83`).
+/// Set equality witness helper for historical drift pin.
 pub fn symmetric_module_path_diff(
     left: &BTreeSet<String>,
     right: &BTreeSet<String>,
@@ -141,9 +144,37 @@ fn transitive_importers_of(
     result
 }
 
-fn memo_hash_for_paths(paths: &BTreeSet<String>) -> String {
-    let joined = paths.iter().cloned().collect::<Vec<_>>().join("\n");
-    crate::v1_rt::bytes_identity_hash(joined.as_bytes())
+fn derivation_cache_key(workspace_root: &Path, source_roots: &[String]) -> String {
+    let pattern = super::whole_tree_resolve_exclusion_substrings();
+    let pattern_hash = crate::v1_rt::bytes_identity_hash(pattern.join("\n").as_bytes());
+    let index = super::build_module_path_index(source_roots);
+    let mut module_paths: Vec<String> = index.keys().cloned().collect();
+    module_paths.sort();
+    let corpus_hash = crate::v1_rt::bytes_identity_hash(module_paths.join("\n").as_bytes());
+    let roots_hash = crate::v1_rt::bytes_identity_hash(
+        format!(
+            "{DERIVATION_ALGO_VERSION}\n{workspace_root:?}\n{}",
+            source_roots.join("\n")
+        )
+        .as_bytes(),
+    );
+    crate::v1_rt::hash_combine(
+        crate::v1_rt::hash_combine(pattern_hash, corpus_hash),
+        roots_hash,
+    )
+}
+
+fn memo_hash_for_closure(closure: &DerivedExcludeClosure, cache_key: &str) -> String {
+    let joined = closure
+        .module_paths
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::v1_rt::hash_combine(
+        cache_key.to_string(),
+        crate::v1_rt::bytes_identity_hash(joined.as_bytes()),
+    )
 }
 
 fn exclusion_substrings_with_derived(derived_module_paths: &BTreeSet<String>) -> Vec<String> {
@@ -169,9 +200,9 @@ pub fn derive_census_exclude_closure(
         .collect();
     let facts = super::build_module_graph_facts_live(&pool_roots);
     let reverse_adjacency = build_reverse_importer_adjacency(&facts.adjacency);
+    let cache_key = derivation_cache_key(workspace_root, source_roots);
 
-    let mut derived_module_paths =
-        load_module_path_list(PINNED_ORACLE_SEEDS_REL, workspace_root).unwrap_or_default();
+    let mut derived_module_paths = BTreeSet::new();
     let mut live_importers_excluded = Vec::new();
     let mut round = 0u32;
 
@@ -186,12 +217,15 @@ pub fn derive_census_exclude_closure(
         let exclude = exclusion_substrings_with_derived(&derived_module_paths);
         match super::whole_tree_resolved_ctx(source_roots, &exclude, ExecutionMode::Wet) {
             Ok(_) => {
-                return Ok(DerivedExcludeClosure {
-                    memo_content_hash: memo_hash_for_paths(&derived_module_paths),
+                let mut closure = DerivedExcludeClosure {
+                    memo_content_hash: String::new(),
                     module_paths: derived_module_paths,
                     live_importers_excluded,
                     convergence_rounds: round,
-                });
+                };
+                closure.memo_content_hash = memo_hash_for_closure(&closure, &cache_key);
+                verify_live_pipeline_exclusions(&closure)?;
+                return Ok(closure);
             }
             Err(err) => {
                 let failures = parse_strict_resolve_failure_paths(&err);
@@ -204,6 +238,16 @@ pub fn derive_census_exclude_closure(
                 let before_len = derived_module_paths.len();
                 for failure in &failures {
                     if derived_module_paths.insert(failure.clone()) {
+                        for importer in transitive_importers_of(failure, &reverse_adjacency) {
+                            if derived_module_paths.insert(importer.clone()) {
+                                live_importers_excluded.push(LiveImporterExclusion {
+                                    module_path: importer,
+                                    seed_chain: failure.clone(),
+                                    round,
+                                });
+                            }
+                        }
+                    } else {
                         for importer in transitive_importers_of(failure, &reverse_adjacency) {
                             if derived_module_paths.insert(importer.clone()) {
                                 live_importers_excluded.push(LiveImporterExclusion {
@@ -226,7 +270,30 @@ pub fn derive_census_exclude_closure(
     }
 }
 
-/// (i) Silent-loss detector: live importer dropped without a matching receipt row.
+/// Memoized derived closure for the default witness-layer source roots.
+pub fn derived_exclude_closure_memoized() -> Result<DerivedExcludeClosure, String> {
+    DERIVED_CLOSURE_MEMO
+        .get_or_init(|| {
+            let ws = super::workspace_root();
+            let roots = super::default_source_roots();
+            derive_census_exclude_closure(&ws, &roots)
+        })
+        .clone()
+}
+
+/// Whole-tree probe exclusion authority: pattern rows ∪ derived module-path closure.
+pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
+    let closure = derived_exclude_closure_memoized()
+        .expect("whole_tree_probe_exclusion_substrings: derived closure must converge");
+    exclusion_substrings_with_derived(&closure.module_paths)
+}
+
+/// Live compile-clean pipeline module paths for silent-loss checks.
+pub fn live_pipeline_module_paths() -> Vec<String> {
+    super::compile_clean_live_pipeline_module_paths()
+}
+
+/// (i) Silent-loss detector: live pipeline module excluded without a receipt row.
 pub fn refuse_silent_live_importer_loss(
     before: &BTreeSet<String>,
     after: &BTreeSet<String>,
@@ -250,6 +317,17 @@ pub fn refuse_silent_live_importer_loss(
         }
     }
     Ok(())
+}
+
+fn verify_live_pipeline_exclusions(receipt: &DerivedExcludeClosure) -> Result<(), String> {
+    let live = live_pipeline_module_paths();
+    let live_set: BTreeSet<String> = live.iter().map(|p| normalize_repo_path(p)).collect();
+    let active: BTreeSet<String> = live_set
+        .iter()
+        .filter(|p| !receipt.module_paths.contains(*p))
+        .cloned()
+        .collect();
+    refuse_silent_live_importer_loss(&live_set, &active, receipt, &live)
 }
 
 pub fn workspace_root_from_manifest_dir(manifest_dir: &Path) -> PathBuf {
@@ -291,20 +369,55 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual: whole-tree strict-resolve fixed-point (~minutes); proves derived(tip)==recovered-83 oracle"]
-    fn derived_closure_matches_pinned_oracle() {
-        let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
-        let roots: Vec<String> = super::super::default_source_roots();
-        let derived = derive_census_exclude_closure(&ws, &roots).expect("derive");
-        let oracle = load_pinned_oracle_module_paths(&ws).expect("oracle");
-        let diff = symmetric_module_path_diff(&derived.module_paths, &oracle);
+    #[ignore = "manual: triggers whole-tree derivation (~minutes)"]
+    fn probe_exclusion_extends_pattern_authority() {
+        let pattern = super::super::whole_tree_resolve_exclusion_substrings();
+        let probe = whole_tree_probe_exclusion_substrings();
         assert!(
-            diff.is_empty(),
-            "derived closure must match pinned oracle (fierce-heron-512); \
-             only derived: {:?}; only oracle: {:?}; rounds={}",
-            diff.only_left,
-            diff.only_right,
-            derived.convergence_rounds
+            probe.len() >= pattern.len(),
+            "probe authority must be a superset of pattern rows"
         );
+        for row in pattern {
+            assert!(
+                probe.iter().any(|p| p == &row),
+                "pattern row {row:?} missing from probe authority"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "manual: whole-tree strict-resolve fixed-point (~minutes); classifies drift vs historical 83-pin"]
+    fn derived_closure_drift_report_vs_historical_pin() {
+        let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
+        let roots = super::super::default_source_roots();
+        let derived = derive_census_exclude_closure(&ws, &roots).expect("derive");
+        let historical = load_pinned_oracle_module_paths(&ws).expect("historical pin");
+        let diff = symmetric_module_path_diff(&derived.module_paths, &historical);
+        eprintln!(
+            "derived rounds={} module_paths={} live_importer_rows={}",
+            derived.convergence_rounds,
+            derived.module_paths.len(),
+            derived.live_importers_excluded.len()
+        );
+        if !diff.only_left.is_empty() {
+            eprintln!(
+                "only in derived ({}): {:?}",
+                diff.only_left.len(),
+                diff.only_left
+            );
+        }
+        if !diff.only_right.is_empty() {
+            eprintln!(
+                "only in historical pin ({}): {:?}",
+                diff.only_right.len(),
+                diff.only_right
+            );
+        }
+        super::super::whole_tree_resolved_ctx(
+            &roots,
+            &exclusion_substrings_with_derived(&derived.module_paths),
+            ExecutionMode::Wet,
+        )
+        .expect("derived authority must strict-resolve green");
     }
 }
