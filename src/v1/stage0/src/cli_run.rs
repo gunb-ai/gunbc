@@ -4249,8 +4249,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
                 }
             } else if bytes[i] == b')' && fn_params_depth > 0 {
                 fn_params_depth -= 1;
-            } else if bytes[i] == b'{' && (pattern_depth > 0 || pattern_brace_starts.contains(&i))
-            {
+            } else if bytes[i] == b'{' && (pattern_depth > 0 || pattern_brace_starts.contains(&i)) {
                 pattern_depth += 1;
             } else if bytes[i] == b'}' && pattern_depth > 0 {
                 pattern_depth -= 1;
