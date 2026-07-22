@@ -12,6 +12,7 @@ import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import std.effects {
   EffectShape,
   KeySource,
@@ -53,6 +54,11 @@ type HostEffect =
     }
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
+  | LiveDeployApply { spec: DeploymentSpec }
+  | LiveDeployRetract { spec: DeploymentSpec }
+  | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
+  | LiveDeployDigestReadback { port: Int }
+  | DeployAccessPreflight {}
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

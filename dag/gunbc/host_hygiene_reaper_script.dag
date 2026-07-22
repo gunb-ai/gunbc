@@ -1,0 +1,135 @@
+module gunbc.host_hygiene_reaper_script
+
+import std.types { String, Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
+
+data host_hygiene_reaper_script_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_reaper_script — concat-built bash shell text (host_hygiene_reap_classify_and_act_body / host_hygiene_reap_stale_override_body / host_hygiene_reap_script_body). DISSOLVES WHEN bash-emit (issue 5828) realizes the reap effect as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for. Separate from host_hygiene_reap_unit_body_dissolution_trigger below (review 40975: one scaffold had bundled two independent dissolution triggers, so resolving this one alone must not silently read as resolving that one)."
+
+data host_hygiene_reaper_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_hygiene_reaper_script",
+    decl_name: "host_hygiene_reaper_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_hygiene_reap_unit_body_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_reap_service_unit_body / host_hygiene_reap_timer_unit_body — systemd unit-file bodies held as raw strings, parallel-representation-shaped against the extdeps.os.systemd vocabulary the decision core already consumes. DISSOLVES WHEN a typed systemd unit-file model (UnitFile/ServiceSection/TimerSection or equivalent) is authored in extdeps.os.systemd and these two bodies are derived from it instead of hand-written text; no such carrier exists there today, so minting one here would be scope creep beyond this increment — this is named debt on ITS OWN trigger, independent of host_hygiene_reaper_script_dissolution_trigger above (that one is about the bash transport, this one is about the unit-body representation; dissolving one does not dissolve the other)."
+
+data host_hygiene_reap_unit_body_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_hygiene_reaper_script",
+    decl_name: "host_hygiene_reap_unit_body_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_hygiene_reap_service_unit_path: String = "/etc/systemd/system/host-hygiene-reap.service"
+
+data host_hygiene_reap_service_unit_body: String = "[Unit]\nDescription=gunbc host hygiene residual reaper (extends the ctrl-runner-reclaim.timer pattern to dead-slot residue)\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/gunbc-host-hygiene-reap\n"
+
+data host_hygiene_reap_timer_unit_path: String = "/etc/systemd/system/host-hygiene-reap.timer"
+
+data host_hygiene_reap_timer_unit_body: String = "[Unit]\nDescription=periodic gunbc host hygiene residual reaper\n\n[Timer]\nOnBootSec=5min\nOnUnitActiveSec=5min\n\n[Install]\nWantedBy=timers.target\n"
+
+fn host_hygiene_reap_install_units_body() -> String {
+  concat(
+    concat("cat > ", concat(host_hygiene_reap_service_unit_path, " <<'__GUNBC_HYGIENE_REAP_SVC__'\n")),
+    concat(
+      host_hygiene_reap_service_unit_body,
+      concat(
+        "__GUNBC_HYGIENE_REAP_SVC__\n",
+        concat(
+          concat("cat > ", concat(host_hygiene_reap_timer_unit_path, " <<'__GUNBC_HYGIENE_REAP_TIMER__'\n")),
+          concat(
+            host_hygiene_reap_timer_unit_body,
+            concat(
+              "__GUNBC_HYGIENE_REAP_TIMER__\n",
+              "systemctl daemon-reload\nsystemctl enable --now host-hygiene-reap.timer\n"
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn host_hygiene_reap_classify_and_act_body() -> String {
+  concat(
+    concat("for unit in $(systemctl list-units --all --no-legend '", concat(gunbc_runner_all_slots_unit_glob, "' | awk '\{print $1}'); do\n")),
+    concat(
+      "  state=$(systemctl show \"$unit\" --property=ActiveState --value)\n",
+      concat(
+        "  case \"$state\" in\n    active|activating|deactivating|reloading) continue ;;\n  esac\n",
+        concat(
+          "  cgroup=$(systemctl show \"$unit\" --property=ControlGroup --value)\n",
+          concat(
+            "  procs_path=\"/sys/fs/cgroup$\{cgroup}/cgroup.procs\"\n",
+            concat(
+              "  [ -s \"$procs_path\" ] || continue\n",
+              concat(
+                "  has_build_cache=0\n",
+                concat(
+                  "  for pid in $(cat \"$procs_path\"); do\n    grep -q sccache \"/proc/$pid/cmdline\" 2>/dev/null && has_build_cache=1\n  done\n",
+                  concat(
+                    "  if [ \"$has_build_cache\" -eq 1 ]; then\n    printf 'HostHygieneReapReceipt: unit=%s action=refused cause=build_cache_server_occupant\\n' \"$unit\"\n    continue\n  fi\n",
+                    concat(
+                      "  for pid in $(cat \"$procs_path\"); do\n    kill -TERM \"$pid\" 2>/dev/null || true\n  done\n",
+                      "  printf 'HostHygieneReapReceipt: unit=%s action=killed\\n' \"$unit\"\ndone\n"
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn host_hygiene_reap_stale_override_body() -> String {
+  concat(
+    concat("for dir in /etc/systemd/system.control/", concat(gunbc_runner_all_slots_unit_glob, ".d; do\n")),
+    concat(
+      "  [ -d \"$dir\" ] || continue\n",
+      concat(
+        "  unit=\"$(basename \"$dir\" .d)\"\n",
+        concat(
+          "  systemctl cat \"$unit\" >/dev/null 2>&1 && continue\n",
+          concat(
+            "  rm -rf \"$dir\"\n",
+            "  printf 'HostHygieneReapReceipt: override_removed=%s\\n' \"$dir\"\ndone\n"
+          )
+        )
+      )
+    )
+  )
+}
+
+fn host_hygiene_reap_script_body() -> String {
+  concat(
+    "set -uo pipefail\n",
+    concat(
+      host_hygiene_reap_classify_and_act_body(),
+      host_hygiene_reap_stale_override_body(),
+    )
+  )
+}
+
+fn host_hygiene_reap_refuses_build_cache_occupant() -> Bool {
+  string_contains(s: host_hygiene_reap_classify_and_act_body(), pattern: "action=refused cause=build_cache_server_occupant")
+    && string_contains(s: host_hygiene_reap_classify_and_act_body(), pattern: "continue")
+}
+
+fn host_hygiene_reap_skips_active_units() -> Bool {
+  string_contains(s: host_hygiene_reap_classify_and_act_body(), pattern: "active|activating|deactivating|reloading) continue")
+}
+
+fn host_hygiene_reap_removes_only_disabled_overrides() -> Bool {
+  string_contains(s: host_hygiene_reap_stale_override_body(), pattern: "systemctl cat \"$unit\" >/dev/null 2>&1 && continue")
+    && string_contains(s: host_hygiene_reap_stale_override_body(), pattern: "rm -rf")
+}
