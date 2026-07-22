@@ -19458,8 +19458,17 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
 // 🟡 dissolve-on: retires alongside `walk_target_alias_plan` when §13 import→alias transmutation
 // + refusal flip complete (stern-owl-401 Phase 3). Receipt: `rg walk_target_alias_apply src/v1/stage0`
 // until deletion.
+// Corpus --write is gated until #6979 alias parse arm merges (operator ruling 2026-07-22): alias
+// surface text is unparseable by the live resolver today; fixture write tests use
+// `walk_target_alias_apply_plan` directly on temp trees.
 pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER: &str =
     "cli_run_walk_target_alias_apply";
+
+/// Fail-closed refusal when corpus `--write` is requested before #6979 alias parse lands.
+pub const WALK_TARGET_ALIAS_APPLY_CORPUS_WRITE_GATED_REASON: &str =
+    "corpus --write refused: alias decl surface is unparseable until #6979 alias parse arm merges \
+     (operator ruling 2026-07-22); use dry-run apply + pre-edit oracles now; post-edit \
+     whole-tree binding-identity oracle discharges after #6979";
 
 /// Surface spelling for one `AliasBindingRow`-shaped decl (v2.std.namespace_alias authority).
 pub fn format_walk_target_alias_decl(binding: &str, target_qualified_path: &str) -> String {
@@ -19714,6 +19723,9 @@ pub fn walk_target_alias_apply_live(
     exclude_substrings: &[String],
     write: bool,
 ) -> Result<WalkTargetAliasApplyReport, String> {
+    if write {
+        return Err(WALK_TARGET_ALIAS_APPLY_CORPUS_WRITE_GATED_REASON.to_string());
+    }
     let plan = walk_target_alias_plan_live(source_roots, exclude_substrings)?;
     if let Some(msg) = walk_target_alias_binding_identity_oracle(&plan) {
         return Err(msg);

@@ -2,13 +2,16 @@
 
 //! Walk-target-sourced alias codemod — apply phase (namespace-resolution-design §13).
 //!
-//! Consumes deduped plan rows, runs the binding-identity oracle, and emits
-//! `alias <binding> = <qualified.path>` into declaring modules.
+//! Consumes deduped plan rows, runs the pre-edit binding-identity oracle, and plans
+//! `alias <binding> = <qualified.path>` insertions into declaring modules.
+//!
+//! Corpus `--write` is refused until #6979 alias parse arm merges (dry-run is the
+//! supported path on the live corpus today). Fixture write tests use
+//! `walk_target_alias_apply_plan` directly on temp trees.
 //!
 //! ```text
 //! cargo run -p v1-compiler --bin walk_target_alias_apply
 //! cargo run -p v1-compiler --bin walk_target_alias_apply -- --source-root dag
-//! cargo run -p v1-compiler --bin walk_target_alias_apply -- --write
 //! ```
 
 use std::path::PathBuf;
