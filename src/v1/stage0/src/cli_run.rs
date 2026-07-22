@@ -1758,6 +1758,19 @@ fn extend_with_reference_closure(
     Ok(sources)
 }
 
+fn extend_with_reference_closure_for_pool(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mei: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let edges = both_closure_edge_index(mei)?;
+    extend_sources_via_edge_map(
+        sources,
+        &edges.ref_out,
+        None,
+        &path_to_source_lookup(&mei.source_files),
+    )
+}
+
 /// Candidate module paths referenced by dotted names in `content`: every maximal
 /// `seg(.seg)+` identifier chain contributes its longest leading prefix that is a
 /// declared module path in `index` (>= 2 segments — a bare single identifier is a
@@ -4424,6 +4437,283 @@ mod bare_identifier_candidates_tests {
     }
 }
 
+/// Per-module outgoing edges for the both-closure fixpoint — built once per
+/// `MultiEntryIndex` process and reused across every entry load. Dissolves the
+/// #6848 once-per-entry cost: the fixpoint becomes graph BFS over these edges
+/// instead of re-scanning every module's text and re-querying the census on each
+/// of ~2100 discovery entries (~140ms/witness PRE-fix).
+struct BothClosureEdgeIndex {
+    /// workspace-relative file path → files pulled by bare-reference resolution
+    /// (each target is the full import-closure of the resolved provider).
+    bare_out: HashMap<String, Vec<String>>,
+    /// workspace-relative file path → files pulled by dotted module-path refs.
+    ref_out: HashMap<String, Vec<String>>,
+    /// Import-stripped files that may originate bare-reference edges.
+    bare_scan_eligible: HashSet<String>,
+}
+
+fn source_declares_import_lines(content: &str) -> bool {
+    content
+        .lines()
+        .any(|l| l.trim_start().starts_with("import "))
+}
+
+/// BFS closure extension over a precomputed per-file edge map.
+fn extend_sources_via_edge_map(
+    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    edge_map: &HashMap<String, Vec<String>>,
+    scan_eligible: Option<&HashSet<String>>,
+    path_lookup: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mut known_paths: HashSet<String> = sources
+        .iter()
+        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
+        .collect();
+    let mut queue: VecDeque<String> = sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect();
+    while let Some(file_rel) = queue.pop_front() {
+        if scan_eligible.is_some_and(|eligible| !eligible.contains(&file_rel)) {
+            continue;
+        }
+        let Some(pulled) = edge_map.get(&file_rel) else {
+            continue;
+        };
+        for rel in pulled {
+            if known_paths.contains(rel) {
+                continue;
+            }
+            let Some(dep_sf) = path_lookup.get(rel).cloned() else {
+                return Err(format!(
+                    "closure_edge_map: pulled path '{rel}' (from '{file_rel}') has no \
+                     provenance in module index (fail-closed)"
+                ));
+            };
+            known_paths.insert(rel.clone());
+            known_paths.insert(dep_sf.path.clone());
+            sources.push(dep_sf.clone());
+            queue.push_back(rel.clone());
+        }
+    }
+    Ok(sources)
+}
+
+fn bare_reference_pull_paths_for_source(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<String>, String> {
+    use crate::v1_compiler_infer_env::GlobalBareLookupState;
+    let file_rel = workspace_relative_repo_path(&sf.path);
+    let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
+        return Ok(Vec::new());
+    };
+    let census = tree_bare_census_for_root(index, &root)?;
+    let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
+    let candidates = bare_identifier_candidates(&sf.content);
+    let mut service_prefixes: BTreeSet<String> = candidates
+        .dotted_chains
+        .iter()
+        .flat_map(|chain| {
+            let mut prefixes = Vec::new();
+            let mut acc = String::new();
+            for seg in chain.split('.') {
+                if !acc.is_empty() {
+                    acc.push('.');
+                }
+                acc.push_str(seg);
+                prefixes.push(acc.clone());
+            }
+            prefixes
+        })
+        .collect();
+    for (builtin_name, service_key) in BUILTIN_REQUIRED_SERVICE_KEYS {
+        if candidates.call_position.contains(*builtin_name) {
+            service_prefixes.insert((*service_key).to_string());
+        }
+    }
+    let dotted_head_refs: Vec<String> = candidates
+        .dotted_chains
+        .iter()
+        .filter_map(|chain| chain.split('.').next())
+        .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
+        .map(|h| h.to_string())
+        .collect();
+    let all_names: Vec<(String, bool)> = candidates
+        .names
+        .iter()
+        .filter(|n| !candidates.bound.contains(*n))
+        .map(|n| (n.clone(), false))
+        .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
+        .chain(service_prefixes.into_iter().map(|n| (n, true)))
+        .collect();
+    let mut pulled: Vec<String> = Vec::new();
+    let mut pulled_set: HashSet<String> = HashSet::new();
+    for (name, service_head) in all_names {
+        let in_call_position = candidates.call_position.contains(&name);
+        let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
+            in_call_position
+                || !binding.resolved.params.is_empty()
+                || binding.resolved.type_annotation.is_some()
+                || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
+        };
+        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+            if service_head {
+                return v1_rt::map_get(&census.services, name.clone())
+                    .map(|entry| entry.module_path.clone());
+            }
+            match v1_rt::map_get(&census.global_bare, name.clone()) {
+                Some(state) => match state.as_ref() {
+                    GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path,
+                        binding,
+                    } => {
+                        if pullable(binding) {
+                            Some(module_path.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
+                            referencing_module.clone(),
+                            candidates.clone(),
+                        )
+                        .and_then(|c| {
+                            if pullable(&c.binding) {
+                                Some(c.module_path.clone())
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                },
+                None => {
+                    if in_call_position {
+                        v1_rt::map_get(&census.services, name.clone())
+                            .map(|entry| entry.module_path.clone())
+                    } else {
+                        None
+                    }
+                }
+            }
+        };
+        let target_module = match resolve_in(&census) {
+            Some(m) => Some(m),
+            None => resolve_in(&pool_bare_census(index)?),
+        };
+        let Some(module_path) = target_module else {
+            continue;
+        };
+        let Some(dep) = index.source_files.get(&module_path) else {
+            return Err(format!(
+                "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
+                 module '{module_path}', but that module has no source file in the pool \
+                 (fail-closed)"
+            ));
+        };
+        let name_is_test_row = dep.content.lines().any(|l| {
+            let t = l.trim_start();
+            ["test fn ", "test data "].iter().any(|prefix| {
+                t.strip_prefix(prefix).is_some_and(|rest| {
+                    rest.strip_prefix(name.as_str()).is_some_and(|after| {
+                        after
+                            .chars()
+                            .next()
+                            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+                    })
+                })
+            })
+        });
+        if name_is_test_row {
+            continue;
+        }
+        let dep_rel = workspace_relative_repo_path(&dep.path);
+        if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
+            eprintln!(
+                "[bare-pull] {} -> '{}' -> {} ({})",
+                file_rel, name, module_path, dep_rel
+            );
+        }
+        if !index.module_graph_facts.declares_repo_path(&dep_rel) {
+            return Err(format!(
+                "bare_reference_closure: referenced module '{module_path}' at \
+                 '{dep_rel}' has no provenance in the module-graph facts pool \
+                 (fail-closed)"
+            ));
+        }
+        for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
+            let rel = workspace_relative_repo_path(&path);
+            if pulled_set.insert(rel.clone()) {
+                pulled.push(rel);
+            }
+        }
+    }
+    Ok(pulled)
+}
+
+fn reference_pull_paths_for_source(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
+) -> Result<Vec<String>, String> {
+    let mut pulled: Vec<String> = Vec::new();
+    let mut pulled_set: HashSet<String> = HashSet::new();
+    for module_path in referenced_module_paths_in_text(&sf.content, index) {
+        let Some(dep) = index.get(&module_path) else {
+            continue;
+        };
+        let dep_rel = workspace_relative_repo_path(&dep.path);
+        if !facts.declares_repo_path(&dep_rel) {
+            return Err(format!(
+                "reference_closure: referenced module '{module_path}' at '{dep_rel}' \
+                 has no provenance in the module-graph facts pool (fail-closed)"
+            ));
+        }
+        for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
+            let rel = workspace_relative_repo_path(&path);
+            if pulled_set.insert(rel.clone()) {
+                pulled.push(rel);
+            }
+        }
+    }
+    Ok(pulled)
+}
+
+fn build_both_closure_edge_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    let mut bare_out: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ref_out: HashMap<String, Vec<String>> = HashMap::new();
+    let mut bare_scan_eligible: HashSet<String> = HashSet::new();
+    for sf in index.source_files.values() {
+        let file_rel = workspace_relative_repo_path(&sf.path);
+        ref_out.insert(
+            file_rel.clone(),
+            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?,
+        );
+        if source_declares_import_lines(&sf.content) {
+            continue;
+        }
+        bare_scan_eligible.insert(file_rel.clone());
+        bare_out.insert(file_rel, bare_reference_pull_paths_for_source(sf, index)?);
+    }
+    Ok(Rc::new(BothClosureEdgeIndex {
+        bare_out,
+        ref_out,
+        bare_scan_eligible,
+    }))
+}
+
+fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
+        return Ok(hit.clone());
+    }
+    let built = build_both_closure_edge_index(index)?;
+    *index.both_closure_edges.borrow_mut() = Some(built.clone());
+    Ok(built)
+}
+
 /// Extend the closure with the modules the tree census resolves each source's
 /// BARE references to (namespace Rule-1 direction: deps derived from names, not
 /// import statements — the import-stripped corpus has no import edges to follow,
@@ -4434,272 +4724,16 @@ mod bare_identifier_candidates_tests {
 /// module's containment position; still ambiguous → load nothing (the typecheck
 /// refusal stays the loud authority, the loader never guesses a side).
 fn extend_with_bare_reference_closure(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    use crate::v1_compiler_infer_env::GlobalBareLookupState;
-    let path_lookup = path_to_source_lookup(&index.source_files);
-    let mut known_paths: std::collections::HashSet<String> = sources
-        .iter()
-        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
-        .collect();
-    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
-    while let Some(sf) = scan_queue.pop() {
-        // Name-derived pulls serve IMPORT-STRIPPED modules only. A module that
-        // declares imports is main-parity: its closure derives from those edges,
-        // and scanning its bare names manufactures over-pull (measured: bare
-        // 'repo' in an unstripped extdeps module pulled the review-agent tooling
-        // into a merge-admission run, coupling the run to modules it never
-        // executes — and to their health).
-        if sf
-            .content
-            .lines()
-            .any(|l| l.trim_start().starts_with("import "))
-        {
-            continue;
-        }
-        let file_rel = workspace_relative_repo_path(&sf.path);
-        let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
-            continue;
-        };
-        let census = tree_bare_census_for_root(index, &root)?;
-        let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
-        let candidates = bare_identifier_candidates(&sf.content);
-        // Dotted-chain prefixes that name a SERVICE pull its provider module:
-        // with the import stripped (`import extdeps.cron` gone from
-        // cron_tag.dag), `cron.Tab.List()` has no module-path spelling the
-        // dotted scan can follow — the services census key (`cron.Tab`; service
-        // names are themselves dotted) is the only edge back to the provider.
-        // A module-path chain (`v2.std....`) misses the services census: no pull.
-        let mut service_prefixes: BTreeSet<String> = candidates
-            .dotted_chains
-            .iter()
-            .flat_map(|chain| {
-                let mut prefixes = Vec::new();
-                let mut acc = String::new();
-                for seg in chain.split('.') {
-                    if !acc.is_empty() {
-                        acc.push('.');
-                    }
-                    acc.push_str(seg);
-                    prefixes.push(acc.clone());
-                }
-                prefixes
-            })
-            .collect();
-        // SIDE-EFFECT-ONLY dependency, the one edge names alone cannot carry: a
-        // BUILTIN that dispatches through a service (`filesystem_read` →
-        // `Filesystem.Read`) needs the provider module LOADED for its service
-        // registration, but contributes no name the census could resolve — the
-        // builtin's own identifier belongs to the interpreter, not to any
-        // module. Under imports that edge was a name-less `import
-        // extdeps.filesystem.filesystem_io`; stripped, it is underivable, so
-        // the requirement each builtin already ENFORCES at dispatch is declared
-        // here as the pull key and resolved through the same services census a
-        // dotted service head uses. Keep in lockstep with the
-        // `ctx.service_ops.contains_key(..)` gates in v1_interpreter (each gate
-        // is a row here); a missing row does not fabricate — the builtin's gate
-        // still refuses, typed and located, exactly as it did for this row.
-        for (builtin_name, service_key) in BUILTIN_REQUIRED_SERVICE_KEYS {
-            if candidates.call_position.contains(*builtin_name) {
-                service_prefixes.insert((*service_key).to_string());
-            }
-        }
-        // A dotted-chain HEAD that is never body-bound in this file is a
-        // cross-module data-const projection (`gunbc_ci_spec.diff_policy`) —
-        // resolve it like a bare reference so the declaring module is pulled
-        // (its census binding carries the data const's type annotation, the
-        // same pull rule bare data refs use). Bound heads (`repo.x` on a let)
-        // stay excluded — that over-pull class is closed.
-        let dotted_head_refs: Vec<String> = candidates
-            .dotted_chains
-            .iter()
-            .filter_map(|chain| chain.split('.').next())
-            .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
-            .map(|h| h.to_string())
-            .collect();
-        // A name this file BINDS anywhere (binder keyword, key position — fn
-        // params, named-arg keys, let/data/type decls) is served locally at
-        // every scope the reference could sit in; pulling its census homonym
-        // couples the entry to an unrelated module (measured: lens
-        // unit_modeling's `edge` param pulled v2.test.manual.ownership_movable,
-        // whose src/v1 imports are unresolvable in this pool — resolve died on
-        // a module the entry never executes). Same rule dotted-chain heads
-        // already apply; a genuinely-global reference shadowed by a same-name
-        // local binder elsewhere in the file fails LOUD at typecheck/runtime
-        // (no such function), never silently wrong.
-        let all_names: Vec<(String, bool)> = candidates
-            .names
-            .iter()
-            .filter(|n| !candidates.bound.contains(*n))
-            .map(|n| (n.clone(), false))
-            .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
-            .chain(service_prefixes.into_iter().map(|n| (n, true)))
-            .collect();
-        for (name, service_head) in all_names {
-            // Only CALLABLE-shaped references pull a module: the runtime gap this
-            // closure exists for is the interpreter's fn/service registry
-            // (`no such function`); types and variants are census-served at
-            // typecheck and carried by value tags at runtime. A reference is
-            // callable-shaped when it occurs in call position (`name(` — the
-            // only way a 0-arg fn is used, and a shape a type name never has) or
-            // when its census binding carries value params (a named fn passed as
-            // an argument). Pulling for anything else only widens the closure —
-            // and a widened closure couples this witness to the health of
-            // modules it never executes (measured: an over-pulled v2 test
-            // module red under the entry's tree view killed an unrelated dag
-            // witness).
-            let in_call_position = candidates.call_position.contains(&name);
-            // Pullable = fn referenced in call position, named fn passed as a
-            // value (census sig carries params), or a DATA const (the census
-            // stub keeps `type_annotation` — `data x: T = ...` — while type
-            // decls never carry one); data consts are runtime values referenced
-            // bare (`design_argument`, `srv1_nvme0`: 42 counted
-            // no-such-function rows in the first full batch-2).
-            let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
-                in_call_position
-                    || !binding.resolved.params.is_empty()
-                    || binding.resolved.type_annotation.is_some()
-                    // A TYPE decl (Disj/Conj) referenced bare is a real Rule-1
-                    // edge: typecheck is census-served, but RUNTIME construction
-                    // and variant-tag identity need the declaring module loaded
-                    // (re-eval of `{ type: User }` died `undefined variable:
-                    // User` with the enum's module unpulled). Binder/key-position
-                    // occurrences are already excluded, so the residual
-                    // over-pull is a census-unique type homonym of a plain
-                    // local — bounded and rare.
-                    || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
-            };
-            let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
-                if service_head {
-                    return v1_rt::map_get(&census.services, name.clone())
-                        .map(|entry| entry.module_path.clone());
-                }
-                match v1_rt::map_get(&census.global_bare, name.clone()) {
-                    Some(state) => match state.as_ref() {
-                        GlobalBareLookupState::GlobalBareUniqueBinding {
-                            module_path,
-                            binding,
-                        } => {
-                            if pullable(binding) {
-                                Some(module_path.clone())
-                            } else {
-                                None
-                            }
-                        }
-                        GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                            crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                                referencing_module.clone(),
-                                candidates.clone(),
-                            )
-                            .and_then(|c| {
-                                if pullable(&c.binding) {
-                                    Some(c.module_path.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                        }
-                    },
-                    None => {
-                        if in_call_position {
-                            v1_rt::map_get(&census.services, name.clone())
-                                .map(|entry| entry.module_path.clone())
-                        } else {
-                            None
-                        }
-                    }
-                }
-            };
-            // Own tree first (same-tree names keep priority — a cross-tree
-            // homonym can never steal one); the whole-pool census only fills an
-            // own-tree MISS, giving cross-tree references their provider pull
-            // (a v2 module's bare `gunbc_ci_spec` → dag/gunbc/ci_spec.dag).
-            let target_module = match resolve_in(&census) {
-                Some(m) => Some(m),
-                None => resolve_in(&pool_bare_census(index)?),
-            };
-            let Some(module_path) = target_module else {
-                continue;
-            };
-            // Same class as the provenance refusal below, and it refuses for the same
-            // reason: the census RESOLVED this name to a module, so the pool asserted the
-            // module exists — a missing source file is the pool contradicting itself, not
-            // a name that failed to resolve. Dropping it silently would widen the
-            // "unresolved name" bucket with a pool defect whose frequency then reads zero
-            // (DESIGN 5: a failure arm must refuse, never widen).
-            let Some(dep) = index.source_files.get(&module_path) else {
-                return Err(format!(
-                    "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
-                     module '{module_path}', but that module has no source file in the pool \
-                     (fail-closed)"
-                ));
-            };
-            // A `test fn`/`test data` ROW is an execution ROOT, never a
-            // dependency: a bare homonym resolving to another module's witness
-            // must not couple this entry to its run. The guard is
-            // DECLARATION-grain: only when the resolved name itself is declared
-            // as a test row in the provider. A PLAIN fn/data declared beside
-            // test rows is an ordinary provider — the former FILE-grain skip
-            // (any provider containing a `test fn` line) silently dropped
-            // those, converting a resolvable cross-file reference into a
-            // runtime `no such function` (infer_emit_compile_anchor.dag →
-            // anchor_rust_add_emit_accepts; review finding, 2026-07-19).
-            let name_is_test_row = dep.content.lines().any(|l| {
-                let t = l.trim_start();
-                ["test fn ", "test data "].iter().any(|prefix| {
-                    t.strip_prefix(prefix).is_some_and(|rest| {
-                        rest.strip_prefix(name.as_str()).is_some_and(|after| {
-                            after
-                                .chars()
-                                .next()
-                                .is_none_or(|c| !c.is_alphanumeric() && c != '_')
-                        })
-                    })
-                })
-            });
-            if name_is_test_row {
-                continue;
-            }
-            let dep_rel = workspace_relative_repo_path(&dep.path);
-            if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
-                continue;
-            }
-            // Diagnostic read-only trace of the pull edge (name → module), for
-            // locating over-pull homonyms; never alters the closure.
-            if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
-                eprintln!(
-                    "[bare-pull] {} -> '{}' -> {} ({})",
-                    file_rel, name, module_path, dep_rel
-                );
-            }
-            if !index.module_graph_facts.declares_repo_path(&dep_rel) {
-                return Err(format!(
-                    "bare_reference_closure: referenced module '{module_path}' at \
-                     '{dep_rel}' has no provenance in the module-graph facts pool \
-                     (fail-closed)"
-                ));
-            }
-            for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
-                let rel = workspace_relative_repo_path(&path);
-                if known_paths.contains(&rel) {
-                    continue;
-                }
-                let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
-                    return Err(format!(
-                        "bare_reference_closure: closure path '{rel}' (via bare name \
-                         '{name}' → module '{module_path}') has no provenance in \
-                         module index (fail-closed)"
-                    ));
-                };
-                known_paths.insert(rel);
-                known_paths.insert(dep_sf.path.clone());
-                sources.push(dep_sf.clone());
-                scan_queue.push(dep_sf);
-            }
-        }
-    }
-    Ok(sources)
+    let edges = both_closure_edge_index(index)?;
+    extend_sources_via_edge_map(
+        sources,
+        &edges.bare_out,
+        Some(&edges.bare_scan_eligible),
+        &path_to_source_lookup(&index.source_files),
+    )
 }
 
 /// The full name-derived closure for one entry: import edges + dotted-reference
@@ -4723,8 +4757,7 @@ fn extend_sources_to_both_closure_fixpoint(
     loop {
         let before = sources.len();
         sources = extend_with_bare_reference_closure(sources, mei)?;
-        sources =
-            extend_with_reference_closure(sources, &mei.source_files, &mei.module_graph_facts)?;
+        sources = extend_with_reference_closure_for_pool(sources, mei)?;
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         sources.dedup_by(|a, b| a.path == b.path);
         if sources.len() == before {
@@ -5060,6 +5093,9 @@ pub struct MultiEntryIndex {
     /// for a fixed pool; witnesses sharing an entry file within one floor worker
     /// reused the loader without this and re-paid the #6848 walk each time.
     entry_closure_sources: RefCell<HashMap<String, Vec<Rc<v1_compiler_compile::SourceFile>>>>,
+    /// Per-pool precomputed bare/reference closure edges — built once per process,
+    /// amortized across every entry's both-closure fixpoint walk.
+    both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -5152,6 +5188,21 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
+pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
+    index.both_closure_edges.borrow().is_some()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
+    index
+        .both_closure_edges
+        .borrow()
+        .as_ref()
+        .map(|edges| edges.bare_out.len())
+        .unwrap_or(0)
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.pool_qualified_fill.borrow().is_some()
 }
@@ -5186,6 +5237,7 @@ fn new_multi_entry_index_shell(
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
+        both_closure_edges: RefCell::new(None),
     }
 }
 
