@@ -19907,6 +19907,83 @@ fn use_pool_dup(x: PoolDup) -> Int {
         let _ = std::fs::remove_dir_all(&fixture);
     }
 
+    /// Perturbation of the benign `global_bare_lcp` fixture: wildcard-import both
+    /// homonym-declaring modules so both land on the consumer's parent/import chain.
+    /// Same pool-wide telemetry class, but the site joins `containment_ambiguous` —
+    /// the §5 gate must fire (discriminating RED paired with the benign control).
+    #[test]
+    fn resolution_divergence_silent_pick_global_bare_lcp_perturb_reachability_fires_gate() {
+        let ws = super::process_workspace_root();
+        let fixture = silent_pick_fixture_root("gblcp-perturb");
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "near.dag",
+            r#"module test.gblcpperturb.near
+
+import std.types { Int }
+
+fn shared_call(x: Int) -> Int {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "far.dag",
+            r#"module test.gblcpperturb.far.away
+
+import std.types { Int }
+
+fn shared_call(x: Int, y: Int) -> Int {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "consumer.dag",
+            r#"module test.gblcpperturb.consumer
+
+import std.types { Int }
+
+fn caller() -> Int {
+  return shared_call(1)
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        assert!(
+            census.silent_pick_global_bare_lcp >= 1
+                || census.silent_pick_fn_parent_first_hit >= 1,
+            "perturbed fixture must fire silent-pick telemetry (global_bare_lcp={} fn_parent_first_hit={})",
+            census.silent_pick_global_bare_lcp,
+            census.silent_pick_fn_parent_first_hit,
+        );
+        let genuine = super::resolution_divergence_silent_pick_genuine_rows(&census);
+        assert!(
+            !genuine.is_empty(),
+            "both homonym decls on import chain must join containment_ambiguous/diverge as genuine, \
+             got genuine={genuine:?} containment_ambiguous={} diverge={}",
+            census.containment_ambiguous,
+            census.diverge,
+        );
+        let refusal = resolution_divergence_silent_pick_refusal(&census);
+        assert!(
+            refusal.is_some(),
+            "§5 gate must refuse when perturbed global_bare_lcp site is genuine"
+        );
+        assert!(
+            refusal.unwrap().contains("SILENT_PICK regression"),
+            "refusal must self-identify as SILENT_PICK regression"
+        );
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
     /// Construction invariant on the live closure-scoped corpus: every in-roster
     /// `fn_parent_first_hit` row must land in `containment_ambiguous_rows` for the
     /// same (module, name) site. `v2.test.*` modules are roster-excluded.
