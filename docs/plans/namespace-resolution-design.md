@@ -133,8 +133,11 @@ declaration) get **no sugar** and must qualify or alias: that is exactly where d
 become type-directed elaboration, and where the silent-rebind hole lives (editing `f`'s return
 type would silently re-target `match f() { Success => .. }` — the §13 edit-stability invariant
 forbids it). The sugar boundary and the safety boundary coincide — which is *why* the residue
-is sugar, not semantics. Implementation consequence updated: `resolve`'s `expected: Node?`
-narrows to the local-annotation projection, or is absent from the core resolver entirely.
+is sugar, not semantics. Implementation consequence updated: the sugar is a **pre-resolve
+desugar pass** (bare member name + syntactically-local container annotation → `T.<name>` before
+`resolve` runs); `expected: Node?` is **deleted from the resolver contract** — `resolve` takes
+`(name, position)` only, and no expected-type consultation exists in the core resolver (one
+authority; the §6 mechanics bullet states the same).
 
 ## 5. The collision census (empirical grounding, 2026-07-06)
 
@@ -288,8 +291,10 @@ O(M²) `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly 
 - **`SymbolIndex` = the containment tree materialized** (qualified path → Node, one authority —
   §3: the frontend builds it from nesting, it is not a separate index with its own reach rules).
   Shared. Not mine to re-build; I consume it.
-- **`resolve(name, position)` = the semantics over it** (nearest-enclosing-subtree search +
-  (Y) expected-type filter + `Ambiguous`/`Unresolved`). Mine.
+- **`resolve(name, position)` = the semantics over it** (unique-on-chain lookup, §13 +
+  `Ambiguous`/`Unresolved`; no expected-type consultation — the (Y) filter formerly named here
+  died in the §4 re-adjudication (2026-07-22), and its locally-annotated residue is a
+  pre-resolve desugar pass, never a resolver input). Mine.
 - **The one genuine difference is a policy value, not a conflict.** type-env-single-authority
   keeps the *import list as the visibility gate* ("a module's import list says which qualified
   names are visible" — its §3). Namespace-only **deletes** that gate and resolves by structural
