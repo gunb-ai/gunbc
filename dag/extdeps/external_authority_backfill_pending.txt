@@ -1,3 +1,0 @@
-# Intentionally empty: every extdeps module now carries an external_authority_anchor
-# (real upstream where one exists; the gunbc repo for internal machinery). The
-# backfill scaffold is fully drained.

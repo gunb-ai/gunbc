@@ -278,22 +278,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "extdeps_derived_extdeps_modules".to_string(),
-            list_of_type_variable("extdeps_derived_extdeps_module_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_backfill_entries".to_string(),
-            list_of_type_variable("extdeps_external_authority_backfill_entry_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "extdeps_external_authority_live_clean_tree_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_live_shadow_mask_holds".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(
@@ -302,6 +287,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "doc_graph_admitted_root_count".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "doc_graph_dangling_link_count".to_string(),

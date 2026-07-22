@@ -29,7 +29,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
-import v2.lens.enforcement.lens_module_gate.compile_gate { lens_module_gate_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -129,10 +129,12 @@ data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
 
 data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_gate }
 
-data lens_module_gate_lens: CompileLens = CompileLens { gate: lens_module_gate_root_gate }
+data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
+
+data door_roster_tree_grain_note: String = "always_required_root_lenses is TREE-GRAIN only: every enrolled gate is a pure fold over the InferredTree being compiled (accumulator_copy, determinism, machine_shape, mandatory_tag all read tree.root and nothing else). lens_module_gate was DE-ENROLLED here (census follow-on to run 29892063728 receipts): its compile_gate wrapper discarded the tree argument and ran the nullary corpus scan lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, which made every compile-importing entry reach a live-read carrier and put 31 SubstrateInputsOnly witness stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement is NOT reduced: the same invariant executes per-PR via its own honestly-stamped consumer, v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never predict-skips), which reds the floor when registry completeness breaks. A corpus-grain invariant enrolls on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door - re-enrolling a nullary gate here re-opens the census class."
 
 fn always_required_root_lenses() -> List<CompileLens> {
-  [accumulator_copy_lens, determinism_lens, machine_shape_lens, lens_module_gate_lens]
+  [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -147,8 +149,8 @@ fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
-fn lens_module_gate_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-  lens_module_gate_compile_gate(node: tree.root)
+fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  mandatory_tag_compile_gate(node: tree.root)
 }
 
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {

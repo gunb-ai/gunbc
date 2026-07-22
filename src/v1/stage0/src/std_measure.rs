@@ -605,6 +605,72 @@ pub fn percent_from_computed_int_frontier() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub type BasisPoint = Rc<Measure<(), (), i64>>;
+
+pub fn basis_point(count: Nat) -> BasisPoint {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn basis_point_count(bp: BasisPoint) -> Nat {
+    measure_count(bp.clone())
+}
+
+pub fn basis_point_unity_count() -> Nat {
+    10000
+}
+
+pub fn basis_point_unit_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn basis_point_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
+
+pub fn amortization_months(count: Nat) -> AmortizationMonths {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn amortization_months_count(m: AmortizationMonths) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn amortization_months_unit_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn amortization_months_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Time;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

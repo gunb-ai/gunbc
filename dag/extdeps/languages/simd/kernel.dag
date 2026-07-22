@@ -63,7 +63,6 @@ data relu_mul_add_wire_op_codes: List<Int> = [
   elemwise_relu_wire_op_code,
 ]
 
-data simd_kernel_handler_roadmap_bind: String = "bind: docs/plans/accelerator-demo-roundtrip.md §6 item 2 (execution lane)"
 
 data host_kernel_relu_mul_add_op_codes_scaffold_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
