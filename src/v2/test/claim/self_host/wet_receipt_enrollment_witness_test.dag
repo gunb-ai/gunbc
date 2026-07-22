@@ -72,12 +72,12 @@ fn witness_body_producer_self_emitted_enrolls_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 1
 }
 
-data wet_template_entry_count_note: String = "Two template rows: the Gate-4 std/logic per-module self-host receipt, and the Gate-1 emit-class import-closure receipt (namespace_import_closure_witness_test). The second is module-agnostic — it proves an emitter property on a synthetic fixture, so it has no frontier row to flip and enrolls as a template row rather than a SelfHostWetReceiptBinding. See falsifier_self_host_wet_emit_class_note."
+data wet_template_entry_count_note: String = "Nine template rows: the Gate-4 std/logic per-module self-host receipt, the Gate-1 emit-class import-closure receipt (namespace_import_closure_witness_test), and the seven emit-on-demand family aggregates (kernel, field_access, complement, match_loop_fold, meet_join, variant_construct, classical_not_ingested — the 2026-07-21 nightly Wet enrollment, see emit_on_demand_family_cadence_note). The non-Gate-4 rows are module-agnostic — they prove emitter/transport properties on synthetic fixtures, so no frontier row flips to gate them; they enroll as template rows rather than SelfHostWetReceiptBinding rows. See falsifier_self_host_wet_emit_class_note."
 
 fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
-  (length(xs: falsifier_self_host_wet_template_entries) == 2)
+  (length(xs: falsifier_self_host_wet_template_entries) == 9)
     && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
-    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 2)
+    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 9)
 }
 
 fn witness_parse_engine_hooks_binding_present() -> Bool {
