@@ -329,11 +329,13 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_emit.dag",
   closure_reads: 52,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
