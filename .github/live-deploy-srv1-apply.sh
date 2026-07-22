@@ -46,7 +46,7 @@ User=briansrls
 Group=briansrls
 EnvironmentFile=/etc/gunbc-tree-sync.env
 ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git "${GUNBC_TREE_SRC}/" /opt/gunbc/gunbc/
-ExecStart=/usr/bin/rsync -rlpt "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
+ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
 GUNBC_TREE_SYNC_EOF
 sudo -n install -m 0644 "$_gunbc_stage/gunbc-tree-sync.service" /etc/systemd/system/gunbc-tree-sync.service
 sudo -n systemctl daemon-reload
