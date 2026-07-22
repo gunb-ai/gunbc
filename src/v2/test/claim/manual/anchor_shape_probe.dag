@@ -1,15 +1,23 @@
 module v2.test.manual.anchor_shape_probe
 
-import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
 import v2.compiler.infer { infer }
-import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { NonEmptyDiagnostics }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Atom, Edge, Named, Node, Positional, Symbol, TypeNode }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.text { String }
 
-data anchor_probe_source: String = "module probe_target\n\ntype ProbeScheme = ProbeHttps | ProbeFile\n\ntype ProbeUri {\n  scheme: ProbeScheme\n  locator: String\n}\n\ntype ProbeAuth {\n  uri: ProbeUri\n}\n\ndata probe_anchor: ProbeAuth = ProbeAuth {\n  uri: ProbeUri {\n    scheme: ProbeHttps\n    locator: \"example.org/x\"\n  }\n}\n"
+data anchor_probe_source: String = "module probe_target\n\ntype ProbeScheme\n  = ProbeHttps\n  | ProbeFile\n\ntype ProbeUri {\n  scheme: ProbeScheme\n  locator: Int\n}\n\ntype ProbeAuth {\n  uri: ProbeUri\n}\n\ndata probe_anchor: ProbeAuth = ProbeAuth {\n  uri: ProbeUri {\n    scheme: ProbeHttps\n    locator: 7\n  }\n}\n"
+
+fn anchor_probe_reason_tag(stage: String, reason: Symbol) -> List<String> {
+  [stage, symbol_lexeme(sym: reason)]
+}
 
 fn anchor_probe_edge_tag(e: Edge) -> String {
   match e.label {
@@ -29,9 +37,9 @@ fn anchor_probe_node_atoms(n: Node) -> List<String> {
 }
 
 fn anchor_probe_find_in_children(n: Node, want: Symbol) -> Optional<Node> {
-  fold(n.children, init: Absent, f: fn(acc, e) {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
-      Present { value: v } => Present { value: v }
+      Present { value: v } => optional_present(value: v)
       Absent => anchor_probe_find(n: e.target, want: want)
     }
   })
@@ -41,7 +49,7 @@ fn anchor_probe_find(n: Node, want: Symbol) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == want {
-        Present { value: n }
+        optional_present(value: n)
       } else {
         anchor_probe_find_in_children(n: n, want: want)
       }
@@ -49,11 +57,30 @@ fn anchor_probe_find(n: Node, want: Symbol) -> Optional<Node> {
   }
 }
 
-fn anchor_probe_decl_report(d: Node) -> List<String> {
-  let labels = fold(d.children, init: ["EDGES:"], f: fn(acc, e) {
-    concat(acc, [anchor_probe_edge_tag(e: e)])
+fn anchor_probe_kind_tag(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: s } => symbol_lexeme(sym: s)
+        Conj => "conj"
+        Disj => "disj"
+        Arrow => "arrow"
+        _ => "other-type"
+      }
+    _ => "comp"
+  }
+}
+
+fn anchor_probe_dump(n: Node) -> List<String> {
+  let head = [anchor_probe_kind_tag(n: n), "("]
+  let body = fold(n.children, init: head, f: fn(acc, e) {
+    concat(acc, concat(["E", anchor_probe_edge_tag(e: e)], anchor_probe_dump(n: e.target)))
   })
-  concat(labels, concat(["ATOMS:"], anchor_probe_node_atoms(n: d)))
+  concat(body, [")"])
+}
+
+fn anchor_probe_decl_report(d: Node) -> List<String> {
+  anchor_probe_dump(n: d)
 }
 
 fn anchor_probe_report(root: Node) -> List<String> {
@@ -63,18 +90,101 @@ fn anchor_probe_report(root: Node) -> List<String> {
   }
 }
 
+data anchor_probe_source_a: String = "module probe_target\n\ndata probe_anchor: Int = 7\n"
+
+data anchor_probe_source_b: String = "module probe_target\n\ntype ProbeAuth {\n  uri: Int\n}\n\ndata probe_anchor: ProbeAuth = ProbeAuth {\n  uri: 7\n}\n"
+
+data anchor_probe_source_c: String = "module probe_target\n\ntype ProbeUri {\n  locator: Int\n}\n\ntype ProbeAuth {\n  uri: ProbeUri\n}\n\ndata probe_anchor: ProbeAuth = ProbeAuth {\n  uri: ProbeUri {\n    locator: 7\n  }\n}\n"
+
+fn anchor_probe_stage_tag(source: String) -> List<String> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^anchor_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "TOK", reason: d.head.reason)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "PARSE", reason: d.head.reason)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "NORM", reason: d.head.reason)
+            Accepted { value: normalized, diagnostics: _ } =>
+              match resolve(tree: normalized, lm: lm) {
+                Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "RESOLVE", reason: d.head.reason)
+                Accepted { value: resolved, diagnostics: _ } =>
+                  match infer(tree: resolved) {
+                    Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "INFER", reason: d.head.reason)
+                    Accepted { value: _, diagnostics: _ } => ["GREEN"]
+                  }
+              }
+          }
+      }
+  }
+}
+
+data anchor_probe_source_b1: String = "module probe_target\n\ntype ProbeAuth {\n  uri: Int\n}\n\ndata probe_anchor: ProbeAuth = 7\n"
+
+data anchor_probe_source_b2: String = "module probe_target\n\ntype ProbeAuth {\n  uri: Int\n}\n\nfn mk(x: ProbeAuth) -> Int { 7 }\n"
+
+fn anchor_probe_bisect2() -> List<String> {
+  concat(
+    ["B1:"],
+    concat(
+      anchor_probe_stage_tag(source: anchor_probe_source_b1),
+      concat(["B2:"], anchor_probe_stage_tag(source: anchor_probe_source_b2))
+    )
+  )
+}
+
+fn anchor_probe_bisect() -> List<String> {
+  concat(
+    ["A:"],
+    concat(
+      anchor_probe_stage_tag(source: anchor_probe_source_a),
+      concat(
+        ["B:"],
+        concat(
+          anchor_probe_stage_tag(source: anchor_probe_source_b),
+          concat(
+            ["C:"],
+            concat(
+              anchor_probe_stage_tag(source: anchor_probe_source_c),
+              concat(["D:"], anchor_probe_stage_tag(source: anchor_probe_source))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn anchor_probe_main() -> List<String> {
-  match source_bridged_resolved_root(
-    source_text: anchor_probe_source,
-    file: ^anchor_probe_file
-  ) {
-    Rejected { diagnostics: _ } => ["BRIDGE_REJECTED"]
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: _ } =>
-          concat(["INFER_REJECTED_RESOLVED_SHAPE:"], anchor_probe_report(root: resolved))
-        Accepted { value: inferred, diagnostics: _ } =>
-          concat(["INFERRED_SHAPE:"], anchor_probe_report(root: inferred.root))
+  let lm = dag_language_model()
+  match tokenize(text: anchor_probe_source, file: ^anchor_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "TOKENIZE_REJECTED", reason: d.head.reason)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "PARSE_REJECTED", reason: d.head.reason)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => anchor_probe_reason_tag(stage: "NORMALIZE_REJECTED", reason: d.head.reason)
+            Accepted { value: normalized, diagnostics: _ } =>
+              match resolve(tree: normalized, lm: lm) {
+                Rejected { diagnostics: d } =>
+                  concat(
+                    anchor_probe_reason_tag(stage: "RESOLVE_REJECTED_NORMALIZED_SHAPE:", reason: d.head.reason),
+                    anchor_probe_report(root: normalized)
+                  )
+                Accepted { value: resolved, diagnostics: _ } =>
+                  match infer(tree: resolved) {
+                    Rejected { diagnostics: d } =>
+                      concat(
+                        anchor_probe_reason_tag(stage: "INFER_REJECTED_RESOLVED_SHAPE:", reason: d.head.reason),
+                        anchor_probe_report(root: resolved)
+                      )
+                    Accepted { value: inferred, diagnostics: _ } =>
+                      concat(["INFERRED_SHAPE:"], anchor_probe_report(root: inferred.root))
+                  }
+              }
+          }
       }
   }
 }
