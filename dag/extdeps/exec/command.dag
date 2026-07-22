@@ -37,6 +37,10 @@ fn command_over_transport(command: ShellCommand, transport: CommandTransport) ->
   }
 }
 
+fn shell_quote(arg: String) -> String {
+  join(["'", arg, "'"], "")
+}
+
 fn shell_command_render(command: ShellCommand) -> String {
-  join(command.argv, " ")
+  join(map(command.argv, a => shell_quote(arg: a)), " ")
 }

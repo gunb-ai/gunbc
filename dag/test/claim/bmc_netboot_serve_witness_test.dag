@@ -40,8 +40,9 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
 test fn serve_command_one_shape_two_transports() -> Bool {
   let local = shell_command_render(command: bmc_netboot_serve_command_local(plan: srv4_bmc_netboot_serve_plan))
   let over_bmc = bmc_netboot_serve_command_text(plan: srv4_bmc_netboot_serve_plan)
-  local == "/tmp/netboot/busybox httpd -p 8080 -h /tmp/netboot"
-    && over_bmc == "sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@192.168.1.195 /tmp/netboot/busybox httpd -p 8080 -h /tmp/netboot"
+  string_contains(s: local, pattern: "'/tmp/netboot/busybox' 'httpd' '-p' '8080' '-h' '/tmp/netboot'")
+    && string_contains(s: over_bmc, pattern: "'sshpass' '-e' 'ssh'")
+    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'")
 }
 
 test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {

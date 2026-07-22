@@ -1,0 +1,61 @@
+module gunbc.busybox_bmc_build
+
+import std.types { NonEmptyStr, String, List }
+import std.process { ProcessExit }
+import std.resources { Network }
+import extdeps.uri { Uri, uri_wire }
+import extdeps.exec.command { ShellCommand, LocalShell }
+import extdeps.tools.busybox { busybox_source_1_36_1_url }
+import gunbc.command_runner { run_shell_commands }
+
+type BusyboxCrossBuildPlan {
+  source_url: Uri
+  source_tarball: NonEmptyStr
+  build_dir: NonEmptyStr
+  cross_compile: NonEmptyStr
+  kernel_arch: NonEmptyStr
+  extra_cflags: NonEmptyStr
+  output_path: NonEmptyStr
+}
+
+data bmc_busybox_build_plan: BusyboxCrossBuildPlan = BusyboxCrossBuildPlan {
+  source_url: busybox_source_1_36_1_url,
+  source_tarball: "/tmp/gunbc-busybox-src.tar.bz2",
+  build_dir: "/tmp/gunbc-bb-build",
+  cross_compile: "arm-linux-gnueabi-",
+  kernel_arch: "arm",
+  extra_cflags: "-march=armv5te -mfloat-abi=soft",
+  output_path: "/var/lib/gunbc/artifacts/netboot/busybox",
+}
+
+fn bb_make_var(key: String, value: String) -> String {
+  join([key, "=", value], "")
+}
+
+fn bb_config_path(plan: BusyboxCrossBuildPlan) -> String {
+  join([plan.build_dir as String, "/.config"], "")
+}
+
+fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ShellCommand> {
+  let bd = plan.build_dir as String
+  let arch = bb_make_var(key: "ARCH", value: plan.kernel_arch as String)
+  let cross = bb_make_var(key: "CROSS_COMPILE", value: plan.cross_compile as String)
+  let cflags = bb_make_var(key: "EXTRA_CFLAGS", value: plan.extra_cflags as String)
+  let config = bb_config_path(plan: plan)
+  [
+    ShellCommand { argv: ["curl", "-sL", "-o", plan.source_tarball as String, uri_wire(uri: plan.source_url)] },
+    ShellCommand { argv: ["mkdir", "-p", bd] },
+    ShellCommand { argv: ["tar", "xf", plan.source_tarball as String, "-C", bd, "--strip-components=1"] },
+    ShellCommand { argv: ["make", "-C", bd, arch, cross, "defconfig"] },
+    ShellCommand { argv: ["sed", "-i", "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", config] },
+    ShellCommand { argv: ["sed", "-i", "s/CONFIG_TC=y/# CONFIG_TC is not set/", config] },
+    ShellCommand { argv: ["make", "-C", bd, arch, cross, cflags] },
+    ShellCommand { argv: ["cp", join([bd, "/busybox"], ""), plan.output_path as String] },
+  ]
+}
+
+func busybox_bmc_build_run() -> ProcessExit
+  uses net: Network
+{
+  run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalShell)
+}
