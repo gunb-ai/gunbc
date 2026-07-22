@@ -17,6 +17,7 @@ import std.realization_reconcile {
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   service_not_ready_reason,
+  service_not_ready_reason_with_captured_diagnosis,
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
@@ -253,11 +254,7 @@ fn live_deploy_poll_service_ready_after_attempts(
         endpoint: live_deploy_service_ready_endpoint_authority,
         waited: live_deploy_service_ready_poll_bound,
         last_probe: last_probe,
-        unit_diagnosis: capture_unit_diagnosis(
-          spec: spec,
-          transport: transport,
-          access: access,
-        ),
+        unit_diagnosis: live_deploy_unit_diagnosis_unavailable,
       }),
       applied: service_ready_apply_effect(),
     }
@@ -309,13 +306,28 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  live_deploy_poll_service_ready_after_attempts(
+  let polled = live_deploy_poll_service_ready_after_attempts(
     spec: spec,
     transport: transport,
     access: access,
     attempt: 0,
     last_probe: "no probe yet",
   )
+  match polled {
+    Converged { evidence: e, applied: a } => Converged { evidence: e, applied: a }
+    NotConverged { reason: why, applied: a } =>
+      NotConverged {
+        reason: service_not_ready_reason_with_captured_diagnosis(
+          base_reason: why,
+          unit_diagnosis: capture_unit_diagnosis(
+            spec: spec,
+            transport: transport,
+            access: access,
+          )
+        ),
+        applied: a,
+      }
+  }
 }
 
 fn live_deploy_poll_until_service_ready() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
