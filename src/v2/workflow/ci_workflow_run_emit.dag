@@ -117,7 +117,7 @@ fn ci_pin_rustup_default_script() -> String {
 }
 
 fn ci_selection_control_root_command() -> String {
-  concat("ROOT=", ci_repo_root_shell())
+  concat("ROOT=", gunbc.ci_spec.ci_repo_root_shell())
 }
 
 fn ci_selection_control_skip_prefix_command() -> String {

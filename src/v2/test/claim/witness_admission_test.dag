@@ -83,7 +83,7 @@ fn witness_field_access_wet_offline_consumer_holds() -> Bool {
 fn witness_complement_wet_offline_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
-    function: "emit_on_demand_complement_agreement_holds",
+    function: "emit_on_demand_complement_family_witnesses",
     excluded_from_discovery: true
   ) {
     OfflineLocalRecipe => true

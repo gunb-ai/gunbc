@@ -50,7 +50,7 @@ fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool
 fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    script: concat("echo ", mutation_gate_marker, " && exit 99"),
+    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -112,7 +112,7 @@ fn witness_right_host_privileged_gate_permits() -> Bool {
 fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    script: concat("echo ", mutation_gate_marker, " && exit 99"),
+    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -133,7 +133,7 @@ fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
 fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    script: concat("echo ", mutation_gate_marker, " && exit 99"),
+    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -152,7 +152,7 @@ fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
 fn witness_right_host_privileged_may_apply() -> Bool {
   reconciliation_converged(r: live_deploy_fold(
     spec: deployment_spec_srv1(),
-    script: "true",
+    effect: ShellCommand { script: "true" },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present {

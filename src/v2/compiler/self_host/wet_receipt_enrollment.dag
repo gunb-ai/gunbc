@@ -62,10 +62,14 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
     f: "emit_on_demand_classical_not_ingested_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    f: "emit_on_demand_family_crate_witnesses"
   )
 ]
 
-data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): only legs whose assertions are COLD-VALID — agreement legs (emit->build->run->equals-oracle, no compile_skipped assertion) plus the native_cold legs for the two families without a standalone agreement fn (meet_join, variant_construct; native_cold asserts compile_skipped=false, which the control preserves). The full family aggregates must NOT run here: their cold_then_warm legs assert warm-ness the control deliberately destroys (probe receipt 2026-07-21: cold_control=true forces compile_skipped=false on the second call, correctly failing that leg). The warm nightly falsifier batch keeps the full aggregates."
+data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): only legs whose assertions are COLD-VALID — agreement legs (emit->build->run->equals-oracle, no compile_skipped assertion), the native_cold legs (compile_skipped=false, which the control preserves), and the family-crate member-change cold-rebuild leg (evict+rebuild, cold-compatible). The full family aggregates must NOT run here: their cold_then_warm / one-build-members-warm legs assert warm-ness the control deliberately destroys (probe receipt 2026-07-21: cold_control=true forces compile_skipped=false on the second call, correctly failing that leg). Complement + meet_join agreement legs migrated to family grain (witness_family_build_grain_ruling) — their cold coverage is the family_crate leg. The warm nightly falsifier batch keeps the full aggregates."
 
 data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
@@ -75,10 +79,6 @@ data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
     f: "emit_on_demand_field_access_agreement_holds"
-  ),
-  self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
-    f: "emit_on_demand_complement_agreement_holds"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
@@ -93,8 +93,8 @@ data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
     f: "emit_on_demand_fold_closure_agreement_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
-    f: "emit_on_demand_meet_native_cold_holds"
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    f: "family_crate_member_change_cold_rebuild_holds"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
