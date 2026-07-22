@@ -30,6 +30,7 @@ import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compi
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
 import v2.lens.enforcement.lens_module_gate.compile_gate { lens_module_gate_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -131,8 +132,10 @@ data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_ga
 
 data lens_module_gate_lens: CompileLens = CompileLens { gate: lens_module_gate_root_gate }
 
+data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
+
 fn always_required_root_lenses() -> List<CompileLens> {
-  [accumulator_copy_lens, determinism_lens, machine_shape_lens, lens_module_gate_lens]
+  [accumulator_copy_lens, determinism_lens, machine_shape_lens, lens_module_gate_lens, mandatory_tag_lens]
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -149,6 +152,10 @@ fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
 
 fn lens_module_gate_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   lens_module_gate_compile_gate(node: tree.root)
+}
+
+fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  mandatory_tag_compile_gate(node: tree.root)
 }
 
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
