@@ -379,17 +379,147 @@ downstream `ExprError`) is a prerequisite for diagnosing any *future*
 instance of this env-side gap by inspection rather than by adding scratch
 `eprintln!` probes, as had to be done here.
 
-## 11. Next step
+## 12. Reconciliation probe — §9's "loader vs. env split" theory REFUTED; the
+real mechanism is pool-membership coincidence (execution-confirmed)
 
-(a) land the LOUDNESS fix (§10) first — it is small, independently valuable
-under DESIGN §5 regardless of the closure fix's timeline, and would have cut
-this investigation's execution-tracing time substantially; (b) design the
-env-side extension (§9's "second mechanism") that lets a successfully
-loader-resolved bare reference also bind in the referencing file's own
-typecheck scope — this is new scope beyond PR-4's loader/edge-naming fix,
-not a duplicate of it; (c) execution-test the zero-arity fn/data-by-value
-claim the same way, folded in when convenient; (d) only land any closure or
-env change once proven by execution against a real controlled pair, not
-derived from reading `cli_run.rs` alone; (e) do not treat Class A's confirmed
-wave rule as sufficient to resume the full src/v2/test + src/v2/lens strip
-until Class B's env-side fix (b) lands and is itself proven by execution.
+nimble-owl-658 accepted §9's finding but flagged a direct empirical
+contradiction before wrap-up: ~74 `dag/extdeps` files (batch-1, #6938) are
+*already* import-stripped on `main` today and typecheck green, despite
+having bare cross-module references in field-type position exactly like
+`DeterminismRoot.source: DeclarationRef`. Under §9's "the referencing file's
+own typecheck env is built strictly from that file's own imports, and the
+loader closure never feeds it" theory, they should fail the same way. They
+don't. This required a second execution-tested probe before the diagnosis
+could close.
+
+**Probe.** Picked `dag/extdeps/bmc/types.dag` (already stripped by
+`4ca7d52c30`, bare-references `ExternalAuthority`/`Uri`/`Https`/`NonEmptyStr`/
+`Int`/`List`/`Secret` in construction position and `Watt`/`ByteSize`/
+`HardwareThreadCount`/`Celsius`/`RevolutionsPerMinute` in field-type
+position). Built a fresh scratch worktree at `main` tip with the same two
+`[bare-attempt]`/`[bare-resolve]` trace probes used for §9, and a new,
+narrowly-scoped entry file `test.claim.scratch_bmc_types_probe` that imports
+only `RedfishProcessorSummary` from `extdeps.bmc.types` — deliberately
+structured to mirror `DeterminismRoot`'s field-type bare-reference shape as
+closely as possible, then run via the same scoped `gunbc run --entry ...
+--claim-run --dry-run` path (not the confounded whole-tree `gunbc compile`).
+
+**Result — the probe reproduces the exact same failure shape as
+`determinism.dag`, on `main`, today:**
+
+```
+dag/extdeps/bmc/types.dag:16:15: error: unresolved type 'HardwareThreadCount'
+dag/extdeps/bmc/types.dag:21:23: error: unresolved type 'ByteSize'
+dag/extdeps/bmc/types.dag:36:25: error: unresolved type 'Watt'
+dag/extdeps/bmc/types.dag:47:20: error: unresolved type 'Celsius'
+dag/extdeps/bmc/types.dag:57:45: error: unresolved type 'RevolutionsPerMinute'
+```
+
+while in the *same run*, `ExternalAuthority`, `Uri`, `Https`, `List`,
+`NonEmptyStr`, and `Int` all resolved and typechecked cleanly. This is the
+discriminating data nimble-owl-658 asked for, and it answers both questions
+at once — **the gap is neither positional nor shape-dependent; it is a third
+factor, pool-membership coincidence, the same mechanism §9 already found for
+`std.decl_ref`, just narrower here because the probe's closure is smaller
+than the full repo:**
+
+- `resolve_in` found `ExternalAuthority` → `Some("extdeps.external_authority")`
+  and issued a genuine fresh `[bare-pull]` for it — succeeded outright, no
+  coincidence needed.
+- `resolve_in` found `Uri`/`Https` → `Some("extdeps.uri")` with **no** fresh
+  pull logged — already known, because `extdeps/external_authority.dag`
+  (itself freshly pulled) carries its own *unstripped* `import std.types {
+  NonEmptyStr }`, which transitively loads `std/types.dag` into the pool —
+  and `std/types.dag` is also where `List`, `NonEmptyStr`, and `Int` live, so
+  all three resolve for free via that same accidental transitive chain
+  (`grep` confirms both `extdeps/external_authority.dag` and `extdeps/uri.dag`
+  carry `import std.types { NonEmptyStr }` on `main` today, unrelated to this
+  probe).
+- `resolve_in` returned **`None`** — not "resolved but not pulled," genuinely
+  not found — for every `std.measure` name (`Watt`, `ByteSize`,
+  `HardwareThreadCount`, `Celsius`, `RevolutionsPerMinute`). `grep -rl "import
+  std.measure" dag/` shows real consumers (`product/budget_tree.dag`,
+  `std/machine_shape.dag`, `std/cache_interface.dag`, etc.) exist tree-wide,
+  but **none of them are reachable from this probe's closure**, so
+  `std/measure.dag` never enters the pool at all, and `resolve_in`'s census
+  has nothing to find.
+
+**This retracts §9's "loader tier vs. per-file typecheck env are two
+disconnected mechanisms" framing.** There is one mechanism, not two: a
+module's own bare cross-references resolve exactly when the *target* module
+has, by that point in the fixpoint, been loaded into the shared compilation
+pool via *some* import edge — stripped or not, related or not, anywhere in
+the transitive closure that's currently assembled. `std.decl_ref` in the §9
+determinism.dag repro and `extdeps.uri`/`std.types` here both succeed for the
+identical reason: an unrelated unstripped import happens to drag the target
+module in first. `std.measure` fails here for the identical *absence* of
+that same coincidence. **Batch-1's ~74 files typecheck green on `main` not
+because of a different, working mechanism — they get lucky at the scale of
+the whole repo**: enough files elsewhere still carry unstripped imports of
+`std.measure`/`std.types`/etc. that those modules are reliably in the pool
+by the time any given batch-1 file's own bare references are resolved. A
+synthetic probe closure this narrow lacks that ambient coverage and exposes
+the gap directly. This is exactly the "absorbing fallback [that] destroys
+the only signal" pattern named in DESIGN §5, just realized structurally
+rather than as a designed fallback: the corpus's own redundant import
+density is silently doing load-bearing work, and nothing in the mechanism
+is tracking that it's happening. **The wave rule is therefore corpus-wide
+and load-bearing, not per-file:** any further import-strip batch's safety
+depends on whether the *specific modules* the batch's bare references target
+remain reachable via *some other* unstripped import somewhere in the
+compiled closure at strip time — a property that can silently break as
+*later, unrelated* strips remove the last such incidental import, with no
+local signal at the newly-broken file.
+
+**Side finding — the LOUDNESS defect (§10) is narrower than described.**
+This probe's failures surfaced as **located, typed diagnostics**
+(`unresolved type 'X' (file:line:col)`) via the same scoped `gunbc run
+--claim-run` path used for the original determinism.dag repro, with exit
+code 0 (not the opaque `error type cascade at ...:1983-1984` seen there).
+So the opaque-cascade behavior is not a general property of the
+`--claim-run` execution path, as §10 implied — it is specific to whatever
+`determinism.dag`'s actual failing construction shape triggers (most likely
+still the inert `ExprError` arm noted in §10, but only for some field-type
+failure shapes, not all). §10's fix is still worth landing, but its scope
+should be re-verified against both failure shapes before being called
+complete, not assumed general from the single determinism.dag repro.
+
+**Zero-arity fn/data-by-value claim**: not folded into this probe run;
+still untested. Left as future work, unchanged from §11(c).
+
+## 13. Consolidated wave-rule statement (diagnosis-complete)
+
+- **Class A** (re-export-through-partial-strip, e.g. `parallelism.dag`) —
+  CONFIRMED by execution (§7). Closed by either importing only from a
+  module's original *definer* in wave order, or by landing PR-4
+  (namespace-resolution-design.md §8, import-from-definer migration) first.
+- **Class B** (hub-file own bare references, e.g. `determinism.dag`, and
+  general bare-reference-in-stripped-file breakage, e.g. `bmc/types.dag`
+  under a narrow closure) — root cause CONFIRMED by execution (§9, §12):
+  **pool-membership coincidence**, not a positional/shape gap and not a
+  clean loader/env split. A stripped file's bare cross-module references
+  resolve only if the target module happens to already be reachable via
+  some unrelated unstripped import in the currently-assembled closure.
+  **This blocks ALL further import-stripping** (of `src/v2/test`,
+  `src/v2/lens`, and any remaining `dag/**` batches) until a real fix lands:
+  either (i) an explicit, closure-independent binding mechanism so a
+  bare-resolved reference is guaranteed available regardless of incidental
+  pool coverage, or (ii) a construction-time check that refuses a strip
+  whose target module's bare references are not *provably* covered by a
+  surviving import elsewhere in every closure that reaches the stripped
+  file — never assumed safe from "it typechecks today," since today's
+  safety is itself an accidental, silently-erodable property of the rest of
+  the corpus.
+- **LOUDNESS defect** — named side finding, narrower than first described
+  (§12): the opaque unlocatable "error type cascade" is not general to the
+  `--claim-run` path (it produces located diagnostics for this probe's
+  failure shape); still worth a located-diagnostic fix for whatever
+  triggers it in `determinism.dag` specifically, but re-scope before
+  building it.
+- **Zero-arity fn/data-by-value claim** — named side finding, still
+  untested by execution; not folded into either probe run.
+
+This work item closes as diagnosis-complete. Fixes (the env/pool-membership
+mechanism, the LOUDNESS diagnostic, PR-4, and the zero-arity test) go to
+fresh work items for the operator to sequence — none are authorized to land
+from this investigation.
