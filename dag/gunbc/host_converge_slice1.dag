@@ -303,6 +303,18 @@ fn host_converge_slice1_enumerate_units_script(instance_glob: String) -> String 
   )
 }
 
+fn host_converge_slice1_enumerate_unit_line_trimmed(line: String) -> String {
+  trim(line)
+}
+
+fn host_converge_slice1_enumerate_unit_line_nonempty(line: String) -> Bool {
+  host_converge_slice1_enumerate_unit_line_trimmed(line: line) != ""
+}
+
+fn host_converge_slice1_enumerate_unit_line_as_unit(line: String) -> NonEmptyStr {
+  host_converge_slice1_enumerate_unit_line_trimmed(line: line) as NonEmptyStr
+}
+
 fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
   let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_enumerate_units_script(instance_glob: instance_glob)))
   if result.success {
@@ -310,8 +322,8 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
     if trimmed == "" {
       Present { value: [] }
     } else {
-      let lines = filter(split(s: trimmed, delimiter: "\n"), l => trim(l) != "")
-      Present { value: map(lines, l => trim(l) as NonEmptyStr) }
+      let lines = filter(split(s: trimmed, delimiter: "\n"), host_converge_slice1_enumerate_unit_line_nonempty)
+      Present { value: map(lines, host_converge_slice1_enumerate_unit_line_as_unit) }
     }
   } else {
     none
