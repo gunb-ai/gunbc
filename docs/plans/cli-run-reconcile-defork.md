@@ -4,6 +4,8 @@
 
 **Scope boundary (fence, DESIGN §3/§6):** does NOT touch `src/v1/03_resolve.dag` / `src/v1/04_infer.dag` or their GENERATED outputs (`v1_compiler_resolve.rs`, `v1_compiler_infer.rs`) — those are resolver-B's (#6155, open) territory and already `.dag`-authored. This lane only grounds the **orchestration layer around them** that currently lives hand-written in `cli_run.rs`.
 
+**Function ledger (LANDED quick-moth-273):** every `cli_run.rs` function is enumerated on `dag/gunbc/cli_run_hollowing_ledger.dag` (855 rows: 621 production + 234 `#[test]`, zero unclassified) with a typed `CliRunHollowFeature` disposition per row. Regenerate via `scripts/generate_cli_run_hollowing_ledger.py`; witness: `cli_run_hollowing_ledger_witness_test.dag`.
+
 ## 0. What's actually in scope
 
 The brief names 6 headline functions; reading the code, the actual orchestration cluster is 15 functions / ~450 LOC in `cli_run.rs` (lines ~478–1011, 1455–1476, 2192–2290ish) — the 6 headline entry points plus their load-bearing plumbing, which the fence in §4 covers too (a worker cutting Phase 2's cache change necessarily touches the plumbing that wires the cache through, not just the 6 named fns):

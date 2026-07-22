@@ -1,0 +1,29 @@
+module v2.test.claim.cli_run_hollowing_ledger_witness
+
+import gunbc.cli_run_hollowing_ledger {
+  cli_run_hollowing_ledger_enumeration_holds,
+  cli_run_hollowing_no_unclassified_holds,
+  cli_run_hollowing_production_row_baseline,
+  cli_run_hollowing_production_row_count,
+  cli_run_hollowing_row_count_baseline,
+  cli_run_hollowing_test_row_baseline,
+  cli_run_hollowing_test_row_count,
+  cli_run_hollowing_unclassified_baseline
+}
+import v2.std.logic { Bool }
+
+data cli_run_hollowing_ledger_witness_note: String = "Structural receipt (quick-moth-273): cli_run.rs hollowing ledger on dag/gunbc/cli_run_hollowing_ledger.dag — every module-scope fn (621) plus every #[test] fn (234) mapped to a v2 dissolution feature. Five headline lanes from the operator brief: RealizationMaterializationScheduling, NamespaceResolutionSymbolIndex, AffectedSetSelection, TypedModuleCacheComputationIdentity, SerializationOneGrammar; plus WorkflowHostEffect, WitnessDiscoveryExecution, CompileCleanGate, RegenSelfHost, LensHostBridge, ModuleIdentityStorage, HostPhysics, PhaseProfileInstrumentation, TestReceipt. Regenerate after cli_run.rs edits: python3 scripts/generate_cli_run_hollowing_ledger.py. Dissolve-on: seed-shrink Chunk F."
+
+test fn cli_run_hollowing_ledger_enumeration_holds() -> Bool {
+  cli_run_hollowing_ledger_enumeration_holds()
+    && cli_run_hollowing_row_count_baseline == 855
+    && cli_run_hollowing_production_row_count() == cli_run_hollowing_production_row_baseline
+    && cli_run_hollowing_test_row_count() == cli_run_hollowing_test_row_baseline
+    && cli_run_hollowing_production_row_baseline == 621
+    && cli_run_hollowing_test_row_baseline == 234
+}
+
+test fn cli_run_hollowing_ledger_no_unclassified_holds() -> Bool {
+  cli_run_hollowing_no_unclassified_holds()
+    && cli_run_hollowing_unclassified_baseline == 0
+}
