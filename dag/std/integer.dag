@@ -2,9 +2,8 @@ module std.integer
 
 import std.algebra { AbelianGroup, GroupCompletion }
 import std.nat { Nat }
-import std.types { Int as ScalarInt }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
-import std.measure { bit_width, bit_width_count }
+import std.measure { bit_width, bit_width_count, uint8_channel_bit_width, uint8_channel_inclusive_max }
 import std.induction { int_pow_bounded }
 
 type Int8 = Compose<Int, MachineWidth<8>>
@@ -27,10 +26,6 @@ type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
-
-data uint8_channel_bit_width: ScalarInt = 8
-
-data uint8_channel_inclusive_max: ScalarInt = 255
 
 fn uint8_channel_inclusive_max_value_derived() -> Int? {
   match int_pow_bounded(base: 2, exp: uint8_channel_bit_width) {

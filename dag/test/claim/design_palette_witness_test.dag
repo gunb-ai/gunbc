@@ -17,7 +17,8 @@ import gunbc.design.palette {
   grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
   set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
 }
-import std.integer { uint8_channel_inclusive_max, uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
+import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
+import std.measure { uint8_channel_inclusive_max }
 import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
 import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {

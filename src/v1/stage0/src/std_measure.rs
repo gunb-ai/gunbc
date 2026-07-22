@@ -600,6 +600,14 @@ pub fn permyriad_denominator() -> i64 {
     10000
 }
 
+pub fn uint8_channel_bit_width() -> i64 {
+    8
+}
+
+pub fn uint8_channel_inclusive_max() -> i64 {
+    255
+}
+
 pub fn permyriad_scale_note() -> String {
     thread_local! {
         static CACHED: String = {

@@ -450,6 +450,10 @@ fn percent_count(p: Percent) -> Nat {
 
 data permyriad_denominator: Int = 10000
 
+data uint8_channel_bit_width: Int = 8
+
+data uint8_channel_inclusive_max: Int = 255
+
 data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — one std.measure row, census item 2."
 
 fn permyriad_half_for_round_half_up() -> Int {
