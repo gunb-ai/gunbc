@@ -672,6 +672,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn layer_prefix_from_dotted_module_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER,
+            "cli_run_layer_prefix_from_dotted_module_scaffold"
+        );
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -17238,7 +17246,19 @@ const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 const LAYER_COMPILER: &str = "LayerPrefixCompiler";
 const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 
+// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`).
+// Host `layer_import_facts` must stamp `LayerImportFact.layer` on every emitted row; the builtin
+// seam cannot call the `.dag` classifier without an interpreter round-trip per file. This mirror
+// is byte-synced to that authority and carries an explicit dissolution trigger — not a second
+// permanent taxonomy.
+// 🟡 dissolve-on: `layer_import_facts` host builtin routes `layer` through interpreter eval of
+// `layer_prefix_from_dotted_qualified_name` (or a shared host projection registered beside
+// `reference_resolution_facts`), deleting this Rust copy when namespace terminal step Phase 3 lands.
+pub(crate) const CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER: &str =
+    "cli_run_layer_prefix_from_dotted_module_scaffold";
+
 /// Rust mirror of `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`.
+/// See `CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`.
 fn layer_prefix_from_dotted_module(module: &str) -> &'static str {
     let parts: Vec<&str> = module.split('.').filter(|p| !p.is_empty()).collect();
     if parts.is_empty() {

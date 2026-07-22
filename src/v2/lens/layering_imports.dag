@@ -1,8 +1,7 @@
 module v2.lens.layering_imports
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 
 type LayerImportFact {
   layer: LayerPrefix
@@ -89,15 +88,10 @@ fn layer_import_facts_live(
   layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
 }
 
-data layer_import_facts_live_producer_note: String = "Transitional host producer (layering-imports-reference-repoint-design.md §3.1): import-syntax rows for import-bearing files in the scan roots, plus reference_edges_as_import_facts(strict=true) for import-less files. Terminal step deletes the import-syntax arm when import grammar is removed."
+data layer_import_facts_live_producer_note: String = "Transitional host producer (layering-imports-reference-repoint-design.md §3.1): import-syntax rows for import-bearing files in the scan roots, plus reference_edges_as_import_facts(strict=true) for import-less files; import-syntax wins on (path, target_module) collision. Terminal step (namespace import-grammar deletion, Phase 3) deletes the import-syntax arm — only then does layer_import_facts_live become single-authority."
+
+data layer_prefix_classifier_scaffold_note: String = "🟡 dissolve-on: host layer_import_facts stamps LayerImportFact.layer via CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER — a Rust mirror of v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name. Deletes when the builtin routes layer through that .dag authority (or a shared host projection beside reference_resolution_facts)."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallNow {
-    mechanism: SingleAuthority,
-    authority: DeclarationRef {
-      module_path: "v2.lens.layering_imports",
-      decl_name: "layer_import_facts_live",
-      field: WholeDeclaration
-    }
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

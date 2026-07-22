@@ -97,7 +97,7 @@ Loader-tier consumers (`extend_with_bare_reference_closure`, compile-clean impor
 | --- | --- | --- |
 | `layer_import_facts()` edge source | `extract_import_paths` per file | transitional union per §3.1; terminal reference-only per §3.2 |
 | `reference_resolution_facts` pool | (n/a) | **`witness_layer_roots` pool** + `std_roots ∪ extdeps_roots` importer scope — qualified targets like `v2.compiler.*` resolve against the full witness-layer census, same split as module-graph selection adjacency |
-| `layer` field assignment | scan-root constant (`LAYER_STD` / `LAYER_EXTDEPS`) | **`layer_prefix_from_dotted_qualified_name(importer_module)`** — authority: `v2.std.cross_tree.resolution` (already used by grounding lens and cross-tree import model) |
+| `layer` field assignment | scan-root constant (`LAYER_STD` / `LAYER_EXTDEPS`) | **`layer_prefix_from_dotted_qualified_name(importer_module)`** — authority: `v2.std.cross_tree.resolution`; **host mirror** (`CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`) until builtin routes through `.dag` |
 | `import_module` field semantics | import-line target | **resolved target module** (reference or import — same string shape) |
 | Importer module resolution | implicit from path prefix | `extract_module_path(content)` per file (already required by reference producer) |
 
@@ -110,7 +110,7 @@ Loader-tier consumers (`extend_with_bare_reference_closure`, compile-clean impor
 | artifact | change |
 | --- | --- |
 | `layer_import_facts_live` | doc/note only — documents transitional vs terminal producer contract |
-| `construction_justification` on `v2.lens.layering_imports` | upgrade `WallAfterGrounding` → **`WallNow`** once Phase 1 lands (dependency edge derived from references, not import syntax) |
+| `construction_justification` on `v2.lens.layering_imports` | stays **`WallAfterGrounding { dissolves_to: SingleAuthority }`** through Phase 1–2 (transitional dual-arm producer); flips to **`WallNow`** at Phase 3 when import-syntax arm deletes |
 
 ### 4.4 Coupled consumers (same producer — migrate together)
 
