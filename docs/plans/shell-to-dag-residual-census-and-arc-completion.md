@@ -129,11 +129,11 @@ When Track 1's emitters route through the v2 bash rows and Track 2's runtime-pre
 
 ### 4.0 Completeness method (proves this is exhaustive, not sampled)
 
-Every way a shell string is constructed or carried, grep-complete over `dag/**` (excluding `*_test.dag`):
+Every way a shell string is constructed or carried, over `dag/**` (excluding `*_test.dag`). **The search must be multiline-aware** — construction is frequently `ShellCommand {` on one line and `script:` on the next, which a single-line regex misses (this gap hid the `readiness.dag` sites in the first draft — review 41467). Use a slurped/multiline match (e.g. `perl -0777 -ne '/ShellCommand\s*\{\s*script:/'`), not `grep` line-at-a-time.
 
-| # | pattern | what it finds |
+| # | pattern (multiline) | what it finds |
 | --- | --- | --- |
-| P1 | `ShellCommand *{ *script:` | `HostEffect.ShellCommand{script}` construction — **0 live sites on main** (all became nickname variants); residue = the `host_effect_plan.dag` `{script: ""}` placeholder + the `host_effect.dag` type def |
+| P1 | `ShellCommand\s*\{\s*script:` | `HostEffect.ShellCommand{script}` construction — **2 live sites on main** (`live_deploy/readiness.dag`, see §4.B); the rest became nickname variants. Residue = the `host_effect_plan.dag` `{script: ""}` placeholder + the `host_effect.dag` type def. (Match-arms `ShellCommand { script: s\|_ } =>` in `host_effect_realize`/`fleet_converge_cli`/`ci_deploy_access_observe` are destructuring, not construction.) |
 | P1b | `effect: <Variant>` for the shell-backed `HostEffect` variants | the nickname-variant construction sites that *replaced* P1 (the real §4.A rows) |
 | P2 | `BootstrapFragment *{` | bootstrap-script carrier (0 live construction sites today) |
 | P3 | `command:` in `Run{}` / `Do{run:}` | `std.orchestration.Run.command` string |
@@ -161,16 +161,23 @@ Keyed on the **construction site (variant/fn name)** and the modeled op it *shou
 | hygiene reaper/liveness | `host_hygiene_reaper_script.dag` (4 `…_body`), `host_hygiene_liveness_script.dag` | decompose | **A5** srv* deprioritized |
 | `srv3_host_effect_apply.dag` · `Srv3*` variants, `srv3_install_diagnostic_checklist.dag` · `Srv3InstallDiagnosticObserve`, `nbd_proxy_virtual_media_install.dag` · `Srv3NbdProxyServe` | `srv3_host_effect_script.dag` (5 fns), `srv3_install_diagnostic_observe_script.dag` (5 fns) | typed observe/receipt effects | **A5** srv* deprioritized |
 
-### 4.B — DIRECT `ShellCommand{script}` — RESIDUE ONLY (0 live construction sites on main)
+### 4.B — DIRECT `ShellCommand{script}` still constructed in intent
 
-The relocation wave left **no direct `ShellCommand{script}` construction sites** on `origin/main` — every one became a nickname variant (tracked in 4.A). What remains:
+The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):
+
+| site (file · construction) | builder (file · fn) | runs on | dissolve to |
+| --- | --- | --- | --- |
+| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_healthz_probe_script_for_port(port) }` | `readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` (curl localhost `/healthz`; already uses the typed `curl_bounded_localhost_get_argv_prefix`) | srv1 LocalShell via `host_effect_apply_gated` | `http.Client.Get` · `extdeps/http/client.dag` (or the typed curl argv end-to-end) — see §4.C / §5.B |
+| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_unit_diagnosis_command(unit) }` | `intent.dag` · `live_deploy_unit_diagnosis_command` (`systemctl status --no-pager --full <unit> \| tail`) | srv1 LocalShell | a `systemd.Systemctl.Status` op (§5.A add) — **and the `\| tail` + defensive `exit 0` is a §5 absorbing fallback** (intent.dag's own comment admits it masks systemctl's nonzero); the typed op models exit-3-for-dead-unit instead |
+
+Residue only (not construction to migrate):
 
 | site (file · symbol) | what | action |
 | --- | --- | --- |
 | `host_effect_plan.dag` · `ShellCommand { script: "" }` | empty placeholder | delete with the type |
 | `host_effect.dag` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal |
 
-*(The first draft's `fleet_show_effective_read.dag:147,295` and `host_identity_observation.dag:66` rows were mis-grounded on a divergent worktree — corrected to their real nickname-variant construction sites in 4.A per review 41399.)*
+*(The first draft mis-grounded on a divergent worktree — `fleet_show`/`host_identity` corrected to 4.A per review 41399 — and then under-scoped P1 to single-line, missing these `readiness.dag` sites per review 41467. Both fixed.)*
 
 ### 4.C — RUNTIME-PRESENT `shell.Exec.Run` with a string/`_script` body (dissolve to typed op)
 
@@ -254,8 +261,9 @@ This punch-list folds into the **`host_language_transport_script` lens going liv
 | `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (`_enumerate_units_script`), `fleet_show_effective_read` (`fleet_runner_width_count_read_script`) |
 | `extdeps.os.id` · `Read` (uid/gid/user) | **new** `dag/extdeps/os/id.dag` | `id -u`, `id -g`, `id <user>` | `host_effect_realize` (ssh probes), `fleet_posix_accounts` (`probe_command`) |
 | `ssh.Session.ExecArgv` | **add to** `dag/extdeps/diagnostic/ssh.dag` | typed argv over ssh (`ssh host -- argv`) | `host_effect_realize` ssh probes — **IN FLIGHT, C5 #6946** |
+| `systemd.Systemctl.Status` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl status --no-pager --full <unit>` (models exit-3-for-dead-unit — retires the `\| tail`+`exit 0` absorbing fallback) | `live_deploy/readiness.dag` unit diagnosis |
 
-That is the entire new-modeling surface. (A fifth, optional: a typed stdout/receipt emit for the two `echo <receipt>` sites, or reuse `Filesystem.Write`.)
+That is the entire new-modeling surface. (A sixth, optional: a typed stdout/receipt emit for the two `echo <receipt>` sites, or reuse `Filesystem.Write`.) The healthz probe needs **no** new op — `http.Client.Get` already exists.
 
 ### 5.B — CALL AN EXISTING OP (receipt: the op is already modeled on main)
 
@@ -270,6 +278,7 @@ That is the entire new-modeling surface. (A fifth, optional: a typed stdout/rece
 | `tools/review` · `design`, `algebra_ref` | `git fetch` + `git show origin:FILE` | `git.Core.FetchNoTags` + `git.Core.Show` · `extdeps/git/git.dag` (`|| echo '(not found)'` → typed error→Absent) |
 | `merge_admission_stamp` · `mkdir -p` | `mkdir -p` | `Filesystem` / `shell.Find.Dir` · `extdeps/filesystem/filesystem_io.dag` |
 | `dag/tools` · `host_prelude`/`gunbc_ci`/`emit_host_gate` witness+build transports | witness/build run | `gunbc.WitnessBin.Run` · `extdeps/gunbc/gunbc.dag`; `cargo.Build.*` · `extdeps/rust/cargo_build.dag` (`host_prelude` already has the typed precedent) |
+| `live_deploy/readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` | `curl` localhost `/healthz` | `http.Client.Get` · `extdeps/http/client.dag` (already exists) |
 | `host_identity_assimilation`/`adopt` · `echo <receipt>` | `echo <msg>` | typed receipt/stdout emit (`Filesystem.Write` or a print op) — not a shell need |
 
 Each row's `2>/dev/null || true` / `|| echo` fallback becomes a **modeled outcome** (`nonzero => …` mapped to `Absent`), never re-appended (§5 absorbing-fallback rule).
