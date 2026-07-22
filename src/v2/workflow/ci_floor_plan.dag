@@ -2,7 +2,7 @@ module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -661,6 +661,29 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
       execution_mode: Wet
     )
   }
+}
+
+data gunbc_falsifier_native_cache_cold_note: String = "Native-cache cold control plan (widen-only, the compile-clean cold-control pattern): the COLD-VALID roster (falsifier_native_cache_cold_roster — agreement + native_cold legs only, never the full aggregates whose cold_then_warm legs assert the warm-ness this control deliberately destroys), run by the falsifier cold-control step with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1 so every .native_ready marker is ignored and the full emit+cargo+run chain executes cold. Can only force MORE work per entry than the warm nightly batch, never less; a warm-poisoned entry (content_verified_on_read=false in extdeps.realization.native_artifact_cache) surfaces here as a cold-vs-warm receipt divergence."
+
+fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_native_cache_cold_roster(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+fn gunbc_falsifier_native_cache_cold_batches() -> List<List<Runnable>> {
+  [[gunbc_falsifier_native_cache_cold_batch()]]
 }
 
 fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: Runnable) -> List<List<Runnable>> {
