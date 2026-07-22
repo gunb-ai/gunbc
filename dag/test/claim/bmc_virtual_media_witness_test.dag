@@ -1,0 +1,51 @@
+module test.claim.bmc_virtual_media
+
+import std.logic { Bool }
+import std.types { list_length }
+import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
+import gunbc.bmc_virtual_media {
+  srv4_nbd_server_config_text,
+  srv4_nbd_client_attach_command_text,
+  srv4_vm_gadget_setup_script,
+  srv4_vm_gadget_setup_ops,
+}
+
+fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> String {
+  fold(ops, init: "", f: (acc, op) => match op {
+    ConfigfsWriteAttr { path: p, value: v } =>
+      if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }
+    ConfigfsMkdir { path: _ } => acc
+    ConfigfsSymlink { target: _, link: _ } => acc
+    ConfigfsRemoveLink { link: _ } => acc
+    ConfigfsRmdir { path: _ } => acc
+  })
+}
+
+test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
+  let cfg = srv4_nbd_server_config_text()
+  string_contains(s: cfg, pattern: "port = 10809")
+    && string_contains(s: cfg, pattern: "[srv4iso]")
+    && string_contains(s: cfg, pattern: "exportname = /var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso")
+    && string_contains(s: cfg, pattern: "readonly = true")
+}
+
+test fn srv4_nbd_client_attaches_named_export() -> Bool {
+  string_contains(s: srv4_nbd_client_attach_command_text(), pattern: "'nbd-client' '-N' 'srv4iso' '192.168.1.185' '10809' '/dev/nbd0'")
+}
+
+test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
+  let s = srv4_vm_gadget_setup_script()
+  string_contains(s: s, pattern: "mkdir -p /sys/kernel/config/usb_gadget/gunbcvm")
+    && string_contains(s: s, pattern: "printf '%s' '/dev/nbd0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/file")
+    && string_contains(s: s, pattern: "printf '%s' '0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/cdrom")
+    && string_contains(s: s, pattern: "printf '%s' '1e6a0000.usb-vhub:p3' > /sys/kernel/config/usb_gadget/gunbcvm/UDC")
+}
+
+test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
+  let ops = srv4_vm_gadget_setup_ops()
+  configfs_write_value_for(ops: ops, path_suffix: "/lun.0/file") == "/dev/nbd0"
+    && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
+    && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
+    && configfs_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
+    && list_length(items: ops) == 16
+}

@@ -1,6 +1,7 @@
 module extdeps.firmware.uefi_shell
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_render }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -49,6 +50,9 @@ type UefiShellCommand
   | ConnectRecursive
   | ListDevices
   | Ifconfig { action: UefiIfconfigAction }
+  | Ping { host: NonEmptyStr }
+  | Tftp { interface: NonEmptyStr, server: NonEmptyStr, remote_file: NonEmptyStr, local_file: NonEmptyStr }
+  | ExecuteEfi { path: NonEmptyStr, cmdline: List<KernelCmdlineArg> }
   | Reset { mode: UefiResetMode }
 
 fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
@@ -74,6 +78,11 @@ fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
       if r { "map -r" } else { "map" }
     ConnectRecursive => "connect -r"
     ListDevices => "devices"
+    Ping { host: h } => concat("ping ", h as String)
+    Tftp { interface: i, server: s, remote_file: rf, local_file: lf } =>
+      join(["tftp", "-i", i as String, s as String, rf as String, lf as String], " ")
+    ExecuteEfi { path: p, cmdline: c } =>
+      join([p as String, kernel_cmdline_render(args: c)], " ")
     Ifconfig { action: a } =>
       match a {
         IfconfigList => "ifconfig -l"

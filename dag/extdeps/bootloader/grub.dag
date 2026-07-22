@@ -1,7 +1,7 @@
 module extdeps.bootloader.grub
 
 import std.types { NonEmptyStr, String, Int, List }
-import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_arg_wire }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -25,8 +25,24 @@ type GrubConfig {
   entries: List<GrubMenuEntry>
 }
 
+fn grub_cmdline_arg_render(arg: KernelCmdlineArg) -> String {
+  let wire = kernel_cmdline_arg_wire(arg: arg)
+  if string_contains(s: wire, pattern: ";") {
+    concat("\"", concat(wire, "\""))
+  } else {
+    wire
+  }
+}
+
 fn grub_linux_line(entry: GrubMenuEntry) -> String {
-  join(["  linux", entry.linux_image as String, kernel_cmdline_render(args: entry.linux_cmdline)], " ")
+  join(
+    [
+      "  linux",
+      entry.linux_image as String,
+      join(map(entry.linux_cmdline, a => grub_cmdline_arg_render(arg: a)), " "),
+    ],
+    " ",
+  )
 }
 
 fn grub_menuentry_render(entry: GrubMenuEntry) -> String {

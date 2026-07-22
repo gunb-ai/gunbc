@@ -1,0 +1,55 @@
+module gunbc.bmc_netboot_shell_boot
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.uri { uri_wire }
+import extdeps.firmware.uefi_shell {
+  UefiShellCommand,
+  Ifconfig,
+  IfconfigSetDhcp,
+  Ping,
+  Tftp,
+  ExecuteEfi,
+}
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
+import extdeps.exec.command { ShellCommand }
+import gunbc.bmc_netboot_serve {
+  BmcNetbootServePlan,
+  srv4_bmc_netboot_serve_plan,
+  bmc_netboot_seed_datasource,
+}
+
+data shell_boot_local_kernel: NonEmptyStr = "fs0:\\vmlinuz"
+data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"
+
+fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ShellCommand {
+  ShellCommand {
+    argv: [
+      join([plan.netboot_dir as String, "/busybox"], ""),
+      "udpsvd", "-E", "0.0.0.0", "69",
+      join([plan.netboot_dir as String, "/busybox"], ""),
+      "tftpd", "-r", plan.netboot_dir as String,
+    ],
+  }
+}
+
+fn shell_boot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg> {
+  [
+    KernelKeyValue { key: "initrd", value: "\\initrd" },
+    KernelKeyValue { key: "ip", value: "dhcp" },
+    KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
+    KernelFlag { name: "autoinstall" },
+    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+  ]
+}
+
+fn bmc_netboot_shell_boot_commands(plan: BmcNetbootServePlan) -> List<UefiShellCommand> {
+  [
+    Ifconfig { action: IfconfigSetDhcp { interface: plan.boot_interface } },
+    Ping { host: plan.bmc_host },
+    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
+    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
+    ExecuteEfi { path: shell_boot_local_kernel, cmdline: shell_boot_kernel_cmdline(plan: plan) },
+  ]
+}
+
+data srv4_shell_boot_commands: List<UefiShellCommand> = bmc_netboot_shell_boot_commands(plan: srv4_bmc_netboot_serve_plan)

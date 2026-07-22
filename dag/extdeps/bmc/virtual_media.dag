@@ -1,0 +1,54 @@
+module extdeps.bmc.virtual_media
+
+import std.types { NonEmptyStr, Int, String, List }
+import std.logic { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/usb/mass-storage.html",
+  }
+}
+
+data virtual_media_fork_reconciliation: String = "§3 single-authority: 'present a block source (ISO) to a host as USB storage' is ONE concept — VirtualMediaIntent — with N transport realizations named centrally in VirtualMediaTransport (the dispatch axis). ConfigfsGadgetTransport (nbd-server → nbd-client → configfs mass_storage gadget; realized in gunbc.bmc_virtual_media) and NbdProxyWebsocatTransport (nbdkit → websocat → bmcweb WebUI nbd wss; realized in extdeps.bmc.webui.nbd_proxy_serve) were two independent virtual-media concepts; they now consume this shared intent. Per §3 the dispatch that selects a realization is itself realization, so each transport's concrete plan binds in its peripheral module, not here."
+
+type VirtualMediaSource {
+  iso_path: NonEmptyStr
+}
+
+type VirtualMediaIntent {
+  bmc_host: NonEmptyStr
+  source: VirtualMediaSource
+  read_only: Bool
+}
+
+type ConfigfsGadgetParams {
+  nbd_server_host: NonEmptyStr
+  nbd_port: Int
+  export_name: NonEmptyStr
+  nbd_device: NonEmptyStr
+  udc_port: NonEmptyStr
+}
+
+type NbdProxyWebsocatParams {
+  session_token: NonEmptyStr
+  ws_path: NonEmptyStr
+  local_nbd_port: Int
+}
+
+type VirtualMediaTransport
+  = ConfigfsGadgetTransport { params: ConfigfsGadgetParams }
+  | NbdProxyWebsocatTransport { params: NbdProxyWebsocatParams }
+
+fn virtual_media_transport_kind(transport: VirtualMediaTransport) -> String {
+  match transport {
+    ConfigfsGadgetTransport { params: _ } => "configfs-gadget"
+    NbdProxyWebsocatTransport { params: _ } => "nbdproxy-websocat"
+  }
+}
+
+fn virtual_media_source_iso(intent: VirtualMediaIntent) -> NonEmptyStr {
+  intent.source.iso_path
+}

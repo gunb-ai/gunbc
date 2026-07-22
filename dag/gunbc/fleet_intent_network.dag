@@ -88,6 +88,14 @@ data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-host-lan",
+  host: Present { value: operator_host_srv4 },
+  address: "192.168.1.196",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
@@ -123,6 +131,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     operator_lan_gateway_endpoint,
     srv1_host_lan_endpoint,
     srv2_host_lan_endpoint,
+    srv4_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,

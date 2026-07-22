@@ -26,6 +26,11 @@ import extdeps.bmc.webui.nbd_proxy {
   NbdServer,
 }
 import extdeps.uri { Uri, Https }
+import extdeps.bmc.virtual_media {
+  VirtualMediaIntent,
+  NbdProxyWebsocatParams,
+  virtual_media_source_iso,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -67,6 +72,16 @@ fn nbd_proxy_serve_transport_intent(
     ws_path: ws_path,
     iso_path: iso_path,
     local_nbd_port: local_nbd_port,
+  }
+}
+
+fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdProxyWebsocatParams) -> NbdProxyServeTransportIntent {
+  NbdProxyServeTransportIntent {
+    bmc_host: vm.bmc_host,
+    session_token: params.session_token,
+    ws_path: params.ws_path,
+    iso_path: virtual_media_source_iso(intent: vm),
+    local_nbd_port: params.local_nbd_port,
   }
 }
 
