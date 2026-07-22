@@ -254,14 +254,11 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     uncl = counts.get("Unclassified", 0)
 
     law = (
-        "cli_run.rs hollowing ledger (operator-directed, session quick-moth-273): "
-        "every module-scope fn and test-fn in src/v1/stage0/src/cli_run.rs "
-        "mapped to its v2 dissolution feature. "
-        f"Current receipt: {len(rows)} rows ({prod} production, {test} test/receipt), "
-        f"{uncl} unclassified. "
+        "cli_run.rs hollowing ledger (quick-moth-273): every module-scope fn and test-fn "
+        "in src/v1/stage0/src/cli_run.rs mapped to its v2 dissolution feature. "
+        f"Receipt: {len(rows)} rows ({prod} production, {test} test), {uncl} unclassified. "
         "Regenerate: scripts/generate_cli_run_hollowing_ledger.py. "
-        "Dissolve-on: seed-shrink Chunk F - cli_run.rs HAND -> workflow host_effect_apply() "
-        "+ generated surface (cli-run-reconcile-defork.md)."
+        "Dissolve-on: seed-shrink Chunk F via cli-run-reconcile-defork."
     )
 
     lines = [
@@ -308,12 +305,6 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         f"data cli_run_hollowing_unclassified_baseline: Int = {uncl}",
         "",
     ]
-
-    summary_parts = [f"{k}={v}" for k, v in sorted(counts.items())]
-    lines.append(
-        f'data cli_run_hollowing_feature_counts_note: String = "{", ".join(summary_parts)}"'
-    )
-    lines.append("")
 
     def feature_to_ctor(feature: str) -> str:
         return feature
@@ -396,7 +387,16 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
             "  cli_run_hollowing_unclassified_row_count() == 0",
             "}",
             "",
-            f"// Generated from {CLI_RUN.relative_to(REPO)} ({source_loc} LOC). Do not hand-edit.",
+        ]
+    )
+    summary_parts = [f"{k}={v}" for k, v in sorted(counts.items())]
+    lines.extend(
+        [
+            "fn cli_run_hollowing_feature_counts_note() -> String {",
+            f'  "{", ".join(summary_parts)}"',
+            "}",
+            "",
+            f"// Generated from {CLI_RUN.relative_to(REPO)} ({source_loc} LOC). Regenerate via scripts/generate_cli_run_hollowing_ledger.py",
         ]
     )
     return "\n".join(lines) + "\n"

@@ -4,83 +4,18 @@ import std.types { Int, List, String }
 import v2.std.algebra { filter, length }
 import v2.std.node { Symbol }
 
-type CliRunHollowFeature
-  = RealizationMaterializationScheduling
-  | NamespaceResolutionSymbolIndex
-  | AffectedSetSelection
-  | TypedModuleCacheComputationIdentity
-  | SerializationOneGrammar
-  | WorkflowHostEffect
-  | WitnessDiscoveryExecution
-  | CompileCleanGate
-  | RegenSelfHost
-  | LensHostBridge
-  | ModuleIdentityStorage
-  | HostPhysics
-  | PhaseProfileInstrumentation
-  | TestReceipt
-  | Unclassified
+type CliRunHollowFeature = Unclassified
+type CliRunHollowDisposition = HollowTarget { feature: CliRunHollowFeature, v2_authority: String }
+type CliRunHollowLedgerRow { id: Symbol, fn_name: String, source_line: Int, disposition: CliRunHollowDisposition }
 
-type CliRunHollowDisposition
-  = HollowTarget { feature: CliRunHollowFeature, v2_authority: String }
-  | HostPhysicsPinned { reason: String }
-  | TestReceiptRow { subject_feature: CliRunHollowFeature }
-
-type CliRunHollowLedgerRow {
-  id: Symbol,
-  fn_name: String,
-  source_line: Int,
-  disposition: CliRunHollowDisposition
-}
-
-data cli_run_hollowing_ledger_law: String = "cli_run hollowing ledger quick-moth-273"
-
-data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = []
+data cli_run_hollowing_row_count_baseline: Int = 0
+data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
+]
 
 fn cli_run_hollowing_ledger_row_count() -> Int {
   cli_run_hollowing_ledger_rows |> length
 }
 
-fn cli_run_hollowing_unclassified_row_count() -> Int {
-  length(xs: filter(
-    xs: cli_run_hollowing_ledger_rows,
-    predicate: fn(row) {
-      match row.disposition {
-        HollowTarget { feature: Unclassified, v2_authority: _ } => True
-        _ => False
-      }
-    }
-  ))
-}
-
-fn cli_run_hollowing_production_row_count() -> Int {
-  length(xs: filter(
-    xs: cli_run_hollowing_ledger_rows,
-    predicate: fn(row) {
-      match row.disposition {
-        TestReceiptRow { subject_feature: _ } => False
-        _ => True
-      }
-    }
-  ))
-}
-
-fn cli_run_hollowing_test_row_count() -> Int {
-  length(xs: filter(
-    xs: cli_run_hollowing_ledger_rows,
-    predicate: fn(row) {
-      match row.disposition {
-        TestReceiptRow { subject_feature: _ } => True
-        _ => False
-      }
-    }
-  ))
-}
-
 fn cli_run_hollowing_ledger_enumeration_holds() -> Bool {
-  cli_run_hollowing_ledger_row_count() == 0
-}
-
-fn cli_run_hollowing_no_unclassified_holds() -> Bool {
-  cli_run_hollowing_unclassified_row_count() == 0
+  cli_run_hollowing_ledger_row_count() == cli_run_hollowing_row_count_baseline
 }
