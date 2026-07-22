@@ -8844,7 +8844,7 @@ fn eval_builtin_inner(
                 "commit_witness_claim_pair_resolvable function",
             )?;
             Ok(Some(Value::Bool(
-                crate::cli_run::commit_witness_claim_pair_resolvable(entry, function),
+                crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
             )))
         }
         "non_fold_residue_wildcard_red_fixture_holds" => Ok(Some(Value::Bool(
