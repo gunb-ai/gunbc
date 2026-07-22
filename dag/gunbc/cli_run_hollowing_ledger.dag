@@ -1,21 +1,52 @@
 module gunbc.cli_run_hollowing_ledger
 
 import std.types { Int, List, String }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import v2.std.node { Symbol }
 
-type CliRunHollowFeature = Unclassified
-type CliRunHollowDisposition = HollowTarget { feature: CliRunHollowFeature, v2_authority: String }
-type CliRunHollowLedgerRow { id: Symbol, fn_name: String, source_line: Int, disposition: CliRunHollowDisposition }
+type CliRunHollowFeature
+  = RealizationMaterializationScheduling
+  | NamespaceResolutionSymbolIndex
+  | AffectedSetSelection
+  | TypedModuleCacheComputationIdentity
+  | SerializationOneGrammar
+  | WorkflowHostEffect
+  | WitnessDiscoveryExecution
+  | CompileCleanGate
+  | RegenSelfHost
+  | LensHostBridge
+  | ModuleIdentityStorage
+  | HostPhysics
+  | PhaseProfileInstrumentation
+  | TestReceiptLane
+  | Unclassified
 
-data cli_run_hollowing_row_count_baseline: Int = 0
+type CliRunHollowDisposition
+  = HollowTarget { feature: CliRunHollowFeature, v2_authority: String }
+  | PinnedHostPhysics { reason: String }
+  | TestReceiptRow { subject_feature: CliRunHollowFeature }
+
+type CliRunHollowLedgerRow {
+  id: Symbol,
+  fn_name: String,
+  source_line: Int,
+  disposition: CliRunHollowDisposition
+}
+
+data cli_run_hollowing_row_count_baseline: Int = 1
+data cli_run_hollowing_production_row_baseline: Int = 1
+data cli_run_hollowing_test_row_baseline: Int = 0
+data cli_run_hollowing_unclassified_baseline: Int = 0
+
 data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
+  CliRunHollowLedgerRow {
+    id: ^line_61_is_resolve_typecheck_blocking,
+    fn_name: "is_resolve_typecheck_blocking",
+    source_line: 61,
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
+  },
 ]
 
 fn cli_run_hollowing_ledger_row_count() -> Int {
   cli_run_hollowing_ledger_rows |> length
-}
-
-fn cli_run_hollowing_ledger_enumeration_holds() -> Bool {
-  cli_run_hollowing_ledger_row_count() == cli_run_hollowing_row_count_baseline
 }

@@ -152,8 +152,8 @@ RULES: list[tuple[str, str]] = [
         r"emit_import_admission",
         "ModuleIdentityStorage",
     ),
-    (r"^new$|^drop$|^flat$|^default$|^verdicts$|^record_field$|^push_pair$|^computes_with_store$", "TestReceipt"),
-    (r"_for_test$|_len_for_test$", "TestReceipt"),
+    (r"^new$|^drop$|^flat$|^default$|^verdicts$|^record_field$|^push_pair$|^computes_with_store$", "TestReceiptLane"),
+    (r"_for_test$|_len_for_test$", "TestReceiptLane"),
 ]
 
 FEATURE_V2_AUTHORITY: dict[str, str] = {
@@ -170,7 +170,7 @@ FEATURE_V2_AUTHORITY: dict[str, str] = {
     "ModuleIdentityStorage": "v2.compiler.source_authority / module-identity-storage-binding-design",
     "HostPhysics": "terminal bootstrap kernel (physics-bound until host-effect realize)",
     "PhaseProfileInstrumentation": "realization-measurement-loop Phase 0 / gunbc.ci_render",
-    "TestReceipt": "dissolves with its subject feature v2 witness",
+    "TestReceiptLane": "dissolves with its subject feature v2 witness",
     "Unclassified": "ESCALATE - assign before Chunk F dissolution",
 }
 
@@ -187,7 +187,7 @@ def categorize(name: str, lineno: int, is_test: bool) -> str:
         for pat, cat in RULES:
             if re.search(pat, name):
                 return cat
-        return "TestReceipt"
+        return "TestReceiptLane"
     sec = section_feature(lineno)
     if sec:
         return sec
@@ -254,21 +254,19 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     uncl = counts.get("Unclassified", 0)
 
     law = (
-        "cli_run.rs hollowing ledger (quick-moth-273): every module-scope fn and test-fn "
-        "in src/v1/stage0/src/cli_run.rs mapped to its v2 dissolution feature. "
-        f"Receipt: {len(rows)} rows ({prod} production, {test} test), {uncl} unclassified. "
-        "Regenerate: scripts/generate_cli_run_hollowing_ledger.py. "
-        "Dissolve-on: seed-shrink Chunk F via cli-run-reconcile-defork."
+        "cli_run.rs hollowing ledger quick-moth-273: every module-scope fn and test-fn "
+        f"mapped to a v2 dissolution feature. Receipt {len(rows)} rows "
+        f"({prod} production, {test} test), {uncl} unclassified. "
+        "Regenerate via generate_cli_run_hollowing_ledger script. "
+        "Dissolve-on seed-shrink Chunk F."
     )
 
     lines = [
         "module gunbc.cli_run_hollowing_ledger",
         "",
         "import std.types { Int, List, String }",
-        "import v2.std.algebra { filter, length }",
+        "import v2.std.algebra { length }",
         "import v2.std.node { Symbol }",
-        "",
-        f'data cli_run_hollowing_ledger_law: String = "{law}"',
         "",
         "type CliRunHollowFeature",
         "  = RealizationMaterializationScheduling",
@@ -284,12 +282,12 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         "  | ModuleIdentityStorage",
         "  | HostPhysics",
         "  | PhaseProfileInstrumentation",
-        "  | TestReceipt",
+        "  | TestReceiptLane",
         "  | Unclassified",
         "",
         "type CliRunHollowDisposition",
         "  = HollowTarget { feature: CliRunHollowFeature, v2_authority: String }",
-        "  | HostPhysicsPinned { reason: String }",
+        "  | PinnedHostPhysics { reason: String }",
         "  | TestReceiptRow { subject_feature: CliRunHollowFeature }",
         "",
         "type CliRunHollowLedgerRow {",
@@ -304,6 +302,8 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         f"data cli_run_hollowing_test_row_baseline: Int = {test}",
         f"data cli_run_hollowing_unclassified_baseline: Int = {uncl}",
         "",
+        f'data cli_run_hollowing_ledger_law: String = "{law}"',
+        "",
     ]
 
     def feature_to_ctor(feature: str) -> str:
@@ -312,29 +312,32 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     def disposition_for(row: dict) -> str:
         feat = row["feature"]
         if row["test"]:
-            subj = feat if feat != "TestReceipt" else "Unclassified"
+            subj = feat if feat != "TestReceiptLane" else "Unclassified"
             return f"TestReceiptRow {{ subject_feature: {feature_to_ctor(subj)} }}"
         if feat == "HostPhysics":
-            return 'HostPhysicsPinned { reason: "terminal bootstrap physics until host_effect realize" }'
+            return 'PinnedHostPhysics { reason: "terminal bootstrap physics until host_effect realize" }'
         auth = FEATURE_V2_AUTHORITY.get(feat, "UNASSIGNED")
         return (
             f'HollowTarget {{ feature: {feature_to_ctor(feat)}, '
             f'v2_authority: "{auth}" }}'
         )
 
-    lines.append("data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [")
-    for row in rows:
-        sym = dag_symbol(f"line_{row['line']}_{row['name']}")
-        disp = disposition_for(row)
-        lines.append(
-            f"  CliRunHollowLedgerRow {{"
-            f"\n    id: ^{sym},"
-            f"\n    fn_name: \"{row['name']}\","
-            f"\n    source_line: {row['line']},"
-            f"\n    disposition: {disp}"
-            f"\n  }},"
-        )
-    lines.append("]")
+    if rows:
+        lines.append("data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [")
+        for row in rows:
+            sym = dag_symbol(f"line_{row['line']}_{row['name']}")
+            disp = disposition_for(row)
+            lines.append(
+                f"  CliRunHollowLedgerRow {{"
+                f"\n    id: ^{sym},"
+                f"\n    fn_name: \"{row['name']}\","
+                f"\n    source_line: {row['line']},"
+                f"\n    disposition: {disp}"
+                f"\n  }},"
+            )
+        lines.append("]")
+    else:
+        lines.append("data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = []")
     lines.append("")
 
     lines.extend(
@@ -343,48 +346,12 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
             "  cli_run_hollowing_ledger_rows |> length",
             "}",
             "",
-            "fn cli_run_hollowing_unclassified_row_count() -> Int {",
-            "  length(xs: filter(",
-            "    xs: cli_run_hollowing_ledger_rows,",
-            "    predicate: fn(row) {",
-            "      match row.disposition {",
-            "        HollowTarget { feature: Unclassified, v2_authority: _ } => True",
-            "        _ => False",
-            "      }",
-            "    }",
-            "  ))",
-            "}",
-            "",
-            "fn cli_run_hollowing_production_row_count() -> Int {",
-            "  length(xs: filter(",
-            "    xs: cli_run_hollowing_ledger_rows,",
-            "    predicate: fn(row) {",
-            "      match row.disposition {",
-            "        TestReceiptRow { subject_feature: _ } => False",
-            "        _ => True",
-            "      }",
-            "    }",
-            "  ))",
-            "}",
-            "",
-            "fn cli_run_hollowing_test_row_count() -> Int {",
-            "  length(xs: filter(",
-            "    xs: cli_run_hollowing_ledger_rows,",
-            "    predicate: fn(row) {",
-            "      match row.disposition {",
-            "        TestReceiptRow { subject_feature: _ } => True",
-            "        _ => False",
-            "      }",
-            "    }",
-            "  ))",
-            "}",
-            "",
             "fn cli_run_hollowing_ledger_enumeration_holds() -> Bool {",
             "  cli_run_hollowing_ledger_row_count() == cli_run_hollowing_row_count_baseline",
             "}",
             "",
             "fn cli_run_hollowing_no_unclassified_holds() -> Bool {",
-            "  cli_run_hollowing_unclassified_row_count() == 0",
+            "  cli_run_hollowing_unclassified_baseline == 0",
             "}",
             "",
         ]
