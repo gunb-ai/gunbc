@@ -1,12 +1,12 @@
 module gunbc.design.archetype
 
 import std.types { Int, String, Bool }
-import gunbc.site.tokens {
+import gunbc.design.theme {
   ThemeRole, role_key,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
   FigureRole, FigureEdgeRole, FocusRole,
 }
-import gunbc.site.interaction { InteractionVerb, Approach, Dispatch, verb_key }
+import gunbc.design.interaction { InteractionVerb, Approach, Dispatch, verb_key }
 
 data design_archetype_note: String = "L4 surface archetypes, minimal Phase-B landing (design-register-library.md sect 2; manager-signed 2026-07-21). The second real site — the roadmap dashboard — fired the library's declared trigger, so the axes land as closed enums and Dashboard lands as the FIRST PRESET ROW: a named bundle over independent axes, never a new primitive (the Hermetic|Wet lesson). Deliberately NOT here (each with its trigger): the emission-grammar generalization (GrammarRelationRow archetype machinery — purity trap off one consumer; the roadmap keeps its own page emitter, law-checked); DataVizArea demand (its introduction stays a conscious event, tokens_note pin); the remaining presets (MarketingSite et al land when their surface binds — gunb.ai's binding rides the Phase-A lift). role_demand is the roles the surface CONSUMES by name (names-not-values interface law); the roadmap witness cross-checks the declared demand against the serialized stylesheet in BOTH directions — a demanded-but-unused role and a used-but-undeclared role each red. Liveness is honest to the SERVED surface: the belt-B dashboard reads the tree in-process (Live); the committed ROADMAP.md is a second realization of the same content at StaticEmit, named here, modeled when a consumer needs it."
 

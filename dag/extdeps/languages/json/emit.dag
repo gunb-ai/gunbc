@@ -2,6 +2,7 @@ module extdeps.languages.json.emit
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
+import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -59,20 +60,6 @@ fn json_object(members: List<JsonKeyValue>) -> JsonValue {
   JsonObject { members: members }
 }
 
-fn hex_digit_char(d: Int) -> String {
-  if d < 10 { from_code_point(cp: 48 + d) }
-  else { from_code_point(cp: 55 + d) }
-}
-
-fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
-  if n == 0 { acc }
-  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char(d: n % 16), acc)) }
-}
-
-fn int_to_upper_hex(n: Int) -> String {
-  if n == 0 { "0" }
-  else { int_to_upper_hex_inner(n: n, acc: "") }
-}
 
 fn json_unicode_escape_hex4(cp: Int) -> String {
   let h = int_to_upper_hex(n: cp)
