@@ -1,0 +1,142 @@
+module gunbc.host_hygiene_liveness
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, Terminal }
+import std.measure { Second, second, second_count, measure_le }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile_grounded,
+}
+
+data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Terminal {
+  reason: "Brief 4 deliverable (b): registration liveness. NRestarts is useless as slot health (it counts jobs-served under the ephemeral restart-per-job runner design, 400-950 across slots at diagnosis time, not failure). Real liveness mines the 'Listening for Jobs' journal line per slot and compares its age against a bound; zero-occupancy outages (a 2.5h-class incident) had no liveness signal before this. RED: a stopped listener on one slot must flip the fleet verdict within one cadence — fleet_green_from_listening is any-stale-fails, not majority-fails."
+}
+
+type SlotListeningObservation
+  = ListeningObserved { unit: NonEmptyStr, age: Second }
+  | ListeningNeverSeen { unit: NonEmptyStr }
+  | ListeningReadInaccessible { unit: NonEmptyStr, detail: NonEmptyStr }
+
+type SlotListeningVerdict
+  = ListeningFresh { unit: NonEmptyStr }
+  | ListeningStale { unit: NonEmptyStr, age: Second, bound: Second }
+  | ListeningUnknown { unit: NonEmptyStr, reason: NonEmptyStr }
+
+fn slot_listening_verdict(obs: SlotListeningObservation, bound: Second) -> SlotListeningVerdict {
+  match obs {
+    ListeningObserved { unit: u, age: a } =>
+      if measure_le(a: a, b: bound) {
+        ListeningFresh { unit: u }
+      } else {
+        ListeningStale { unit: u, age: a, bound: bound }
+      }
+    ListeningNeverSeen { unit: u } =>
+      ListeningUnknown { unit: u, reason: "no 'Listening for Jobs' line found in the unit's journal" as NonEmptyStr }
+    ListeningReadInaccessible { unit: u, detail: d } => ListeningUnknown { unit: u, reason: d }
+  }
+}
+
+fn slot_listening_verdict_healthy(v: SlotListeningVerdict) -> Bool {
+  match v {
+    ListeningFresh { unit: _ } => true
+    ListeningStale { unit: _, age: _, bound: _ } => false
+    ListeningUnknown { unit: _, reason: _ } => false
+  }
+}
+
+fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> NonEmptyStr {
+  match v {
+    ListeningFresh { unit: u } => u
+    ListeningStale { unit: u, age: _, bound: _ } => u
+    ListeningUnknown { unit: u, reason: _ } => u
+  }
+}
+
+type FleetListeningVerdict
+  = FleetListeningGreen
+  | FleetListeningRed { unhealthy: List<SlotListeningVerdict> }
+
+fn fleet_listening_verdict(verdicts: List<SlotListeningVerdict>) -> FleetListeningVerdict {
+  let unhealthy = filter(verdicts, v => !slot_listening_verdict_healthy(v: v))
+  if unhealthy.length() == 0 {
+    FleetListeningGreen
+  } else {
+    FleetListeningRed { unhealthy: unhealthy }
+  }
+}
+
+fn fleet_green_from_listening(verdicts: List<SlotListeningVerdict>) -> Bool {
+  match fleet_listening_verdict(verdicts: verdicts) {
+    FleetListeningGreen => true
+    FleetListeningRed { unhealthy: _ } => false
+  }
+}
+
+type FleetListeningEvidence {
+  slot_count: Int
+}
+
+fn fleet_listening_check_reason(verdicts: List<SlotListeningVerdict>) -> String? {
+  match fleet_listening_verdict(verdicts: verdicts) {
+    FleetListeningGreen => none
+    FleetListeningRed { unhealthy: u } =>
+      Present {
+        value: concat(
+          "stale or unknown registration listener(s): ",
+          concat(
+            to_string(u.length()),
+            " slot(s) failed freshness",
+          )
+        )
+      }
+  }
+}
+
+fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> Grounding<FleetListeningEvidence> {
+  match fleet_listening_check_reason(verdicts: verdicts) {
+    Absent =>
+      Grounds {
+        evidence: FleetListeningEvidence {
+          slot_count: verdicts.length(),
+        }
+      }
+    Present { value: reason } => DoesNotGround { reason: reason }
+  }
+}
+
+fn reconcile_fleet_listening(
+  read: ShowEffectiveRead<List<SlotListeningVerdict>>,
+) -> Reconciliation<String, FleetListeningEvidence> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: "host_hygiene_liveness.timer",
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: verdicts } =>
+      reconcile_grounded(
+        apply_effect: "host_hygiene_liveness.timer",
+        show_read: read,
+        grounding: ground_fleet_listening(verdicts: verdicts)
+      )
+  }
+}
+
+data gunbc_host_hygiene_liveness_bound: Second = second(1800)
+
+data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = ReadAbsent {
+  reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+}
+
+fn gunbc_host_hygiene_liveness_evidence() -> Reconciliation<String, FleetListeningEvidence> {
+  reconcile_fleet_listening(read: gunbc_host_hygiene_liveness_show_effective_read)
+}

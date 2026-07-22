@@ -26,6 +26,11 @@ import gunbc.live_deploy.emit {
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
+import gunbc.ci_deploy_access {
+  DeployAccessJobPrincipalRefusal,
+  deploy_access_job_principal_refused_emit_poison,
+}
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import v2.std.orchestration { Do, Run }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -112,6 +117,26 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
     && string_contains(s: tmux, pattern: "dpkg -s tmux")
     && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
+}
+
+fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
+    && string_contains(s: sh, pattern: "whoami")
+    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && string_contains(s: sh, pattern: "privileged command not in sudoers (sudo -l preflight miss)")
+    && !string_contains(s: sh, pattern: "sudo -n /usr/bin/tailscale version >/dev/null")
+    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
+    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
+    && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
+    && string_contains(s: sh, pattern: "deploy-access-preflight: PASS principal=ghrunner")
+    && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
+}
+
+fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
+  let sh = expected_live_deploy_retract_script()
+  string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
+    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
 }
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
@@ -297,6 +322,22 @@ fn witness_wholesale_refused_poison_carries_marker() -> Bool {
     && string_contains(s: poison, pattern: "APPLY refused-member-count=0")
 }
 
+fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bool {
+  let poison = deploy_access_job_principal_refused_emit_poison(
+    refusal: DeployAccessJobPrincipalRefusal {
+      job_user: "runner" as NonEmptyStr,
+      runner: DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr },
+    }
+  )
+  string_contains(s: poison, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+    && string_contains(s: poison, pattern: "job_user=runner")
+}
+
+fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+}
+
 test fn live_deploy_emit_holds() -> Bool {
   witness_spec_targets_srv1()
     && witness_spec_uses_apt_package_manager()
@@ -306,6 +347,8 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_tailnet_domain_propagates_optional()
     && witness_tailnet_url_absent_not_fabricated()
     && witness_dependency_ensure_is_idempotent()
+    && witness_apply_script_contains_preflight_and_sudoers()
+    && witness_retract_preamble_acknowledges_shared_sudoers_install()
     && witness_apply_script_contains_systemd_and_tailscale()
     && witness_scripts_stay_within_ci_runner_grants()
     && witness_retract_script_owned_only()
@@ -323,4 +366,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_emit_shell_dissolution_trigger_is_scaffold()
     && witness_teardown_dependency_arm_refuses_golden_independent()
     && witness_wholesale_refused_poison_carries_marker()
+    && witness_deploy_access_job_principal_refused_poison_golden_independent()
+    && witness_apply_script_access_ready_not_deploy_access_poison()
 }

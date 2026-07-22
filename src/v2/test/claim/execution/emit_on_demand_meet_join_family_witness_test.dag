@@ -20,47 +20,25 @@ import std.emit_on_demand {
   interpreter_surviving_roles_bounded,
 }
 import v2.std.emit_on_demand { witness_family_realize_width }
-import extdeps.realization.emit_on_demand_host {
-  native_cache_workspace_root, emit_on_demand_evict_native_cache,
-}
-import v2.compiler.emit { emit }
-import extdeps.communication.medium { Medium }
-import v2.compiler.emit_host {
-  emit_host_octets_byte_string,
-  run_emit_host_cached,
-}
 import v2.compiler.eval {
-  Inputs,
-  inputs_for_emit_host,
   inferred_tree_digest,
 }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag {
   dag_meet_arrow_with_body_fixture,
   dag_meet_arrow_with_body_swapped_arms_fixture,
-  dag_meet_eval_subgraph_fixture,
   dag_join_arrow_with_body_fixture,
   dag_join_arrow_with_body_swapped_arms_fixture,
-  dag_join_eval_subgraph_fixture,
 }
-import v2.extdeps.languages.rust_test {
-  rust_logic_meet_target_model_staging,
-  rust_logic_join_target_model_staging,
-}
-import v2.std.compilers.target_model { TargetModel }
 import v2.test.execution.emit_host_meet_join_equals_eval {
   meet_join_eval_tree_for,
 }
-import v2.std.diagnostic { Accepted, Rejected, Outcome }
-import v2.std.host_run { HostLogicalRun }
-import v2.std.node { Node }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: interpreted==native equals_eval (emit_host_meet_join_equals_eval_test.dag — green via dag_node_is_eval_literal_atom complement-root repair, witty-owl-841), native cold/warm receipts, closure_digest key sensitivity, swapped-arms RED."
+data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): PURE receipts only — grain/closure key sensitivity, store hit/miss materialization, interpreter role bound, packed-width budget refusal. Native execution for meet/join MIGRATED to family grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is emit_on_demand_family_crate_witness_test (one-build members-warm, eval-anchored member agreements, all-alt wrong-fixture octet flips) — the per-witness cold/warm/wrong-fixture crate builds formerly here are deleted, never rebuilt per witness. Residue is pure; the LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on (not flipped in the migration PR to keep the selection-safety change separately reviewable)."
 
-data meet_join_family_cache_root: String = "/tmp/gunbc_emit_on_demand_meet_join_family"
 data meet_join_family_emitter: String = "v2.compiler.emit"
 data meet_join_family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-meet-join-family",
@@ -101,108 +79,6 @@ fn join_family_tree() -> InferredTree {
 
 fn join_family_alt_tree() -> InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
-}
-
-fn meet_join_family_fixture_inputs(subgraph: Node) -> Inputs {
-  inputs_for_emit_host(
-    claim_input_root: subgraph,
-    expected_eval_root: subgraph,
-    claim_pin: ^meet_join_eval_evaluator_pin
-  )
-}
-
-fn meet_join_family_cache_root_for(test_id: String) -> String {
-  concat(meet_join_family_cache_root, "/", test_id)
-}
-
-fn meet_join_family_evict_and_workspace(test_id: String, tree: InferredTree) -> String {
-  let key = meet_join_family_native_key_for(tree: tree)
-  let root = meet_join_family_cache_root_for(test_id: test_id)
-  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
-  native_cache_workspace_root(cache_root: root, key: key)
-}
-
-fn meet_join_family_cached_run_with_source(
-  workspace: String,
-  tree: InferredTree,
-  target: TargetModel,
-  subgraph: Node,
-  source: Medium<String>,
-  expect_compile_skipped: Bool,
-  expected_octet: Int
-) -> Bool {
-  match run_emit_host_cached(
-    workspace_dir: workspace,
-    target: target,
-    source: source,
-    fixture_inputs: meet_join_family_fixture_inputs(subgraph: subgraph)
-  ) {
-    Accepted { value: receipt, diagnostics: _ } =>
-      match receipt.logical_run {
-        Accepted {
-          value: HostLogicalRun { stdout: stdout },
-          diagnostics: None
-        } =>
-          receipt.compile_skipped == expect_compile_skipped
-            && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn meet_join_family_cached_run_checks(
-  workspace: String,
-  tree: InferredTree,
-  target: TargetModel,
-  subgraph: Node,
-  expect_compile_skipped: Bool,
-  expected_octet: Int
-) -> Bool {
-  match emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: _ } =>
-      meet_join_family_cached_run_with_source(
-        workspace: workspace,
-        tree: tree,
-        target: target,
-        subgraph: subgraph,
-        source: source,
-        expect_compile_skipped: expect_compile_skipped,
-        expected_octet: expected_octet
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn meet_join_family_cached_cold_then_warm(
-  workspace: String,
-  tree: InferredTree,
-  target: TargetModel,
-  subgraph: Node,
-  expected_octet: Int
-) -> Bool {
-  match emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: _ } =>
-      meet_join_family_cached_run_with_source(
-        workspace: workspace,
-        tree: tree,
-        target: target,
-        subgraph: subgraph,
-        source: source,
-        expect_compile_skipped: false,
-        expected_octet: expected_octet
-      )
-        && meet_join_family_cached_run_with_source(
-          workspace: workspace,
-          tree: tree,
-          target: target,
-          subgraph: subgraph,
-          source: source,
-          expect_compile_skipped: true,
-          expected_octet: expected_octet
-        )
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
@@ -274,102 +150,6 @@ test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bo
   key_primary != key_alt
 }
 
-test fn emit_on_demand_meet_wrong_fixture_refuses_holds() -> Bool {
-  let workspace = meet_join_family_evict_and_workspace(
-    test_id: "meet_wrong_fixture_native",
-    tree: meet_family_alt_tree()
-  )
-  meet_join_family_cached_run_checks(
-    workspace: workspace,
-    tree: meet_family_alt_tree(),
-    target: rust_logic_meet_target_model_staging(),
-    subgraph: dag_meet_eval_subgraph_fixture,
-    expect_compile_skipped: false,
-    expected_octet: 0
-  )
-}
-
-test fn emit_on_demand_join_wrong_fixture_refuses_holds() -> Bool {
-  let workspace = meet_join_family_evict_and_workspace(
-    test_id: "join_wrong_fixture_native",
-    tree: join_family_alt_tree()
-  )
-  meet_join_family_cached_run_checks(
-    workspace: workspace,
-    tree: join_family_alt_tree(),
-    target: rust_logic_join_target_model_staging(),
-    subgraph: dag_join_eval_subgraph_fixture,
-    expect_compile_skipped: false,
-    expected_octet: 0
-  )
-}
-
-test fn emit_on_demand_meet_native_content_change_cold_rebuild_holds() -> Bool {
-  let shared_parent = meet_join_family_cache_root_for(test_id: "meet_content_change_miss")
-  let tree_primary = meet_family_tree()
-  let tree_alt = meet_family_alt_tree()
-  let key_primary = meet_join_family_native_key_for(tree: tree_primary)
-  let key_alt = meet_join_family_native_key_for(tree: tree_alt)
-  if key_primary == key_alt {
-    false
-  } else {
-    let workspace_primary = native_cache_workspace_root(cache_root: shared_parent, key: key_primary)
-    let _evict_primary = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_primary)
-    let _evict_alt = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_alt)
-    let warmed = meet_join_family_cached_cold_then_warm(
-      workspace: workspace_primary,
-      tree: tree_primary,
-      target: rust_logic_meet_target_model_staging(),
-      subgraph: dag_meet_eval_subgraph_fixture,
-      expected_octet: 1
-    )
-    let workspace_alt = native_cache_workspace_root(cache_root: shared_parent, key: key_alt)
-    warmed
-      && meet_join_family_cached_run_checks(
-        workspace: workspace_alt,
-        tree: tree_alt,
-        target: rust_logic_meet_target_model_staging(),
-        subgraph: dag_meet_eval_subgraph_fixture,
-        expect_compile_skipped: false,
-        expected_octet: 0
-      )
-  }
-}
-
-test fn emit_on_demand_meet_native_cold_holds() -> Bool {
-  let workspace = meet_join_family_evict_and_workspace(test_id: "meet_native_cold", tree: meet_family_tree())
-  meet_join_family_cached_run_checks(
-    workspace: workspace,
-    tree: meet_family_tree(),
-    target: rust_logic_meet_target_model_staging(),
-    subgraph: dag_meet_eval_subgraph_fixture,
-    expect_compile_skipped: false,
-    expected_octet: 1
-  )
-}
-
-test fn emit_on_demand_meet_native_cold_then_warm_holds() -> Bool {
-  let workspace = meet_join_family_evict_and_workspace(test_id: "meet_native_cold_then_warm", tree: meet_family_tree())
-  meet_join_family_cached_cold_then_warm(
-    workspace: workspace,
-    tree: meet_family_tree(),
-    target: rust_logic_meet_target_model_staging(),
-    subgraph: dag_meet_eval_subgraph_fixture,
-    expected_octet: 1
-  )
-}
-
-test fn emit_on_demand_join_native_cold_then_warm_holds() -> Bool {
-  let workspace = meet_join_family_evict_and_workspace(test_id: "join_native_cold_then_warm", tree: join_family_tree())
-  meet_join_family_cached_cold_then_warm(
-    workspace: workspace,
-    tree: join_family_tree(),
-    target: rust_logic_join_target_model_staging(),
-    subgraph: dag_join_eval_subgraph_fixture,
-    expected_octet: 1
-  )
-}
-
 test fn emit_on_demand_meet_join_family_witnesses() -> Bool {
   emit_on_demand_meet_join_grain_keys_differ_holds()
     && emit_on_demand_meet_join_materialize_recompute_on_miss_holds()
@@ -377,11 +157,5 @@ test fn emit_on_demand_meet_join_family_witnesses() -> Bool {
     && emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds()
     && emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_meet_wrong_fixture_refuses_holds()
-    && emit_on_demand_join_wrong_fixture_refuses_holds()
-    && emit_on_demand_meet_native_content_change_cold_rebuild_holds()
-    && emit_on_demand_meet_native_cold_holds()
-    && emit_on_demand_meet_native_cold_then_warm_holds()
-    && emit_on_demand_join_native_cold_then_warm_holds()
     && emit_on_demand_meet_join_materialize_share_on_hit_holds()
 }
