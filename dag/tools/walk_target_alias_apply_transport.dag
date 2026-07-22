@@ -19,7 +19,7 @@ fn walk_target_alias_apply_dry_run_receipt_holds() -> Bool {
   }
   match walk_target_alias_apply_plan_pure(plan: plan, write_requested: false) {
     Accepted { value: report, diagnostics: _ } =>
-      report.binding_identity_oracle_passed
+      report.binding_identity_static_oracle_passed
         && !report.write_requested
         && (report.refused == [walk_target_alias_apply_module_index_seed_gap])
     Rejected { diagnostics: _ } => false

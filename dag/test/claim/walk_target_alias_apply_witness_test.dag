@@ -189,7 +189,7 @@ fn wtaa_dry_run_apply_seed_gap_refuses_holds() -> Bool {
   match walk_target_alias_apply_plan_pure(plan: plan, write_requested: false) {
     Rejected { diagnostics: _ } => false
     Accepted { value: report, diagnostics: _ } =>
-      report.binding_identity_oracle_passed && !report.write_requested
+      report.binding_identity_static_oracle_passed && !report.write_requested
   }
 }
 

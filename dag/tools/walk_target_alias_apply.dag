@@ -76,7 +76,7 @@ type WalkTargetAliasApplyReport {
   skipped_existing: Int
   refused: List<String>
   source_scope_label: String
-  binding_identity_oracle_passed: Bool
+  binding_identity_static_oracle_passed: Bool
   write_requested: Bool
 }
 
@@ -390,7 +390,7 @@ fn walk_target_alias_apply_plan_pure(
               skipped_existing: 0,
               refused: [walk_target_alias_apply_module_index_seed_gap],
               source_scope_label: plan.source_scope_label,
-              binding_identity_oracle_passed: true,
+              binding_identity_static_oracle_passed: true,
               write_requested: write_requested
             }
           )

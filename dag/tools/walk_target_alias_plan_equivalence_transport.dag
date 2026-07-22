@@ -9,8 +9,19 @@ import tools.walk_target_alias_plan {
   FnParentFirstHit
 }
 import v2.std.logic { Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data wtaa_plan_equivalence_doc: String = "Phase 7 (#6984 fold-in, operator ruling msg_b6c9153f): equivalence receipt harness. Until walk_target_alias_plan_from_census lands in .dag (seed-gap row 1), the wet arm runs the seed-retained walk_target_alias_plan Rust bin on the positive-control fixture corpus; the pure arm holds golden WalkTargetAliasPlanRow values from the same fixture oracle (cli_run positive-control tests). Full dual-run row identity gates Phase 7 Rust deletion — divergence is reported, never silently reconciled."
+data wtaa_plan_equivalence_doc: String = "Phase 7 (#6984 fold-in, operator ruling msg_b6c9153f): PLACEHOLDER for the dual-run equivalence gate — NOT yet the gate itself. The wet Rust arm (seed-retained walk_target_alias_plan bin) is NOT ingested into any comparison here, so nothing in this module can go red on a real Rust/.dag divergence. wtaa_plan_equivalence_pure_arm_self_consistent only checks that a pure-arm golden WalkTargetAliasPlanRow is self-consistent under walk_target_alias_plan_row_eq (reflexivity) — green here does NOT establish equivalence and does NOT gate Phase 7 Rust deletion (§5: green must not read as a dual-run receipt). Dissolution (wtaa_plan_equivalence_placeholder_scaffold): wire the wet arm's captured rows into a real dual-run comparison once walk_target_alias_plan_from_census lands in .dag (seed-gap row 1)."
+
+data wtaa_plan_equivalence_placeholder_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.walk_target_alias_plan_equivalence_transport",
+    decl_name: "wtaa_plan_equivalence_pure_arm_self_consistent",
+    field: WholeDeclaration
+  }
+}
 
 fn walk_target_alias_plan_equivalence_golden_global_bare_lcp() -> WalkTargetAliasPlanRow {
   WalkTargetAliasPlanRow {
@@ -40,7 +51,7 @@ fn walk_target_alias_plan_equivalence_golden_fn_parent() -> WalkTargetAliasPlanR
   }
 }
 
-fn wtaa_plan_equivalence_pure_receipt_holds() -> Bool {
+fn wtaa_plan_equivalence_pure_arm_self_consistent() -> Bool {
   let g = walk_target_alias_plan_equivalence_golden_global_bare_lcp()
   walk_target_alias_plan_row_eq(a: g, b: g)
 }
@@ -54,5 +65,5 @@ fn run_walk_target_alias_plan_bin_smoke() -> Bool {
 }
 
 fn run_walk_target_alias_plan_equivalence_witness() -> Bool {
-  wtaa_plan_equivalence_pure_receipt_holds()
+  wtaa_plan_equivalence_pure_arm_self_consistent()
 }
