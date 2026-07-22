@@ -5,7 +5,7 @@ set -euo pipefail
 # Wave C envelope: deploy-access preflight + sudoers dropin emitted from roster before mutation.
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
-# deploy-access-bootstrap-preflight (principal + historical roster grants)
+# deploy-access-bootstrap-preflight (principal + roster grants)
 _gunbc_principal="$(whoami)"
 if [ "$_gunbc_principal" != "ghrunner" ]; then
   echo "deploy_access: typed refusal before mutation — principal mismatch expected=ghrunner actual=$_gunbc_principal"
