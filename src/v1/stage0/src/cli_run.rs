@@ -15394,6 +15394,19 @@ mod node_frontier_plumbing_controls {
         assert!(err.contains("UnexecutedDeferredWitness"));
     }
 
+    #[test]
+    fn witness_whole_tree_resolve_exclusion_matches_concat_authority() {
+        let mut expected = super::witness_exclusion_substrings();
+        expected.extend(super::whole_tree_strict_resolve_exclusion_substrings());
+        let actual = super::whole_tree_resolve_exclusion_substrings();
+        assert_eq!(
+            actual, expected,
+            "host whole_tree_resolve_exclusion_substrings must equal \
+             witness_exclusion_substrings ∪ whole_tree_strict_resolve_exclusion_substrings \
+             (gunbc.ci_layer_roots single-authority concat)"
+        );
+    }
+
     // Task 5 (declared-source-ref selection): the 03_normalize flagship opts into
     // declared_source_refs on its transport — effect_reach must NOT upgrade it to
     // ReadsLiveTree; selection uses the declared-ref axis instead.
@@ -26052,3 +26065,6 @@ mod compile_clean_loader_closure_fork_regression {
         );
     }
 }
+
+#[path = "census_exclude_derive.rs"]
+pub mod census_exclude_derive;
