@@ -171,6 +171,13 @@ fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {
   )
 }
 
+fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl show -p MemoryMax -p MemorySwapMax -p MemoryHigh --value \"", unit),
+    "\" 2>/dev/null"
+  )
+}
+
 data gunbc_srv1_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
   slice_unit: "system-actions-runner.slice",
   memory_max_raw: "infinity",
