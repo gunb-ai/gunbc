@@ -10803,10 +10803,29 @@ fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
     file == entry || entry.ends_with(&file) || file.ends_with(&entry)
 }
 
+fn current_file_from_unified_diff_header(
+    line: &str,
+    last_minus: &mut Option<String>,
+) -> Option<Option<String>> {
+    if let Some(rest) = line.strip_prefix("--- a/") {
+        *last_minus = Some(normalize_repo_path(rest));
+        None
+    } else if line.starts_with("+++ /dev/null") {
+        Some(last_minus.take())
+    } else if let Some(rest) = line.strip_prefix("+++ b/") {
+        *last_minus = None;
+        Some(Some(normalize_repo_path(rest)))
+    } else {
+        None
+    }
+}
+
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
+    let mut last_minus: Option<String> = None;
     for line in diff_text.lines() {
+<<<<<<< HEAD
         if line.starts_with("diff --git ") {
             // Section boundary: a file only becomes attributable after its own
             // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
@@ -10820,6 +10839,10 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             current_file = None;
         } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
+=======
+        if let Some(next) = current_file_from_unified_diff_header(line, &mut last_minus) {
+            current_file = next;
+>>>>>>> 60e8c31c9c (WIP: Wave C5 (shell->dag, PRIORITIZED cleanup): typed-argv exec realization —)
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
                 continue;
@@ -10851,9 +10874,11 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
 fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, HashSet<i64>> {
     let mut out: HashMap<String, HashSet<i64>> = HashMap::new();
     let mut current_file: Option<String> = None;
+    let mut last_minus: Option<String> = None;
     let mut new_line: i64 = 0;
     let mut in_hunk = false;
     for line in diff_text.lines() {
+<<<<<<< HEAD
         if line.starts_with("diff --git ") {
             // Section boundary: only a `+++ b/` header re-arms current_file. A
             // deleted file's header is `+++ /dev/null`, so without this reset
@@ -10868,6 +10893,10 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
         }
         if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
+=======
+        if let Some(next) = current_file_from_unified_diff_header(line, &mut last_minus) {
+            current_file = next;
+>>>>>>> 60e8c31c9c (WIP: Wave C5 (shell->dag, PRIORITIZED cleanup): typed-argv exec realization —)
             in_hunk = false;
             continue;
         }
@@ -16025,6 +16054,42 @@ mod node_frontier_plumbing_controls {
             edits.touched_entry_files.iter().any(|f| f == emit_rel),
             "import preamble + fn body must touch the entry file"
         );
+    }
+
+    #[test]
+    fn deletion_hunk_after_modified_file_does_not_false_fire_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let modified = "dag/gunbc/ci_workflow.dag";
+        let deleted = "dag/gunbc/host_effect_deploy_access_probe_script.dag";
+        let diff = format!(
+            "diff --git a/{modified} b/{modified}\n\
+             --- a/{modified}\n\
+             +++ b/{modified}\n\
+             @@ -135,6 +135,12 @@ fn ci_prelude_steps() -> List<Step> {{\n\
+              ]\n\
+              }}\n\
+             \n\
+             +data note: String = \"new\"\n\
+             +\n\
+             +fn new_steps() -> List<Step> {{\n\
+             +  [ci_checkout_step()]\n\
+             +}}\n\
+             \n\
+             diff --git a/{deleted} b/{deleted}\n\
+             deleted file mode 100644\n\
+             --- a/{deleted}\n\
+             +++ /dev/null\n\
+             @@ -1,3 +0,0 @@\n\
+             -module gunbc.host_effect_deploy_access_probe_script\n\
+             -\n\
+             -fn gone() -> Bool {{ true }}\n"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("deletion hunk must not leak onto prior modified file: {e}")
+        });
     }
 
     #[test]

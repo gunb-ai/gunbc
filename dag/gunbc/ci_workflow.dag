@@ -135,6 +135,37 @@ fn ci_prelude_steps() -> List<Step> {
   ]
 }
 
+data ci_artifact_consumer_prelude_note: String = "Checkout-only prelude for deploy jobs that consume the build job's release-bins artifact. Rust release-bin build + isolated rustup stay on build only — deploy verifies and runs prebuilt binaries."
+
+data ci_floor_gate_toolchain_note: String = "Batch-4 floor gates (emit_host rust smoke, self_host realized-comparison rustfmt/regen_stage0) need cargo+rustfmt on PATH. Uses setup-rust-toolchain without isolated RUSTUP_HOME — the full ci_prelude_steps isolate+pin+cache stack stays build-only (exit 127 rustup extract flake on srv3-07/08, 2026-07-21)."
+
+fn ci_floor_gate_toolchain_step() -> Step {
+  UsesStep {
+    name: Present { value: "Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)" },
+    id: none,
+    uses: setup_rust_action,
+    with: Present {
+      value: [
+        kv(key: "components", value: yaml_string(s: "rustfmt")),
+        kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: ""))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_artifact_consumer_prelude_steps() -> List<Step> {
+  [ci_checkout_step()]
+}
+
+fn ci_floor_job_prelude_steps() -> List<Step> {
+  [ci_checkout_step(), ci_floor_gate_toolchain_step()]
+}
+
 fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
@@ -412,7 +443,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     name: none,
     runner: stage.runner,
     steps: concat(
-      ci_prelude_steps(),
+      ci_artifact_consumer_prelude_steps(),
       [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_deploy_step(stage: stage)]
     ),
     needs: stage.needs,
@@ -452,7 +483,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_regen_floor_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_regen_floor_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step()]),
     needs: ["build"],
     env: none,
     outputs: none,
