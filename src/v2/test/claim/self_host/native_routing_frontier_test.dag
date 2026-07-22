@@ -5,9 +5,10 @@ import v2.compiler.self_host.native_routing_frontier {
   native_routing_frontier_family_count_expected,
   native_routed_rows,
   interpreted_retained_rows,
-  routing_frontier_row_for_family,
+  routing_frontier_row_for_subject,
   routing_frontier_total_holds,
-  routing_row_is_native
+  routing_row_is_native,
+  family_subject
 }
 import v2.compiler.self_host.parity_window { parity_flip_permitted }
 import v2.compiler.self_host.parity_receipts_local { meet_join_local_receipts, complement_local_receipts }
@@ -19,18 +20,25 @@ fn witness_roster_total_holds() -> Bool {
   routing_frontier_total_holds()
 }
 
-fn witness_each_family_has_exactly_one_row() -> Bool {
+fn witness_each_subject_has_exactly_one_row() -> Bool {
   fold(
     native_routing_frontier_roster,
     init: true,
     f: fn(acc, row) {
-      acc && (length(xs: routing_frontier_row_for_family(family: row.family)) == 1)
+      acc && (length(xs: routing_frontier_row_for_subject(subject: row.subject)) == 1)
     }
   )
 }
 
-fn witness_unlisted_family_has_no_row() -> Bool {
-  length(xs: routing_frontier_row_for_family(family: "unlisted_synthetic_family")) == 0
+fn witness_unlisted_subject_has_no_row() -> Bool {
+  length(
+    xs: routing_frontier_row_for_subject(
+      subject: family_subject(
+        module_path: "v2.test.synthetic.unlisted_module",
+        decl_name: "unlisted_synthetic_subject"
+      )
+    )
+  ) == 0
 }
 
 fn witness_routed_and_retained_split() -> Bool {
@@ -38,9 +46,27 @@ fn witness_routed_and_retained_split() -> Bool {
     && (length(xs: interpreted_retained_rows()) == 7)
 }
 
+fn routed_subject_module_bound(module_path: String) -> Bool {
+  length(
+    xs: fold(
+      native_routed_rows(),
+      init: [],
+      f: fn(acc, row) {
+        if row.subject.module_path == module_path {
+          concat(acc, [row])
+        } else {
+          acc
+        }
+      }
+    )
+  ) == 1
+}
+
 fn witness_flips_cite_parity_evidence() -> Bool {
   parity_flip_permitted(family: "meet_join", receipts: meet_join_local_receipts())
     && parity_flip_permitted(family: "complement", receipts: complement_local_receipts())
+    && routed_subject_module_bound(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
+    && routed_subject_module_bound(module_path: "v2.test.execution.emit_host_complement_equals_eval")
 }
 
 fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
@@ -55,8 +81,8 @@ fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
 
 test fn native_routing_frontier_witnesses() -> Bool {
   witness_roster_total_holds()
-    && witness_each_family_has_exactly_one_row()
-    && witness_unlisted_family_has_no_row()
+    && witness_each_subject_has_exactly_one_row()
+    && witness_unlisted_subject_has_no_row()
     && witness_routed_and_retained_split()
     && witness_flips_cite_parity_evidence()
     && witness_retained_rows_carry_reason_and_trigger()

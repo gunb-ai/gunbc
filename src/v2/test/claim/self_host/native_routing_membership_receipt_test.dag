@@ -1,0 +1,105 @@
+module v2.test.claim.self_host.native_routing_membership_receipt_test
+
+import v2.compiler.self_host.native_routing_frontier {
+  NativeRoutingFrontierRow,
+  NativeRoutingEntryClosure,
+  native_routing_frontier_roster,
+  routing_frontier_agreement_entries_distinct,
+  native_routing_pool_closures,
+  native_routing_closure_reaches_subject,
+  native_routing_row_membership_derived,
+  native_routing_membership_facts_live,
+  family_subject
+}
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.std.algebra { length, any }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data native_routing_membership_receipt_note: String = "Equivalence receipt for the subject re-key (native_routing_subject_key_note): per row, membership DERIVED from the closure authority (an agreement entry is a member exactly when its dependency closure reaches the subject's module) equals the hand-bound agreement entry — [row.agreement_entry] and nothing else from the distinct-entry pool. The family-crate entry is the bound entry of BOTH routed rows (complement, meet_join), so it derives as the sole member of each — its closure reaches both subjects, and no retained entry's closure does. RED control: an entry whose closure does NOT reach a subject (the add entry against the match subject) is not a member. Edge and node facts are computed once and closures once per pool entry (native_routing_pool_closures), never per (row x entry)."
+
+data membership_pool_roots: List<String> = ["src/v2", "dag"]
+
+fn closure_for_entry(
+  pool: List<NativeRoutingEntryClosure>,
+  entry: String
+) -> List<String> {
+  fold(
+    pool,
+    init: [],
+    f: fn(acc, ec) {
+      if ec.entry == entry {
+        ec.closure
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn derived_equals_bound(
+  row: NativeRoutingFrontierRow,
+  pool: List<NativeRoutingEntryClosure>,
+  facts: List<ModuleDeclarationFact>
+) -> Bool {
+  let derived = native_routing_row_membership_derived(row: row, pool: pool, facts: facts)
+  (length(xs: derived) == 1)
+    && any(xs: derived, predicate: fn(e) { e == row.agreement_entry })
+}
+
+test fn native_routing_derived_membership_equals_bound_entries() -> Bool {
+  let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
+  let pool = native_routing_pool_closures(
+    pool_entries: routing_frontier_agreement_entries_distinct(),
+    pool_roots: membership_pool_roots
+  )
+  fold(
+    native_routing_frontier_roster,
+    init: true,
+    f: fn(acc, row) {
+      acc && derived_equals_bound(row: row, pool: pool, facts: facts)
+    }
+  )
+}
+
+test fn native_routing_red_control_unreached_subject_is_not_member() -> Bool {
+  let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
+  let pool = native_routing_pool_closures(
+    pool_entries: ["src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag"],
+    pool_roots: membership_pool_roots
+  )
+  native_routing_closure_reaches_subject(
+    closure: closure_for_entry(
+      pool: pool,
+      entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag"
+    ),
+    subject: family_subject(
+      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      decl_name: "table_fixture_match_arrow_with_body"
+    ),
+    facts: facts
+  ) == false
+}
+
+test fn native_routing_green_control_bound_entry_reaches_subject() -> Bool {
+  let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
+  let pool = native_routing_pool_closures(
+    pool_entries: ["src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag"],
+    pool_roots: membership_pool_roots
+  )
+  native_routing_closure_reaches_subject(
+    closure: closure_for_entry(
+      pool: pool,
+      entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag"
+    ),
+    subject: family_subject(
+      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      decl_name: "table_fixture_match_arrow_with_body"
+    ),
+    facts: facts
+  )
+}
