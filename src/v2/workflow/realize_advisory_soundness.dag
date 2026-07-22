@@ -1,0 +1,51 @@
+module v2.workflow.realize_advisory_soundness
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data realize_advisory_soundness_note: String = "P4 consumption gate (2026-07-22): the realize_pack advisory logger emits per-subject pairs (derived space bound vs governor-observed peak) as receipt lines every corpus run — computed since #6855 but consumed by nothing. This module is the soundness LAW those pairs are judged by: a derived bound is sound iff observed peak <= derived bytes; an observed exceedance is BoundUnsound (the P4 cutover blocker signal), and a missing derived bound is BoundUnknown — a typed state, never treated as sound (no fabricated plausible output, DESIGN section 5). Receipt rows are authored from falsifier run observations, the parity-window pattern; the P4 governor demotion is gated on a window of BoundSound rows the same way routing flips gate on parity."
+
+type AdvisoryObservation {
+  entry: String
+  subject_function: String
+  derived_bytes_known: Bool
+  derived_bytes: Int
+  observed_peak_bytes: Int
+}
+
+type AdvisorySoundness
+  = BoundSound { margin_bytes: Int }
+  | BoundUnsound { derived_bytes: Int, observed_peak_bytes: Int }
+  | BoundUnknown { entry: String, subject_function: String }
+
+fn advisory_soundness_for(o: AdvisoryObservation) -> AdvisorySoundness {
+  if o.derived_bytes_known == false {
+    BoundUnknown { entry: o.entry, subject_function: o.subject_function }
+  } else if o.observed_peak_bytes > o.derived_bytes {
+    BoundUnsound {
+      derived_bytes: o.derived_bytes,
+      observed_peak_bytes: o.observed_peak_bytes
+    }
+  } else {
+    BoundSound { margin_bytes: o.derived_bytes - o.observed_peak_bytes }
+  }
+}
+
+fn advisory_observation_is_sound(o: AdvisoryObservation) -> Bool {
+  match advisory_soundness_for(o: o) {
+    BoundSound { margin_bytes: _ } => true
+    BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
+    BoundUnknown { entry: _, subject_function: _ } => false
+  }
+}
+
+fn advisory_window_all_sound(observations: List<AdvisoryObservation>) -> Bool {
+  fold(
+    observations,
+    init: true,
+    f: fn(acc, o) {
+      acc && advisory_observation_is_sound(o: o)
+    }
+  )
+}
