@@ -1,0 +1,97 @@
+module test.claim.host_hygiene_liveness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data liveness_test_bound: Second = second(1800)
+
+data liveness_test_fresh_slot: SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+  age: second(60),
+}
+
+data liveness_test_stale_slot: SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+  age: second(9000),
+}
+
+data liveness_test_never_seen_slot: SlotListeningObservation = ListeningNeverSeen {
+  unit: "actions-runner@srv1-04.service" as NonEmptyStr,
+}
+
+test fn fresh_listener_within_bound_is_healthy() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound) {
+    ListeningFresh { unit: _ } => true
+    _ => false
+  }
+}
+
+test fn verdict_flips_when_age_crosses_the_bound() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound) {
+    ListeningFresh { unit: _ } =>
+      match slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound) {
+        ListeningStale { unit: _, age: _, bound: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn never_seen_listener_is_unknown_not_fabricated_fresh() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_never_seen_slot, bound: liveness_test_bound) {
+    ListeningUnknown { unit: _, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn fleet_is_green_when_every_slot_is_fresh() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  fleet_green_from_listening(verdicts: verdicts)
+}
+
+test fn one_stopped_listener_flips_the_fleet_verdict_red() -> Bool {
+  let all_fresh = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  let one_stale = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound),
+  ]
+  fleet_green_from_listening(verdicts: all_fresh) && !fleet_green_from_listening(verdicts: one_stale)
+}
+
+test fn unknown_listener_also_flips_the_fleet_verdict_red() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_never_seen_slot, bound: liveness_test_bound),
+  ]
+  !fleet_green_from_listening(verdicts: verdicts)
+}
+
+data nrestarts_signal_exclusion_doc: String = "review 40975: the prior test here (nrestarts_style_signal_is_not_consulted_by_the_verdict) only pattern-matched that the fixture was shaped ListeningObserved\{..\} - true by construction of the data declaration two lines above it - and never called slot_listening_verdict, so it could never go red (DESIGN section 5, specification-without-execution). The real guarantee is structural, not testable by a running check: SlotListeningObservation (host_hygiene_liveness.dag) has exactly three variants - ListeningObserved\{unit,age\}, ListeningNeverSeen\{unit\}, ListeningReadInaccessible\{unit,detail\} - none carrying an NRestarts-shaped field, so slot_listening_verdict cannot consult a signal the type does not have. Adding a bogus NRestarts field to the type just to give a test something to assert would be construction-over-validation working in reverse - manufacturing writable state solely to prove a checker catches it."
+
+test fn ground_fleet_listening_converges_when_all_fresh() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  match ground_fleet_listening(verdicts: verdicts) {
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
+  }
+}
+
+test fn ground_fleet_listening_refuses_when_one_stale() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound),
+  ]
+  match ground_fleet_listening(verdicts: verdicts) {
+    Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+  }
+}
+
+test fn liveness_script_reads_listening_for_jobs_line_is_an_executing_witness() -> Bool {
+  host_hygiene_liveness_reads_listening_for_jobs_line()
+}

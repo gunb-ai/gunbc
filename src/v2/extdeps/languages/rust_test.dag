@@ -2336,6 +2336,172 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
   )
 }
 
+data rust_family_dispatch_note: String = "Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per witness family — the family main is DERIVED from member arm rows (member_id -> i32 result expression), never a hand-written N+1th main. Member selection is a run-time argv parameter (cargo's `--` separator is this transport's convention, owned here); the derived match is fail-closed — an unknown member id exits 2, a refused run, never fabricated octets."
+
+type RustEmitHostFamilyMember {
+  member_id: String,
+  result_expression: String
+}
+
+data rust_family_main_open: String = "\n\nfn main() { let member: String = std::env::args().nth(1).unwrap_or_default(); let d: i32 = match member.as_str() {\n"
+
+data rust_family_main_close: String = "    _ => std::process::exit(2),\n  }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_family_dispatch_arm(member: RustEmitHostFamilyMember) -> String {
+  concat("    \"", member.member_id, "\" => ", member.result_expression, ",\n")
+}
+
+fn rust_family_dispatch_arms(members: List<RustEmitHostFamilyMember>) -> String {
+  fold_list(
+    xs: members,
+    empty: "",
+    cons: fn(acc, member) {
+      concat(acc, rust_family_dispatch_arm(member: member))
+    }
+  )
+}
+
+fn rust_family_main_suffix(
+  prelude: String,
+  members: List<RustEmitHostFamilyMember>
+) -> String {
+  concat(
+    prelude,
+    rust_family_main_open,
+    rust_family_dispatch_arms(members: members),
+    rust_family_main_close
+  )
+}
+
+fn rust_family_member_run_args(member_id: String) -> List<String> {
+  ["--", member_id]
+}
+
+data rust_logic_family_prelude: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }"
+
+data rust_logic_family_member_meet: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "meet",
+  result_expression: "match meet(True, True) { False => 0, True => 1 }"
+}
+
+data rust_logic_family_member_join: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "join",
+  result_expression: "match join(True, False) { False => 0, True => 1 }"
+}
+
+data rust_logic_family_member_complement: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "complement",
+  result_expression: "match complement(True) { False => 0, True => 1 }"
+}
+
+fn rust_logic_family_dispatch_members() -> List<RustEmitHostFamilyMember> {
+  [
+    rust_logic_family_member_meet,
+    rust_logic_family_member_join,
+    rust_logic_family_member_complement
+  ]
+}
+
+fn rust_logic_family_runtime_row() -> TargetEmitHostRuntimeRow {
+  rust_bool_fn_host_runtime_row(
+    host_identity_sym: ^rust_host_transport_logic_family_identity,
+    main_suffix: rust_family_main_suffix(
+      prelude: rust_logic_family_prelude,
+      members: rust_logic_family_dispatch_members()
+    )
+  )
+}
+
+fn rust_logic_family_target_model_staging() -> TargetModel {
+  let base = rust_logic_meet_target_model_staging()
+  TargetModel {
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_logic_family_runtime_row()
+  }
+}
+
+data rust_match_loop_fold_family_prelude: String = "\n\nfn fold_call_callee(xs: i32, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { f(xs, z) }"
+
+data rust_match_loop_fold_family_member_match: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "match",
+  result_expression: "one_or_two()"
+}
+
+data rust_match_loop_fold_family_member_loop: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "loop",
+  result_expression: "one()"
+}
+
+data rust_match_loop_fold_family_member_fold: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "fold",
+  result_expression: "fold_demo(3, 4)"
+}
+
+fn rust_match_loop_fold_family_dispatch_members() -> List<RustEmitHostFamilyMember> {
+  [
+    rust_match_loop_fold_family_member_match,
+    rust_match_loop_fold_family_member_loop,
+    rust_match_loop_fold_family_member_fold
+  ]
+}
+
+fn rust_match_loop_fold_family_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_match_loop_fold_family_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix {
+          suffix: rust_family_main_suffix(
+            prelude: rust_match_loop_fold_family_prelude,
+            members: rust_match_loop_fold_family_dispatch_members()
+          )
+        }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cargo" },
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: HostToolProgram { executable: "cargo" },
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_match_loop_fold_family_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_match_loop_fold_family_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_match_loop_fold_family_target_model_staging() -> TargetModel {
+  let base = rust_match_target_model_staging()
+  TargetModel {
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_match_loop_fold_family_runtime_row()
+  }
+}
+
 data rust_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
 
 data rust_rec_wrong_value_source_text: String = "fn mk() -> Rec { Rec { v: 8 } }"

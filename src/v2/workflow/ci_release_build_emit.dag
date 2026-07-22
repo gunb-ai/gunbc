@@ -13,7 +13,7 @@ data ci_release_build_emit_authority_note: String = "Release-build shell emissio
 
 fn ci_release_build_script() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("ROOT=", gunbc.ci_spec.ci_repo_root_shell(), "\n"),
     concat(
       ci_cargo_eagain_retry_script(command: ci_release_build_line()),
       concat(
