@@ -1,0 +1,162 @@
+module test.claim.srv3_runner_memory_converge_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn srv3_memory_max_knob_name() -> String {
+  "per_slot_memory_max_bytes"
+}
+
+fn srv3_memory_high_knob_name() -> String {
+  "per_slot_memory_high_bytes"
+}
+
+fn srv3_host_converge_from_standup_policy() -> HostConverge? {
+  host_converge_from_policy(policy: host_standup_fleet_converge_policy(), host: operator_host_srv3)
+}
+
+fn srv3_memory_knob(host: HostConverge, name: String) -> ConvergeKnob? {
+  converge_knob_by_name(host: host, name: name)
+}
+
+fn last_runner_slice_knob_name(knobs: List<ConvergeKnob>) -> String {
+  fold(knobs, init: "", f: (acc, k) => match k.slice {
+    GunbcSlice => acc
+    RunnerSlice => k.name
+    SessionsSlice => acc
+  })
+}
+
+fn witness_srv3_committed_allocation_matches_authority() -> Bool {
+  let alloc = gunbc_committed_host_runner_slot_allocation(host: operator_host_srv3)
+  let desired = gunbc_runner_slot_desired()
+  alloc.host == operator_host_srv3
+    && byte_size_count(b: alloc.per_slot.memory_max) == byte_size_count(b: desired.memory_max)
+    && byte_size_count(b: alloc.per_slot.memory_high) == byte_size_count(b: desired.memory_high)
+}
+
+fn witness_srv3_standup_converge_policy_includes_host() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } => host.identity == operator_host_srv3
+    Absent => false
+  }
+}
+
+fn witness_srv3_memory_max_knob_grounds_authority() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } =>
+      match srv3_memory_knob(host: host, name: srv3_memory_max_knob_name()) {
+        Present { value: knob } =>
+          knob.desired == to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max))
+            && match knob.target {
+              PerSlotMemoryCap { dropin_path: _, instance_glob: glob, property: p, bytes_value: b } =>
+                p == systemd_memory_max_property
+                  && b == knob.desired
+                  && string_contains(s: glob, pattern: "srv3")
+              _ => false
+            }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } =>
+      match srv3_memory_knob(host: host, name: srv3_memory_high_knob_name()) {
+        Present { value: knob } =>
+          knob.desired == to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high))
+            && match knob.target {
+              PerSlotMemoryCap {
+                dropin_path: path,
+                instance_glob: glob,
+                property: p,
+                bytes_value: b,
+              } =>
+                path == gunbc_runner_per_slot_high_dropin_path
+                  && p == systemd_memory_high_property
+                  && b == knob.desired
+                  && string_contains(s: glob, pattern: "srv3")
+              _ => false
+            }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
+  let desired = gunbc_runner_slot_desired()
+  byte_size_count(b: desired.memory_high) < byte_size_count(b: desired.memory_max)
+    && byte_size_count(b: desired.memory_high) == byte_size_count(b: byte_size(16106127360))
+}
+
+fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
+  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
+}
+
+fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
+  match srv3_host_converge_from_standup_policy() {
+    Present { value: host } =>
+      last_runner_slice_knob_name(knobs: host.knobs) == "runner_count"
+        && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_memory_max_knob_name())
+        && fold(host.knobs, init: false, f: (acc, k) => acc || k.name == srv3_memory_high_knob_name())
+    Absent => false
+  }
+}
+
+fn witness_provision_routes_through_host_effect_apply() -> Bool {
+  provision_runner_memory_caps_routes_through_host_effect_apply()
+}
+
+fn witness_provision_scope_binds_per_slot_memory_cap_realize_frontier() -> Bool {
+  host_runner_memory_provision_scope_binds_realize_frontier()
+}
+
+fn witness_provision_apply_frontier_refuses_per_slot_memory_cap() -> Bool {
+  match runner_memory_host_converge(host: operator_host_srv3) {
+    Present { value: hc } =>
+      fold(
+        runner_memory_knobs_from(host: hc),
+        init: true,
+        f: (acc, knob) => acc && runner_memory_knob_apply_frontier_is_unimplemented(knob: knob)
+      )
+    Absent => false
+  }
+}
+
+fn witness_readback_verdict_drifts_RED_when_live_mismatch() -> Bool {
+  match runner_memory_cap_readback_verdict(
+    read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
+    knob: legacy_converge_knob(
+      slice: RunnerSlice,
+      name: srv3_memory_max_knob_name(),
+      desired: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_dropin_path,
+        instance_glob: runner_instance_glob(host: operator_host_srv3),
+        property: systemd_memory_max_property,
+        bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)),
+      }
+    ),
+  ) {
+    Present { value: Drifted } => true
+    Present { value: VerdictConverged } => false
+    Absent => false
+  }
+}
+
+test fn srv3_runner_memory_converge_holds() -> Bool {
+  witness_srv3_committed_allocation_matches_authority()
+    && witness_srv3_standup_converge_policy_includes_host()
+    && witness_srv3_memory_max_knob_grounds_authority()
+    && witness_srv3_memory_high_knob_grounds_authority()
+    && witness_srv3_memory_high_is_throttle_line_below_max()
+    && witness_srv3_apply_mode_is_fresh_standup()
+    && witness_srv3_memory_knobs_precede_runner_width_widen()
+    && witness_provision_routes_through_host_effect_apply()
+    && witness_provision_scope_binds_per_slot_memory_cap_realize_frontier()
+    && witness_provision_apply_frontier_refuses_per_slot_memory_cap()
+    && witness_readback_verdict_drifts_RED_when_live_mismatch()
+}
