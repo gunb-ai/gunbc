@@ -1,0 +1,80 @@
+module v2.test.manual.anchor_shape_probe
+
+import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
+import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Atom, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.text { String }
+
+data anchor_probe_source: String = "module probe_target\n\ntype ProbeScheme = ProbeHttps | ProbeFile\n\ntype ProbeUri {\n  scheme: ProbeScheme\n  locator: String\n}\n\ntype ProbeAuth {\n  uri: ProbeUri\n}\n\ndata probe_anchor: ProbeAuth = ProbeAuth {\n  uri: ProbeUri {\n    scheme: ProbeHttps\n    locator: \"example.org/x\"\n  }\n}\n"
+
+fn anchor_probe_edge_tag(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "<pos>"
+  }
+}
+
+fn anchor_probe_node_atoms(n: Node) -> List<String> {
+  let own = match n.kind {
+    TypeNode { connective: Atom { identity: s } } => [symbol_lexeme(sym: s)]
+    _ => []
+  }
+  fold(n.children, init: own, f: fn(acc, e) {
+    concat(acc, anchor_probe_node_atoms(n: e.target))
+  })
+}
+
+fn anchor_probe_find_in_children(n: Node, want: Symbol) -> Optional<Node> {
+  fold(n.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => anchor_probe_find(n: e.target, want: want)
+    }
+  })
+}
+
+fn anchor_probe_find(n: Node, want: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == want {
+        Present { value: n }
+      } else {
+        anchor_probe_find_in_children(n: n, want: want)
+      }
+    Absent => anchor_probe_find_in_children(n: n, want: want)
+  }
+}
+
+fn anchor_probe_decl_report(d: Node) -> List<String> {
+  let labels = fold(d.children, init: ["EDGES:"], f: fn(acc, e) {
+    concat(acc, [anchor_probe_edge_tag(e: e)])
+  })
+  concat(labels, concat(["ATOMS:"], anchor_probe_node_atoms(n: d)))
+}
+
+fn anchor_probe_report(root: Node) -> List<String> {
+  match anchor_probe_find(n: root, want: ^dag_surface_data_decl) {
+    Absent => ["NO_DATA_DECL_IN_TREE"]
+    Present { value: d } => anchor_probe_decl_report(d: d)
+  }
+}
+
+fn anchor_probe_main() -> List<String> {
+  match source_bridged_resolved_root(
+    source_text: anchor_probe_source,
+    file: ^anchor_probe_file
+  ) {
+    Rejected { diagnostics: _ } => ["BRIDGE_REJECTED"]
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } =>
+          concat(["INFER_REJECTED_RESOLVED_SHAPE:"], anchor_probe_report(root: resolved))
+        Accepted { value: inferred, diagnostics: _ } =>
+          concat(["INFERRED_SHAPE:"], anchor_probe_report(root: inferred.root))
+      }
+  }
+}
