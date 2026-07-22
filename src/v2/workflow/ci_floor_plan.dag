@@ -745,7 +745,7 @@ fn gunbc_pr_native_batch() -> Runnable {
       heavy_whole_tree_resolve: false,
       spawns_host_compiler: true,
       memory: runnable_memory_substantial(),
-      execution_mode: Wet
+      execution_mode: Hermetic
     )
   }
 }

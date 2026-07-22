@@ -24,9 +24,18 @@ fn retained_parity_open(family: String, entry: String, f: String) -> NativeRouti
     agreement_entry: entry,
     agreement_function: f,
     disposition: InterpretedRetained {
-      reason: "parity_window_open",
-      dissolve_on: "3 consecutive green falsifier windows (agreement + warm compile_skipped=true) per v2.compiler.self_host.parity_window"
+      reason: "no_cached_no_evict_carrier",
+      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) AND its parity window is green per v2.compiler.self_host.parity_window; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run"
     }
+  }
+}
+
+fn routed_via_family_crate(family: String) -> NativeRoutingFrontierRow {
+  NativeRoutingFrontierRow {
+    family: family,
+    agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
+    disposition: NativeRouted
   }
 }
 
@@ -41,11 +50,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
     f: "emit_host_field_access_equals_eval_holds"
   ),
-  retained_parity_open(
-    family: "complement",
-    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
-    f: "emit_host_complement_equals_eval_holds"
-  ),
+  routed_via_family_crate(family: "complement"),
   retained_parity_open(
     family: "match",
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
@@ -61,11 +66,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
     f: "emit_host_fold_closure_equals_eval_holds"
   ),
-  retained_parity_open(
-    family: "meet_join",
-    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
-    f: "emit_host_meet_equals_eval_holds"
-  ),
+  routed_via_family_crate(family: "meet_join"),
   retained_parity_open(
     family: "variant_construct",
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
