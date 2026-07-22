@@ -18,6 +18,11 @@ import gunbc.host_effect {
   Srv3NbdProxyServe,
   Srv3BootOnceReadBackSleep,
   Srv3ReceiptEmit,
+  LiveDeployApply,
+  LiveDeployRetract,
+  LiveDeployEnsureDependency,
+  LiveDeployDigestReadback,
+  DeployAccessPreflight,
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
@@ -84,6 +89,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import gunbc.live_deploy.host_effect_script { live_deploy_host_effect_script_for }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -197,6 +203,9 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: script } => ShellOnHost { node: n, script: script }
             Absent =>
+              match live_deploy_host_effect_script_for(effect: effect) {
+                Present { value: script } => ShellOnHost { node: n, script: script }
+                Absent =>
               match effect {
                 ShellCommand { script: s } => ShellOnHost { node: n, script: s }
                 RedfishAction { action: _ } =>
@@ -241,6 +250,19 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   }
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
+                DeployAccessPreflight {} =>
+                  IncompatibleCell {
+                    reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
+                  }
+                LiveDeployApply { spec: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                LiveDeployRetract { spec: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                LiveDeployEnsureDependency { dep: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                LiveDeployDigestReadback { port: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+              }
               }
           }
       }
@@ -259,6 +281,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Present { value: _ } =>
               IncompatibleCell { reason: "host_effect: srv3 shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Absent =>
+              match live_deploy_host_effect_script_for(effect: effect) {
+                Present { value: _ } =>
+                  IncompatibleCell { reason: "host_effect: live_deploy shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Absent =>
               match effect {
                 ShellCommand { script: _ } =>
                   IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -297,6 +323,17 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SudoNopasswdExecuteProbe { probe: _ } =>
                   IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                LiveDeployApply { spec: _ } =>
+                  IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                LiveDeployRetract { spec: _ } =>
+                  IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                LiveDeployEnsureDependency { dep: _ } =>
+                  IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                LiveDeployDigestReadback { port: _ } =>
+                  IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                DeployAccessPreflight {} =>
+                  IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
+              }
               }
           }
       }
