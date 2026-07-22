@@ -1,0 +1,184 @@
+module v2.test.long.mandatory_tag_gate_witness
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.normalize { normalize }
+import v2.compiler.compile { CompileLens, always_required_root_lenses }
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
+import std.algebra { Cons, Empty }
+import v2.std.collection { empty_map, List }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.witness { Witness }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gate_witness_note: String = "RED/GREEN controls for the mandatory-tag compile gate at the two grains the accumulator-copy precedent fixed (gate grain = the tree shape the lens provably reads; door grain = the always_required_root_lenses roster). LONG-lane resident (operator 5s rule 2026-07-12, gunbc.ci_layer_roots long_lane_exclusion_note): each witness tokenizes/parses a module through the interpreted v2 frontend with the full dag language model, ~5s+ per witness, over the per-PR fast-lane eval budget - discovery excludes test/claim/long/ at dir grain and the run-29892063728 receipt shows all 12 witnesses EvalBudgetExceeded in place. Recipe: claim_batch --source-root src/v2 --source-root dag --entry src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag --functions <csv of the 12 test fns> --claim-run --wet (~2min; run receipted green 2026-07-22, 12/12 PASS). Parse grain carries the full declaration (name lexeme, type annotation, value vocabulary), so every arm is exercised there, including the misnamed-anchor control - the exact #6991 regression class this wall makes unwritable. Normalize grain currently collapses data-decl value internals (general-body-producer frontier), so its controls cover name/type/missing only; scheme enforcement at corpus scale rides the parse-grain corpus witness. The roster control proves enrollment by execution: a violating module tree pushed through every enrolled root lens yields a rejection whose head reason is mandatory_tag_missing_required_decl - a reason only this lens emits."
+
+data src_clean: String = "module extdeps.gate_probe_clean\n\ndata extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {\n  uri: Uri {\n    scheme: Https\n    locator: \"example.org/authority\"\n  }\n}\n"
+
+data src_misnamed: String = "module extdeps.gate_probe_misnamed\n\ndata gate_probe_misnamed_authority: ExternalAuthority = ExternalAuthority {\n  uri: Uri {\n    scheme: Https\n    locator: \"example.org/authority\"\n  }\n}\n"
+
+data src_missing: String = "module extdeps.gate_probe_missing\n\ndata gate_probe_unrelated_row: Int = 7\n"
+
+data src_file_scheme: String = "module extdeps.gate_probe_file_scheme\n\ndata extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {\n  uri: Uri {\n    scheme: File\n    locator: \"DESIGN.md\"\n  }\n}\n"
+
+data src_wrong_type: String = "module extdeps.gate_probe_wrong_type\n\ndata extdeps_external_authority_anchor: SomethingElse = SomethingElse {\n  note: \"not an authority\"\n}\n"
+
+data src_bogus_scheme: String = "module extdeps.gate_probe_bogus_scheme\n\ndata extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {\n  uri: Uri {\n    scheme: Gopher\n    locator: \"gopher.example.org/authority\"\n  }\n}\n"
+
+data src_off_region: String = "module probe.gate_probe_offregion\n\ndata gate_probe_unrelated_row: Int = 7\n"
+
+data src_exempt_fixture: String = "module extdeps.fixture.gate_probe_planted\n\ndata gate_probe_unrelated_row: Int = 7\n"
+
+type GrainProbe
+  = GrainStageRejected
+  | GrainTree { root: Node }
+
+fn parse_grain_tree(source: String) -> GrainProbe {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^mandatory_tag_gate_witness_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => GrainStageRejected
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => GrainStageRejected
+        Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
+      }
+  }
+}
+
+fn normalized_grain_tree(source: String) -> GrainProbe {
+  match parse_grain_tree(source: source) {
+    GrainStageRejected => GrainStageRejected
+    GrainTree { root: parse_root } =>
+      match normalize(parse_tree: parse_root) {
+        Rejected { diagnostics: _ } => GrainStageRejected
+        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
+      }
+  }
+}
+
+fn gate_accepts_tree(probe: GrainProbe) -> Bool {
+  match probe {
+    GrainStageRejected => false
+    GrainTree { root: root } =>
+      match mandatory_tag_compile_gate(node: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn gate_rejects_tree_with(probe: GrainProbe, reason: Symbol) -> Bool {
+  match probe {
+    GrainStageRejected => false
+    GrainTree { root: root } =>
+      match mandatory_tag_compile_gate(node: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          if d.head.reason == reason {
+            true
+          } else {
+            fold(d.tail, init: false, f: fn(acc, diag) { acc || diag.reason == reason })
+          }
+      }
+  }
+}
+
+test fn mandatory_tag_parse_grain_clean_accepts() -> Bool {
+  gate_accepts_tree(probe: parse_grain_tree(source: src_clean))
+}
+
+test fn mandatory_tag_parse_grain_misnamed_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_misnamed),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_parse_grain_missing_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_missing),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_parse_grain_file_scheme_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_file_scheme),
+    reason: ^mandatory_tag_value_not_accepted
+  )
+}
+
+test fn mandatory_tag_parse_grain_bogus_scheme_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_bogus_scheme),
+    reason: ^mandatory_tag_value_vocabulary_unreadable
+  )
+}
+
+test fn mandatory_tag_parse_grain_wrong_type_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_wrong_type),
+    reason: ^mandatory_tag_required_decl_type_mismatch
+  )
+}
+
+test fn mandatory_tag_parse_grain_off_region_accepts() -> Bool {
+  gate_accepts_tree(probe: parse_grain_tree(source: src_off_region))
+}
+
+test fn mandatory_tag_parse_grain_exempt_fixture_accepts() -> Bool {
+  gate_accepts_tree(probe: parse_grain_tree(source: src_exempt_fixture))
+}
+
+test fn mandatory_tag_normalized_grain_clean_accepts() -> Bool {
+  gate_accepts_tree(probe: normalized_grain_tree(source: src_clean))
+}
+
+test fn mandatory_tag_normalized_grain_missing_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: normalized_grain_tree(source: src_missing),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: normalized_grain_tree(source: src_misnamed),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}
+
+fn roster_rejects_with(probe: GrainProbe, reason: Symbol) -> Bool {
+  match probe {
+    GrainStageRejected => false
+    GrainTree { root: root } =>
+      let inferred = InferredTree { root: root, facts: empty_map() }
+      fold(always_required_root_lenses(), init: false, f: fn(acc, lens) {
+        acc
+          || match lens.gate(inferred) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: d } =>
+              if d.head.reason == reason {
+                true
+              } else {
+                fold(d.tail, init: false, f: fn(acc2, diag) { acc2 || diag.reason == reason })
+              }
+          }
+      })
+  }
+}
+
+test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> Bool {
+  roster_rejects_with(
+    probe: parse_grain_tree(source: src_missing),
+    reason: ^mandatory_tag_missing_required_decl
+  )
+}

@@ -14,6 +14,9 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
+  UnitDiagnosis,
+  UnitDiagnosisUnavailable,
+  UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
@@ -38,11 +41,13 @@ fn witness_service_not_ready_reason_is_located() -> Bool {
     endpoint: roadmap_site_health_path,
     waited: second(count: 1),
     last_probe: "connection refused",
+    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
     && string_contains(s: reason, pattern: "/healthz")
     && string_contains(s: reason, pattern: "connection refused")
+    && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
 fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
@@ -78,13 +83,35 @@ fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
 }
 
 fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
-  let refusal = service_not_ready_refusal_at_poll_bound(last_probe: "health probe never succeeded")
+  let refusal = service_not_ready_refusal_at_poll_bound(
+    last_probe: "health probe never succeeded",
+    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }
+  )
   let reason = service_not_ready_reason(refusal: refusal)
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "waited_s=30")
     && string_contains(s: reason, pattern: "health probe never succeeded")
+    && string_contains(s: reason, pattern: "status=1/FAILURE")
     && !string_contains(s: reason, pattern: "converged")
     && !string_contains(s: reason, pattern: "proceed anyway")
+}
+
+fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
+  let probe_only = service_not_ready_refusal_at_poll_bound(
+    last_probe: "connection refused",
+    unit_diagnosis: UnitDiagnosisUnavailable
+  )
+  let located = service_not_ready_refusal_at_poll_bound(
+    last_probe: "connection refused",
+    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) error: failed to bind 0.0.0.0:8080: Address already in use" }
+  )
+  let probe_only_reason = service_not_ready_reason(refusal: probe_only)
+  let located_reason = service_not_ready_reason(refusal: located)
+  string_contains(s: probe_only_reason, pattern: "connection refused")
+    && !string_contains(s: probe_only_reason, pattern: "Address already in use")
+    && string_contains(s: located_reason, pattern: "connection refused")
+    && string_contains(s: located_reason, pattern: "Address already in use")
+    && probe_only_reason != located_reason
 }
 
 fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
@@ -118,4 +145,5 @@ test fn live_deploy_service_ready_witnesses() -> Bool {
     && witness_poll_max_attempts_is_thirty()
     && witness_poll_max_attempts_tracks_cadence()
     && witness_red_control_never_ready_refuses_at_poll_bound()
+    && witness_refusal_locates_unit_state_distinctly_from_probe()
 }
