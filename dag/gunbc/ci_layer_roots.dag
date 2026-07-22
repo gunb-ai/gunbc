@@ -523,7 +523,7 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
   }
 }
 
-fn witness_exclusion_row_is_bin_wet(row: WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     BinWitnessWet => true
     DiscoverySelection => false
