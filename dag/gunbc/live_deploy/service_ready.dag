@@ -27,12 +27,18 @@ data live_deploy_service_ready_scaffold_dissolution_trigger: Disposition = Scaff
   }
 }
 
+type UnitDiagnosis =
+    UnitDiagnosisUnavailable
+  | UnitDiagnosisCaptured { text: String }
+
+data live_deploy_unit_diagnosis_coproduct_note: String = "UnitDiagnosis is a coproduct, not a String with a reserved 'unavailable' value, and the distinction is the whole point of the field. A sentinel string makes 'nothing was captured' and 'the unit literally emitted the sentinel text' the SAME representation -- an illegal state that is representable, and one an equality test would silently misclassify the day a captured stdout happened to match. That is precisely the state-space conflation this module's diagnosis note invokes against folding unit_diagnosis into last_probe, so encoding absence as a magic string here would have contradicted the field's own reason for existing (caught in review of PR 7038, review 41182). Absence is a variant; rendering matches on it; no comparison against a magic value exists anywhere."
+
 type ServiceNotReady {
   unit: NonEmptyStr
   endpoint: NonEmptyStr
   waited: Second
   last_probe: String
-  unit_diagnosis: String
+  unit_diagnosis: UnitDiagnosis
 }
 
 data live_deploy_service_ready_unit_diagnosis_note: String = "unit_diagnosis carries the UNIT's own account of itself (systemctl status: Active state, main-PID exit code, recent journal lines), captured once when the poll bound is exhausted. It is a SEPARATE fact from last_probe and must not be folded into it: last_probe is what the health endpoint said (a curl-level observation from outside), unit_diagnosis is what the service said (a process-level observation from inside). Conflating them is the state-space conflation DESIGN 3 names -- 'the endpoint refused connection' and 'the process exited 1 while compiling' are different states whose remedies differ, and only the second locates the defect. Motivating incident: the srv1 deploy refused with ServiceNotReady on every run from belt B's merge (PR 6940) onward, and because the refusal carried only the curl exit the cause stayed unlocated for the whole window -- the line stopped, typed, but nobody could see WHY. gunbc serve has four distinct exit paths (source load, blocking diagnostics, no graph, bind failure) and the probe alone cannot tell them apart."
