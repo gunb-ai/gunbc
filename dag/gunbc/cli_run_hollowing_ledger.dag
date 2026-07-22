@@ -39,7 +39,6 @@ data cli_run_hollowing_production_row_baseline: Int = 628
 data cli_run_hollowing_test_row_baseline: Int = 239
 data cli_run_hollowing_unclassified_baseline: Int = 0
 data cli_run_hollowing_source_path: String = "src/v1/stage0/src/cli_run.rs"
-data cli_run_hollowing_source_loc_baseline: Int = 26668
 
 data cli_run_hollowing_ledger_law: String = "cli_run.rs hollowing ledger quick-moth-273: every module-scope fn and test-fn mapped to a v2 dissolution feature. Receipt 867 rows (628 production, 239 test), 0 unclassified. Regenerate via generate_cli_run_hollowing_ledger script. Dissolve-on seed-shrink Chunk F."
 

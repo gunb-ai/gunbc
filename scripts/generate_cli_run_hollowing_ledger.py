@@ -292,7 +292,7 @@ def dag_symbol(name: str) -> str:
     return s
 
 
-def render_dag(rows: list[dict], source_loc: int) -> str:
+def render_dag(rows: list[dict]) -> str:
     counts = Counter(r["feature"] for r in rows)
     prod = sum(1 for r in rows if not r["test"])
     test = sum(1 for r in rows if r["test"])
@@ -348,7 +348,6 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         f"data cli_run_hollowing_test_row_baseline: Int = {test}",
         f"data cli_run_hollowing_unclassified_baseline: Int = {uncl}",
         f'data cli_run_hollowing_source_path: String = "{CLI_RUN.relative_to(REPO)}"',
-        f"data cli_run_hollowing_source_loc_baseline: Int = {source_loc}",
         "",
         f'data cli_run_hollowing_ledger_law: String = "{law}"',
         "",
@@ -456,7 +455,6 @@ def parse_ledger_baselines(dag_text: str) -> dict[str, int]:
         "cli_run_hollowing_production_row_baseline",
         "cli_run_hollowing_test_row_baseline",
         "cli_run_hollowing_unclassified_baseline",
-        "cli_run_hollowing_source_loc_baseline",
     )
     out: dict[str, int] = {}
     for key in keys:
@@ -480,7 +478,6 @@ def verify_ledger(cli_run_lines: list[str], dag_text: str) -> list[str]:
         "cli_run_hollowing_production_row_baseline": prod,
         "cli_run_hollowing_test_row_baseline": test,
         "cli_run_hollowing_unclassified_baseline": uncl,
-        "cli_run_hollowing_source_loc_baseline": len(cli_run_lines),
     }
     for key, expected in baselines.items():
         got = live[key]
@@ -512,7 +509,7 @@ def main() -> int:
         return 0
     rows = extract_functions(lines)
     rows.sort(key=lambda r: r["line"])
-    dag = render_dag(rows, len(lines))
+    dag = render_dag(rows)
     OUT_DAG.write_text(dag)
     counts = Counter(r["feature"] for r in rows)
     print(f"Wrote {OUT_DAG} — {len(rows)} rows")
