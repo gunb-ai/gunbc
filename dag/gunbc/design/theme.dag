@@ -1,0 +1,234 @@
+module gunbc.design.theme
+
+import extdeps.accessibility.wcag_contrast {
+  hsl_contrast_at_least,
+  wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+}
+import gunbc.design.material {
+  Material, AreaClass, PointArea, HairlineArea, TextArea, FieldArea, DataVizArea,
+  chroma_admissible, area_key,
+  paint, paint_alpha,
+  decl, css_block, CssDecl,
+}
+
+data theme_note: String = "Layer 2 theme machinery: total role-to-material binding, WCAG contrast law, night/day atlas rows. Lifted from gunbc.site.tokens (design-register-library.md Phase A)."
+type ThemeRole
+  = CanvasRole
+  | SurfaceRole
+  | BorderRole
+  | TextRole
+  | TextDimRole
+  | FigureRole
+  | FigureLitRole
+  | FigureHaloRole
+  | FigureEdgeRole
+  | FocusRole
+  | BoundaryRole
+
+data theme_roles: List<ThemeRole> = [
+  CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
+  FigureRole, FigureLitRole, FigureHaloRole, FigureEdgeRole,
+  FocusRole, BoundaryRole,
+]
+
+fn role_key(r: ThemeRole) -> String {
+  match r {
+    CanvasRole => "canvas"
+    SurfaceRole => "surface"
+    BorderRole => "border"
+    TextRole => "text"
+    TextDimRole => "text-dim"
+    FigureRole => "figure"
+    FigureLitRole => "figure-lit"
+    FigureHaloRole => "figure-halo"
+    FigureEdgeRole => "figure-edge"
+    FocusRole => "focus"
+    BoundaryRole => "boundary"
+  }
+}
+
+fn role_area(r: ThemeRole) -> AreaClass {
+  match r {
+    CanvasRole => FieldArea
+    SurfaceRole => FieldArea
+    BorderRole => HairlineArea
+    TextRole => TextArea
+    TextDimRole => TextArea
+    FigureRole => PointArea
+    FigureLitRole => PointArea
+    FigureHaloRole => PointArea
+    FigureEdgeRole => HairlineArea
+    FocusRole => PointArea
+    BoundaryRole => HairlineArea
+  }
+}
+
+fn role_var(r: ThemeRole) -> String {
+  join(["var(--", role_key(r: r), ")"], "")
+}
+
+type RoleAssignment {
+  role: ThemeRole
+  material: Material
+  alpha_pct: Int
+}
+
+type Theme {
+  name: String
+  scheme: String
+  assignments: List<RoleAssignment>
+}
+
+fn assign(role: ThemeRole, material: Material) -> RoleAssignment {
+  RoleAssignment { role: role, material: material, alpha_pct: 100 }
+}
+
+fn assign_alpha(role: ThemeRole, material: Material, alpha_pct: Int) -> RoleAssignment {
+  RoleAssignment { role: role, material: material, alpha_pct: alpha_pct }
+}
+
+data night_canvas: Material = Material { name: "night-canvas", hue: 226, sat_pct: 30, light_pct: 7, area: FieldArea }
+data night_surface: Material = Material { name: "night-surface", hue: 226, sat_pct: 24, light_pct: 10, area: FieldArea }
+data night_border: Material = Material { name: "night-border", hue: 224, sat_pct: 18, light_pct: 32, area: HairlineArea }
+data night_text: Material = Material { name: "night-text", hue: 35, sat_pct: 14, light_pct: 78, area: TextArea }
+data night_text_dim: Material = Material { name: "night-text-dim", hue: 35, sat_pct: 9, light_pct: 55, area: TextArea }
+data warm_starlight: Material = Material { name: "warm-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea }
+data warm_starlight_lit: Material = Material { name: "warm-starlight-lit", hue: 45, sat_pct: 34, light_pct: 96, area: PointArea }
+data starlight_edge: Material = Material { name: "starlight-edge", hue: 45, sat_pct: 14, light_pct: 64, area: HairlineArea }
+data night_brass: Material = Material { name: "night-brass", hue: 42, sat_pct: 48, light_pct: 62, area: PointArea }
+data night_clay: Material = Material { name: "night-clay", hue: 8, sat_pct: 52, light_pct: 56, area: HairlineArea }
+
+data day_canvas: Material = Material { name: "day-canvas", hue: 40, sat_pct: 32, light_pct: 95, area: FieldArea }
+data day_surface: Material = Material { name: "day-surface", hue: 40, sat_pct: 28, light_pct: 91, area: FieldArea }
+data day_border: Material = Material { name: "day-border", hue: 40, sat_pct: 12, light_pct: 45, area: HairlineArea }
+data day_ink: Material = Material { name: "day-ink", hue: 230, sat_pct: 14, light_pct: 22, area: TextArea }
+data day_ink_dim: Material = Material { name: "day-ink-dim", hue: 230, sat_pct: 8, light_pct: 42, area: TextArea }
+data ink_star: Material = Material { name: "ink-star", hue: 226, sat_pct: 44, light_pct: 30, area: PointArea }
+data ink_star_lit: Material = Material { name: "ink-star-lit", hue: 226, sat_pct: 58, light_pct: 20, area: PointArea }
+data ink_edge: Material = Material { name: "ink-edge", hue: 226, sat_pct: 22, light_pct: 45, area: HairlineArea }
+data day_brass: Material = Material { name: "day-brass", hue: 42, sat_pct: 52, light_pct: 38, area: PointArea }
+data day_clay: Material = Material { name: "day-clay", hue: 8, sat_pct: 56, light_pct: 44, area: HairlineArea }
+
+data night_theme: Theme = Theme { name: "night", scheme: "dark", assignments: [
+  assign(role: CanvasRole, material: night_canvas),
+  assign(role: SurfaceRole, material: night_surface),
+  assign_alpha(role: BorderRole, material: night_border, alpha_pct: 45),
+  assign(role: TextRole, material: night_text),
+  assign(role: TextDimRole, material: night_text_dim),
+  assign(role: FigureRole, material: warm_starlight),
+  assign(role: FigureLitRole, material: warm_starlight_lit),
+  assign_alpha(role: FigureHaloRole, material: warm_starlight, alpha_pct: 14),
+  assign_alpha(role: FigureEdgeRole, material: starlight_edge, alpha_pct: 50),
+  assign(role: FocusRole, material: night_brass),
+  assign(role: BoundaryRole, material: night_clay),
+] }
+
+data day_theme: Theme = Theme { name: "day", scheme: "light", assignments: [
+  assign(role: CanvasRole, material: day_canvas),
+  assign(role: SurfaceRole, material: day_surface),
+  assign_alpha(role: BorderRole, material: day_border, alpha_pct: 45),
+  assign(role: TextRole, material: day_ink),
+  assign(role: TextDimRole, material: day_ink_dim),
+  assign(role: FigureRole, material: ink_star),
+  assign(role: FigureLitRole, material: ink_star_lit),
+  assign_alpha(role: FigureHaloRole, material: ink_star, alpha_pct: 12),
+  assign_alpha(role: FigureEdgeRole, material: ink_edge, alpha_pct: 45),
+  assign(role: FocusRole, material: day_brass),
+  assign(role: BoundaryRole, material: day_clay),
+] }
+
+data site_themes: List<Theme> = [night_theme, day_theme]
+
+fn role_eq(a: ThemeRole, b: ThemeRole) -> Bool {
+  role_key(r: a) == role_key(r: b)
+}
+
+fn theme_has_role(t: Theme, r: ThemeRole) -> Bool {
+  fold(t.assignments, init: false, f: (acc, a) => acc || role_eq(a: a.role, b: r))
+}
+
+fn theme_gaps(t: Theme, roles: List<ThemeRole>) -> List<ThemeRole> {
+  fold(roles, init: [], f: (acc, r) =>
+    if theme_has_role(t: t, r: r) { acc } else { concat(acc, [r]) })
+}
+
+fn theme_total(t: Theme, roles: List<ThemeRole>) -> Bool {
+  theme_gaps(t: t, roles: roles).length() == 0
+}
+
+fn theme_area_coherent(t: Theme) -> Bool {
+  all(t.assignments, a =>
+    area_key(area: a.material.area) == area_key(area: role_area(r: a.role)))
+}
+
+fn theme_materials_admissible(t: Theme) -> Bool {
+  all(t.assignments, a => chroma_admissible(m: a.material))
+}
+
+fn assignment_material(t: Theme, r: ThemeRole) -> Material {
+  fold(t.assignments, init: Material { name: "", hue: 0, sat_pct: 0, light_pct: 0, area: FieldArea },
+    f: (acc, a) => if role_eq(a: a.role, b: r) { a.material } else { acc })
+}
+
+fn roles_clear_wcag(t: Theme, fg: ThemeRole, bg: ThemeRole, threshold_hundredths: Int) -> Bool {
+  let f = assignment_material(t: t, r: fg)
+  let b = assignment_material(t: t, r: bg)
+  hsl_contrast_at_least(
+    hue_a: f.hue, sat_a: f.sat_pct, light_a: f.light_pct,
+    hue_b: b.hue, sat_b: b.sat_pct, light_b: b.light_pct,
+    threshold_hundredths: threshold_hundredths)
+}
+
+fn theme_contrast_ok(t: Theme) -> Bool {
+  roles_clear_wcag(t: t, fg: TextRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: FigureRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
+    && roles_clear_wcag(t: t, fg: FocusRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
+}
+
+fn theme_coherent(t: Theme, roles: List<ThemeRole>) -> Bool {
+  theme_total(t: t, roles: roles)
+    && theme_area_coherent(t: t)
+    && theme_materials_admissible(t: t)
+    && theme_contrast_ok(t: t)
+}
+
+fn themes_coherent(themes: List<Theme>, roles: List<ThemeRole>) -> Bool {
+  themes.length() > 0 && all(themes, t => theme_coherent(t: t, roles: roles))
+}
+
+fn assignment_paint(a: RoleAssignment) -> String {
+  if a.alpha_pct >= 100 {
+    paint(m: a.material)
+  } else {
+    paint_alpha(m: a.material, alpha_pct: a.alpha_pct)
+  }
+}
+
+fn role_decl(prop: String, r: ThemeRole) -> CssDecl {
+  CssDecl { prop: prop, value: role_var(r: r) }
+}
+
+fn theme_var_decls(t: Theme) -> List<CssDecl> {
+  concat(
+    map(t.assignments, a => decl(prop: concat("--", role_key(r: a.role)), value: assignment_paint(a: a))),
+    [decl(prop: "color-scheme", value: t.scheme)])
+}
+
+fn theme_root_css(base: Theme, alternate: Theme) -> String {
+  join([
+    css_block(selector: ":root", decls: theme_var_decls(t: base)),
+    css_block(
+      selector: join([":root[data-theme=\"", alternate.name, "\"]"], ""),
+      decls: theme_var_decls(t: alternate)),
+    join([
+      "@media (prefers-color-scheme: ", alternate.scheme, ") { ",
+      css_block(selector: ":root:not([data-theme])", decls: theme_var_decls(t: alternate)),
+      " }",
+    ], ""),
+  ], "\n")
+}
+

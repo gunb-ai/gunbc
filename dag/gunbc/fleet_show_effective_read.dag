@@ -59,7 +59,7 @@ type FleetHostEffectiveReadGroundedReceipt {
 }
 
 data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. Transport intent lives here; shell realization is scaffold-marked medium-as-string (fleet_show_effective_read_transport_script_scaffold) until host_effect orchestration emit binds grammar rows. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
+  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.os.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
 }
 
 data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {
@@ -71,11 +71,50 @@ data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold
   }
 }
 
-fn fleet_runner_unit_property_read_script(unit: NonEmptyStr, property: NonEmptyStr) -> String {
-  concat(
-    concat(concat("systemctl show \"", unit, "\" --property="), property),
-    " --value 2>/dev/null || true"
-  )
+fn fleet_runner_unit_memory_live_read(
+  host: HostIdentity,
+  unit: NonEmptyStr,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitMemoryLiveRead? {
+  match fleet_host_ssh_transport(host: host) {
+    Present { value: transport } =>
+      match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryMax) {
+        Present { value: memory_max_raw } =>
+          match systemctl_show_property_read(transport: transport, unit: unit, property: MemorySwapMax) {
+            Present { value: memory_swap_max_raw } =>
+              match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryHigh) {
+                Present { value: memory_high_raw } =>
+                  Present {
+                    value: runner_unit_live_read_typed(
+                      row: RunnerUnitLiveReadRow {
+                        unit: unit,
+                        memory_max_raw: memory_max_raw,
+                        memory_swap_max_raw: memory_swap_max_raw,
+                        memory_high_raw: memory_high_raw,
+                        memory_current_raw: "",
+                        probed_at: probed_at,
+                      }
+                    )
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn fleet_runner_slice_cap_memory_max_raw(
+  host: HostIdentity,
+  slice_unit: NonEmptyStr,
+) -> String? {
+  match fleet_host_ssh_transport(host: host) {
+    Present { value: transport } =>
+      systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax)
+    Absent => none
+  }
 }
 
 fn runner_unit_live_read_row_from_stdout(
@@ -111,44 +150,6 @@ fn runner_unit_memory_live_read_from_stdout(
   }
 }
 
-fn fleet_runner_unit_memory_read_apply(
-  host: HostIdentity,
-  unit: NonEmptyStr,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
-  match fleet_host_control_plane(host: host) {
-    Present { value: cp } =>
-      match fleet_host_ssh_transport(host: host) {
-        Present { value: transport } =>
-          Present {
-            value: host_effect_apply(
-              target: cp,
-              effect: SystemdUnitMemoryPropertiesRead { unit: unit },
-              evidence: host_effect_read_evidence,
-              transport: transport,
-            )
-          }
-        Absent => none
-      }
-    Absent => none
-  }
-}
-
-fn runner_unit_memory_live_read_from_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  unit: NonEmptyStr,
-  probed_at: NonEmptyStr,
-) -> RunnerUnitMemoryLiveRead? {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: _ } =>
-          runner_unit_memory_live_read_from_stdout(unit: unit, stdout: out, probed_at: probed_at)
-        ConvergePlanApplied { stdout: _, exit_code: _ } => none
-      }
-    NotConverged { reason: _, applied: _ } => none
-  }
-}
-
 fn show_effective_read_from_unit_row(
   host: HostIdentity,
   row: RunnerUnitLiveReadRow,
@@ -167,6 +168,13 @@ fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {
   concat(
     concat("systemctl list-units --type=service --state=active --no-legend \"", instance_glob),
     "\" 2>/dev/null | wc -l | tr -d ' '"
+  )
+}
+
+fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl show -p MemoryMax -p MemorySwapMax -p MemoryHigh --value \"", unit),
+    "\" 2>/dev/null"
   )
 }
 
@@ -257,28 +265,6 @@ fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
   } else { if host == operator_host_srv2 {
     Present { value: srv2_host_identity_ssh_transport() }
   } else { none } }
-}
-
-fn fleet_runner_slice_cap_read_apply(
-  host: HostIdentity,
-  slice_unit: NonEmptyStr,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
-  match fleet_host_control_plane(host: host) {
-    Present { value: cp } =>
-      match fleet_host_ssh_transport(host: host) {
-        Present { value: transport } =>
-          Present {
-            value: host_effect_apply(
-              target: cp,
-              effect: SystemdUnitMemoryMaxRead { unit: slice_unit },
-              evidence: host_effect_read_evidence,
-              transport: transport,
-            )
-          }
-        Absent => none
-      }
-    Absent => none
-  }
 }
 
 fn runner_slice_cap_live_read_typed(row: RunnerSliceCapLiveReadRow) -> RunnerSliceCapLiveRead {

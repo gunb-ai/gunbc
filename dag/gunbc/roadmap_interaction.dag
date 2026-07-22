@@ -1,16 +1,17 @@
 module gunbc.roadmap_interaction
 
 import std.types { Int, String, Bool }
-import gunbc.site.tokens {
+import gunbc.design.material {
   TimingToken, respond_fast,
   MotionTrigger, OnActive,
   BuildRule, ResponseRule, SelfResponse,
-  CssDecl, decl, role_decl,
+  CssDecl, decl,
 }
-import gunbc.site.interaction {
+import gunbc.design.interaction {
   InteractionVerb, Approach, Dispatch,
   Response, Brighten, Receipt,
   BehaviorRow, InteractiveElement,
+  ElementId, DispatchBtnElement, element_id_key, element_id_eq,
   verb_key, response_key,
   coverage_gaps, coverage_complete, CoverageGap,
 }
@@ -22,12 +23,12 @@ import gunbc.site.moodboard {
 data roadmap_interaction_note: String = "The roadmap dashboard's interaction rows (slice 2 of roadmap-onto-register, manager-signed): the dispatch button declares Approach and Dispatch, and its stylesheet responses are DERIVED from these rows through roadmap_realize_behavior — the register law (no dead hovers; responses derived) applied to the second site. Approach realizes as the border brighten over the shared approach_triggers (hover + focus-visible, one authority with the site pages); Dispatch realizes as the OnActive press receipt — background flips to the border material for the pressed frame, the CSS-layer receipt; the belt-side dispatch receipt is the served effect (belt_dispatch_node, serving layer) and never this module's concern. The realize fold mirrors moodboard's shape (RealizedRules | UnrealizedBehavior, unrealized countable); the Phase-A lift unifies the two folds behind a realize-parametric L2 carrier — declared convergence, not a silent fork. Known residue, named: the roadmap's a:hover underline is a hand StaticRule with no declared element (links are unmodeled site-wide today); it joins the element roster when the site models link elements, and the stray-response census belongs to the lift."
 
 data roadmap_elements: List<InteractiveElement> = [
-  InteractiveElement { element: "dispatch-btn", verbs: [Approach, Dispatch] },
+  InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch] },
 ]
 
 data roadmap_behaviors: List<BehaviorRow> = [
-  BehaviorRow { element: "dispatch-btn", verb: Approach, response: Brighten, timing: respond_fast },
-  BehaviorRow { element: "dispatch-btn", verb: Dispatch, response: Receipt, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Brighten, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Receipt, timing: respond_fast },
 ]
 
 fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
@@ -60,12 +61,12 @@ fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
 fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
-  if e == "dispatch-btn" && r == "brighten" {
+  if element_id_eq(a: e, b: DispatchBtnElement) && r == "brighten" {
     RealizedRules { rules: dispatch_btn_brighten_rules(timing: row.timing) }
-  } else if e == "dispatch-btn" && r == "receipt" {
+  } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "receipt" {
     RealizedRules { rules: dispatch_btn_receipt_rules(timing: row.timing) }
   } else {
-    UnrealizedBehavior { element: e, verb: verb_key(v: row.verb), response: r }
+    UnrealizedBehavior { element: element_id_key(id: e), verb: verb_key(v: row.verb), response: r }
   }
 }
 

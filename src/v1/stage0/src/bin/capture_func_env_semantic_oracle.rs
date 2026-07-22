@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 use v1_compiler::cli_run::{
-    whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings,
+    whole_corpus_semantic_oracle_snapshot, whole_tree_probe_exclusion_substrings,
 };
 
 #[derive(Serialize)]
@@ -27,7 +27,7 @@ struct CaptureOutput<'a> {
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
+    let mut exclude_subpaths = whole_tree_probe_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {

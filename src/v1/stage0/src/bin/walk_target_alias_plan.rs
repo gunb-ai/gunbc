@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     format_walk_target_alias_plan, resolution_divergence_census_source_roots,
-    walk_target_alias_plan_live, whole_tree_resolve_exclusion_substrings,
+    walk_target_alias_plan_live, whole_tree_probe_exclusion_substrings,
 };
 
 fn workspace_root() -> PathBuf {
@@ -39,7 +39,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let ws = workspace_root();
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude = whole_tree_resolve_exclusion_substrings();
+    let mut exclude = whole_tree_probe_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {

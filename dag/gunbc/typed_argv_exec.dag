@@ -18,6 +18,7 @@ fn typed_argv_portable_argv_char_allowed(cp: Int) -> Bool {
     || cp == 95
     || cp == 45
     || cp == 47
+    || cp == 64
 }
 
 fn typed_argv_portable_argv_token_at(token: String, i: Int, len: Int) -> Bool {
