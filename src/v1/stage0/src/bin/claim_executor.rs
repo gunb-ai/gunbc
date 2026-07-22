@@ -2253,8 +2253,7 @@ mod tests {
             .join("src/v2/workflow/ci_floor_plan.dag")
             .to_string_lossy()
             .into_owned();
-        let (graph, indices) =
-            resolve_entry_graph(&roots, &entry).expect("resolve ci_floor_plan");
+        let (graph, indices) = resolve_entry_graph(&roots, &entry).expect("resolve ci_floor_plan");
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
         let value = run_value(
             &ctx,
