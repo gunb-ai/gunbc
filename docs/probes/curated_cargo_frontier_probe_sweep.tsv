@@ -25,3 +25,5 @@ src/v2/compiler/03_resolve.dag	45 files emitted, 0 diagnostics	refuse	error[E042
 src/v2/compiler/03_resolve.dag	45 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `T` in this scope	namespace_resolution	CONFIRMED-namespace
 src/v2/compiler/00_compile.dag	145 files emitted, 285 diagnostics	harness_refuse	CSSL_ASSEMBLE: REFUSED refused dep assembly for test_claim_materialization_ladder_witness: unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)	HARNESS_SEED_LINK	HARNESS_REFUSE
 src/v2/compiler/00_compile.dag	145 files emitted, 285 diagnostics	harness_refuse	CSSL_ASSEMBLE: REFUSED refused dep assembly for test_claim_materialization_ladder_witness: unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)	HARNESS_SEED_LINK	HARNESS_REFUSE
+src/v2/compiler/01_tokenize.dag	23 files emitted, 0 diagnostics	refuse	error: struct literal body without path	UNKNOWN	UNKNOWN-error:_struct_literal_body_without_path
+src/v2/compiler/01_tokenize.dag	23 files emitted, 0 diagnostics	refuse	error: struct literal body without path	UNKNOWN	UNKNOWN-error:_struct_literal_body_without_path
