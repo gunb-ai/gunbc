@@ -34,7 +34,7 @@
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    peak_rss_vhwm_bytes, whole_tree_resolve_exclusion_substrings, whole_tree_resolved_ctx,
+    peak_rss_vhwm_bytes, whole_tree_probe_exclusion_substrings, whole_tree_resolved_ctx,
     WholeTreeCtx,
 };
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
@@ -54,7 +54,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
+    let mut exclude_subpaths = whole_tree_probe_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {
