@@ -1,7 +1,9 @@
 module v2.test.lens_enforcement.gate_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition_note: String = "ReadsLiveTree by G1 carrier-closure honesty, not because these witnesses read the tree: the fixture-driven Question-Zero tests below feed synthetic facts, but enforcement.gate imports v2.lens.module_graph (a LIVE_READ_CARRIER_HOME_MODULES_V0 carrier home), so the loader closure can reach live-read code and a SubstrateInputsOnly stamp is a lying stamp under lying_substrate_inputs_only_stamp_census. Re-stamp to SubstrateInputsOnly only after the module_graph pure/live split (pure vocabulary central, *_live producers in a v2.lens.module_graph.live periphery with the carrier roster repointed) lands in the floor lane."
 
 data synthetic_intent: StandingIntent = {
   id: "synthetic.parallelism.repo-wide",

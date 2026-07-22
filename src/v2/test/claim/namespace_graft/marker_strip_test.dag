@@ -6,7 +6,7 @@ import v2.std.algebra { fold_list_node }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted }
 import v2.std.logic { Bool }
-import v2.std.namespace_graft {
+import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_strip_provenance_marker,
   qualified_name_from_graft_spine
