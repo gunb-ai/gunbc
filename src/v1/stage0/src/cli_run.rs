@@ -18382,17 +18382,19 @@ fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_s
 }
 
 /// The names a module EXPORTS (what an `import M { X }` could once have listed): every top-level
-/// item name, plus the direct child names of type declarations (variant constructors / record
-/// fields). Precise by construction — fn-body locals and params are never descended into — so the
+/// item name, plus coproduct variant constructors (not record field labels — those are not
+/// importable symbols and poison the name→module index when record literals use them as labels).
+/// Precise by construction — fn-body locals and params are never descended into — so the
 /// name→module index is not poisoned by incidental identifiers.
 fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<String> {
     use crate::v1_compiler_emit_core_support::is_type_def_item;
+    use crate::v1_std_core::Connective;
     let mut names = Vec::new();
     for item in module.children.iter() {
         if !item.name.is_empty() {
             names.push(item.name.clone());
         }
-        if is_type_def_item(item.clone()) {
+        if is_type_def_item(item.clone()) && item.connective == Connective::Disj {
             for variant in item.children.iter() {
                 if !variant.name.is_empty() {
                     names.push(variant.name.clone());
@@ -18430,58 +18432,111 @@ fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
     Some(segs)
 }
 
-/// Walk a declaration subtree collecting every reference use site: bare identifiers (`node.name` on
-/// any node — over-collection is a safe superset for the loader) and qualified-name chains (for
-/// module-prefix matching). Recurses through every child-bearing field of `Node`.
+/// Walk a type subtree collecting identifier names at type positions (type constructors, type
+/// parameters referenced in signatures). Used for import-less reference edges; over-collects local
+/// type-param binders, which is safe for the loader and tolerated at the strict selection tier.
+fn collect_type_ref_names(
+    node: &Rc<crate::v1_std_core::Node>,
+    bare: &mut std::collections::HashSet<String>,
+) {
+    if !node.name.is_empty() {
+        bare.insert(node.name.clone());
+    }
+    for c in node.children.iter() {
+        collect_type_ref_names(c, bare);
+    }
+    for p in node.params.iter() {
+        collect_type_ref_names(p, bare);
+    }
+    if let Some(t) = &node.type_annotation {
+        collect_type_ref_names(t, bare);
+    }
+}
+
+/// Walk a declaration subtree collecting cross-module reference use sites: value calls/vars,
+/// variant constructors, qualified-name chains, and type-annotation identifiers. Binders (params,
+/// match-pattern fields, record-literal labels) are excluded — the liberal `node.name` scan was
+/// attributing local names like `items` and `r` to unrelated extdeps modules.
 fn collect_node_refs(
     node: &Rc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
     chains: &mut Vec<Vec<String>>,
 ) {
-    use crate::v1_std_core::{ExprData, MatchPattern};
+    collect_node_refs_inner(node, bare, chains, false);
+}
+
+fn collect_node_refs_inner(
+    node: &Rc<crate::v1_std_core::Node>,
+    bare: &mut std::collections::HashSet<String>,
+    chains: &mut Vec<Vec<String>>,
+    skip_bare_name: bool,
+) {
+    use crate::v1_std_core::{ExprData, MatchPattern, VarBindingKind};
     if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
         if let Some(chain) = ref_field_chain(node) {
             chains.push(chain);
         }
     }
-    if !node.name.is_empty() {
-        bare.insert(node.name.clone());
-    }
-    if let Some(mp) = &node.match_pattern {
-        if let MatchPattern::VariantPattern {
-            name,
-            field_bindings,
-            ..
-        } = &**mp
-        {
-            if !name.is_empty() {
-                bare.insert(name.clone());
+    if !skip_bare_name {
+        match &*node.expr_data {
+            ExprData::ExprVar { binding_kind } => {
+                if matches!(
+                    binding_kind.as_deref(),
+                    Some(VarBindingKind::FunctionValueBinding)
+                ) && !node.name.is_empty()
+                {
+                    bare.insert(node.name.clone());
+                }
             }
-            for fb in field_bindings.iter() {
-                collect_node_refs(fb, bare, chains);
+            ExprData::ExprCall { .. } => {
+                if !node.name.is_empty() {
+                    bare.insert(node.name.clone());
+                }
+            }
+            ExprData::ExprRecordLit { .. } => {
+                if !node.name.is_empty() {
+                    bare.insert(node.name.clone());
+                }
+                for c in node.children.iter() {
+                    collect_node_refs_inner(c, bare, chains, true);
+                }
+                for pr in node.properties.iter() {
+                    collect_node_refs_inner(pr, bare, chains, true);
+                }
+                return;
+            }
+            _ => {}
+        }
+        if let Some(mp) = &node.match_pattern {
+            if let MatchPattern::VariantPattern { name, .. } = &**mp {
+                if !name.is_empty() {
+                    bare.insert(name.clone());
+                }
             }
         }
     }
     for c in node.children.iter() {
-        collect_node_refs(c, bare, chains);
+        collect_node_refs_inner(c, bare, chains, false);
     }
     for p in node.params.iter() {
-        collect_node_refs(p, bare, chains);
+        if let Some(t) = &p.type_annotation {
+            collect_type_ref_names(t, bare);
+        }
     }
     if let Some(b) = &node.body {
-        collect_node_refs(b, bare, chains);
+        collect_node_refs_inner(b, bare, chains, false);
     }
     if let Some(t) = &node.type_annotation {
-        collect_node_refs(t, bare, chains);
+        collect_type_ref_names(t, bare);
     }
     for u in node.uses.iter() {
-        collect_node_refs(u, bare, chains);
+        collect_node_refs_inner(u, bare, chains, false);
     }
     for pr in node.properties.iter() {
-        collect_node_refs(pr, bare, chains);
+        collect_node_refs_inner(pr, bare, chains, false);
     }
     if let Some(tr) = &node.transport {
-        collect_node_refs(tr, bare, chains);
+        collect_node_refs_inner(tr, bare, chains, false);
     }
 }
 
@@ -21364,6 +21419,38 @@ mod reference_edge_producer_tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Repro for main-red false edges: prelude bare names in import-less std files must not
+    /// surface cross-layer dependency edges (layering-imports gate §5).
+    #[test]
+    fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
+        use super::layer_import_facts;
+
+        let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
+        let extdeps_roots = vec!["src/v2/extdeps".to_string(), "dag/extdeps".to_string()];
+        let facts = layer_import_facts(&std_roots, &extdeps_roots);
+        let violations: Vec<_> = facts
+            .iter()
+            .filter(|f| {
+                f.layer == "LayerPrefixStd"
+                    && (f.import_module.starts_with("extdeps.")
+                        || f.import_module.starts_with("v2.compiler"))
+            })
+            .collect();
+        if !violations.is_empty() {
+            for v in &violations {
+                eprintln!(
+                    "FALSE EDGE: {} -> {} (layer={})",
+                    v.path, v.import_module, v.layer
+                );
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "prelude bare names must not produce false std->extdeps/compiler edges (got {})",
+            violations.len()
+        );
     }
 }
 
