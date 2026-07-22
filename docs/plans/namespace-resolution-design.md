@@ -368,6 +368,7 @@ built — the census closure above is the mechanism that actually shipped, and t
 known residue (the reference producer over-collects; the closure is a second
 authority beside the compile-clean import closure) is tracked as the
 reference-derived dependency-edge lane, the same lane that dissolves this bridge.
+→ [layering-imports gate repoint scoping](layering-imports-reference-repoint-design.md) (CI `LayeringImportsGate` fact producer; Phase 1 lands before import strip reaches `std`/`extdeps` scan roots).
 **Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
 above — delete import grammar; container.member references become the sole
 dependency authority).
