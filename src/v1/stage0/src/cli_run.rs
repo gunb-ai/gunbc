@@ -1182,6 +1182,8 @@ const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
+const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
+    "resolution_divergence_census_roster_excluded_module_prefixes";
 
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
@@ -1313,6 +1315,36 @@ pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
         content,
         WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME,
     )
+}
+
+/// Project `resolution_divergence_census_roster_excluded_module_prefixes` out of the
+/// ci_layer_roots authority — modules under these prefixes are test harness / fixture
+/// territory and are excluded from the fn_parent_first_hit ⊆ containment_ambiguous
+/// construction invariant (not from the genuine silent-pick join gate).
+pub(crate) fn resolution_divergence_census_roster_excluded_module_prefixes_from_source(
+    content: &str,
+) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+pub fn resolution_divergence_census_roster_excluded_module_prefixes() -> Vec<String> {
+    static PREFIXES: OnceLock<Vec<String>> = OnceLock::new();
+    PREFIXES
+        .get_or_init(|| {
+            resolution_divergence_census_roster_excluded_module_prefixes_from_source(
+                ci_layer_roots_authority_content(),
+            )
+        })
+        .clone()
+}
+
+pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> bool {
+    resolution_divergence_census_roster_excluded_module_prefixes()
+        .iter()
+        .any(|prefix| module_path.starts_with(prefix.as_str()))
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
@@ -18709,7 +18741,7 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
-    let roots = witness_layer_roots();
+    let roots = default_source_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
     let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
     let modules_resolved = sources.len();
@@ -18835,6 +18867,71 @@ pub fn resolution_divergence_silent_pick_refusal(
         lines.push(format!(
             "  SILENT-PICK-GATE {} module={} name={} {}",
             row.class, row.module, row.name, row.detail,
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
+/// A `fn_parent_first_hit` telemetry row outside the roster-excluded test harness
+/// prefixes that does NOT land in `containment_ambiguous_rows` for the same
+/// (module, name) site — a violation of the construction invariant the compile-path
+/// proxy gate (`main.rs`) assumes when it red-on-any raw `fn_parent_first_hit` count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FnParentFirstHitSubsetViolation {
+    pub module: String,
+    pub name: String,
+    pub parent_match_count: usize,
+    pub chosen_parent_module: String,
+}
+
+/// Construction invariant (#7013 fast-follow): every in-roster `fn_parent_first_hit`
+/// fire must also be `containment_ambiguous` for the same site (the fn-parent walk IS
+/// the containment walk). Test-harness modules (`v2.test.*` by default) are excluded
+/// via `resolution_divergence_census_roster_excluded_module_prefixes` — intentional
+/// ambiguity fixtures, not production resolver debt.
+pub fn resolution_divergence_fn_parent_first_hit_subset_violations(
+    census: &ResolutionDivergenceCensus,
+) -> Vec<FnParentFirstHitSubsetViolation> {
+    let mut ambig_keys: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    for row in &census.containment_ambiguous_rows {
+        ambig_keys.insert((row.calling_module.clone(), row.callee.clone()));
+    }
+
+    census
+        .silent_pick_fn_parent_first_hit_rows
+        .iter()
+        .filter(|row| !resolution_divergence_module_path_roster_excluded(&row.env_module_path))
+        .filter(|row| !ambig_keys.contains(&(row.env_module_path.clone(), row.name.clone())))
+        .map(|row| FnParentFirstHitSubsetViolation {
+            module: row.env_module_path.clone(),
+            name: row.name.clone(),
+            parent_match_count: row.parent_match_count,
+            chosen_parent_module: row.chosen_parent_module.clone(),
+        })
+        .collect()
+}
+
+/// Fail-closed refusal when the construction invariant is violated — makes the
+/// compile-path raw-count proxy sound by proving its assumption on the live corpus.
+pub fn resolution_divergence_fn_parent_first_hit_subset_refusal(
+    census: &ResolutionDivergenceCensus,
+) -> Option<String> {
+    let violations = resolution_divergence_fn_parent_first_hit_subset_violations(census);
+    if violations.is_empty() {
+        return None;
+    }
+    let mut lines = vec![format!(
+        "SILENT-PICK-GATE: resolution-divergence-census: fn_parent_first_hit subset violation: \
+         {} in-roster fn_parent_first_hit site(s) not in containment_ambiguous (construction \
+         invariant broken — compile-path raw-count proxy is unsound)",
+        violations.len(),
+    )];
+    for row in &violations {
+        lines.push(format!(
+            "  SILENT-PICK-GATE FN_PARENT_FIRST_HIT_NOT_CONTAINMENT_AMBIGUOUS module={} name={} \
+             parent_matches={} chosen_parent={}",
+            row.module, row.name, row.parent_match_count, row.chosen_parent_module,
         ));
     }
     Some(lines.join("\n"))
@@ -19744,6 +19841,92 @@ fn caller() -> Bool {
             "§5 gate must be None on a clean corpus with no silent pick"
         );
         let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Hermetic control guarding the ~483-clean join filter: two pool-wide homonymous
+    /// type declarations in unrelated module trees (NOT both on the consumer's
+    /// parent/import chain) force `global_bare_lcp` telemetry, but the site is benign
+    /// under the containment_ambiguous/diverge join — refusal must stay None.
+    #[test]
+    fn resolution_divergence_silent_pick_benign_global_bare_lcp_filter_control() {
+        let ws = super::process_workspace_root();
+        let fixture = silent_pick_fixture_root("benign-gblcp");
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "near.dag",
+            r#"module test.benigngblcp.near
+
+import std.types { Int }
+
+type PoolDup = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "far.dag",
+            r#"module test.benigngblcp.far.away
+
+import std.types { Int }
+
+type PoolDup = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "consumer.dag",
+            r#"module test.benigngblcp.near.consumer
+
+import std.types { Int }
+
+fn use_pool_dup(x: PoolDup) -> Int {
+  return x
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        assert!(
+            census.silent_pick_global_bare_lcp >= 1,
+            "fixture must fire global_bare_lcp telemetry (pool-wide homonym), got lcp={} tie={}",
+            census.silent_pick_global_bare_lcp,
+            census.silent_pick_global_bare_lcp_tie,
+        );
+        let genuine = super::resolution_divergence_silent_pick_genuine_rows(&census);
+        assert!(
+            genuine.is_empty(),
+            "pool-wide type homonym must be filtered benign by the join, got genuine={genuine:?}"
+        );
+        assert!(
+            resolution_divergence_silent_pick_refusal(&census).is_none(),
+            "§5 gate must be None when only benign global_bare_lcp telemetry fired"
+        );
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Construction invariant on the live closure-scoped corpus: every in-roster
+    /// `fn_parent_first_hit` row must land in `containment_ambiguous_rows` for the
+    /// same (module, name) site. `v2.test.*` modules are roster-excluded.
+    #[test]
+    fn resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus() {
+        let census = super::resolution_divergence_census_live_closure_scoped()
+            .expect("closure-scoped census");
+        let violations =
+            super::resolution_divergence_fn_parent_first_hit_subset_violations(&census);
+        assert!(
+            violations.is_empty(),
+            "fn_parent_first_hit must be subset of containment_ambiguous on in-roster modules \
+             (violations={violations:?}, raw_fn_parent_first_hit={}, containment_ambiguous={})",
+            census.silent_pick_fn_parent_first_hit,
+            census.containment_ambiguous,
+        );
+        assert!(
+            super::resolution_divergence_fn_parent_first_hit_subset_refusal(&census).is_none(),
+            "subset refusal must be None on the live closure-scoped corpus"
+        );
     }
 
     /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
