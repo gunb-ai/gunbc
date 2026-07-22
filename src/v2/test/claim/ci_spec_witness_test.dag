@@ -201,9 +201,10 @@ fn witness_documentation_only_floor_shortcut_retired() -> Bool {
   let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_retired_note) &&
     string_contains(s: script, pattern: "gunbc#7023") &&
-    !string_contains(s: script, pattern: "documentation_only_skip") &&
+    !string_contains(s: script, pattern: "_ci_floor_skip=$(\"") &&
+    !string_contains(s: script, pattern: "if [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then") &&
     !string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
-    !string_contains(s: script, pattern: merge_admission_floor_disposition_documentation_only_skipped) &&
+    !string_contains(s: script, pattern: "CI_FLOOR_DISPOSITION=documentation_only_skipped") &&
     string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
 }
 
