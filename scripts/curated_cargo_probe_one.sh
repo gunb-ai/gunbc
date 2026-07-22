@@ -19,7 +19,8 @@
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
-#   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
+#   Lane shim authority: dag/tools/self_host_module_behavioral_transport_roster.dag
+#                           ModuleBehavioralTransportConfig.shim_lib_rel per module_path row.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
