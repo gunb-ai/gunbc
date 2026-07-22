@@ -94,8 +94,41 @@ fn compile_clean_cold_control_step() -> Step {
   }
 }
 
+data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step."
+
+fn native_cache_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: "gunbc_falsifier_native_cache_cold_batches",
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn native_cache_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "native-cache cold control (warm-tier admission counterpart)" },
+    id: none,
+    run: native_cache_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_NATIVE_CACHE_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_native_cache_cold_control_timeout_minutes }
+  }
+}
+
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn falsifier_job() -> Job {
@@ -103,7 +136,7 @@ fn falsifier_job() -> Job {
     id: "falsifier",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
     needs: [],
     env: none,
     outputs: none,
