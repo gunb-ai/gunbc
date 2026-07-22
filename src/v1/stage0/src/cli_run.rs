@@ -24120,7 +24120,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // mandatory-tag extdeps region (v2.lens.mandatory_tag, corpus grain). The VERDICT
 // authority is the modeled lens: v2.lens.mandatory_tag's fold, enrolled in
 // always_required_root_lenses and red/green-controlled at the v2 parse grain
-// (v2.lens.mandatory_tag.gate_witness_test). This block survives only because the
+// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
 // interpreted v2 pipeline prices a whole-corpus witness out of every cadence
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
