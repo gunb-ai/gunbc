@@ -7,13 +7,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data amd_ryzen_product_page_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
-  }
-}
-
 data amd_ryzen_5_3600_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -83,7 +76,7 @@ data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
 data amd_zen4_l1_cache_citations: List<CacheGeometryCitation> = [
   CacheGeometryCitation {
     field: "data_capacity_per_core",
-    authority: amd_ryzen_product_page_authority,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 
@@ -95,7 +88,7 @@ data amd_zen4_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
 data amd_zen4_l2_cache_citations: List<CacheGeometryCitation> = [
   CacheGeometryCitation {
     field: "capacity_per_core",
-    authority: amd_ryzen_product_page_authority,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 
@@ -107,7 +100,7 @@ data amd_zen4_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
 data amd_zen4_l3_cache_citations: List<CacheGeometryCitation> = [
   CacheGeometryCitation {
     field: "capacity",
-    authority: amd_ryzen_product_page_authority,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 

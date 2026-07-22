@@ -85,11 +85,15 @@ fn convert_money_per_minute_eur_to_usd(
   if denominator <= 0 {
     none
   } else {
-    Present {
-      value: MoneyPerMinute {
-        amount: money_amount_micro(count: (money_per_minute_micros(q: eur) * numerator) / denominator),
-        currency: Usd,
-      }
+    match eur.currency {
+      Eur =>
+        Present {
+          value: MoneyPerMinute {
+            amount: money_amount_micro(count: (money_per_minute_micros(q: eur) * numerator) / denominator),
+            currency: Usd,
+          }
+        }
+      _ => none
     }
   }
 }
