@@ -5881,7 +5881,11 @@ fn shell_completion_stderr_trace_block(
     };
     Some(format!(
         "[shell] stderr (exit={exit_code}):\n{prefix}{}",
-        neutralize_workflow_commands(&String::from_utf8_lossy(tail))
+        // Trailing newlines are stripped before guarding so a subject whose stderr
+        // ends in `\n` (almost all of them) does not render a stray guard-only line.
+        // This is presentation of the block, not a change to the guard rule: the
+        // .dag authority still prefixes every line of whatever text it is given.
+        neutralize_workflow_commands(String::from_utf8_lossy(tail).trim_end_matches('\n'))
     ))
 }
 
@@ -10024,7 +10028,10 @@ mod shell_completion_trace_tests {
             ),
             None
         );
-        assert_eq!(shell_completion_stderr_trace_block(surfacing(), 1, b""), None);
+        assert_eq!(
+            shell_completion_stderr_trace_block(surfacing(), 1, b""),
+            None
+        );
     }
 
     #[test]
