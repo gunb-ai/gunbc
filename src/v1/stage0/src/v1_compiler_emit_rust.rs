@@ -4702,7 +4702,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
 pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus.".to_string()
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): TYPE unlisted names (arm 1) run ONLY for import-free modules — the namespace-resolution case the post-PR-6848 regression is about. VALUE refs (arm 2) run for ALL modules: a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics) must synthesize the missing fn-value use-line without re-deriving type imports that emit_imports already owns. Import-bearing v1 seed modules are safe: already_imported_names filters every name their authored import lists carry, and registry same-module skips prevent spurious cross-module lines. This is where UnlistedImportUse already fires exactly for types on import-free modules; fn-value closure extends the same derivation to partial-import namespace modules.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -5023,23 +5023,23 @@ pub fn emit_module_full(
                 __result
             }),
         );
-        let reference_use_lines = if ((module_imports(m.clone()).len() as i64) == 0) {
-            reference_derived_use_lines(
-                typed_module.items.clone(),
-                unlisted_type_names.clone(),
-                authored_name(scope.type_env.clone(), m.clone()),
-                registry.clone(),
-                emit_info.clone(),
-                local_type_names.clone(),
-                already_imported_names.clone(),
-                export_sets.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            )
-        } else {
-            Rc::new(vec![])
-        };
+        let reference_use_lines = reference_derived_use_lines(
+            typed_module.items.clone(),
+            if ((module_imports(m.clone()).len() as i64) == 0) {
+                unlisted_type_names.clone()
+            } else {
+                Rc::new(vec![])
+            },
+            authored_name(scope.type_env.clone(), m.clone()),
+            registry.clone(),
+            emit_info.clone(),
+            local_type_names.clone(),
+            already_imported_names.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            module_index.clone(),
+        );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
             reference_use_lines.clone(),
@@ -14401,26 +14401,36 @@ pub fn variant_ref_self_wraps(
         || v1_rt::set_contains(&shared_types, enum_name.clone()))
 }
 
-pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
-    if v1_rt::string_contains(&name, ".".to_string()) {
-        {
-            let leaf = qualified_last_segment(name.clone());
-            match v1_rt::map_get(&registry, leaf.clone()) {
-                Some(info) => v1_rt::concat(
+pub fn emit_value_ref_ident(
+    name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    this_module_name: String,
+) -> String {
+    {
+        let leaf = if v1_rt::string_contains(&name, ".".to_string()) {
+            qualified_last_segment(name.clone())
+        } else {
+            name.clone()
+        };
+        match v1_rt::map_get(&registry, leaf.clone()) {
+            Some(info) => {
+                if (info.module_name.clone() != this_module_name.clone()) {
                     v1_rt::concat(
                         v1_rt::concat(
-                            "crate::".to_string(),
-                            module_to_filename(info.module_name.clone()),
+                            v1_rt::concat(
+                                "crate::".to_string(),
+                                module_to_filename(info.module_name.clone()),
+                            ),
+                            "::".to_string(),
                         ),
-                        "::".to_string(),
-                    ),
-                    emit_import_name(leaf.clone(), registry.clone()),
-                ),
-                None => emit_ident(name.clone(), RenderTarget::Rust),
+                        emit_import_name(leaf.clone(), registry.clone()),
+                    )
+                } else {
+                    emit_ident(leaf.clone(), RenderTarget::Rust)
+                }
             }
+            None => emit_ident(name.clone(), RenderTarget::Rust),
         }
-    } else {
-        emit_ident(name.clone(), RenderTarget::Rust)
     }
 }
 
@@ -14432,6 +14442,7 @@ pub fn emit_var_ref(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    this_module_name: String,
 ) -> String {
     {
         let variant_parent = effective_variant_parent(
@@ -14502,8 +14513,11 @@ pub fn emit_var_ref(
                                                 Some(VarBindingKind::FunctionValueBinding) => true,
                                                 _ => false,
                                             };
-                                        let ident =
-                                            emit_value_ref_ident(name.clone(), registry.clone());
+                                        let ident = emit_value_ref_ident(
+                                            name.clone(),
+                                            registry.clone(),
+                                            this_module_name.clone(),
+                                        );
                                         let ident_str = if is_function_value.clone() {
                                             ident.clone()
                                         } else {
@@ -14524,7 +14538,11 @@ pub fn emit_var_ref(
                                 }
                             }
                             None => {
-                                let ident = emit_value_ref_ident(name.clone(), registry.clone());
+                                let ident = emit_value_ref_ident(
+                                    name.clone(),
+                                    registry.clone(),
+                                    this_module_name.clone(),
+                                );
                                 let ident_str = if moves_by_value.clone() {
                                     ident.clone()
                                 } else {
@@ -14621,10 +14639,18 @@ pub fn emit_typed_expr_base(
                                     if is_data.clone() {
                                         v1_rt::concat(to_snake(n.clone()), "()".to_string())
                                     } else {
-                                        emit_value_ref_ident(n.clone(), registry.clone())
+                                        emit_value_ref_ident(
+                                            n.clone(),
+                                            registry.clone(),
+                                            scope.module_name.clone(),
+                                        )
                                     }
                                 }
-                                None => emit_value_ref_ident(n.clone(), registry.clone()),
+                                None => emit_value_ref_ident(
+                                    n.clone(),
+                                    registry.clone(),
+                                    scope.module_name.clone(),
+                                ),
                             },
                         }
                     }
@@ -15194,16 +15220,16 @@ pub fn rust_wrap_runtime_collection_result(
 pub fn emit_rust_expr_var(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: binding_kind,
             ..
         } => {
-            let n = expr_var_name_at(expr.clone(), source_indices.clone());
+            let n = expr_var_name_at(expr.clone(), scope.type_env.clone().source_indices.clone());
             emit_var_ref(
                 n.clone(),
                 binding_kind.clone(),
@@ -15211,7 +15237,8 @@ pub fn emit_rust_expr_var(
                 shared_types.clone(),
                 registry.clone(),
                 emit_info.clone(),
-                source_indices.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                scope.module_name.clone(),
             )
         }
         _ => emit_error_expr(
@@ -15791,9 +15818,9 @@ pub fn emit_typed_expr(
                 emit_rust_expr_var(
                     expr.clone(),
                     registry.clone(),
+                    scope.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
-                    scope.type_env.clone().source_indices.clone(),
                 )
             },
             |expr| {
@@ -19790,6 +19817,7 @@ pub fn emit_typed_match_arm(
                         registry.clone(),
                         emit_info.clone(),
                         si.clone(),
+                        scope.module_name.clone(),
                     )
                 } else {
                     emit_typed_expr(

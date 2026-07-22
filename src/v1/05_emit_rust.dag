@@ -2063,7 +2063,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): TYPE unlisted names (arm 1) run ONLY for import-free modules — the namespace-resolution case the post-PR-6848 regression is about. VALUE refs (arm 2) run for ALL modules: a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics) must synthesize the missing fn-value use-line without re-deriving type imports that emit_imports already owns. Import-bearing v1 seed modules are safe: already_imported_names filters every name their authored import lists carry, and registry same-module skips prevent spurious cross-module lines. This is where UnlistedImportUse already fires exactly for types on import-free modules; fn-value closure extends the same derivation to partial-import namespace modules."
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
@@ -5342,7 +5342,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, this_modu
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, this_module_name: String) -> String {
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
@@ -5372,7 +5372,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_value_ref_ident(name: name, registry: registry)
+              let ident = emit_value_ref_ident(name: name, registry: registry, this_module_name: this_module_name)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -5384,7 +5384,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_value_ref_ident(name: name, registry: registry)
+            let ident = emit_value_ref_ident(name: name, registry: registry, this_module_name: this_module_name)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -5426,9 +5426,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Present { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(to_snake(name: n), "()") }
-                else { emit_value_ref_ident(name: n, registry: registry) }
+                else { emit_value_ref_ident(name: n, registry: registry, this_module_name: scope.module_name) }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry)
+                emit_value_ref_ident(name: n, registry: registry, this_module_name: scope.module_name)
             }
         }
       }
@@ -5639,11 +5639,11 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
   }
 }
 
-fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices)
+      let n = expr_var_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: scope.type_env.source_indices, this_module_name: scope.module_name)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -5834,7 +5834,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     source_indices: scope.type_env.source_indices,
     wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1),
-    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices),
+    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info),
     emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_call: expr => emit_rust_expr_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_method_call: expr => emit_rust_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
@@ -6982,7 +6982,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, this_module_name: scope.module_name)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
