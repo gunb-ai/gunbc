@@ -19,10 +19,12 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
-import v2.extdeps.languages.dag {
-  dag_language_model_canonical_symbols,
-  dag_surface_module_header_metadata_edge,
-  qualified_name_from_module_node
+import v2.extdeps.languages.dag { dag_language_model_canonical_symbols }
+import v2.std.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_export_collection_root,
+  namespace_graft_is_graft_candidate,
+  qualified_name_from_module_node_graft_aware
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
@@ -103,7 +105,11 @@ type AdmissionState
   | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
 type ModuleRootValidateState
-  = ModuleRootsValid { seen: FreeMonoid<QualifiedName>, diagnostics: Diagnostics }
+  = ModuleRootsValid {
+      seen: FreeMonoid<QualifiedName>,
+      roots: FreeMonoid<Node>,
+      diagnostics: Diagnostics
+    }
   | ModuleRootsDuplicate { diagnostics: Diagnostics }
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
@@ -180,54 +186,77 @@ fn module_root_name_find_fold(
   )
 }
 
+fn module_root_graft_for_resolve(root: Node) -> Outcome<Node> {
+  if namespace_graft_is_graft_candidate(root: root) {
+    module_header_containment_graft(root: root)
+  } else {
+    Accepted { value: root, diagnostics: None }
+  }
+}
+
+data module_root_graft_for_resolve_note: String = "§10 ingress parity: module roots admitted to resolve/name_resolve without passing through normalize still carry pre-graft header metadata; graft here so downstream resolve/symbol_index_fill never resurrect header special-casing (C5 dissolve). Production parse→normalize path already grafts; this arm is the honest pre-normalize ingress boundary for assemble_program_from_module_roots and synthetic witnesses."
+
 fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   match fold_list(
     xs: roots,
-    empty: ModuleRootsValid { seen: Empty, diagnostics: v2.std.diagnostic.None },
+    empty: ModuleRootsValid {
+      seen: Empty,
+      roots: Empty,
+      diagnostics: v2.std.diagnostic.None
+    },
     cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
           ModuleRootsDuplicate { diagnostics: d }
         ModuleRootsProjectionRejected { diagnostics: d } =>
           ModuleRootsProjectionRejected { diagnostics: d }
-        ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
-          if well_formed(n: root) {
-            match qualified_name_from_module_node(root: root) {
-              Rejected { diagnostics: d } =>
-                ModuleRootsProjectionRejected {
-                  diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
-                }
-              Accepted { value: name, diagnostics: proj_diag } =>
-                let merged_diag = diagnostics_merge(outer: acc_diag, inner: proj_diag)
-                match module_root_name_find_fold(
-                  names: prior,
-                  name: name,
-                  acc: ModuleRootNameNotFound
-                ) {
-                  ModuleRootNameNotFound =>
-                    ModuleRootsValid {
-                      seen: Cons { head: name, tail: prior },
-                      diagnostics: merged_diag
+        ModuleRootsValid { seen: prior, roots: prior_roots, diagnostics: acc_diag } =>
+          match module_root_graft_for_resolve(root: root) {
+            Rejected { diagnostics: d } =>
+              ModuleRootsProjectionRejected {
+                diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
+              }
+            Accepted { value: grafted, diagnostics: graft_diag } =>
+              let acc_with_graft = diagnostics_merge(outer: acc_diag, inner: graft_diag)
+              if well_formed(n: grafted) {
+                match qualified_name_from_module_node_graft_aware(root: grafted) {
+                  Rejected { diagnostics: d } =>
+                    ModuleRootsProjectionRejected {
+                      diagnostics: rejected_with_pending(pending: acc_with_graft, rejected: d)
                     }
-                  ModuleRootNameFoundOnce =>
-                    ModuleRootsDuplicate { diagnostics: merged_diag }
-                  ModuleRootNameFoundDuplicate =>
-                    ModuleRootsDuplicate { diagnostics: merged_diag }
+                  Accepted { value: name, diagnostics: proj_diag } =>
+                    let merged_diag = diagnostics_merge(outer: acc_with_graft, inner: proj_diag)
+                    match module_root_name_find_fold(
+                      names: prior,
+                      name: name,
+                      acc: ModuleRootNameNotFound
+                    ) {
+                      ModuleRootNameNotFound =>
+                        ModuleRootsValid {
+                          seen: Cons { head: name, tail: prior },
+                          roots: Cons { head: grafted, tail: prior_roots },
+                          diagnostics: merged_diag
+                        }
+                      ModuleRootNameFoundOnce =>
+                        ModuleRootsDuplicate { diagnostics: merged_diag }
+                      ModuleRootNameFoundDuplicate =>
+                        ModuleRootsDuplicate { diagnostics: merged_diag }
+                    }
                 }
-            }
-          } else {
-            ModuleRootsProjectionRejected {
-              diagnostics: rejected_with_pending(
-                pending: acc_diag,
-                rejected: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
-              )
-            }
+              } else {
+                ModuleRootsProjectionRejected {
+                  diagnostics: rejected_with_pending(
+                    pending: acc_with_graft,
+                    rejected: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
+                  )
+                }
+              }
           }
       }
     }
   ) {
-    ModuleRootsValid { seen: _, diagnostics: d } =>
-      Accepted { value: roots, diagnostics: d }
+    ModuleRootsValid { seen: _, roots: grafted_roots, diagnostics: d } =>
+      Accepted { value: grafted_roots, diagnostics: d }
     ModuleRootsDuplicate { diagnostics: d } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -255,7 +284,7 @@ fn module_root_find(
             ManyPassingCandidates =>
               Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
-              match qualified_name_from_module_node(root: root) {
+              match qualified_name_from_module_node_graft_aware(root: root) {
                 Rejected { diagnostics: d } =>
                   Rejected { diagnostics: d }
                 Accepted { value: candidate, diagnostics: _ } =>
@@ -290,15 +319,7 @@ fn module_root_find(
 }
 
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
-  match try_edge_declared_binding(e: e) {
-    Present { value: b } =>
-      if dag_surface_module_header_metadata_edge(name: b.name) {
-        optional_absent()
-      } else {
-        optional_present(value: b)
-      }
-    Absent => optional_absent()
-  }
+  try_edge_declared_binding(e: e)
 }
 
 type AdmitExportsFold {
@@ -355,10 +376,11 @@ fn admit_named_exports(
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match root.kind {
+  let export_root = namespace_graft_export_collection_root(root: root)
+  match export_root.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
-        n: root,
+        n: export_root,
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,

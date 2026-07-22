@@ -823,6 +823,48 @@ fn type_var_in_fn_generic_scope(id: String, generic_param_names: List<String>) -
   generic_param_names |> any(g => g == id)
 }
 
+fn rust_fold_rendered_type_has_spurious_generic_atom(type_str: String, atom: String, generic_param_names: List<String>) -> Bool {
+  if type_str == "_" || type_str == "" { false }
+  else if type_var_in_fn_generic_scope(id: atom, generic_param_names: generic_param_names) { false }
+  else { string_contains(s: type_str, pattern: concat("<", atom, ">")) }
+}
+
+fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
+  if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
+    false
+  } else {
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: resolved_node } =>
+        if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
+      Absent => true
+    }
+  }
+}
+
+fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let leaf_name = authored_name_at(source_indices: source_indices, node: n)
+  if n.children |> count == 0 && leaf_name != "" {
+    if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
+  }
+  if n.inferred != none {
+    match n.inferred.value {
+      TypeVariable { id: tv } =>
+        if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
+      Resolved { node: rt } =>
+        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+      _ => ()
+    }
+  }
+  if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
+    true
+  } else {
+    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+      Absent => false
+    }
+  }
+}
+
 fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.inferred != none {
     match n.inferred.value {
@@ -2021,7 +2063,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): TYPE unlisted names (arm 1) run ONLY for import-free modules — the namespace-resolution case the post-PR-6848 regression is about. VALUE refs (arm 2) run for import-bearing modules ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics) must synthesize the missing fn-value use-line without re-deriving type imports that emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the value walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen. This is where UnlistedImportUse already fires exactly for types on import-free modules; fn-value closure extends the same derivation to partial-import FaithfulFreeMonoid modules."
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
@@ -2088,7 +2130,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
-  let prelude = emit_prelude(imported_names: prelude_imported_names)
+  let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
@@ -2113,7 +2155,33 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
   let reference_use_lines = if module_imports(n: m) |> count == 0 {
-    reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+    reference_derived_use_lines(
+      items: typed_module.items,
+      unlisted_type_names: unlisted_type_names,
+      this_module_name: authored_name(env: scope.type_env, node: m),
+      registry: registry,
+      emit_info: emit_info,
+      local_type_names: local_type_names,
+      already_imported_names: already_imported_names,
+      export_sets: export_sets,
+      typed_modules: typed_modules,
+      source_indices: scope.type_env.source_indices,
+      module_index: module_index
+    )
+  } else if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) {
+    reference_derived_use_lines(
+      items: typed_module.items,
+      unlisted_type_names: [],
+      this_module_name: authored_name(env: scope.type_env, node: m),
+      registry: registry,
+      emit_info: emit_info,
+      local_type_names: local_type_names,
+      already_imported_names: already_imported_names,
+      export_sets: export_sets,
+      typed_modules: typed_modules,
+      source_indices: scope.type_env.source_indices,
+      module_index: module_index
+    )
   } else {
     []
   }
@@ -3572,21 +3640,22 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   concat(free_monoid, char_line, non_empty_str, int_line, partial_function, memory, one)
 }
 
-fn emit_prelude(imported_names: List<String>) -> String {
+fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) -> String {
   let base = concat(
     "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
+  let witness_locally_defined = rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Witness")
   let has_witness = imported_names |> any(n => n == "Witness")
   let has_holds = imported_names |> any(n => n == "Holds")
   let has_violates = imported_names |> any(n => n == "Violates")
-  let witness_line = if has_witness || has_holds || has_violates {
+  let witness_line = if witness_locally_defined || has_witness || has_holds || has_violates {
     ""
   } else {
     "\nuse crate::v1_rt::Witness;"
   }
-  let variant_line = if has_holds && has_violates {
+  let variant_line = if witness_locally_defined || (has_holds && has_violates) {
     ""
   } else if has_holds {
     "\nuse crate::v1_rt::Witness::Violates;"
@@ -5273,6 +5342,20 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
+fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String {
+  if string_contains(s: name, pattern: ".") {
+    let leaf = qualified_last_segment(name: name)
+    match map_get(registry, leaf) {
+      Present { value: info } =>
+        concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+      Absent =>
+        emit_ident(name: name, target: Rust)
+    }
+  } else {
+    emit_ident(name: name, target: Rust)
+  }
+}
+
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
@@ -5303,7 +5386,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_ident(name: name, target: Rust)
+              let ident = emit_value_ref_ident(name: name, registry: registry)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -5315,7 +5398,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_ident(name: name, target: Rust)
+            let ident = emit_value_ref_ident(name: name, registry: registry)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -5357,9 +5440,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Present { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(to_snake(name: n), "()") }
-                else { emit_ident(name: n, target: Rust) }
+                else { emit_value_ref_ident(name: n, registry: registry) }
               Absent =>
-                emit_ident(name: n, target: Rust)
+                emit_value_ref_ident(name: n, registry: registry)
             }
         }
       }
@@ -6140,7 +6223,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   }
 }
 
-fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, type_env: TypeEnv) -> String {
   match receiver_type {
     Present { value: Resolved { node: rt } } =>
       let __rt_is_container = node_is_element_collection(n: rt, source_indices: source_indices)
@@ -6150,7 +6233,7 @@ fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<Strin
             let elem_node = child_type_node(ch: elem_child)
             let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
             let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
-            if elem_is_error || elem_is_type_var { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
+            if elem_is_error || elem_is_type_var || type_node_has_closure_unbound_generic_atom(n: elem_node, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
           Absent => "_"
         }
       } else { "_" }
@@ -6174,7 +6257,7 @@ fn lambda_scope_from_children(scope: InferScope, params: List<String>, param_nod
   )
 }
 
-fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool) -> List<String> {
+fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool, type_env: TypeEnv) -> List<String> {
   params |> enumerate |> map(pair =>
     let idx = pair.first
     let param_name = pair.second
@@ -6188,6 +6271,8 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
               let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
               if param_is_type_var || param_is_error {
+                none
+              } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) {
                 none
               } else {
                 Present { value: render_rust_type(n: param_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
@@ -6216,7 +6301,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: false)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: false, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -6236,7 +6321,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -6255,7 +6340,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info)
+  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
   let contextual_acc_type = match result_type {
     Present { value: Resolved { node: method_result_type } } => Present { value: method_result_type }
     _ => none
@@ -6361,8 +6446,12 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
+  let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
+  let acc_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(type_str: acc_type_str, atom: "T", generic_param_names: emit_info.fn_generic_param_names)
+  let elem_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(type_str: elem_type_str, atom: "T", generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_t { "_" } else { acc_type_str }
+  let fold_elem_type_str = if elem_render_has_spurious_t { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Present { value: init_arg } =>
@@ -6391,7 +6480,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   }
   let fold_fn = match args |> skip(1) |> first {
     Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
     Absent => "compile_error!(\"missing fold function argument\")"
   }
   let sharing = language_spec(target: Rust).sharing

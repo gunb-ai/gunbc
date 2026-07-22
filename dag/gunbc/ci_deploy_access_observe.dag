@@ -89,6 +89,9 @@ fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
     Srv3NbdProxyServe { intent: _, lease_key: _ } => false
     Srv3BootOnceReadBackSleep => false
     Srv3ReceiptEmit { lines: _ } => false
+    HostIdentityShortHostnameRead => false
+    SystemdUnitMemoryMaxRead { unit: _ } => false
+    SystemdUnitMemoryPropertiesRead { unit: _ } => false
     LiveDeployApply { spec: _ } => false
     LiveDeployRetract { spec: _ } => false
     LiveDeployEnsureDependency { dep: _ } => false

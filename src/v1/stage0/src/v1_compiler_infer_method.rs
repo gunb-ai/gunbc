@@ -243,6 +243,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "emit_host_native_cache_evict".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "contiguous_loop_elementwise_kernel".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );

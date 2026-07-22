@@ -14,6 +14,7 @@ use std::process::ExitCode;
 use v1_compiler::cli_run::{
     format_resolution_divergence_census, resolution_divergence_census_live,
     resolution_divergence_census_live_closure_scoped, resolution_divergence_census_source_roots,
+    resolution_divergence_fn_parent_first_hit_subset_refusal,
     resolution_divergence_silent_pick_refusal, whole_tree_resolve_exclusion_substrings,
 };
 
@@ -91,6 +92,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     if census.sites_checked == 0 {
         eprintln!("resolution_divergence_census: no bare call sites in resolved corpus");
         return Err(ExitCode::from(2));
+    }
+    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(&census) {
+        eprintln!("{refusal}");
+        return Err(ExitCode::from(1));
     }
     if let Some(refusal) = resolution_divergence_silent_pick_refusal(&census) {
         eprintln!("{refusal}");

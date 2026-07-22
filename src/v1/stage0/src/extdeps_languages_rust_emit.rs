@@ -75,7 +75,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -95,7 +95,7 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, bool>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )

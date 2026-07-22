@@ -1,5 +1,7 @@
 module v2.lens.reference_deps
 
+import v2.std.namespace_graft { qualified_name_from_module_node_graft_aware }
+
 
 type ReferenceResolutionFact {
   path: String
@@ -250,7 +252,7 @@ fn reference_sites_collect_node(
 }
 
 fn reference_sites_from_parsed_module(module_root: Node) -> Outcome<List<QualifiedName>> {
-  match qualified_name_from_module_node(root: module_root) {
+  match qualified_name_from_module_node_graft_aware(root: module_root) {
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: module_qn, diagnostics: _ } =>
       reference_sites_collect_node(
