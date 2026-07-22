@@ -13,6 +13,7 @@ import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_i
 import gunbc.gitignore_emit { path_is_ignored }
 import gunbc.plan_registry { all_plans }
 import gunbc.plans.idea_machine { idea_machine_plan }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
