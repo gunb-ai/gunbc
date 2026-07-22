@@ -1,0 +1,11 @@
+module tools.resolution_divergence_silent_pick_gate_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+
+fn run_resolution_divergence_silent_pick_gate_witness() -> Bool {
+  run_witness_bin(
+    var_name: "RESOLUTION_DIVERGENCE_SILENT_PICK_GATE_WITNESS",
+    bin_name: "resolution_divergence_census",
+    args: ["--closure-scoped"]
+  )
+}
