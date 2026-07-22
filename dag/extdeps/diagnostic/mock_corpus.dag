@@ -8,6 +8,13 @@ data diagnostic_ssh_session_mock_case_exec: PublishedMockCase = PublishedMockCas
   case_id: 0
 }
 
+data diagnostic_ssh_session_mock_case_exec_argv: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.ExecArgv",
+  service: "ssh.Session",
+  operation: "ExecArgv",
+  case_id: 0
+}
+
 data diagnostic_ssh_session_mock_case_exec_script: PublishedMockCase = PublishedMockCase {
   operation_key: "ssh.Session.ExecScript",
   service: "ssh.Session",
