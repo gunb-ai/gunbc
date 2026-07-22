@@ -343,6 +343,8 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         f"data cli_run_hollowing_production_row_baseline: Int = {prod}",
         f"data cli_run_hollowing_test_row_baseline: Int = {test}",
         f"data cli_run_hollowing_unclassified_baseline: Int = {uncl}",
+        f'data cli_run_hollowing_source_path: String = "{CLI_RUN.relative_to(REPO)}"',
+        f"data cli_run_hollowing_source_loc_baseline: Int = {source_loc}",
         "",
         f'data cli_run_hollowing_ledger_law: String = "{law}"',
         "",
@@ -444,12 +446,66 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def parse_ledger_baselines(dag_text: str) -> dict[str, int]:
+    keys = (
+        "cli_run_hollowing_row_count_baseline",
+        "cli_run_hollowing_production_row_baseline",
+        "cli_run_hollowing_test_row_baseline",
+        "cli_run_hollowing_unclassified_baseline",
+        "cli_run_hollowing_source_loc_baseline",
+    )
+    out: dict[str, int] = {}
+    for key in keys:
+        m = re.search(rf"data {key}: Int = (\d+)", dag_text)
+        if not m:
+            raise ValueError(f"missing {key} in ledger dag")
+        out[key] = int(m.group(1))
+    return out
+
+
+def verify_ledger(cli_run_lines: list[str], dag_text: str) -> list[str]:
+    rows = extract_functions(cli_run_lines)
+    rows.sort(key=lambda r: r["line"])
+    baselines = parse_ledger_baselines(dag_text)
+    errors: list[str] = []
+    prod = sum(1 for r in rows if not r["test"])
+    test = sum(1 for r in rows if r["test"])
+    uncl = sum(1 for r in rows if r["feature"] == "Unclassified")
+    live = {
+        "cli_run_hollowing_row_count_baseline": len(rows),
+        "cli_run_hollowing_production_row_baseline": prod,
+        "cli_run_hollowing_test_row_baseline": test,
+        "cli_run_hollowing_unclassified_baseline": uncl,
+        "cli_run_hollowing_source_loc_baseline": len(cli_run_lines),
+    }
+    for key, expected in baselines.items():
+        got = live[key]
+        if got != expected:
+            errors.append(f"{key}: ledger={expected} live={got}")
+    return errors
+
+
 def main() -> int:
     if not CLI_RUN.is_file():
         print(f"missing {CLI_RUN}", file=sys.stderr)
         return 1
     text = CLI_RUN.read_text()
     lines = text.splitlines()
+    if "--verify" in sys.argv:
+        if not OUT_DAG.is_file():
+            print(f"missing {OUT_DAG}", file=sys.stderr)
+            return 1
+        errors = verify_ledger(lines, OUT_DAG.read_text())
+        if errors:
+            for err in errors:
+                print(f"VERIFY FAIL: {err}", file=sys.stderr)
+            print(
+                "Regenerate: python3 scripts/generate_cli_run_hollowing_ledger.py",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"VERIFY OK: {len(extract_functions(lines))} rows match {OUT_DAG}")
+        return 0
     rows = extract_functions(lines)
     rows.sort(key=lambda r: r["line"])
     dag = render_dag(rows, len(lines))

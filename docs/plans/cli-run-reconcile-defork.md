@@ -4,7 +4,7 @@
 
 **Scope boundary (fence, DESIGN §3/§6):** does NOT touch `src/v1/03_resolve.dag` / `src/v1/04_infer.dag` or their GENERATED outputs (`v1_compiler_resolve.rs`, `v1_compiler_infer.rs`) — those are resolver-B's (#6155, open) territory and already `.dag`-authored. This lane only grounds the **orchestration layer around them** that currently lives hand-written in `cli_run.rs`.
 
-**Function ledger (LANDED quick-moth-273):** every `cli_run.rs` function is enumerated on `dag/gunbc/cli_run_hollowing_ledger.dag` (855 rows: 621 production + 234 test-fn, zero unclassified) with a typed `CliRunHollowFeature` disposition per row. Regenerate via `scripts/generate_cli_run_hollowing_ledger.py`; witness: `cli_run_hollowing_ledger_witness_test.dag`.
+**Function ledger (PR #7074 / quick-moth-273):** every `cli_run.rs` function is enumerated on `dag/gunbc/cli_run_hollowing_ledger.dag` (855 rows: 621 production + 234 test-fn, zero unclassified) with a typed `CliRunHollowFeature` disposition per row. Regenerate via `scripts/generate_cli_run_hollowing_ledger.py` (`--verify` checks live extraction against committed baselines); witnesses: `cli_run_hollowing_ledger_witness_test.dag`.
 
 ## 0. What's actually in scope
 
