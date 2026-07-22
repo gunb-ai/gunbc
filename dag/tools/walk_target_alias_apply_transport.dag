@@ -3,7 +3,7 @@ module tools.walk_target_alias_apply_transport
 import tools.host_prelude { run_witness_bin }
 import tools.walk_target_alias_apply {
   walk_target_alias_apply_plan_pure,
-  walk_target_alias_module_index_seed_gap,
+  walk_target_alias_apply_module_index_seed_gap,
   WalkTargetAliasPlan
 }
 import v2.std.diagnostic { Accepted, Rejected }
