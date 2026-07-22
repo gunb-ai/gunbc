@@ -13,6 +13,7 @@ import std.realization { Share, Recompute }
 import std.realize_pack {
   BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
 }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
@@ -59,7 +60,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_classical_not_family_note: String = "Witness-realization fan-out lane 4 (classical_not_ingested), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_classical_not_native_one_build_holds: one root, both keys evicted up front; primary (ingested pipeline) cold then warm (octet 0), the eval-anchored agreement runs WARM on the same build (run_test_claim_from_source_emit_vs_eval_cached — oracle stays eval), then the swapped-source alt colds in the SAME root with the flipped octet 1 AND its eval-anchored semantic-mismatch RED runs warm on the alt build. Formerly ~6 crate builds per pass; now 2. Pure receipts unchanged."
 
-data classical_not_family_cache_root: String = "/tmp/gunbc_emit_on_demand_classical_not_family"
+data classical_not_family_cache_root: String = emit_on_demand_family_cache_root(family: "classical_not_family")
 data classical_not_family_emitter: String = "v2.compiler.emit"
 data classical_not_family_provider: CacheProvider = provider_row(
   id: "emit-on-demand-classical-not-family",

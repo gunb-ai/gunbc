@@ -463,3 +463,35 @@ fn permyriad_half_for_round_half_up() -> Int {
 data percent_scale_hundred: Int = 100
 
 data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
+
+type BasisPoint = Measure<Dimensionless, One, Nat>
+
+fn basis_point(count: Nat) -> BasisPoint {
+  BasisPoint { count: count }
+}
+
+fn basis_point_count(bp: BasisPoint) -> Nat {
+  measure_count(bp)
+}
+
+fn basis_point_unity_count() -> Nat {
+  10000
+}
+
+data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
+
+data basis_point_dissolve_on: String = "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname."
+
+type AmortizationMonths = Measure<Count, One, Nat>
+
+fn amortization_months(count: Nat) -> AmortizationMonths {
+  AmortizationMonths { count: count }
+}
+
+fn amortization_months_count(m: AmortizationMonths) -> Nat {
+  measure_count(m)
+}
+
+data amortization_months_unit_note: String = "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only)."
+
+data amortization_months_dissolve_on: String = "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper."
