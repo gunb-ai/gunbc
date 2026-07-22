@@ -689,6 +689,37 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn walk_target_alias_apply_write_mode_labels_requested_vs_written() {
+        use super::{format_walk_target_alias_apply, WalkTargetAliasApplyEdit, WalkTargetAliasApplyReport};
+
+        let dry = format_walk_target_alias_apply(&WalkTargetAliasApplyReport {
+            write_requested: false,
+            ..Default::default()
+        });
+        assert!(dry.contains("write_mode=dry-run"));
+
+        let written = format_walk_target_alias_apply(&WalkTargetAliasApplyReport {
+            write_requested: true,
+            edits: vec![WalkTargetAliasApplyEdit {
+                declaring_module: "m".into(),
+                rel_source_path: "m.dag".into(),
+                binding: "b".into(),
+                alias_line: "alias b = t".into(),
+                written: true,
+            }],
+            ..Default::default()
+        });
+        assert!(written.contains("write_mode=written"));
+
+        let noop = format_walk_target_alias_apply(&WalkTargetAliasApplyReport {
+            write_requested: true,
+            skipped_existing: 1,
+            ..Default::default()
+        });
+        assert!(noop.contains("write_mode=write-no-op"));
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -19558,6 +19589,7 @@ pub struct WalkTargetAliasApplyReport {
     pub refused: Vec<String>,
     pub source_scope_label: String,
     pub binding_identity_oracle_passed: bool,
+    pub write_requested: bool,
 }
 
 /// Static oracle (§13): every apply row must be walk-verified with agreeing binding identity.
@@ -19723,6 +19755,7 @@ pub fn walk_target_alias_apply_plan(
         refused,
         source_scope_label: plan.source_scope_label.clone(),
         binding_identity_oracle_passed: true,
+        write_requested: write,
     }
 }
 
@@ -19783,10 +19816,12 @@ pub fn format_walk_target_alias_apply(report: &WalkTargetAliasApplyReport) -> St
         ),
         format!(
             "[walk-target-alias-apply] write_mode={}",
-            if report.edits.iter().any(|e| e.written) {
+            if !report.write_requested {
+                "dry-run"
+            } else if report.edits.iter().any(|e| e.written) {
                 "written"
             } else {
-                "dry-run"
+                "write-no-op"
             }
         ),
     ];
