@@ -20,10 +20,7 @@ import gunbc.host_runner_memory_provision {
   runner_memory_cap_readback_verdict,
 }
 import gunbc.fleet_show_effective_read {
-  runner_unit_memory_live_read_from_stdout,
-}
-import gunbc.fleet_show_effective_read_script {
-  fleet_runner_unit_memory_props_read_script,
+  fleet_runner_unit_memory_live_read,
 }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 
@@ -158,14 +155,7 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
   let unit = runner_memory_cap_probe_unit(host: host)
   match runner_memory_cap_verify_probed_at() {
     Present { value: probed_at } =>
-      let result = shell.Exec.Run(
-        script: transport_script_from_body(body: fleet_runner_unit_memory_props_read_script(unit: unit))
-      )
-      if result.success {
-        runner_unit_memory_live_read_from_stdout(unit: unit, stdout: result.stdout, probed_at: probed_at)
-      } else {
-        none
-      }
+      fleet_runner_unit_memory_live_read(host: host, unit: unit, probed_at: probed_at)
     Absent => none
   }
 }
