@@ -145,53 +145,56 @@ Every way a shell string is constructed or carried, grep-complete over `dag/**` 
 
 The classes below partition every hit. **Class letters = the ACTION**, not the file.
 
-### 4.A — RELOCATION REGRESSION: fake-migrated, concat lives in a `*_script.dag` (dissolve properly)
+### 4.A — RELOCATION REGRESSION + systemctl-read cluster (dissolve properly)
 
-Every `*_script.dag` file, the `HostEffect` nickname variant it un-wraps to, and the modeled op it *should* call. Deleting the file + the variant is the definition of done for its rows.
+Keyed on the **construction site (variant/fn name)** and the modeled op it *should* call. Done = the concat gone (deleted, not moved) and, where the variant is a nickname, the variant gone too.
 
-| `*_script.dag` file | script fns | nickname variant(s) to delete | should call | sub-class |
-| --- | --- | --- | --- | --- |
-| `fleet_show_effective_read_script.dag` | `…slice_memory_max_read`, `…unit_memory_props_read`, `…unit_property_read` | `SystemdUnitMemoryMaxRead`, `SystemdUnitMemoryPropertiesRead` | `extdeps.os.systemctl.ShowProperty` (exists) | **A1** modeled |
-| `host_identity_observation_script.dag` | `host_identity_short_hostname_script` | `HostIdentityShortHostnameRead` | **new** `extdeps.os.hostname` read | **A2** model-first |
-| `host_effect_hostname_script.dag` | `host_effect_set_hostname_cas_script` | `SetHostnameCas` | **new** hostnamectl set op | **A2** model-first |
-| `host_effect_deploy_access_probe_script.dag` | `…read_effective_posix_principal`, `…sudo_nopasswd_execute_probe`, `…sudo_nopasswd_grant_list_probe` | `ReadEffectivePosixPrincipal`, `SudoNopasswdExecuteProbe` | `access.PosixEffectivePrincipal`, `sudo.NopasswdExecuteProbe` (exist) | **A3** OWNED BY C5 #6946 — do not touch |
-| `live_deploy/host_effect_script.dag` | `…apply`, `…retract`, `…ensure_dependency`, `…digest_readback`, `…script_for` | live_deploy effect variants | decompose (multi-op) | **A4** decompose |
-| `host_build_cache_provision_script.dag` | 6 `build_cache_*_body`/`…shell_script` | `ProvisionBuildCache` | decompose | **A5** srv* deprioritized |
-| `host_hygiene_reaper_script.dag` | 4 `host_hygiene_reap_*_body` | (hygiene reaper) | decompose | **A5** srv* deprioritized |
-| `host_hygiene_liveness_script.dag` | `host_hygiene_liveness_read_body` | (hygiene liveness) | decompose | **A5** srv* deprioritized |
-| `srv3_host_effect_script.dag` | 5 `srv3_*` (incl. `srv3_concat_balanced`, `srv3_receipt_emit_script`) | `Srv3*` variants | typed observe/receipt effects | **A5** srv* deprioritized |
-| `srv3_install_diagnostic_observe_script.dag` | 5 `srv3_install_diagnostic_observe_*` | `Srv3InstallDiagnosticObserve` | typed observe (FROZEN file) | **A5** srv* deprioritized |
-
-### 4.B — DIRECT `ShellCommand{script}` still in intent (not even relocated)
-
-| site | verb | should call | class |
+| construction site (file · variant/fn) | builder(s) — `*_script.dag` and/or inline | should call | sub-class |
 | --- | --- | --- | --- |
-| `fleet_show_effective_read.dag:147,295` | `systemctl show` | `systemctl.ShowProperty` | A1 (calls the relocated fns — same rows as 4.A) |
-| `host_identity_observation.dag:66` | short hostname | new `extdeps.os.hostname` | A2 |
-| `live_deploy/readiness.dag:132` | (readiness probe) | DFS then decompose | A4 |
-| `host_effect_plan.dag:39` | `ShellCommand{script: ""}` empty placeholder | stub — delete with the variant | — |
-| `host_effect.dag:28` | the `ShellCommand{script: String}` **type** itself | delete at arc close (DESIGN §5, escalated) | terminal |
+| `fleet_show_effective_read.dag` · `SystemdUnitMemoryPropertiesRead`, `SystemdUnitMemoryMaxRead` | `fleet_show_effective_read_script.dag` relocated fns **+ inline** `fleet_runner_unit_property_read_script`, `fleet_runner_width_count_read_script` (`systemctl show`/`list-units`) | `extdeps.os.systemctl.ShowProperty` (exists) + a `list-units` op | **A1** modeled |
+| `host_converge_slice1.dag` (via `shell.Exec.Run`) | inline `…_memory_max_read_script`, `…_memory_max_set_script` (`systemctl set-property` concat), `…_enumerate_units_script` (`systemctl list-units` concat) | `systemctl.ShowProperty` / `SetProperty` / new `list-units` op | **A1** modeled |
+| `host_identity_observation.dag` · `HostIdentityShortHostnameRead` | `host_identity_observation_script.dag` · `host_identity_short_hostname_script` | **new** `extdeps.os.hostname` read | **A2** model-first |
+| `host_effect.dag` · `SetHostnameCas` (realized via `host_effect_hostname_script.dag`) | `host_effect_set_hostname_cas_script` | **new** hostnamectl set op | **A2** model-first |
+| `host_effect.dag` · `ReadEffectivePosixPrincipal`, `SudoNopasswdExecuteProbe` | `host_effect_deploy_access_probe_script.dag` (whoami / `sudo -n` / `sudo -n -l`) | `access.PosixEffectivePrincipal`, `sudo.NopasswdExecuteProbe` (exist) | **A3** OWNED BY C5 #6946 — do not touch |
+| `live_deploy/` effect variants | `live_deploy/host_effect_script.dag` (`…apply`/`…retract`/`…ensure_dependency`/`…digest_readback`) | decompose (multi-op) | **A4** decompose |
+| `host_effect_realize.dag` · `ProvisionBuildCache` | `host_build_cache_provision_script.dag` (6 `build_cache_*_body`) | decompose | **A5** srv* deprioritized |
+| hygiene reaper/liveness | `host_hygiene_reaper_script.dag` (4 `…_body`), `host_hygiene_liveness_script.dag` | decompose | **A5** srv* deprioritized |
+| `srv3_host_effect_apply.dag` · `Srv3*` variants, `srv3_install_diagnostic_checklist.dag` · `Srv3InstallDiagnosticObserve`, `nbd_proxy_virtual_media_install.dag` · `Srv3NbdProxyServe` | `srv3_host_effect_script.dag` (5 fns), `srv3_install_diagnostic_observe_script.dag` (5 fns) | typed observe/receipt effects | **A5** srv* deprioritized |
+
+### 4.B — DIRECT `ShellCommand{script}` — RESIDUE ONLY (0 live construction sites on main)
+
+The relocation wave left **no direct `ShellCommand{script}` construction sites** on `origin/main` — every one became a nickname variant (tracked in 4.A). What remains:
+
+| site (file · symbol) | what | action |
+| --- | --- | --- |
+| `host_effect_plan.dag` · `ShellCommand { script: "" }` | empty placeholder | delete with the type |
+| `host_effect.dag` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal |
+
+*(The first draft's `fleet_show_effective_read.dag:147,295` and `host_identity_observation.dag:66` rows were mis-grounded on a divergent worktree — corrected to their real nickname-variant construction sites in 4.A per review 41399.)*
 
 ### 4.C — RUNTIME-PRESENT `shell.Exec.Run` with a string/`_script` body (dissolve to typed op)
 
-| site | body | should call | class |
+| site (file · fn) | body | should call | class |
 | --- | --- | --- | --- |
-| `host_converge_slice1.dag:150` | `…memory_max_read_script` | `systemctl.ShowProperty` | A1 |
-| `host_converge_slice1.dag:228` | `…memory_max_set_script` | `systemctl.SetProperty` | A1 |
-| `host_converge_slice1.dag:316` | `…enumerate_units_script` | new `systemctl` list-units op | A2 |
-| `host_converge_slice1.dag:125`, `host_identity_adopt.dag:59` | `"date -Iseconds"` | typed clock/date op (DFS `extdeps` time) | A2 |
-| `ci_deploy_target_host.dag:32` | `"hostname -s 2>/dev/null \|\| hostname"` | new `extdeps.os.hostname` (+ the `\|\| hostname` fallback becomes modeled, §5) | A2 |
-| `host_identity_assimilation.dag:238`, `host_identity_adopt.dag:150`, `srv3_install_diagnostic_checklist.dag:131` | `"echo <receipt>"` | typed receipt emit (not shell — a stdout write) | A4 |
-| `host_effect_realize.dag:1106`, `:722` (`shell_exec_via_bash`) | realization-core script dispatch | the `LocalShell`/`SshShell` typed-argv edge (C5) | A4 realization core — confirm before edit |
-| `dag/tools/{host_prelude:15,gunbc_ci:13,emit_host_gate:51,merge_admission_stamp:41,100}`, `gunbc/tools/review.dag:68,71` | witness/CI transports invoked from `claim_executor` | typed `WitnessBin.Run`/argv (host_prelude precedent) | A4 |
+| `host_converge_slice1.dag` · `…_memory_max_read/set/enumerate_units_script` | `systemctl show`/`set-property`/`list-units` | `systemctl.ShowProperty`/`SetProperty` + new `list-units` op | A1 (same cluster as 4.A) |
+| `host_converge_slice1.dag`, `host_identity_adopt.dag` | `"date -Iseconds"` | typed clock/date op (DFS `extdeps` time) | A2 |
+| `ci_deploy_target_host.dag` | `"hostname -s 2>/dev/null \|\| hostname"` | new `extdeps.os.hostname` (the `\|\| hostname` fallback becomes modeled, §5) | A2 |
+| `host_identity_assimilation.dag`, `host_identity_adopt.dag`, `srv3_install_diagnostic_checklist.dag` | `"echo <receipt>"` | typed receipt emit (a stdout write, not shell) | A4 |
+| `host_effect_realize.dag` · `shell_exec_via_bash` dispatch | realization-core script dispatch | the `LocalShell`/`SshShell` typed-argv edge (C5) | A4 realization core — confirm before edit |
+| `dag/tools/{host_prelude,gunbc_ci,emit_host_gate,merge_admission_stamp}`, `gunbc/tools/review.dag` | witness/CI transports invoked from `claim_executor` | typed `WitnessBin.Run`/argv (host_prelude precedent) | A4 |
 
 ### 4.D — `ssh.Session.Exec` command-string (vs typed `ExecArgv`)
 
-| site | verb | should call | class |
+All in `host_effect_realize.dag`, via `ssh_session_exec(command:)` / `ssh_session_exec_script(script:)`:
+
+| construction | verb | should call | class |
 | --- | --- | --- | --- |
-| `host_effect_realize.dag:776` | `ssh … "test -x <path>"` | `ssh.Session.ExecArgv` (C5) | A1 |
-| `host_effect_realize.dag:788,811` | `ssh … "command -v <tool>"` | `ssh.Session.ExecArgv` (C5) | A1 |
-| `extdeps.diagnostic.ssh.dag:70` | `ssh.Session.Exec(command:)` transport | keep as the ONE command-string transport, or fold into `ExecArgv` | transport-decision — escalate |
+| `ssh_session_exec(command: cmd)` | arbitrary command | `ssh.Session.ExecArgv` (C5) | A1 |
+| `ssh_session_exec(command: concat("test -x ", path))` | file-exists probe | `ssh.Session.ExecArgv` | A1 |
+| `ssh_session_exec(command: concat("command -v ", tool))` (×2) | tool-presence probe | `ssh.Session.ExecArgv` | A1 |
+| `ssh_session_exec(command: "id -u")`, `"id -g"` | uid/gid read | `ssh.Session.ExecArgv` (an `id` op) | A1 |
+| `ssh_session_exec_script(script:)` | script-over-ssh | typed-argv splice or decompose | A4 |
+| `extdeps.diagnostic.ssh.dag` · `ssh.Session.Exec(command:)` | the transport itself | keep as the ONE command-string transport, or fold into `ExecArgv` | transport-decision — escalate |
 
 ### 4.E — FOREIGN-EXECUTOR / BOOTSTRAP emit (LEGIT shell — route through `emit(intent,Bash)`, stays shell but bounded)
 
