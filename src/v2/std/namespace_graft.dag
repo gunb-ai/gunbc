@@ -85,19 +85,7 @@ type ModuleRootEdgeDisposition
   | ModuleRootEdgeTransparentDescent
   | ModuleRootEdgeSkipSubtree
 
-data namespace_graft_edge_disposition_note: String = "Module-root edge census (pre-graft working tree; none silently dropped): dag_surface_module_header + dag_surface_module_header_qualified_name → DISSOLVE (metadata; QN read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never an export subset). TransparentDescent = recurse into edge.target without grafting the wrapper edge (parse *_node_projection by name, or transparent sequence/repeat spine by target shape). SkipSubtree = drop edge whose target is a module-header parse subtree (duplicate header arm already dissolved by name)."
-
-fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
-  if namespace_graft_is_metadata_edge(name: name) {
-    ModuleRootEdgeDissolve
-  } else if name == ^grammar_production_identity_node_projection {
-    ModuleRootEdgeRehomeProvenance
-  } else if name == ^grammar_production_captured_node_projection {
-    ModuleRootEdgeDissolve
-  } else {
-    ModuleRootEdgeGraftBody
-  }
-}
+data namespace_graft_edge_disposition_note: String = "Module-root edge census (pre-graft working tree; none silently dropped): dag_surface_module_header + dag_surface_module_header_qualified_name → DISSOLVE (metadata; QN read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never an export subset). TransparentDescent = recurse into edge.target without grafting the wrapper edge (parse *_node_projection by name, or transparent sequence/repeat spine by target shape). SkipSubtree = drop edge whose target is a module-header parse subtree (duplicate header arm already dissolved by name). Single authority: namespace_graft_collect_edge_disposition(edge) — name-only census deleted (review 41162)."
 
 fn namespace_graft_collect_edge_disposition(edge: Edge) -> ModuleRootEdgeDisposition {
   match edge.label {

@@ -6,13 +6,13 @@ import v2.extdeps.languages.dag {
 import v2.std.logic { Bool }
 import v2.std.namespace_graft {
   module_header_containment_graft,
+  namespace_graft_collect_edge_disposition,
   namespace_graft_is_metadata_edge,
-  namespace_graft_module_root_edge_disposition,
   ModuleRootEdgeDissolve,
   ModuleRootEdgeGraftBody,
-  ModuleRootEdgeRehomeProvenance
+  ModuleRootEdgeTransparentDescent
 }
-import v2.std.node { Atom, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -33,12 +33,26 @@ test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> 
     && !dag_surface_module_header_metadata_edge(name: ^dag_surface_top_level_item)
 }
 
-test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> Bool {
-  match namespace_graft_module_root_edge_disposition(name: ^dag_surface_module_header) {
+fn zm_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn zm_named_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: zm_atom(sym: name) }
+}
+
+test fn namespace_graft_disposition_census_holds() -> Bool {
+  match namespace_graft_collect_edge_disposition(edge: zm_named_edge(name: ^dag_surface_module_header)) {
     ModuleRootEdgeDissolve =>
-      match namespace_graft_module_root_edge_disposition(name: ^grammar_production_identity_node_projection) {
-        ModuleRootEdgeRehomeProvenance =>
-          match namespace_graft_module_root_edge_disposition(name: ^NgPilotType) {
+      match namespace_graft_collect_edge_disposition(
+        edge: zm_named_edge(name: ^grammar_production_identity_node_projection)
+      ) {
+        ModuleRootEdgeTransparentDescent =>
+          match namespace_graft_collect_edge_disposition(edge: zm_named_edge(name: ^NgPilotType)) {
             ModuleRootEdgeGraftBody => true
             _ => false
           }
