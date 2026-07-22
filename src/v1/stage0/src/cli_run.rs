@@ -20221,6 +20221,76 @@ mod reference_edge_producer_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // Green-by-execution + discriminating RED for the two over-pull shapes fixed by
+    // `destructuring_bound_spans` (measured: `(acc, step) =>` in
+    // `extdeps/communication/fidelity_carriers.dag` and `HeadFound { value: h2 } =>` in
+    // `std/cross_tree/resolution.dag` census-unique-bound to unrelated decls, over-pulling
+    // 13 compiler-closure entries). A reader that treated the lambda param or the
+    // pattern-value leaf as a reference would fail the first two asserts; the third proves
+    // a nested variant TAG inside a pattern still counts as a real reference.
+    #[test]
+    fn arrow_lambda_params_and_pattern_value_leaves_are_bound_not_referenced() {
+        let root = fixture_root("destructure");
+        let _ = std::fs::remove_dir_all(&root);
+        // Unrelated decl whose name coincides with an arrow-lambda param.
+        write(
+            &root,
+            "other_step.dag",
+            "module test.other_step\n\nfn step() -> Bool {\n  true\n}\n",
+        );
+        // Import-less file using a no-`fn` arrow lambda param named `step` — must NOT
+        // pull test.other_step.
+        write(
+            &root,
+            "lambda_user.dag",
+            "module test.lambda_user\n\nfn use_it() -> Bool {\n  fold_list(\n    xs: something,\n    empty: true,\n    cons: (acc, step) => step\n  )\n}\n",
+        );
+        // Unrelated decl whose name coincides with a pattern-value leaf.
+        write(
+            &root,
+            "other_h2.dag",
+            "module test.other_h2\n\nfn h2() -> Bool {\n  true\n}\n",
+        );
+        // Import-less file using a match/destructuring pattern binding `h2` — must NOT
+        // pull test.other_h2. `HeadFound` is a nested variant TAG inside the pattern
+        // brace, not a leaf — it stays a real reference to its declaring module.
+        write(
+            &root,
+            "other_head_found.dag",
+            "module test.other_head_found\n\ntype ListHead\n  = HeadFound { value: Bool }\n  | HeadAbsent\n",
+        );
+        write(
+            &root,
+            "pattern_user.dag",
+            "module test.pattern_user\n\nfn use_it() -> Bool {\n  match something {\n    HeadFound { value: h2 } => h2\n    HeadAbsent => true\n  }\n}\n",
+        );
+
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let edges = reference_resolution_facts(&roots, &roots, &[]);
+        let has_edge = |from_sub: &str, to_mod: &str| {
+            edges
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.target_module == to_mod)
+        };
+
+        assert!(
+            !has_edge("lambda_user.dag", "test.other_step"),
+            "an arrow-lambda param (`(acc, step) => ...`, no `fn`) is a binding occurrence, \
+             never a reference to an unrelated `step` decl"
+        );
+        assert!(
+            !has_edge("pattern_user.dag", "test.other_h2"),
+            "a pattern-value leaf (`HeadFound { value: h2 } => ...`) is a binding \
+             occurrence, never a reference to an unrelated `h2` decl"
+        );
+        assert!(
+            has_edge("pattern_user.dag", "test.other_head_found"),
+            "a nested variant tag inside a pattern (`HeadFound { .. }`) is still a real \
+             reference to its declaring module"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn str_list_value(items: &[String]) -> crate::v1_interpreter::Value {
         super::list_value_from_vec(
             items
