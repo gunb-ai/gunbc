@@ -20,8 +20,10 @@ import gunbc.host_runner_memory_provision {
   runner_memory_cap_readback_verdict,
 }
 import gunbc.fleet_show_effective_read {
-  fleet_runner_unit_memory_props_read_script,
   runner_unit_memory_live_read_from_stdout,
+}
+import gunbc.fleet_show_effective_read_script {
+  fleet_runner_unit_memory_props_read_script,
 }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 
