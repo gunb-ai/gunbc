@@ -1,8 +1,17 @@
 module extdeps.numeric.base16
 
 import std.types { Int, String, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-data base16_note: String = "Single authority for hexadecimal digit serialization (census item 14, msg_e9cfe443). Table-as-rows + fold — both extdeps.color.srgb byte_hex and extdeps.languages.json.emit int_to_upper_hex route here; the per-site 16-arm if-chains are dissolved."
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc4648#section-3"
+  }
+}
+
+data base16_note: String = "Cited upstream: RFC 4648 §3 Base 16 Encoding (retrieved 2026-07-22) — the 0-9a-f digit alphabet. Single authority for hexadecimal digit serialization (census item 14, msg_e9cfe443). Table-as-rows + fold — both extdeps.color.srgb byte_hex and extdeps.languages.json.emit int_to_upper_hex route here; the per-site 16-arm if-chains are dissolved."
 
 type Base16DigitRow {
   value: Int
