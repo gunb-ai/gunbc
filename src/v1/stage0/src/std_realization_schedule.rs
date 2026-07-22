@@ -348,7 +348,7 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
         .clone()
         .iter()
         .cloned()
-        .fold(false, |acc: bool, r: Rc<Runnable>| {
+        .fold(false, |acc: bool, r: _| {
             (acc || (runnable_step_label(r.clone()) == target.clone()))
         })
 }

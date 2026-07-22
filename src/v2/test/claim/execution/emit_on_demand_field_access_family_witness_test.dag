@@ -41,6 +41,7 @@ import v2.extdeps.languages.rust_test { rust_field_access_target_model_staging }
 import v2.test.execution.emit_host_field_access_equals_eval {
   emit_field_eval_producer_tree,
   emit_field_eval_wrong_field_producer_tree,
+  emit_field_eval_alt_descent_producer_tree,
   emit_field_eval_subject,
   emit_field_eval_wrong_fixture_subject,
   emit_field_eval_subgraph_node,
@@ -79,7 +80,7 @@ fn field_access_family_primary_tree() -> Outcome<InferredTree> {
 }
 
 fn field_access_family_alt_tree() -> Outcome<InferredTree> {
-  emit_field_eval_wrong_field_producer_tree()
+  emit_field_eval_alt_descent_producer_tree()
 }
 
 fn field_access_family_test_store() -> ArtifactStore {
@@ -266,8 +267,6 @@ test fn emit_on_demand_field_access_closure_keys_differ_for_distinct_trees_holds
   }
 }
 
-data field_access_alt_native_quarantine_note: String = "Pointer only — the ALT-tree NATIVE leg of this suite is scoped out as a known-red admission whose single authority is gunbc.ci_layer_roots known_red_frontier_note (admitted 2026-07-22, merry-pike-487): rustc E0609 on the emitted alt source, owner = PR 6990 reconciliation, dissolve-on = alt source compiles, restore the alt cold run in emit_on_demand_field_access_native_one_build_holds and delete both notes."
-
 test fn emit_on_demand_field_access_native_one_build_holds() -> Bool {
   match field_access_family_primary_tree() {
     Accepted { value: tree_primary, diagnostics: _ } =>
@@ -294,6 +293,25 @@ test fn emit_on_demand_field_access_native_one_build_holds() -> Bool {
           workspace: workspace_primary,
           tree: tree_primary
         )
+        && match field_access_family_alt_tree() {
+          Accepted { value: tree_alt, diagnostics: _ } =>
+            let key_alt = field_access_family_native_key_for(tree: tree_alt)
+            let workspace_alt = native_cache_workspace_root(
+              cache_root: shared_parent,
+              key: key_alt
+            )
+            let _evict_alt = emit_on_demand_evict_native_cache(
+              cache_root: shared_parent,
+              key: key_alt
+            )
+            field_access_family_cached_run_checks(
+              workspace: workspace_alt,
+              tree: tree_alt,
+              expect_compile_skipped: false,
+              expected_octet: 9
+            )
+          Rejected { diagnostics: _ } => false
+        }
     Rejected { diagnostics: _ } => false
   }
 }

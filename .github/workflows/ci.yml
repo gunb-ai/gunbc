@@ -33,6 +33,8 @@ jobs:
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -122,6 +124,8 @@ jobs:
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -188,21 +192,12 @@ jobs:
         id: floor
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission.
           git fetch --no-tags origin main 2>/dev/null || true
           # 🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold
           # Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.
           mkdir -p target
           echo floor_running > target/ci-floor-disposition.txt
-          # Affected-set-scoped floor admission (Ruling 1 path grain): compile_clean_floor_skip_witness reads tools.dag_compile_clean_scope disposition via the host fast path (entry_affected_by_dependency_view over the merge-base diff). A non-empty docs-only diff with no compile-clean shard intersection runs compile-clean batch 1 then skips the witness corpus; empty diff or diff-observation failure falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green.
-          _ci_floor_skip=$("$ROOT/target/release/compile_clean_floor_skip_witness" 2>/dev/null || echo run_full_floor)
-          if [ "$_ci_floor_skip" = "documentation_only_skip" ]; then
-              "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches || exit $?
-              mkdir -p target
-              echo documentation_only_skipped > target/ci-floor-disposition.txt
-              echo "claim_executor: docs-only diff (affected-set compile-clean skip) — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
-              CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
-              exit $?
-            fi
           set +e
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
@@ -280,6 +275,8 @@ jobs:
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"

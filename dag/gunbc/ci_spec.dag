@@ -29,11 +29,7 @@ import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
-  ci_floor_disposition_marker_path,
   ci_floor_disposition_marker_init_script,
-  merge_admission_floor_disposition_documentation_only_skipped,
-  merge_admission_floor_disposition_floor_running,
-  merge_admission_stamp_invoke,
 }
 import extdeps.git {
   git_remote_ref_parts,
@@ -306,73 +302,13 @@ fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
-data compile_clean_floor_skip_witness_bin: String = "compile_clean_floor_skip_witness"
-
-data ci_documentation_only_floor_policy_note: String = "Affected-set-scoped floor admission (Ruling 1 path grain): compile_clean_floor_skip_witness reads tools.dag_compile_clean_scope disposition via the host fast path (entry_affected_by_dependency_view over the merge-base diff). A non-empty docs-only diff with no compile-clean shard intersection runs compile-clean batch 1 then skips the witness corpus; empty diff or diff-observation failure falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green."
+data ci_documentation_only_floor_shortcut_retired_note: String = "REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission."
 
 fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   match policy.mode {
     DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
     DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
   }
-}
-
-fn ci_plan_artifact_compile_clean_invoke() -> String {
-  claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
-    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: "gunbc_ci_plan_artifact_batches",
-    notice_title: Absent,
-    rooted: true
-  )
-}
-
-fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
-  concat(
-    concat("# ", concat(ci_documentation_only_floor_policy_note, "\n")),
-    concat(
-      concat(
-        concat(
-          "_ci_floor_skip=$(", concat(artifact_shell_path(name: compile_clean_floor_skip_witness_bin), " 2>/dev/null || echo run_full_floor)")
-        ),
-        "\nif [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then\n"
-      ),
-      concat(
-        concat(
-          concat(
-            concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n"))),
-            concat(
-              "    mkdir -p target\n",
-              concat(
-                concat("    echo ", merge_admission_floor_disposition_documentation_only_skipped),
-                concat(" > ", concat(ci_floor_disposition_marker_path, "\n"))
-              )
-            )
-          ),
-          concat(
-            "    echo \"claim_executor: docs-only diff (affected-set compile-clean skip) — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=",
-            merge_admission_floor_disposition_documentation_only_skipped
-          )
-        ),
-        concat(
-          concat(
-            ")\"\n",
-            concat(
-              "    CI_FLOOR_DISPOSITION=",
-              concat(
-                merge_admission_floor_disposition_documentation_only_skipped,
-                concat(" ", merge_admission_stamp_invoke())
-              )
-            )
-          ),
-          concat(
-            "    exit $?\n",
-            "  fi\n"
-          )
-        )
-      )
-    )
-  )
 }
 
 fn git_fetch_script(policy: DiffPolicy) -> String {
@@ -403,15 +339,15 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(
+        concat("# ", concat(ci_documentation_only_floor_shortcut_retired_note, "\n")),
+        concat(git_fetch_script(policy: spec.diff_policy), "\n")
+      ),
       concat(
         concat(ci_floor_disposition_marker_init_script(), "\n"),
         concat(
-          concat(ci_documentation_only_floor_shortcut_script(policy: spec.diff_policy), "\n"),
-          concat(
-            concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-            ci_floor_stamp_merge_admission_script()
-          )
+          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+          ci_floor_stamp_merge_admission_script()
         )
       )
     )
