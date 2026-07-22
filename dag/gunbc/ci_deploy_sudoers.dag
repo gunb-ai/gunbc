@@ -42,7 +42,7 @@ fn posix_sudo_grant_is_refused_generic_mover(g: PosixSudoGrant) -> Bool {
 fn posix_sudo_grant_is_allowed_roster_command(g: PosixSudoGrant) -> Bool {
   let target = g.command_path
   let roster = fleet_posix_ci_runner_sudo_grants()
-  any(roster, row => row.command_path == target)
+  any(roster, row: PosixSudoGrant => row.command_path == target)
 }
 
 fn posix_sudo_grant_generic_mover_lint_ok(g: PosixSudoGrant) -> Bool {
