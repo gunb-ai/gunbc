@@ -91,6 +91,7 @@ fn runner_unit_live_read_row_from_stdout(
         memory_max_raw: trim(parts.first()),
         memory_swap_max_raw: trim(parts.skip(n: 1).first()),
         memory_high_raw: trim(parts.skip(n: 2).first()),
+        memory_current_raw: "",
         probed_at: probed_at,
       }
     }
@@ -204,6 +205,7 @@ data gunbc_srv1_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = Runner
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
   memory_high_raw: "infinity",
+  memory_current_raw: "",
   probed_at: "2026-07-03",
 }
 
@@ -212,6 +214,7 @@ data gunbc_srv2_runner_unit_live_read_fixture_01: RunnerUnitLiveReadRow = Runner
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
   memory_high_raw: "infinity",
+  memory_current_raw: "",
   probed_at: "2026-07-03",
 }
 
@@ -220,6 +223,7 @@ data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = Runner
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
   memory_high_raw: "infinity",
+  memory_current_raw: "",
   probed_at: "2026-07-03",
 }
 
