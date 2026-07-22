@@ -21508,6 +21508,120 @@ mod pool_heads_oracle_tests {
     }
 }
 
+// ── CommitWitnessClaim roster resolvability (PR-time detector) ─────────────────────────────────
+//
+// Every explicit `CommitWitnessClaim` row on the GithubActionsCiJob surface must resolve its
+// entry module and name every `check_fn` — the #7060 class (witness moved, roster row stale →
+// `no main function found` on every main CI run until #7079). Host-fed; dissolve-on: the
+// `.dag` authority evaluates `project_ci_floor_witness_entries` without this re-parse once
+// fn-body reflection can read the roster at compile time.
+
+const COMMIT_WORKFLOW_ENTRY: &str = "dag/gunbc/commit_workflow.dag";
+const CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN: &str = "ci_floor_commit_witness_claim_schedule";
+
+fn schedule_witness_pairs_from_value(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<Vec<(String, String)>, String> {
+    let v1_interpreter::Value::List(items) = val else {
+        return Err(format!(
+            "{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN} did not return a List: {val:?}"
+        ));
+    };
+    let mut pairs = Vec::new();
+    for item in items.iter() {
+        let v1_interpreter::Value::Record { fields, .. } = item else {
+            return Err(format!(
+                "{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN} element is not a Record: {item:?}"
+            ));
+        };
+        let entry = commit_witness_field_str(ctx, fields, "entry")?;
+        let function = commit_witness_field_str(ctx, fields, "function")?;
+        pairs.push((entry, function));
+    }
+    Ok(pairs)
+}
+
+fn commit_witness_field_str(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Result<String, String> {
+    match ctx.field(fields, name) {
+        Some(v1_interpreter::Value::Str(s)) => Ok(s.clone()),
+        other => Err(format!("{name} not a String: {other:?}")),
+    }
+}
+
+fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let val = v1_interpreter::run_in_context(&ctx, CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN, true)
+        .map_err(|e| format!("{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN}: {e}"))?;
+    schedule_witness_pairs_from_value(&ctx, &val)
+}
+
+pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let entry_path = match resolve_entry_file_under_roots(&roots, entry) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let (graph, source_indices) = match resolve_entry_with_index(&index, &entry_path) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    ctx.item_registry.contains_key(function)
+}
+
+pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
+    match ci_floor_commit_witness_claim_pairs() {
+        Ok(pairs) => pairs
+            .iter()
+            .filter(|(entry, function)| !commit_witness_claim_pair_resolvable(entry, function))
+            .count() as i64,
+        Err(_) => i64::MAX,
+    }
+}
+
+pub fn commit_witness_claim_roster_holds() -> bool {
+    commit_witness_claim_roster_unresolvable_count() == 0
+}
+
+pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
+    let fixture = vec![(
+        "m.dag".to_string(),
+        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
+            .to_string(),
+    )];
+    nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
+}
+
+pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
+    let fixture = vec![(
+        "m.dag".to_string(),
+        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n"
+            .to_string(),
+    )];
+    !nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
+}
+
+pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
+    !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
