@@ -2244,13 +2244,30 @@ mod tests {
 
     #[test]
     fn floor_arm_time_budget_refusal_plan_functions_match_dag_seed_roster() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("src/v2/workflow/ci_floor_plan.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry).expect("resolve ci_floor_plan");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let value = run_value(
+            &ctx,
+            "gunbc_floor_arm_time_budget_refusal_plan_function_roster",
+        )
+        .expect("evaluate materialized plan roster");
+        let dag_roster =
+            str_list_from_value(&value, &ctx).expect("plan roster must be List<String>");
         assert_eq!(
+            dag_roster.as_slice(),
             FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS,
-            [
-                "gunbc_ci_floor_batches",
-                "gunbc_ci_plan_artifact_batches",
-                "gunbc_falsifier_batches",
-            ]
+            "claim_executor seed const must match ci_floor_plan materialized roster \
+             (dissolve-on: v2 emit of stage0 host constants)"
         );
     }
 
