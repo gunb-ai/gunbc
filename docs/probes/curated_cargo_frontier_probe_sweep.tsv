@@ -1,3 +1,5 @@
 # classifier_stamp: rule1-first-error-dup-harness-unknown-unresolved-v2
 module	emit	cargo	first_error	mapped_gate	verdict
-src/v2/compiler/02_parse.dag	73 files emitted, 55 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`
+src/v2/compiler/02_parse.dag	74 files emitted, 55 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`
+src/v2/compiler/03_ingest.dag	147 files emitted, 285 diagnostics	harness_refuse	CSSL_ASSEMBLE: REFUSED refused dep assembly for test_claim_materialization_ladder_witness: unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)	HARNESS_SEED_LINK	HARNESS_REFUSE
+src/v2/compiler/06_translate.dag	74 files emitted, 75 diagnostics	harness_refuse	CSSL_ASSEMBLE: REFUSED refused dep assembly for test_claim_materialization_ladder_witness: unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)	HARNESS_SEED_LINK	HARNESS_REFUSE
