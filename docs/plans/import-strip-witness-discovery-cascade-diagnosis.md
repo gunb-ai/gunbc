@@ -1,6 +1,11 @@
 # #6985 witness-discovery cascade — root cause (read-only diagnosis)
 
-**Status:** DIAGNOSIS ONLY. #6985 landed a 3-file residual; the bulk of the
+**Status:** SUPERSEDED BY EXECUTION — §1's headline mechanism is refuted; see §5.
+Kept in place (not rewritten) so the refutation is traceable against the original
+reasoning, per DESIGN §5 ("reflection evidence ≠ structural proof"). Do not act on
+§1–§4 below; read §5–§6 first.
+
+#6985 landed a 3-file residual; the bulk of the
 src/v2/test + src/v2/lens import strip (≈4,120 imports across ~464 files) stayed
 gated after repeated restores — every restore commit read "strip failed witness
 discovery" even though `extend_sources_to_both_closure_fixpoint` (#6848,
@@ -105,12 +110,78 @@ bound-vs-referenced boundary (arrow-lambda params, pattern-value leaves), not th
 `pullable()` arity gate this diagnosis targets — so the gap has no discriminating
 RED today.
 
-## 5. Next step (not taken here — this pass is read-only)
+## 5. Execution receipt — §1's central claim is REFUTED for the variant-tag case
 
-Land branch (1) or (2) above behind a discriminating RED built from the
-`DataDependent`/`EffectCoupled` shape (bare nullary-variant match-arm reference in
-an import-stripped file, asserting the provider module is pulled into the
-closure), then re-attempt the src/v2/test + src/v2/lens strip in the same batched,
-restore-on-red style #6985 used — the restores should now resolve to zero once
-this gap is closed, since every named restore reduces to it or to the
-open type-alias sub-case in §2.
+Per DESIGN §5 ("reflection evidence ≠ structural proof — prove a read axis by
+execution"), §1's headline claim was tested by execution, not just read. Result:
+the claim as stated is **wrong**.
+
+**Repro.** Scratch worktree at PR #7061's HEAD; fully stripped the `import` lines
+(matching the real batch-strip shape, not a partial one) from all three files in
+the chain that actually reference `DataDependent`/`EffectCoupled` bare:
+`src/v2/lens/parallelism.dag`, `src/v2/lens/parallelism/data_dependency.dag`,
+`src/v2/workflow/lens_parallelism_family_eval_test.dag`. Built `gunbc` locally
+(`CTRL_BUILD_MODE=local cargo build -p v1-compiler --bin gunbc`) and ran the
+witness through the real closure-loader path:
+
+```
+gunbc run --entry src/v2/workflow/lens_parallelism_family_eval_test.dag \
+  --source-root src/v2 --source-root dag \
+  --function witness_lens_parallelism_family_gate_closed --claim-run
+```
+
+**Predicted:** a missing-module/unresolved failure on `DataDependent`/
+`EffectCoupled` (§1's arity-zero pullable() gap). **Observed:** clean compile,
+`witness_lens_parallelism_family_gate_closed()` returns `true` — no error at all.
+
+**Root cause of the mismatch, traced with `GUNBC_BARE_PULL_TRACE=1`:** the trace
+shows `'DataDependent' -> v2.lens.common.algebraic_composition` firing directly —
+`pullable()` DID pull it. Reading `merge_global_bare_variant_locals`
+(`v1_compiler_infer.rs:15865-15899`) shows why: a variant name's `global_bare`
+entry is a `GlobalBareUniqueBinding` whose `binding.resolved` is bound to the
+**owning Disj type's node itself** (`owner.connective == Connective::Disj`,
+checked at `:15879`), not to some connective-less binding for the variant tag in
+isolation. So when `pullable()` reads `binding.resolved.connective`, it reads the
+parent Disj's `connective`, which is `Disj` — satisfying the fourth branch
+(`connective != NoConnective`) directly. §1's claim that a nullary variant tag's
+resolved binding carries `connective == NoConnective` is **false**: the census
+never binds a variant name to a connective-less standalone binding in the first
+place; it binds it to its coproduct owner.
+
+**What survives, what doesn't:**
+- The `DataDependent`/`EffectCoupled` evidence in §2 (the `parallelism.dag`
+  restore) is **refuted**. Nullary Disj-variant tags used bare in match arms are
+  already pullable today; #6848's closure already covers this shape correctly.
+- The zero-param-fn/data-referenced-by-value evidence in §2 (`table_fixture_*`,
+  `claim_nat_*`) is **not yet re-tested by execution** — `params.is_empty()` on a
+  genuine zero-arg fn's own binding does not obviously inherit a parent-node
+  rescue the way a variant tag does (a fn has no "owning coproduct"), so this
+  class needs its own discriminating repro before it can be trusted either way.
+- The actual cause of the `parallelism.dag` restore is more likely the shape
+  surfaced by an earlier, non-faithful (single-file) repro pass: stripping
+  `parallelism.dag`'s imports while `data_dependency.dag` still carried
+  `import v2.lens.parallelism { DataDependent, ... }` (treating
+  `v2.lens.parallelism` as a re-export source for a name it never declares —
+  the true home is `v2.lens.common.algebraic_composition`) produced a real
+  failure, but of a different shape: `name 'DataDependent' not found in module
+  'v2.lens.parallelism'` — a broken qualified-import/re-export reference, not a
+  bare-closure miss. This is a distinct bug class from §1's `pullable()` claim
+  and was likely an artifact of the batch strip running file-by-file with some
+  files landing before their sibling consumers, not a closure predicate gap at
+  all.
+
+**Verdict:** §1–§4 of this document are **not confirmed** as the mechanism behind
+the `parallelism.dag` restore and should not be used to scope a fix. The fn/data
+zero-arity claim remains open pending its own execution proof. No fix should be
+attempted from this document as currently written; the next pass needs a fresh,
+execution-first investigation into what actually broke, starting from the
+qualified-import/re-export shape above.
+
+## 6. Next step
+
+Before any fix: (a) execution-test the zero-arity fn/data-by-value claim the same
+way (a discriminating repro, not a reading), since it is not yet known to survive
+either; (b) investigate the qualified-import/re-export mismatch shape as a
+candidate real cause, since it did reproduce a real failure by execution; (c) only
+land a `pullable()` change once its motivating case has itself been proven by
+execution, not derived from reading `cli_run.rs` alone.
