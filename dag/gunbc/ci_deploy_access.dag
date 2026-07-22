@@ -12,9 +12,12 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_posix_accounts {
   GroundedPosixPrincipal,
   PosixSudoGrant,
+  DeployRunnerPrincipal,
   FleetAccountCiRunner,
   FleetAccountOperator,
+  srv1_ci_deploy_runner_principal,
   fleet_posix_principal,
+  fleet_deploy_job_principal,
   grounded_posix_principal_name,
   fleet_apt_get_binary_path,
   posix_sudo_grant_to_effect_grant,
@@ -48,6 +51,15 @@ type DeployAccess {
   privileged_commands: List<PrivilegedCommand>
 }
 
+type DeployAccessJobPrincipalRefusal {
+  job_user: NonEmptyStr
+  runner: DeployRunnerPrincipal
+}
+
+type DeployAccessOrRefusal
+  = DeployAccessReady { access: DeployAccess }
+  | DeployAccessJobPrincipalRefused { refusal: DeployAccessJobPrincipalRefusal }
+
 type DeployAccessActor {
   observed_name: NonEmptyStr
   sudo_granted: Bool
@@ -60,7 +72,7 @@ type DeployAuthorizationQuery {
 
 data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame }
 
-data deploy_access_authorization_query_note: String = "Wave B exemplar (shell-intent-emit-realization-design.md): deploy-preflight as an AUTHORIZATION QUERY — the deploy frame requires the current principal to hold Execute grants over privileged command paths and to match the expected principal. Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant (never a parallel grant vocabulary). Observation and effect-plan execution live in gunbc.ci_deploy_access_observe at the realization edge. dissolve-on = Wave C copies this pattern fleet-wide."
+data deploy_access_authorization_query_note: String = "Wave C (shell-intent-emit-realization-design.md): deploy-preflight is an AUTHORIZATION QUERY — the deploy frame requires the current principal to hold Execute grants over privileged command paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user). Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant (never a parallel grant vocabulary). Observation and effect-plan execution live in gunbc.ci_deploy_access_observe at the realization edge; emission lives in gunbc.ci_deploy_access_emit + gunbc.ci_deploy_sudoers."
 
 data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
@@ -89,13 +101,59 @@ fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<Pri
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
 }
 
+data deploy_job_principal_unresolved_refusal_note: String = "fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). live_deploy/emit threads ci_deploy_srv1_access_or_refusal: Absent → deploy_access_job_principal_refused_emit_poison (un-emittable shell); Present → normal pipeline. srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner."
+
+data deploy_job_principal_unresolved_emit_poison_prefix: String = "__GUNBC_DEPLOY_ACCESS_REFUSED__ job_user not in fleet roster — deploy shell is un-emittable"
+
+fn deploy_access_job_principal_refused_emit_poison(refusal: DeployAccessJobPrincipalRefusal) -> String {
+  concat(
+    concat(concat(deploy_job_principal_unresolved_emit_poison_prefix, ": job_user="), refusal.job_user as String),
+    concat(" unit_user=", refusal.runner.unit_user as String)
+  )
+}
+
+fn deploy_access_or_refusal_for_runner(
+  runner: DeployRunnerPrincipal,
+  host: ComputeHost,
+  transport: HostEffectTransport,
+) -> DeployAccessOrRefusal {
+  match fleet_deploy_job_principal(runner: runner) {
+    Present { value: p } =>
+      DeployAccessReady {
+        access: DeployAccess {
+          principal: p,
+          host: host,
+          transport: transport,
+          privileged_commands: grounded_principal_privileged_commands(p: p),
+        }
+      }
+    Absent =>
+      DeployAccessJobPrincipalRefused {
+        refusal: DeployAccessJobPrincipalRefusal {
+          job_user: runner.job_user,
+          runner: runner,
+        }
+      }
+  }
+}
+
+fn ci_deploy_srv1_access_or_refusal() -> DeployAccessOrRefusal {
+  deploy_access_or_refusal_for_runner(
+    runner: srv1_ci_deploy_runner_principal,
+    host: srv1_host,
+    transport: LocalShell,
+  )
+}
+
+data ci_deploy_srv1_access_roster_closure_note: String = "srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal."
+
 fn ci_deploy_srv1_local_access() -> DeployAccess {
   let principal = fleet_posix_principal(key: FleetAccountCiRunner)
   DeployAccess {
     principal: principal,
     host: srv1_host,
     transport: LocalShell,
-    privileged_commands: srv1_live_deploy_privileged_commands(),
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
   }
 }
 
