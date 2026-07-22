@@ -14,6 +14,8 @@ import v2.workflow.ci_floor_plan {
   floor_plan_serializes_heavy_resolves_for,
   floor_plan_co_runs_heavy_without_serialization_for,
   gate_runnable,
+  gunbc_ci_cheap_floor_gate_membership,
+  gate_in_cheap_floor_membership,
   witness_floor_corpus_exclusion_edges_exist,
   witness_floor_compile_gate_honest_heavy_profile,
   witness_floor_no_corpus_resource_edge_to_compile_anchor,
@@ -33,7 +35,7 @@ import v2.workflow.ci_floor_plan {
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, RegenVerifyGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, DagCompileCleanGate, RegenVerifyGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -154,10 +156,26 @@ fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
   }
 }
 
-fn witness_compile_root_runs_first() -> Bool {
+fn witness_cheap_gates_precede_compile_root() -> Bool {
   let batches = gunbc_ci_floor_batches()
-  (batches.first().length() == 1) &&
-    list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
+  let compile_idx = batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes")
+  (compile_idx == 1)
+    && schedule_lens_batch_has_any_cheap_gate(batch: batches.first())
+    && !list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
+}
+
+fn schedule_lens_batch_has_any_cheap_gate(batch: List<Runnable>) -> Bool {
+  list_contains_str(xs: batch_functions(b: batch), target: "layering_imports_gate_passes")
+    || list_contains_str(xs: batch_functions(b: batch), target: "extdeps_external_authority_gate_passes")
+    || list_contains_str(xs: batch_functions(b: batch), target: "generated_artifact_drift_gate_passes")
+}
+
+fn witness_cheap_gate_membership_declared() -> Bool {
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
+    && gate_in_cheap_floor_membership(g: LayeringImportsGate)
+    && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
+    && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
+    && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
 }
 
 fn witness_corpus_not_before_compile() -> Bool {
@@ -166,7 +184,7 @@ fn witness_corpus_not_before_compile() -> Bool {
 }
 
 fn witness_independent_jobs_parallelize() -> Bool {
-  fold(gunbc_ci_floor_batches().skip(n: 1), init: false, f: fn(found_parallel, batch) {
+  fold(gunbc_ci_floor_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
     found_parallel || (length(xs: batch) > 1)
   })
 }
@@ -252,8 +270,8 @@ fn witness_optin_roster_drives_corpus_presence() -> Bool {
 fn witness_optin_plan_gates_corpus_after_compile() -> Bool {
   let batches = floor_schedule_for(spec: optin_spec, serialize_heavy: true)
   !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel) &&
-    (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 0) &&
-    (batch_index_of(batches: batches, target: corpus_sentinel) >= 1)
+    (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1) &&
+    (batch_index_of(batches: batches, target: corpus_sentinel) >= 2)
 }
 
 fn witness_optin_source_ingest_serialized_after_corpus() -> Bool {
@@ -439,8 +457,9 @@ fn falsifier_plan_structure_holds() -> Bool {
 
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
+    witness_cheap_gate_membership_declared() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
-    witness_compile_root_runs_first() &&
+    witness_cheap_gates_precede_compile_root() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()

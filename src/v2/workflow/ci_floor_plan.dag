@@ -16,6 +16,8 @@ import gunbc.ci_gate {
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
@@ -71,6 +73,69 @@ data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_
 data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
 
 data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
+
+data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
+  LayeringImportsGate,
+  ExtdepsExternalAuthorityGate,
+  GeneratedArtifactDriftGate,
+]
+
+data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the three negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that scan imports, extdeps authority, and generated-artifact drift — seconds each, no whole-tree compile. They run in batch 0 BEFORE DagCompileCleanGate so a layering/drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Dissolve-on: gate_runnable_profile cost envelopes become the single authority (realization-measurement lane) and this list retires when negligible+non-heavy_whole_tree_resolve gates are schedulable-first by construction."
+
+data gunbc_ci_cheap_floor_gate_membership_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_plan",
+    decl_name: "gunbc_ci_cheap_floor_gate_membership",
+    field: WholeDeclaration
+  }
+}
+
+fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
+  fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(found, member) {
+    match member {
+      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
+      ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
+      GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
+      _ => found
+    }
+  })
+}
+
+fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
+  fold(spec.gates, init: false, f: fn(found, sg) {
+    match sg {
+      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
+      ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
+      GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
+      DagCompileCleanGate => match g { DagCompileCleanGate => true  _ => found }
+      EmitHostGate => match g { EmitHostGate => true  _ => found }
+      SourceRootIngestGate => match g { SourceRootIngestGate => true  _ => found }
+      RegenVerifyGate => match g { RegenVerifyGate => true  _ => found }
+      SelfHostReadsRealBytesGate => match g { SelfHostReadsRealBytesGate => true  _ => found }
+      SelfHostStalenessGate => match g { SelfHostStalenessGate => true  _ => found }
+    }
+  })
+}
+
+fn floor_compile_depends_on_cheap_gate(g: Gate) -> DependencyView {
+  DependencyView {
+    source: gate_node(g: g),
+    dependent: floor_compile_root_node(),
+    kind: DataDependsOn,
+    usage_site: floor_compile_root_node()
+  }
+}
+
+fn floor_cheap_gates_precede_compile_edges(spec: CiSpec) -> List<DependencyView> {
+  fold(gunbc_ci_cheap_floor_gate_membership, init: [], f: fn(acc, g) {
+    if spec_enrolls_gate(spec: spec, g: g) {
+      list_snoc_item(xs: acc, item: floor_compile_depends_on_cheap_gate(g: g))
+    } else {
+      acc
+    }
+  })
+}
 
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
@@ -404,20 +469,28 @@ fn floor_spec_has_compile_gate(spec: CiSpec) -> Bool {
 
 fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
   if floor_spec_has_compile_gate(spec: spec) {
-    fold(
-      spec.gates,
-      init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
-        list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
-      }),
-      f: fn(acc, g) {
-        match g {
-          DagCompileCleanGate => acc
-          _ => list_snoc_item(
-            xs: acc,
-            item: floor_depends_on_compile(dependent: gate_node(g: g))
-          )
+    concat(
+      floor_cheap_gates_precede_compile_edges(spec: spec),
+      fold(
+        spec.gates,
+        init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
+          list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
+        }),
+        f: fn(acc, g) {
+          match g {
+            DagCompileCleanGate => acc
+            _ =>
+              if gate_in_cheap_floor_membership(g: g) {
+                acc
+              } else {
+                list_snoc_item(
+                  xs: acc,
+                  item: floor_depends_on_compile(dependent: gate_node(g: g))
+                )
+              }
+          }
         }
-      }
+      )
     )
   } else {
     []
@@ -715,7 +788,7 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
-data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (batch 1 of gunbc_ci_floor_batches) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
+data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_batches, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
 
 fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
   [[corpus_runnable_for(spec: gunbc_ci_spec)]]
@@ -771,12 +844,36 @@ fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
 }
 
-data gunbc_ci_plan_artifact_batches_note: String = "The docs-only / plan-artifact-only CI shortcut (ci_spec.ci_plan_artifact_compile_clean_invoke): batch 1 of the floor schedule IS the compile-clean anchor (the plan's one structural fact - compile-clean gates the rest), so the shortcut plan is that single batch through the SAME executor path, never a parallel gate runner. The gate must run inside claim_executor because it consumes the executor's in-run whole-tree --target dag compile receipt (standalone gunbc-run invocation refuses, by execution 2026-07-11); the pre-fix invoke passed gunbc-run-style --entry/--function flags claim_executor does not parse, so the shortcut arm died with exit 2 on the first plan-artifact-only diff to reach it."
+fn runnable_single_claim_function(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f, profile: _ } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
+  }
+}
+
+fn floor_batch_contains_function(batch: List<Runnable>, target: String) -> Bool {
+  fold(batch, init: false, f: fn(found, r) {
+    found || (runnable_single_claim_function(r: r) == target)
+  })
+}
+
+fn floor_compile_clean_batch(batches: List<List<Runnable>>) -> List<List<Runnable>> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    if length(xs: acc) > 0 {
+      acc
+    } else if floor_batch_contains_function(batch: batch, target: ci_floor_compile_gate_fn) {
+      [batch]
+    } else {
+      acc
+    }
+  })
+}
+
+data gunbc_ci_plan_artifact_batches_note: String = "The docs-only / plan-artifact-only CI shortcut (ci_spec.ci_plan_artifact_compile_clean_invoke): the compile-clean anchor batch of the floor schedule (batch 1 after the cheap-gate early batch — see gunbc_ci_cheap_floor_gate_membership_note) runs alone through the SAME executor path, never a parallel gate runner. The gate must run inside claim_executor because it consumes the executor's in-run whole-tree --target dag compile receipt (standalone gunbc-run invocation refuses, by execution 2026-07-11); the pre-fix invoke passed gunbc-run-style --entry/--function flags claim_executor does not parse, so the shortcut arm died with exit 2 on the first plan-artifact-only diff to reach it."
 
 fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
-  fold(gunbc_ci_floor_batches(), init: [], f: fn(acc, batch) {
-    if length(xs: acc) == 0 { [batch] } else { acc }
-  })
+  floor_compile_clean_batch(batches: gunbc_ci_floor_batches())
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
