@@ -134,6 +134,68 @@ fn anchor_probe_bisect2() -> List<String> {
   )
 }
 
+data anchor_probe_source_e: String = "module extdeps.probe_x\n\ndata extdeps_external_authority_anchor: Int = 7\n"
+
+fn anchor_probe_normalized_decl_dump(source: String) -> List<String> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^anchor_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => ["TOK_REJ"]
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => ["PARSE_REJ"]
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => ["NORM_REJ"]
+            Accepted { value: normalized, diagnostics: _ } =>
+              anchor_probe_report(root: normalized)
+          }
+      }
+  }
+}
+
+fn anchor_probe_parse_decl_dump(source: String) -> List<String> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^anchor_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => ["TOK_REJ"]
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => ["PARSE_REJ"]
+        Accepted { value: artifact, diagnostics: _ } =>
+          anchor_probe_report(root: artifact.tree)
+      }
+  }
+}
+
+fn anchor_probe_parse_decl_atoms(source: String) -> List<String> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^anchor_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => ["TOK_REJ"]
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => ["PARSE_REJ"]
+        Accepted { value: artifact, diagnostics: _ } =>
+          match anchor_probe_find(n: artifact.tree, want: ^dag_surface_data_decl) {
+            Absent => ["NO_DATA_DECL"]
+            Present { value: d } => anchor_probe_node_atoms(n: d)
+          }
+      }
+  }
+}
+
+fn anchor_probe_parse_atoms_d() -> List<String> {
+  anchor_probe_parse_decl_atoms(source: anchor_probe_source)
+}
+
+fn anchor_probe_shapes() -> List<String> {
+  concat(
+    ["E_NORMALIZED:"],
+    concat(
+      anchor_probe_normalized_decl_dump(source: anchor_probe_source_e),
+      concat(["D_PARSE:"], anchor_probe_parse_decl_dump(source: anchor_probe_source))
+    )
+  )
+}
+
 fn anchor_probe_bisect() -> List<String> {
   concat(
     ["A:"],
