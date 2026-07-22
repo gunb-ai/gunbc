@@ -81,7 +81,6 @@ data github_hetzner_wedge_assumptions: WedgeAssumptions = WedgeAssumptions {
   amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
-  runner_vcpus_are_hardware_threads: true,
 }
 
 data github_hetzner_zero_utilization_assumptions: WedgeAssumptions = WedgeAssumptions {
@@ -89,7 +88,6 @@ data github_hetzner_zero_utilization_assumptions: WedgeAssumptions = WedgeAssump
   amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
-  runner_vcpus_are_hardware_threads: true,
 }
 
 data hetzner_ax41_usd_floor_fixture: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {

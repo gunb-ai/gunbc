@@ -26,7 +26,7 @@ import std.nat { Nat }
 
 data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
 
-data wedge_runner_vcpus_are_hardware_threads_note: String = "Hosted-runner vcpus and server cpu.catalog.threads are both counted as hardware threads (SMT siblings), not physical cores — required for per-thread cost allocation."
+data wedge_hardware_thread_count_note: String = "Per-thread cost allocation divides by HardwareThreadCount on both sides — umbrella_row.vcpus (GithubActionsRunnerPriceRow) and hetzner_dedicated_server_threads (CpuFacts catalog threads). The carrier grounds SMT-sibling counting; no parallel Bool assertion."
 
 data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator are explicitly declared WedgeAssumptions inputs (refuses ExchangeRateUnknown on zero denominator), not cited extdeps facts. dissolve-on: extdeps.forex authority + MoneyRate<From,To> carrier when a second FX consumer appears."
 
@@ -35,7 +35,6 @@ type WedgeAssumptions {
   amortization_months: AmortizationMonths
   eur_to_usd_numerator: Nat
   eur_to_usd_denominator: Nat
-  runner_vcpus_are_hardware_threads: Bool
 }
 
 type WedgeAssumptionsInput
@@ -49,7 +48,6 @@ type KnowableWedgeRefusalCause
   | ExchangeRateUnknown
   | ServerThreadCountUnknown
   | RunnerThreadCountUnknown
-  | RunnerVcpuUnitMismatch
   | UmbrellaCurrencyMismatch
   | FloorCurrencyMismatch
   | FloorExceedsUmbrella
@@ -141,8 +139,6 @@ fn derive_runner_cost_floor_per_minute_usd(
     RunnerCostFloorRefused { cause: AmortizationUnknown }
   } else if assumptions.eur_to_usd_denominator <= 0 {
     RunnerCostFloorRefused { cause: ExchangeRateUnknown }
-  } else if !assumptions.runner_vcpus_are_hardware_threads {
-    RunnerCostFloorRefused { cause: RunnerVcpuUnitMismatch }
   } else {
     let server_vcpus = hetzner_dedicated_server_threads(row: row)
     let server_count = hardware_thread_count_value(t: server_vcpus)
