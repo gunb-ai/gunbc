@@ -35,7 +35,7 @@ import v2.workflow.ci_floor_plan {
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, DagCompileCleanGate, RegenVerifyGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
