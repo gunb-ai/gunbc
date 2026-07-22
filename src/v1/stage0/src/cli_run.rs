@@ -1899,6 +1899,98 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
 }
 
 const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
+const FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY: &str =
+    "src/v2/workflow/floor_compile_clean_predicates.dag";
+
+type FloorCompileCleanPredicatesGraph = (
+    Rc<v1_compiler_compile::ResolvedGraph>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+);
+
+fn floor_compile_clean_predicates_graph(
+) -> Result<&'static FloorCompileCleanPredicatesGraph, String> {
+    static GRAPH: OnceLock<Result<FloorCompileCleanPredicatesGraph, String>> = OnceLock::new();
+    match GRAPH.get_or_init(|| {
+        let roots = default_source_roots();
+        resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
+            .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))
+    }) {
+        Ok(g) => Ok(g),
+        Err(e) => Err(e.clone()),
+    }
+}
+
+fn call_compile_clean_bool_list_fn(
+    fn_name: &str,
+    arg_name: &str,
+    paths: &[String],
+) -> Result<bool, String> {
+    let (graph, indices) = floor_compile_clean_predicates_graph()?;
+    let ctx = make_eval_context(
+        graph,
+        indices.clone(),
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let values: Vec<v1_interpreter::Value> = paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [(
+        Some(arg_name.to_string()),
+        list_value_from_vec(values),
+    )];
+    match v1_interpreter::run_in_context_with_args(&ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "{fn_name} returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{fn_name}: {e}")),
+    }
+}
+
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
+    match call_compile_clean_bool_list_fn(
+        "compile_clean_all_touched_paths_docs_universe",
+        "touched_paths",
+        touched_paths,
+    ) {
+        Ok(b) => b,
+        Err(msg) => {
+            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            false
+        }
+    }
+}
+
+fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> bool {
+    match call_compile_clean_bool_list_fn(
+        "compile_clean_all_touched_paths_selectable",
+        "touched_paths",
+        touched_paths,
+    ) {
+        Ok(b) => b,
+        Err(msg) => {
+            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            false
+        }
+    }
+}
+
+fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
+    let paths: Vec<String> = departed_paths.iter().cloned().collect();
+    match call_compile_clean_bool_list_fn(
+        "compile_clean_departed_paths_outside_docs",
+        "departed_paths",
+        &paths,
+    ) {
+        Ok(b) => b,
+        Err(msg) => {
+            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            true
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
@@ -2003,17 +2095,6 @@ fn compile_clean_source_roots() -> Vec<String> {
     roots
 }
 
-fn compile_clean_touched_path_norm(path: &str) -> &str {
-    path.strip_prefix("./").unwrap_or(path)
-}
-
-fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
-    !touched_paths.is_empty()
-        && touched_paths
-            .iter()
-            .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
-}
-
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
 fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
@@ -2029,26 +2110,6 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
     paths.sort();
     paths.dedup();
     paths
-}
-
-/// Mirror of `tools.dag_compile_clean_scope.compile_clean_touched_path_selectable`:
-/// import-closure selection can only answer for `.dag` sources (and the docs universe);
-/// any other touched path (compiler seed `.rs`, workflow yml, manifests) can change
-/// compile behavior outside the module graph, so the gate keeps its whole-tree baseline.
-fn compile_clean_touched_path_selectable(path: &str) -> bool {
-    let norm = path.strip_prefix("./").unwrap_or(path);
-    norm.starts_with("docs/") || norm.ends_with(".dag")
-}
-
-/// Mirror of `tools.dag_compile_clean_scope.compile_clean_departed_paths_outside_docs`:
-/// a departed (deleted / renamed-from) non-docs path is invisible to current-tree
-/// adjacency — a dangling import drops the edge, so a broken importer would not be
-/// selected — whole-tree baseline.
-fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
-    departed_paths.iter().any(|p| {
-        let norm = p.strip_prefix("./").unwrap_or(p);
-        !norm.starts_with("docs/")
-    })
 }
 
 /// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
@@ -2075,12 +2136,9 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    if let Some(outside) = touched_paths
-        .iter()
-        .find(|p| !compile_clean_touched_path_selectable(p))
-    {
+    if !compile_clean_all_touched_paths_selectable(touched_paths) {
         eprintln!(
-            "compile-clean scope: touched path outside the selectable universe ({outside}) — compiler/infra change, whole-tree baseline"
+            "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
         );
         return CompileCleanScopePlan::WholeTree;
     }
