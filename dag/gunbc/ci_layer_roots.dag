@@ -523,6 +523,42 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
   }
 }
 
+fn witness_exclusion_row_is_bin_wet(row: WitnessExclusionRow) -> Bool {
+  match row.classification {
+    BinWitnessWet => true
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
+  match row.classification {
+    QuarantineProbeExpectRed => true
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    BinWitnessWet => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
+  match row.classification {
+    FalsifierSelfHostWet => true
+    DiscoverySelection => false
+    BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
 fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     NoConsumer => true
