@@ -1,0 +1,79 @@
+module test.claim.long.walk_target_alias_apply_parse_witness
+
+import tools.walk_target_alias_apply {
+  alias_apply_parse_module_source,
+  alias_apply_insert_anchor_after_import_block
+}
+import v2.std.collection { Present, Absent, Optional, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node }
+import v2.std.logic { Bool }
+import v2.extdeps.languages.dag {
+  parse_production_emitted_identity_optional,
+  dag_language_model
+}
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+
+fn wtaa_find_import_node_in_children(tree: Node) -> Optional<Node> {
+  fold(tree.children, init: optional_absent(), f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => wtaa_find_import_node(tree: edge.target)
+    }
+  })
+}
+
+fn wtaa_find_import_node(tree: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: tree) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        optional_present(value: tree)
+      } else {
+        wtaa_find_import_node_in_children(tree: tree)
+      }
+    Absent => wtaa_find_import_node_in_children(tree: tree)
+  }
+}
+
+fn wtaa_fixture_has_import_decl(tree: Node) -> Bool {
+  match wtaa_find_import_node(tree: tree) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wtaa_parse_lane_note: String = "Long-lane home for the two parse-driven apply witnesses (operator 5s rule 2026-07-12): alias_apply_parse_module_source pulls the v2 tokenize/parse closure, whose resolve cost alone exceeds the 5000ms fast-lane eval budget (CI receipt: 5014ms/5015ms censored at the cap, run 29956469084). The row/oracle witnesses stay in test.claim.walk_target_alias_apply_witness_test (sub-ms)."
+
+data wtaa_import_block_fixture_source: String = "module v2.test.walk_target_alias_apply.probe\nimport v2.std.algebra { Cons, Empty }\n"
+
+fn wtaa_insert_anchor_after_import_block_holds() -> Bool {
+  match alias_apply_parse_module_source(
+    text: wtaa_import_block_fixture_source,
+    file_anchor: ^walk_target_alias_apply_insert_anchor_fixture
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: module_root, diagnostics: _ } =>
+      match alias_apply_insert_anchor_after_import_block(module_root: module_root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } =>
+          wtaa_fixture_has_import_decl(tree: module_root)
+      }
+  }
+}
+
+test fn walk_target_alias_apply_parse_fixture_holds() -> Bool {
+  match alias_apply_parse_module_source(
+    text: wtaa_import_block_fixture_source,
+    file_anchor: ^walk_target_alias_apply_insert_anchor_fixture
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn walk_target_alias_apply_insert_anchor_tree_fact_holds() -> Bool {
+  wtaa_insert_anchor_after_import_block_holds()
+}
