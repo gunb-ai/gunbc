@@ -915,8 +915,11 @@ pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
 pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = 12_884_901_888;
 
 /// Fail-fast refusal when a floor walk's armed budget is provably below the measured
-/// minimum viable footprint. Returns a typed diagnostic when `budget` is known and
-/// strictly below the declaration; `None` when budget is unreadable or sufficient.
+/// minimum viable footprint.
+///
+/// - `Some(diagnostic)` — `budget` is known and strictly below the declaration.
+/// - `None` — `budget` is `None` (unreadable; refusal does not fire — the governor
+///   already logs its budget source on stderr) **or** budget is at/above the threshold.
 pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<String> {
     let budget = budget?;
     if budget < DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES {
