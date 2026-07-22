@@ -177,11 +177,84 @@ attempted from this document as currently written; the next pass needs a fresh,
 execution-first investigation into what actually broke, starting from the
 qualified-import/re-export shape above.
 
-## 6. Next step
+## 6. Controlled-pair + retrodiction (namespace-resolution-design.md §8 PR-4 lead)
 
-Before any fix: (a) execution-test the zero-arity fn/data-by-value claim the same
-way (a discriminating repro, not a reading), since it is not yet known to survive
-either; (b) investigate the qualified-import/re-export mismatch shape as a
-candidate real cause, since it did reproduce a real failure by execution; (c) only
-land a `pullable()` change once its motivating case has itself been proven by
-execution, not derived from reading `cli_run.rs` alone.
+Per nimble-owl-658's follow-up, the re-export lead from §5 has a name in the
+design: §8 "import-from-definer migration" (`namespace-resolution-design.md`,
+PR-4) — the corpus deliberately relies on re-export transitivity today, and
+PR-4 is the staged step that migrates every import to name its true definer.
+Two discriminating predictions were run by execution, plus one retrodiction
+against a real #6985 restore commit:
+
+**(1) Controlled pair — CONFIRMED.** Same scratch worktree, same 3-file chain.
+Strip *only* `parallelism.dag` (the re-exporter), leaving `data_dependency.dag`
+and `lens_parallelism_family_eval_test.dag` import-bearing:
+```
+error: name 'DataDependent' not found in module 'v2.lens.parallelism' (imported by 'v2.test.lens_parallelism.data_dependency')
+error: name 'DataDependent' not found in module 'v2.lens.parallelism' (imported by 'v2.test.workflow.lens_parallelism_family_eval')
+error: name 'EffectCoupled' not found in module 'v2.lens.parallelism' (imported by 'v2.test.workflow.lens_parallelism_family_eval')
+```
+Then stripping the two importers' `import v2.lens.parallelism { DataDependent,
+EffectCoupled, ... }` lines as well (making the references bare, matching the
+real batch-strip's simultaneous-file shape) returns to green. This confirms
+partial-strip-through-a-re-export-chain as a real, reproducible failure mode,
+independent of `pullable()`.
+
+**(2) Retrodiction — PARTIALLY CONFIRMED, one open residual.** Checked
+`25a751d712` ("Restore imports on 9 hub files"). `determinism.dag`,
+`vacuity.dag`, `extdeps_external_authority.dag`, `registry/completeness.dag`
+were restored importing **directly from std/extdeps** (`std.determinism`,
+`extdeps.uri`, `std.disposition`, ...), not from another local hub — so this
+does **not** fit the re-export-mismatch shape from (1) as-is; these files'
+*own* bare references were the ones failing, on their own imports. Repro:
+stripped only `determinism.dag`'s imports, left the consumer test file
+(`reach_witness_test.dag`) import-bearing, ran
+`determinism_flags_map_keys_reach` via `gunbc run --claim-run`. Result: a real
+failure, but a **different shape** than (1) — `runtime error: type error:
+error type cascade at src/v2/lens/determinism.dag:1983-1984` (the byte range
+lands on a `NonDeterministic { source: root.source }` construction site), not
+a "name not found" resolution error. `GUNBC_BARE_PULL_TRACE` shows
+`Determinism`/`Deterministic`/`NonDeterministic` never appear as pulled names
+at all — they resolve some other way (or fail silently upstream and only
+surface as a downstream type cascade). This is a **second, distinct failure
+class**, not yet root-caused, and not explained by either the refuted §1
+`pullable()` claim or the (1) re-export-mismatch shape.
+
+## 7. Verdict + wave rule
+
+Two real, execution-confirmed failure classes exist behind #6985's restores,
+not one:
+- **Class A — partial strip through a re-export chain** (parallelism.dag):
+  confirmed by a clean discriminating pair (§6.1). Fix direction: PR-4
+  (import-from-definer migration) closes this class structurally — once every
+  import names its true definer, there is no re-export chain left to break
+  when a file is stripped independently of its "hub."
+- **Class B — hub file's own bare references, non-"not found" failure shape**
+  (determinism.dag and, per the same commit, vacuity.dag /
+  extdeps_external_authority.dag / registry/completeness.dag): reproduced by
+  execution but **not yet root-caused** — the failing names are never pulled
+  nor explicitly refused, they cascade into a generic type-error. This needs
+  its own investigation (start from where `Determinism`/`Deterministic`
+  actually resolve today with the import present, and what differs with it
+  absent) before a wave rule can claim to cover it.
+
+**Wave rule (partial — covers Class A only):** a strip wave must either (a) be
+closed under the imports-from-hub relation (strip a re-exporter and every file
+that imports the re-exported name *from* it in the same commit — mechanically
+derivable from the qualified-import graph), or (b) wait on PR-4 landing first,
+which makes wave ordering irrelevant for Class A. **Class B is not yet
+covered by any rule** — its mechanism is still open, so a wave rule scoped
+only to Class A would still be un-derived-from-execution risk for any wave
+touching `determinism.dag`-shaped hub files. The zero-arity fn/data-by-value
+claim from the original (refuted) diagnosis also remains untested.
+
+## 8. Next step
+
+(a) root-cause Class B by execution (trace where `Determinism`/`Deterministic`
+resolve today, with vs. without the import — likely a distinct code path from
+`extend_with_bare_reference_closure` entirely, since the trace never shows
+them pulled); (b) execution-test the zero-arity fn/data-by-value claim the
+same way; (c) only land PR-4 or any closure change once each motivating case
+has itself been proven by execution, not derived from reading `cli_run.rs`
+alone; (d) do not treat Class A's confirmed wave rule as sufficient to
+resume the full src/v2/test + src/v2/lens strip until Class B closes.
