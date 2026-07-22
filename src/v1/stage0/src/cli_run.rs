@@ -21501,6 +21501,24 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
     "dag/gunbc/commit_workflow.dag::gate_eq",
     "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    // 2026-07-22 backfill (falsifier red since 2026-07-16, alert #7032): the scheduled
+    // cold falsifier surfaced 3 unrostered sites per-PR affected-set selection never ran
+    // the nfr witnesses for at landing time — the same masking class as the #6533/#6530
+    // and 2026-07-14 blocks above. The host_converge_slice1 rows landed with #7009, the
+    // reaper row with #7026. Declared so the ratchet re-arms; each burns down with its
+    // owning file's fold migration.
+    //   - host_result_applied_count / host_result_all_valid: projections over the legacy
+    //     HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_
+    //     legacy_result) — off-variant arms reduce to the identity (0 / false), so
+    //     enumerating clones the arm per variant. Dissolve when the legacy slice-1
+    //     result carrier is deleted in favor of the per-unit outcome model.
+    //   - action_kills_build_cache_server: two-axis discriminating predicate
+    //     (occupant × action) with `_ => false` off-variant arms — the reaper witnesses'
+    //     oracle, same shape as the std `*_eq` rows below. Dissolves with derived
+    //     equality from inhabitance (DESIGN §3/§4), with its siblings.
+    "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid",
+    "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_applied_count",
+    "dag/gunbc/host_hygiene_reaper.dag::action_kills_build_cache_server",
     "dag/gunbc/os_install_deduction.dag::runtime_verdict_from_kvm_attestation",
     "dag/gunbc/runner_unit_live_read.dag::converge_target_live_verdict",
     "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_factory",
