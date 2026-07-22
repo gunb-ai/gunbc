@@ -1,6 +1,6 @@
 # Layering-imports CI gate — repoint onto reference-derived edges
 
-**Status:** DRAFT for review (scoping only). No code lands from this document alone.
+**Status:** Phase 1 landed (transitional producer). Phases 2–3 remain open.
 
 **Lane:** namespace-only resolution terminal step (import deletion) · CI floor `LayeringImportsGate`.
 
@@ -96,6 +96,7 @@ Loader-tier consumers (`extend_with_bare_reference_closure`, compile-clean impor
 | change | from | to |
 | --- | --- | --- |
 | `layer_import_facts()` edge source | `extract_import_paths` per file | transitional union per §3.1; terminal reference-only per §3.2 |
+| `reference_resolution_facts` pool | (n/a) | **`witness_layer_roots` pool** + `std_roots ∪ extdeps_roots` importer scope — qualified targets like `v2.compiler.*` resolve against the full witness-layer census, same split as module-graph selection adjacency |
 | `layer` field assignment | scan-root constant (`LAYER_STD` / `LAYER_EXTDEPS`) | **`layer_prefix_from_dotted_qualified_name(importer_module)`** — authority: `v2.std.cross_tree.resolution` (already used by grounding lens and cross-tree import model) |
 | `import_module` field semantics | import-line target | **resolved target module** (reference or import — same string shape) |
 | Importer module resolution | implicit from path prefix | `extract_module_path(content)` per file (already required by reference producer) |
