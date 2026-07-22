@@ -35,6 +35,7 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_fast_lane_eval_budget_ms,
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
+  gunbc_ci_floor_schedule_lens_holds,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
@@ -463,6 +464,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_cheap_gates_are_resource_anchors() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
     witness_cheap_gates_precede_compile_root() &&
+    gunbc_ci_floor_schedule_lens_holds() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()

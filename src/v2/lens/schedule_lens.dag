@@ -131,8 +131,10 @@ fn schedule_lens_verdict_for_ci_floor(
           diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
         }
       } else {
-        let batch2 = plan.schedule.skip(n: 2).first()
-        if batch2.count() < 2 {
+        let has_parallel_rest = fold(plan.schedule.skip(n: 2), init: false, f: fn(found, batch) {
+          found || (batch.count() >= 2)
+        })
+        if !has_parallel_rest {
           Violation {
             diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
           }
