@@ -11,6 +11,7 @@ fn srv3_memory_cap_converged_read() -> RunnerUnitMemoryLiveRead {
       memory_max_raw: to_string(byte_size_count(b: desired.memory_max)),
       memory_swap_max_raw: to_string(byte_size_count(b: desired.memory_swap_max)),
       memory_high_raw: to_string(byte_size_count(b: desired.memory_high)),
+      memory_current_raw: "",
       probed_at: "2026-07-21",
     }
   )
@@ -23,6 +24,7 @@ fn srv3_memory_cap_drifted_read() -> RunnerUnitMemoryLiveRead {
       memory_max_raw: "infinity",
       memory_swap_max_raw: "0",
       memory_high_raw: "infinity",
+      memory_current_raw: "",
       probed_at: "2026-07-21",
     }
   )
