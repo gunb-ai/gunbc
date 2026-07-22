@@ -21568,8 +21568,10 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 }
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
     matches!(
-        commit_witness_claim_pair_resolvability(entry, function),
+        commit_witness_claim_pair_resolvability_with_index(&index, &roots, entry, function),
         CommitWitnessClaimPairResolvability::Resolvable
     )
 }
@@ -21582,22 +21584,28 @@ enum CommitWitnessClaimPairResolvability {
     FunctionNotFound,
 }
 
-fn commit_witness_claim_pair_resolvability(
+#[derive(Debug, Clone)]
+enum RosterEntryRegistryCache {
+    EntryMissing { detail: String },
+    EntryResolveFailed { detail: String },
+    Functions(std::collections::HashSet<String>),
+}
+
+fn roster_entry_registry_cache(
+    index: &MultiEntryIndex,
+    roots: &[String],
     entry: &str,
-    function: &str,
-) -> CommitWitnessClaimPairResolvability {
-    let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
-    let entry_path = match resolve_entry_file_under_roots(&roots, entry) {
+) -> RosterEntryRegistryCache {
+    let entry_path = match resolve_entry_file_under_roots(roots, entry) {
         Ok(p) => p,
         Err(detail) => {
-            return CommitWitnessClaimPairResolvability::EntryMissing { detail };
+            return RosterEntryRegistryCache::EntryMissing { detail };
         }
     };
-    let (graph, source_indices) = match resolve_entry_with_index(&index, &entry_path) {
+    let (graph, source_indices) = match resolve_entry_with_index(index, &entry_path) {
         Ok(r) => r,
         Err(detail) => {
-            return CommitWitnessClaimPairResolvability::EntryResolveFailed { detail };
+            return RosterEntryRegistryCache::EntryResolveFailed { detail };
         }
     };
     let ctx = make_eval_context(
@@ -21605,11 +21613,54 @@ fn commit_witness_claim_pair_resolvability(
         source_indices,
         v1_interpreter::ExecutionMode::Hermetic,
     );
-    if ctx.item_registry.contains_key(function) {
-        CommitWitnessClaimPairResolvability::Resolvable
-    } else {
-        CommitWitnessClaimPairResolvability::FunctionNotFound
+    RosterEntryRegistryCache::Functions(ctx.item_registry.keys().cloned().collect())
+}
+
+fn commit_witness_claim_pair_resolvability_with_index(
+    index: &MultiEntryIndex,
+    roots: &[String],
+    entry: &str,
+    function: &str,
+    entry_cache: &mut std::collections::HashMap<String, RosterEntryRegistryCache>,
+) -> CommitWitnessClaimPairResolvability {
+    let cached = entry_cache
+        .entry(entry.to_string())
+        .or_insert_with(|| roster_entry_registry_cache(index, roots, entry));
+    match cached {
+        RosterEntryRegistryCache::EntryMissing { detail } => {
+            CommitWitnessClaimPairResolvability::EntryMissing {
+                detail: detail.clone(),
+            }
+        }
+        RosterEntryRegistryCache::EntryResolveFailed { detail } => {
+            CommitWitnessClaimPairResolvability::EntryResolveFailed {
+                detail: detail.clone(),
+            }
+        }
+        RosterEntryRegistryCache::Functions(names) => {
+            if names.contains(function) {
+                CommitWitnessClaimPairResolvability::Resolvable
+            } else {
+                CommitWitnessClaimPairResolvability::FunctionNotFound
+            }
+        }
     }
+}
+
+fn commit_witness_claim_pair_resolvability(
+    entry: &str,
+    function: &str,
+) -> CommitWitnessClaimPairResolvability {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let mut entry_cache = std::collections::HashMap::new();
+    commit_witness_claim_pair_resolvability_with_index(
+        &index,
+        &roots,
+        entry,
+        function,
+        &mut entry_cache,
+    )
 }
 
 pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
@@ -21620,9 +21671,18 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
             "schedule_projection_failed".to_string(),
         )];
     };
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
-        let cause = match commit_witness_claim_pair_resolvability(&entry, &function) {
+        let cause = match commit_witness_claim_pair_resolvability_with_index(
+            &index,
+            &roots,
+            &entry,
+            &function,
+            &mut entry_cache,
+        ) {
             CommitWitnessClaimPairResolvability::Resolvable => continue,
             CommitWitnessClaimPairResolvability::EntryMissing { detail } => {
                 format!("entry_missing:{detail}")
