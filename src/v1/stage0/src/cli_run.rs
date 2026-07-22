@@ -17312,6 +17312,34 @@ fn collect_layer_import_scoped_paths(roots: &[String]) -> HashSet<String> {
     scoped
 }
 
+/// Cheap preflight: the reference arm parses the witness-layer pool and is reserved for
+/// import-less files only (transitional producer §3.1). When every scoped file still carries
+/// `import` lines, import-syntax facts are complete and the reference pass is skipped.
+fn importer_roots_have_importless_dag_files(roots: &[String]) -> bool {
+    for root in roots {
+        let Some(abs_root) = try_anchor_source_root(root) else {
+            continue;
+        };
+        let root_path = Path::new(&abs_root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        for file in dag_files {
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if extract_module_path(&content).is_some() && extract_import_paths(&content).is_empty()
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn project_layer_import_syntax_facts(
     root: &str,
     out: &mut Vec<LayerImportFactRaw>,
@@ -17376,32 +17404,34 @@ pub fn layer_import_facts(
         .chain(extdeps_roots.iter())
         .cloned()
         .collect();
-    // Qualified references (e.g. `v2.compiler.tokenize`) resolve against the full witness-layer
-    // module census, not the std/extdeps scan roots alone — same pool/importer split as
-    // `build_module_graph_facts_live` selection adjacency.
-    let pool_roots = witness_layer_roots();
-    let scoped_paths = collect_layer_import_scoped_paths(&importer_roots);
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(&pool_roots, &importer_roots, &[]),
-        true,
-    ) {
-        let rel = edge.path.replace('\\', "/");
-        if !scoped_paths.contains(&rel) {
-            continue;
+    if importer_roots_have_importless_dag_files(&importer_roots) {
+        // Qualified references (e.g. `v2.compiler.tokenize`) resolve against the full witness-layer
+        // module census, not the std/extdeps scan roots alone — same pool/importer split as
+        // `build_module_graph_facts_live` selection adjacency.
+        let pool_roots = witness_layer_roots();
+        let scoped_paths = collect_layer_import_scoped_paths(&importer_roots);
+        for edge in reference_edges_as_import_facts(
+            &reference_resolution_facts(&pool_roots, &importer_roots, &[]),
+            true,
+        ) {
+            let rel = edge.path.replace('\\', "/");
+            if !scoped_paths.contains(&rel) {
+                continue;
+            }
+            if !seen.insert((rel.clone(), edge.import_module.clone())) {
+                continue;
+            }
+            let importer = std::fs::read_to_string(workspace_root().join(&rel))
+                .ok()
+                .and_then(|content| extract_module_path(&content))
+                .unwrap_or_default();
+            let layer = layer_prefix_from_dotted_module(&importer);
+            out.push(LayerImportFactRaw {
+                layer,
+                path: rel,
+                import_module: edge.import_module,
+            });
         }
-        if !seen.insert((rel.clone(), edge.import_module.clone())) {
-            continue;
-        }
-        let importer = std::fs::read_to_string(workspace_root().join(&rel))
-            .ok()
-            .and_then(|content| extract_module_path(&content))
-            .unwrap_or_default();
-        let layer = layer_prefix_from_dotted_module(&importer);
-        out.push(LayerImportFactRaw {
-            layer,
-            path: rel,
-            import_module: edge.import_module,
-        });
     }
     out
 }

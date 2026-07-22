@@ -5,7 +5,7 @@ import std.logic { Bool }
 import tools.host_prelude { ClaimRun, run_gunbc_claims }
 
 data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
-data clean_tree_entry: String = "src/v2/test/claim/layering_imports/clean_tree_test.dag"
+data clean_tree_entry: String = "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
 fn scanner_claim(scenario: String, function: String) -> ClaimRun {
