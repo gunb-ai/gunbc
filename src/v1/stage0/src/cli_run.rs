@@ -22431,39 +22431,6 @@ fn normalize_doc_path(path: &Path) -> String {
     parts.join("/")
 }
 
-fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for root in witness_layer_roots() {
-        let mut dag_files = Vec::new();
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut dag_files);
-        for path in dag_files {
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for target in bind_md_refs(&content) {
-                out.insert(target);
-            }
-        }
-    }
-    out
-}
-
-fn bind_md_refs(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for (idx, _) in content.match_indices("bind:") {
-        let rest = content[idx + "bind:".len()..].trim_start();
-        let token: String = rest
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
-            .collect();
-        if token.ends_with(".md") {
-            out.push(normalize_doc_path(Path::new(&token)));
-        }
-    }
-    out
-}
-
 fn doc_reachable_set(
     roots: &BTreeSet<String>,
     edges: &HashMap<String, Vec<String>>,
@@ -22491,11 +22458,17 @@ struct DocGraphReport {
     doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
+    admitted_extra_roots: usize,
 }
 
-fn build_doc_graph_report() -> DocGraphReport {
+// `extra_roots` are the dag-derived roots (gunbc.doc_graph_roots.doc_graph_roots_all: registered
+// PlanArtifacts derive theirs, hand-authored docs declare typed HandAuthoredDocBind rows), passed
+// through the doc_graph_* builtins so the root set is a walked substrate fact — the former `bind:`
+// text-scan over .dag content is deleted. Admission is counted (admitted_extra_roots), so a root
+// naming no doc in the universe is observable — the witness pins admitted == passed, never a
+// silent drop.
+fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     let universe = doc_universe();
-    let bind_refs = dag_comment_bind_doc_refs();
 
     let mut roots: BTreeSet<String> = BTreeSet::new();
     for r in DOC_PLAN_ROOTS {
@@ -22504,9 +22477,12 @@ fn build_doc_graph_report() -> DocGraphReport {
     if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
         roots.insert(DOC_RUNBOOK_ROOT.to_string());
     }
-    for b in &bind_refs {
-        if universe.contains(b) {
-            roots.insert(b.clone());
+    let mut admitted_extra_roots = 0usize;
+    for r in extra_roots {
+        let norm = normalize_doc_path(Path::new(r));
+        if universe.contains(&norm) {
+            admitted_extra_roots += 1;
+            roots.insert(norm);
         }
     }
 
@@ -22557,24 +22533,39 @@ fn build_doc_graph_report() -> DocGraphReport {
         doc_count: universe.len(),
         orphans,
         dangling,
+        admitted_extra_roots,
     }
 }
 
-fn doc_graph_report() -> &'static DocGraphReport {
-    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
-    REPORT.get_or_init(build_doc_graph_report)
+// Memo keyed on the declared input (the extra-roots list) — cache-impurity discipline: a
+// roots-blind OnceLock would serve the first caller's report to every later root set.
+fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
+    static CACHE: OnceLock<std::sync::Mutex<HashMap<Vec<String>, std::sync::Arc<DocGraphReport>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    if let Some(r) = guard.get(extra_roots) {
+        return r.clone();
+    }
+    let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    guard.insert(extra_roots.to_vec(), report.clone());
+    report
 }
 
-pub fn doc_graph_orphan_count() -> i64 {
-    doc_graph_report().orphans.len() as i64
+pub fn doc_graph_orphan_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).orphans.len() as i64
+}
+
+pub fn doc_graph_admitted_root_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).admitted_extra_roots as i64
 }
 
 pub fn doc_graph_dangling_link_count() -> i64 {
-    doc_graph_report().dangling.len() as i64
+    doc_graph_report(&[]).dangling.len() as i64
 }
 
 pub fn doc_graph_doc_count() -> i64 {
-    doc_graph_report().doc_count as i64
+    doc_graph_report(&[]).doc_count as i64
 }
 
 // Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
@@ -24724,13 +24715,6 @@ mod doc_reachability_tests {
             1,
             "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
         );
-    }
-
-    #[test]
-    fn bind_md_refs_basic() {
-        let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
-        let t = bind_md_refs(c);
-        assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
     }
 }
 

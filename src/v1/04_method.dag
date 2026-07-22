@@ -116,6 +116,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "extdeps_external_authority_live_clean_tree_holds", bool_type)
   let m = map_insert(m, "extdeps_external_authority_live_roster_module_count", int_type)
   let m = map_insert(m, "doc_graph_orphan_count", int_type)
+  let m = map_insert(m, "doc_graph_admitted_root_count", int_type)
   let m = map_insert(m, "doc_graph_dangling_link_count", int_type)
   let m = map_insert(m, "doc_graph_doc_count", int_type)
   let m = map_insert(m, "compile_dag_rust_emit_check", bool_type)
