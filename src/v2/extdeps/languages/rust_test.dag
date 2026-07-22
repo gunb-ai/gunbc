@@ -2210,6 +2210,10 @@ fn rust_bool_fn_host_runtime_row(
             content: FixedText { text: rust_emit_host_cargo_manifest }
           },
           WorkspaceFile {
+            path: "rust-toolchain.toml",
+            content: FixedText { text: rust_emit_host_toolchain_pin }
+          },
+          WorkspaceFile {
             path: "src/main.rs",
             content: EmittedWithSuffix { suffix: main_suffix }
           }
