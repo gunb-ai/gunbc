@@ -275,13 +275,121 @@ generic type-error rather than a loud refusal — not yet traced to a specific
 line in the infer/typecheck code, so this remains a lead, not a confirmed
 mechanism.
 
-## 8. Next step
+## 9. Class B root cause — CONFIRMED by execution (B2a and B2b both refuted; the real split is loader vs. env)
 
-(a) root-cause Class B by execution (trace where `Determinism`/`Deterministic`
-resolve today, with vs. without the import — likely a distinct code path from
-`extend_with_bare_reference_closure` entirely, since the trace never shows
-them pulled); (b) execution-test the zero-arity fn/data-by-value claim the
-same way; (c) only land PR-4 or any closure change once each motivating case
-has itself been proven by execution, not derived from reading `cli_run.rs`
-alone; (d) do not treat Class A's confirmed wave rule as sufficient to
-resume the full src/v2/test + src/v2/lens strip until Class B closes.
+§7.5's premise ("`DeclarationRef` never appears in `GUNBC_BARE_PULL_TRACE`'s
+output — not attempted, not refused, silently absent") is itself **refuted**
+by a finer-grained trace. Two temporary `eprintln!` probes were added in a
+throwaway scratch build (never committed) at the two decision points inside
+`extend_with_bare_reference_closure`: (1) every name entering the `for (name,
+service_head) in all_names` loop (`[bare-attempt]`), and (2) the
+`target_module` value immediately after `resolve_in` runs, before the
+`known_paths` short-circuit (`[bare-resolve]`). Running
+`GUNBC_BARE_ATTEMPT_TRACE=1 gunbc run --entry
+src/v2/lens/determinism/reach_witness_test.dag ... --claim-run --dry-run`
+against the same import-stripped `src/v2/lens/determinism.dag` scratch worktree
+used in §7.5 shows:
+
+```
+[bare-attempt] src/v2/lens/determinism.dag -> 'DeclarationRef'
+[bare-resolve] src/v2/lens/determinism.dag -> 'DeclarationRef' -> Some("std.decl_ref")
+```
+
+So **B2a (producer gap) is refuted**: `DeclarationRef` IS produced by
+`bare_identifier_candidates` (it is not caught by the KEY-POSITION,
+binder-keyword, fn-param, or pattern-depth BOUND rules — none apply to a bare
+type in field-type position), it IS in `all_names`, and `resolve_in` DOES
+succeed against it (`pullable()` correctly fires on the `Conj` connective of
+the `type DeclarationRef { ... }` record declaration, confirmed by reading
+`Connective`'s definition at `v1_std_core.rs:110-115` and its Conj/Disj
+assignment sites in `v1_compiler_infer.rs`). The reason no `[bare-pull]` line
+ever printed in §7.5's trace is the `known_paths.contains(&dep_rel)` check
+(`cli_run.rs:4668-4670`) firing *before* the trace print — `dag/std/decl_ref.dag`
+was **already** in `known_paths` every time, so the closure's pull is a
+silent no-op, not a silent failure.
+
+The reason it is already known: `dag/std/determinism.dag` (never stripped —
+only the *consumer* `src/v2/lens/determinism.dag` and its test were) itself
+contains `import std.decl_ref { DeclarationRef }` as a genuine, unstripped
+import edge, and the entry test file directly imports `std.determinism` (also
+unstripped). So `dag/std/decl_ref.dag` reaches the corpus's LOADER-tier file
+set through an ordinary, wholly unrelated transitive import chain — the
+bare-reference closure never has to do any work for this name, and its
+apparent "success" (`resolve_in` returning `Some`) is coincidental, not
+load-bearing.
+
+**This is the actual defect, and it is a different mechanism from both of
+nimble-owl-658's B2 sub-hypotheses**: `extend_with_bare_reference_closure`
+only ever governs the **LOADER tier** — which files get parsed and compiled
+into the corpus (`cli_run.rs:3402-3419`'s own comment: "for the LOADER an
+over-connected edge is harmless... The loader
+(`extend_with_bare_reference_closure`) is deliberately left alone"). It says
+nothing about, and never touches, the **per-file typecheck/infer
+environment** that resolves a bare name used *inside* `src/v2/lens/
+determinism.dag`'s own body — that environment is built from *that file's own
+`import` statements*, which the strip deleted. Loading `dag/std/decl_ref.dag`
+into the corpus (so it compiles standalone, and so any file that legitimately
+imports it can resolve names against it) is orthogonal to whether
+`src/v2/lens/determinism.dag` itself, with its imports gone, has a local
+binding for the bare name `DeclarationRef` in its own scope. It does not, so
+the field type `source: DeclarationRef` on `DeterminismRoot` is ungrounded at
+typecheck/infer time regardless of `dag/std/decl_ref.dag`'s presence
+elsewhere in the loaded corpus — producing the observed generic "error type
+cascade" at construction time (`determinism_root_map_keys`'s use of
+`map_keys_leak_source()`), never a located "unresolved type: DeclarationRef"
+refusal on the field itself.
+
+**Wave-rule consequence for Class B**: the closure change nimble-owl-658's
+original diagnosis and nimble-owl-658's B2a fix location both assumed (patch
+`bare_identifier_candidates`/`pullable()`, i.e. the LOADER) would do
+**nothing** for this failure — the loader already succeeds. The actual gap is
+that `extend_with_bare_reference_closure` has no counterpart that also
+extends the referencing file's own typecheck-time import/name-binding scope
+to cover bare references it resolved — i.e. resolving a name to a module at
+load time and admitting that name into the referencing file's own local
+env are two separate, currently disconnected mechanisms, and only the first
+is patched. Any fix must add or extend the second (env-side) mechanism, not
+the loader; this is the `src/v2/lens/determinism.dag` shape's specific
+manifestation of the broader import-from-definer gap PR-4 targets, but PR-4 as
+scoped (a loader/edge-naming fix) does not by itself cover it — env
+construction is a distinct consumer that must also be re-pointed.
+
+## 10. LOUDNESS defect (recorded separately, per instruction)
+
+The failure surfaces at runtime as `type error: error type cascade at
+src/v2/lens/determinism.dag:1983-1984` — a line number far outside the
+141-line source file, evidence the number is an offset into a merged/compiled
+representation, not a located position in the authored source. This is the
+**inert `ExprError` arm**: once `DeclarationRef` fails to ground in
+`src/v2/lens/determinism.dag`'s own typecheck env, the resulting field-type
+error is not raised as a located, typed refusal on `DeterminismRoot.source`
+(DESIGN §5 — "every path succeeds fully or fails with a typed, located
+diagnostic") but instead propagates as an opaque `ExprError` that keeps
+compounding through every downstream construction site that touches the
+malformed type, arriving at the runtime boundary as a generic, unlocatable
+"error type cascade." This absorption is *why* Class B stayed invisible in
+the original small-residual landing (§4) and why B1/B2's early framing
+("never appears in the trace... silently absent," §7.5) was itself
+plausible but wrong — the loudness gap hides the true failure site well
+enough that even code-reading the closure logic pointed at the wrong
+mechanism. A located fix (raising a typed "unresolved type: `DeclarationRef`
+in `src/v2/lens/determinism.dag`, field `DeterminismRoot.source`" refusal
+at the point the env lookup fails, instead of deferring to a generic
+downstream `ExprError`) is a prerequisite for diagnosing any *future*
+instance of this env-side gap by inspection rather than by adding scratch
+`eprintln!` probes, as had to be done here.
+
+## 11. Next step
+
+(a) land the LOUDNESS fix (§10) first — it is small, independently valuable
+under DESIGN §5 regardless of the closure fix's timeline, and would have cut
+this investigation's execution-tracing time substantially; (b) design the
+env-side extension (§9's "second mechanism") that lets a successfully
+loader-resolved bare reference also bind in the referencing file's own
+typecheck scope — this is new scope beyond PR-4's loader/edge-naming fix,
+not a duplicate of it; (c) execution-test the zero-arity fn/data-by-value
+claim the same way, folded in when convenient; (d) only land any closure or
+env change once proven by execution against a real controlled pair, not
+derived from reading `cli_run.rs` alone; (e) do not treat Class A's confirmed
+wave rule as sufficient to resume the full src/v2/test + src/v2/lens strip
+until Class B's env-side fix (b) lands and is itself proven by execution.
