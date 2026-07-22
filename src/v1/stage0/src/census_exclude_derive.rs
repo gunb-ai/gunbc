@@ -4,6 +4,12 @@
 //! transitive-importer closure of strict-resolve failures form the probe authority.
 //! Historical pin `docs/probes/census_extra_excludes.txt` is a drift witness only.
 //!
+//! Dissolve-on: strict whole-tree walk greens without host fixed-point closure
+//! (namespace terminal + FilePath grounding); derived probe exclusion moves to a
+//! `.dag` authority row with this module as thin projection only — deletes with the
+//! historical 83-row drift pin and `witness_exclusion_single_authority_reconciliation_note`
+//! parallel-list scaffold in `ci_layer_roots.dag`.
+//!
 //! Cascade semantics (sunny-wolf-225 resolution):
 //! - (i) Silent live-importer loss → typed refusal.
 //! - (ii) Derived closure exclusion of live importers → legitimate, reported in receipt.
