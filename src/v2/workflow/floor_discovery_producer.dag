@@ -20,7 +20,7 @@ import v2.workflow.floor_naming_hygiene {
   floor_wire_contract_sidecar_suffix
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.algebra { any, length, fold_list }
 import v2.std.logic { Bool }
 import std.types { String, Int }
@@ -53,8 +53,375 @@ fn floor_discovery_path_excluded(path: String, exclude_substrings: List<String>)
   )
 }
 
-fn floor_discovery_line_is_test_decl(line: String) -> Bool {
-  let trimmed = trim(line)
-  starts_with(s: trimmed, prefix: "test fn ") || starts_with(s: trimmed, prefix: "test data ")
+fn floor_discovery_line_starts_test_decl(line: String) -> Bool {
+  starts_with(s: trim(line), prefix: "test fn ") || starts_with(s: trim(line), prefix: "test data ")
 }
 
+fn floor_discovery_test_rest_from_line(line: String) -> String {
+  let trimmed = trim(line)
+  if starts_with(s: trimmed, prefix: "test fn ") {
+    substring(s: trimmed, start: 8, end: string_length(s: trimmed))
+  } else if starts_with(s: trimmed, prefix: "test data ") {
+    substring(s: trimmed, start: 11, end: string_length(s: trimmed))
+  } else {
+    ""
+  }
+}
+
+fn floor_discovery_first_token_before_space(seg: String) -> String {
+  fold(
+    split(s: seg, delimiter: " "),
+    init: "",
+    f: fn(name, token) {
+      if name != "" {
+        name
+      } else if token == "" {
+        ""
+      } else {
+        token
+      }
+    }
+  )
+}
+
+fn floor_discovery_test_decl_name_from_line(line: String) -> String {
+  fold(
+    split(s: floor_discovery_test_rest_from_line(line: line), delimiter: "("),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        floor_discovery_first_token_before_space(seg: seg)
+      }
+    }
+  )
+}
+
+fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      if floor_discovery_line_starts_test_decl(line: line) {
+        let name = floor_discovery_test_decl_name_from_line(line: line)
+        if name == "" {
+          acc
+        } else {
+          concat(acc, [name])
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
+  string_contains(s: content, pattern: ": CoproductWireContract") || string_contains(s: content, pattern: ": VariantEncoding")
+}
+
+fn floor_discovery_entry_reads_live_tree_default(content: String) -> LiveTreeDisposition {
+  if string_contains(s: content, pattern: "SubstrateInputsOnly") {
+    SubstrateInputsOnly
+  } else {
+    ReadsLiveTree
+  }
+}
+
+fn floor_discovery_rows_contain_key(
+  rows: List<FloorDiscoveryRow>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      if found {
+        true
+      } else {
+        (row.entry == entry) && (row.function == function)
+      }
+    }
+  )
+}
+
+fn floor_discovery_append_row(
+  state: FloorDiscoveryWalkState,
+  row: FloorDiscoveryRow
+) -> FloorDiscoveryWalkState {
+  if floor_discovery_rows_contain_key(
+    rows: state.rows,
+    entry: row.entry,
+    function: row.function
+  ) {
+    state
+  } else {
+    FloorDiscoveryWalkState {
+      rows: concat(state.rows, [row]),
+      walk_failures: state.walk_failures,
+      sidecar_violations: state.sidecar_violations
+    }
+  }
+}
+
+fn floor_discovery_collect_sidecar_violation(
+  state: FloorDiscoveryWalkState,
+  entry_path: String,
+  kind: FloorDiscoverySidecarKind,
+  required_suffix: String
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: state.rows,
+    walk_failures: state.walk_failures,
+    sidecar_violations: concat(state.sidecar_violations, [
+      FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: kind,
+        required_suffix: required_suffix
+      }
+    ])
+  }
+}
+
+fn floor_discovery_apply_test_sidecar_rules(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  let test_names = floor_discovery_scan_test_decl_names(content: content)
+  let reads_live = floor_discovery_entry_reads_live_tree_default(content: content)
+  if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
+    fold(
+      test_names,
+      init: state,
+      f: fn(acc, name) {
+        floor_discovery_append_row(
+          state: acc,
+          row: FloorDiscoveryRow {
+            label: name,
+            entry: repo_path,
+            function: name,
+            reads_live_tree: reads_live
+          }
+        )
+      }
+    )
+  } else if length(xs: test_names) > 0 {
+    floor_discovery_collect_sidecar_violation(
+      state: state,
+      entry_path: repo_path,
+      kind: TestMarkedDecl,
+      required_suffix: floor_test_sidecar_suffix
+    )
+  } else {
+    state
+  }
+}
+
+fn floor_discovery_apply_wire_contract_sidecar_rules(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
+    state
+  } else if floor_discovery_content_has_wire_contract_decl(content: content) {
+    floor_discovery_collect_sidecar_violation(
+      state: state,
+      entry_path: repo_path,
+      kind: WireContractDecl,
+      required_suffix: floor_wire_contract_sidecar_suffix
+    )
+  } else {
+    state
+  }
+}
+
+fn floor_discovery_process_dag_file(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  if floor_discovery_path_excluded(path: repo_path, exclude_substrings: exclude_substrings) {
+    state
+  } else if floor_filename_contains_double_underscore(path: repo_path) {
+    state
+  } else {
+    let content = filesystem_read(path: repo_path).content
+    floor_discovery_apply_wire_contract_sidecar_rules(
+      state: floor_discovery_apply_test_sidecar_rules(
+        state: state,
+        repo_path: repo_path,
+        content: content
+      ),
+      repo_path: repo_path,
+      content: content
+    )
+  }
+}
+
+fn floor_discovery_walk_dir(
+  state: FloorDiscoveryWalkState,
+  dir_path: String,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  let listed = Filesystem.List(path: dir_path)
+  if !listed.success {
+    FloorDiscoveryWalkState {
+      rows: state.rows,
+      walk_failures: state.walk_failures + 1,
+      sidecar_violations: state.sidecar_violations
+    }
+  } else if listed.entries == "" {
+    state
+  } else {
+    fold(
+      split(s: listed.entries, delimiter: "\n"),
+      init: state,
+      f: fn(acc, name) {
+        if name == "" {
+          acc
+        } else {
+          let child = concat(dir_path, "/", name)
+          if ends_with(s: name, suffix: ".dag") {
+            floor_discovery_process_dag_file(
+              state: acc,
+              repo_path: child,
+              exclude_substrings: exclude_substrings
+            )
+          } else {
+            floor_discovery_walk_dir(
+              state: acc,
+              dir_path: child,
+              exclude_substrings: exclude_substrings
+            )
+          }
+        }
+      }
+    )
+  }
+}
+
+fn floor_discovery_unified_claim_label(decl_name: String) -> String {
+  if starts_with(s: decl_name, prefix: "unified_claim_") {
+    substring(
+      s: decl_name,
+      start: 14,
+      end: string_length(s: decl_name)
+    )
+  } else {
+    decl_name
+  }
+}
+
+fn floor_discovery_owned_data_row_from_record(rec: OwnedDataDeclRecord) -> Optional<FloorDiscoveryRow> {
+  match rec.initializer {
+    OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
+      if (entry == "") || (function == "") {
+        optional_absent()
+      } else {
+        optional_present(
+          value: FloorDiscoveryRow {
+            label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
+            entry: entry,
+            function: function,
+            reads_live_tree: ReadsLiveTree
+          }
+        )
+      }
+    OwnedNodeCorpusInit => optional_absent()
+    OwnedOtherInit { resolved: _ } => optional_absent()
+  }
+}
+
+fn floor_discovery_owned_data_rows(
+  records: List<OwnedDataDeclRecord>
+) -> List<FloorDiscoveryRow> {
+  fold(
+    records,
+    init: [],
+    f: fn(acc, rec) {
+      match floor_discovery_owned_data_row_from_record(rec: rec) {
+        Present { value: row } => concat(acc, [row])
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_merge_owned_rows(
+  state: FloorDiscoveryWalkState,
+  owned_rows: List<FloorDiscoveryRow>
+) -> FloorDiscoveryWalkState {
+  fold(
+    owned_rows,
+    init: state,
+    f: fn(acc, row) { floor_discovery_append_row(state: acc, row: row) }
+  )
+}
+
+fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
+  if state.walk_failures > 0 {
+    FloorDiscoveryRefused {
+      reason: "directory listing failed during floor discovery walk (typed refusal, never empty roster)"
+    }
+  } else if length(xs: state.sidecar_violations) > 0 {
+    FloorDiscoveryRefused {
+      reason: "sidecar placement violation during floor discovery"
+    }
+  } else {
+    FloorDiscoveryAccepted { rows: state.rows }
+  }
+}
+
+fn discover_floor_corpus_rows_from_host_facts(
+  source_roots: List<String>,
+  scan_dirs: List<String>,
+  exclude_substrings: List<String>,
+  owned_data_records: List<OwnedDataDeclRecord>
+) -> FloorDiscoveryProducerResult {
+  floor_discovery_finalize(
+    state: floor_discovery_merge_owned_rows(
+      state: fold(
+        source_roots,
+        init: floor_discovery_walk_state_zero(),
+        f: fn(acc, root) {
+          floor_discovery_walk_dir(
+            state: acc,
+            dir_path: root,
+            exclude_substrings: exclude_substrings
+          )
+        }
+      ),
+      owned_rows: floor_discovery_owned_data_rows(records: owned_data_records)
+    )
+  )
+}
+
+fn floor_filename_hygiene_refusal_for_paths(
+  dag_paths: List<String>
+) -> Optional<String> {
+  fold_list(
+    xs: dag_paths,
+    empty: optional_absent(),
+    cons: fn(found, path) {
+      match found {
+        Present { value: _ } => found
+        Absent => if floor_filename_contains_double_underscore(path: path) {
+          optional_present(
+            value: concat(
+              "filename hygiene: `.dag` basenames must not contain `__`; offending: ",
+              path
+            )
+          )
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  )
+}
+
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. Listing failure is FloorDiscoveryRefused, never an empty roster."

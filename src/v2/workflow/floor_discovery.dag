@@ -8,7 +8,7 @@ import v2.workflow.floor_naming_hygiene {
   floor_wire_contract_sidecar_suffix
 }
 import std.types { String, Bool, List }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 
 type FloorDiscoveryRow {
   label: String
@@ -40,29 +40,29 @@ fn floor_discovery_row_is_selection_eligible(row: FloorDiscoveryRow) -> Bool {
 
 fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
   if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
-    Absent
+    optional_absent()
   } else {
-    Present {
+    optional_present(
       value: FloorDiscoverySidecarViolation {
         entry_path: entry_path,
         kind: TestMarkedDecl,
         required_suffix: floor_test_sidecar_suffix
       }
-    }
+    )
   }
 }
 
 fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
   if floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
-    Absent
+    optional_absent()
   } else {
-    Present {
+    optional_present(
       value: FloorDiscoverySidecarViolation {
         entry_path: entry_path,
         kind: WireContractDecl,
         required_suffix: floor_wire_contract_sidecar_suffix
       }
-    }
+    )
   }
 }
 
