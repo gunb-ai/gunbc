@@ -248,7 +248,6 @@ data resolution_divergence_census_roster_excluded_module_prefixes: List<String> 
 ]
 
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
-  "v2.test.",
   "test/fixture/",
   "/test/",
   "nat_semiring_rung",
