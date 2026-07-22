@@ -1,0 +1,26 @@
+module v2.test.claim.pr_native_batch_test
+
+import v2.workflow.ci_floor_plan {
+  gunbc_pr_native_entries,
+  gunbc_pr_native_batch_enrolled,
+  gunbc_ci_floor_batches,
+  gunbc_ci_floor_realization_plan
+}
+import v2.compiler.self_host.native_routing_frontier { native_routed_rows }
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+
+fn witness_no_routed_families_at_landing() -> Bool {
+  (length(xs: native_routed_rows()) == 0)
+    && (gunbc_pr_native_batch_enrolled() == false)
+    && (length(xs: gunbc_pr_native_entries()) == 0)
+}
+
+fn witness_floor_batches_unchanged_when_unenrolled() -> Bool {
+  length(xs: gunbc_ci_floor_batches()) == length(xs: gunbc_ci_floor_realization_plan().schedule)
+}
+
+test fn pr_native_batch_witnesses() -> Bool {
+  witness_no_routed_families_at_landing()
+    && witness_floor_batches_unchanged_when_unenrolled()
+}
