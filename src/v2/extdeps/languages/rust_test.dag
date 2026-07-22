@@ -499,6 +499,10 @@ fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
       }
@@ -609,6 +613,10 @@ fn rust_match_host_transport_descriptor() -> HostTransportDescriptor {
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -904,6 +912,10 @@ fn rust_loop_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_loop_emit_host_main_suffix }
       }
@@ -951,6 +963,10 @@ fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescr
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -1318,6 +1334,10 @@ fn rust_field_access_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_field_access_emit_host_main_suffix }
       }
@@ -1631,6 +1651,10 @@ fn rust_variant_construct_host_transport_descriptor() -> HostTransportDescriptor
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_variant_construct_emit_host_main_suffix }
       }
@@ -1930,6 +1954,10 @@ fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor 
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -2456,6 +2484,10 @@ fn rust_match_loop_fold_family_host_transport_descriptor() -> HostTransportDescr
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -3001,6 +3033,10 @@ fn rust_rec_nine_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_rec_nine_emit_host_suffix }
       }
@@ -3314,6 +3350,10 @@ fn rust_fold_call_host_transport_descriptor() -> HostTransportDescriptor {
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
