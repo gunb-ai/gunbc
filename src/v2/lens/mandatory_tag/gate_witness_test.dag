@@ -116,6 +116,13 @@ test fn mandatory_tag_parse_grain_file_scheme_rejects() -> Bool {
   )
 }
 
+test fn mandatory_tag_parse_grain_bogus_scheme_rejects() -> Bool {
+  gate_rejects_tree_with(
+    probe: parse_grain_tree(source: src_bogus_scheme),
+    reason: ^mandatory_tag_value_vocabulary_unreadable
+  )
+}
+
 test fn mandatory_tag_parse_grain_wrong_type_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_wrong_type),

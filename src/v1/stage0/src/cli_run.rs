@@ -10603,7 +10603,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if line.starts_with("diff --git ") {
+            // Section boundary: a file only becomes attributable after its own
+            // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
+            // never re-arms current_file — without this reset its `@@ -1,N +0,0`
+            // hunk attributed to the PRECEDING file at new-side line 1, tripping
+            // the module-line fail-closed refusal for any modified file that
+            // sorts immediately before a whole-file deletion (found live:
+            // lens_module_gate.dag + the deleted extdeps_external_authority.dag).
+            // Departed paths are carried by the name-status observation, never
+            // by hunk attribution.
+            current_file = None;
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -10639,6 +10650,18 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
     let mut new_line: i64 = 0;
     let mut in_hunk = false;
     for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            // Section boundary: only a `+++ b/` header re-arms current_file. A
+            // deleted file's header is `+++ /dev/null`, so without this reset
+            // its `@@ -1,N +0,0` hunk attributed every removed row to the
+            // PRECEDING file at new-side line 1 (zero-width anchor 0 → 0+1),
+            // tripping the module-line fail-closed refusal whenever a modified
+            // file sorts immediately before a whole-file deletion. Departed
+            // paths are carried by the name-status observation, not hunks.
+            current_file = None;
+            in_hunk = false;
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
             in_hunk = false;
@@ -13637,6 +13660,57 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         // Deletion-only hunk `+42,0`: the gap sits between new lines 42 and 43;
         // following-line semantics attribute 43 (see the parser's `+L,0` note).
         assert_eq!(changed.get(file), Some(&HashSet::from([43])));
+    }
+
+    #[test]
+    fn parse_unified_diff_deleted_file_hunk_never_attributes_to_preceding_file() {
+        // RED CONTROL for the deleted-file leak: a whole-file deletion's header is
+        // `+++ /dev/null`, which never re-arms current_file. Before the `diff --git `
+        // section reset, its `@@ -1,N +0,0 @@` hunk attributed to the PRECEDING
+        // modified file at new-side line 1 (zero-width anchor 0 → 0+1 = 1), tripping
+        // the module-line fail-closed refusal ("diff before first declaration") for
+        // any modified file that sorts immediately before a whole-file deletion.
+        let diff = "\
+diff --git a/src/v2/lens/enforcement/lens_module_gate.dag b/src/v2/lens/enforcement/lens_module_gate.dag
+--- a/src/v2/lens/enforcement/lens_module_gate.dag
++++ b/src/v2/lens/enforcement/lens_module_gate.dag
+@@ -9 +9 @@
+-old_import_row
++new_import_row
+diff --git a/src/v2/lens/extdeps_external_authority.dag b/src/v2/lens/extdeps_external_authority.dag
+deleted file mode 100644
+--- a/src/v2/lens/extdeps_external_authority.dag
++++ /dev/null
+@@ -1,3 +0,0 @@
+-module v2.lens.extdeps_external_authority
+-
+-data deleted_row: Int = 1
+";
+        let kept = "src/v2/lens/enforcement/lens_module_gate.dag";
+
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        assert_eq!(
+            changed.get(kept),
+            Some(&HashSet::from([9])),
+            "deleted-file hunk must not leak into the preceding file's changed set"
+        );
+        assert_eq!(
+            changed.len(),
+            1,
+            "the deleted file attributes nowhere: {changed:?}"
+        );
+
+        let ranges = parse_unified_diff_line_ranges(diff);
+        assert_eq!(
+            ranges.get(kept),
+            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            "deleted-file hunk must not extend the preceding file's ranges"
+        );
+        assert_eq!(
+            ranges.len(),
+            1,
+            "the deleted file attributes nowhere: {ranges:?}"
+        );
     }
 
     #[test]
