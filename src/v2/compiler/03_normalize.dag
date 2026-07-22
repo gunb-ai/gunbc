@@ -38,6 +38,10 @@ import v2.compiler.body_lowering_fold {
   body_lower_is_deferred_lower_at_normalize
 }
 import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_is_graft_candidate
+}
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
@@ -164,6 +168,24 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   }
 }
 
+fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  if namespace_graft_is_graft_candidate(root: folded) {
+    match module_header_containment_graft(root: folded) {
+      Rejected { diagnostics: r } =>
+        Rejected {
+          diagnostics: rejected_with_pending(pending: cd, rejected: r)
+        }
+      Accepted { value: grafted, diagnostics: d } =>
+        Accepted {
+          value: grafted,
+          diagnostics: diagnostics_merge(outer: cd, inner: d)
+        }
+    }
+  } else {
+    Accepted { value: folded, diagnostics: cd }
+  }
+}
+
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
     normalize_fold_step(
@@ -191,17 +213,21 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
-      if well_formed(n: normalized) {
-        Accepted { value: normalized, diagnostics: d }
-      } else {
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: d,
-            rejected: diagnostics_singleton(
-              d: post_normalize_not_well_formed_diagnostic(n: normalized)
-            )
-          )
-        }
+      match normalize_module_graft_finish(folded: normalized, cd: d) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: grafted, diagnostics: d1 } =>
+          if well_formed(n: grafted) {
+            Accepted { value: grafted, diagnostics: d1 }
+          } else {
+            Rejected {
+              diagnostics: rejected_with_pending(
+                pending: d1,
+                rejected: diagnostics_singleton(
+                  d: post_normalize_not_well_formed_diagnostic(n: grafted)
+                )
+              )
+            }
+          }
       }
   }
 }
