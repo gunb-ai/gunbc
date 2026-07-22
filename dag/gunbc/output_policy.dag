@@ -135,9 +135,9 @@ fn outcome_diverges(expected: ExpectedOutcome, observed: ObservedOutcome) -> Boo
 
 fn divergence_disposition(diverges: Bool) -> StreamDisposition {
   if diverges {
-    SurfaceContent
-  } else {
     SummarizeCounts
+  } else {
+    SurfaceContent
   }
 }
 
