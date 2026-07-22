@@ -10,6 +10,7 @@ import gunbc.ci_deploy_access {
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
 }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import gunbc.fleet_posix_accounts {
   PosixSudoGrant,
   fleet_posix_ci_runner_sudo_grants,
