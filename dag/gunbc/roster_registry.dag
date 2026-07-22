@@ -1,0 +1,145 @@
+module gunbc.roster_registry
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data roster_registry_taxonomy_note: String = "Group-of-units standard representation (operator ruling 2026-07-22, roadmap group 5a): a plurality of units must have a standard representation, never a nickname. Membership in a group is known exactly one of four ways — POSITIONAL (containment: being-in IS being-there, e.g. a module's members or a directory-grain lane), DERIVED (a computed relation: closure reachability, inhabitance, measurement), FRONTIER (asserted per-row WITH a reason and a dissolve_on trigger — countable, prioritizable, the typed self-host-frontier pattern), or NICKNAME (asserted, string-keyed, no trigger — the violation this registry exists to make visible). The migration pipeline for any hand-kept list is mint -> frontier -> query: a new group lands as typed frontier rows, and graduates to a derived query when its membership predicate is modelable. Every known unit-naming roster is enrolled below; the lens v2.lens.roster_registry holds each registration to ByContainment, ByDerivation, or DeclaredFrontier-with-nonempty-reason-and-trigger."
+
+data roster_registry_enforcement_intent_convergence_note: String = "Convergence, not implementation: the enforcement-intent thread (DESIGN open thread 'enforcement intent — ask once, compile forever'; docs/plans/enforcement-intent-design.md) absorbs this registry when StandingIntent / LensContract land — its subject_roster IS this concept (a registered group of units with declared membership provenance). Do not build that machinery here; this carrier stays the minimal data authority and the lens stays a data-shape check until that thread lands and this registry becomes its subject_roster carrier."
+
+data roster_registry_visibility_note: String = "Honesty bound: the lens sees only ENROLLED registrations. An unregistered bare list elsewhere in the tree is invisible to it — until enforcement-intent lands, unregistered nickname lists are caught at review by the group-5a rule (registry admission is the review bar for any new 'pool'/'class'/'lane'/'family' String key), not by this lens. Known unregistered residue, walled here so it is counted: NON_FOLD_RESIDUE_ROSTER (src/v1/stage0/src/cli_run.rs, a host-side &[&str] whose per-row reasons and triggers exist as comments) — its re-home to a .dag carrier the host reads through is the named follow-up; a DeclarationRef cannot name a Rust const, so it enrolls when the carrier moves."
+
+data roster_registry_upcoming_targets_note: String = "Walls for in-flight lanes (registry admission is the rule): (a) the bulk-native flip's 744 frontier rows MUST land ByDerivation — the native_routing_frontier registration below is the template (subject-keyed, closure-derived membership, equivalence receipt); (b) chore-remedy classification is already by-construction (subject types) and needs no registration; (c) the deploy lease/generation guard reuses Grant/containment-prefix plus git ancestry — no new group concept, nothing to enroll; (d) machine-shape scheduling and CI-ergonomics lanes: any 'pool'/'class'/'lane' String key at review enrolls here or is rejected as a nickname; (e) the long/ dir lane is BLESSED Form-C — storage grain WITH a construction backstop (the 5-second eval deadline makes an over-budget fast-lane witness unwritable-in-place) — registered ByContainment below, not restructured."
+
+type GroupMembership
+  = ByContainment
+  | ByDerivation { predicate: DeclarationRef }
+  | DeclaredFrontier { reason: String, dissolve_on: String }
+
+type RosterRegistration {
+  roster: DeclarationRef
+  unit_kind: String
+  membership: GroupMembership
+}
+
+fn decl(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration
+  }
+}
+
+data roster_registry: List<RosterRegistration> = [
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+    unit_kind: "witness discovery-exclusion path substring",
+    membership: DeclaredFrontier {
+      reason: "each excluded witness path pattern is an operator-ruled or structurally-forced exception to per-PR hermetic discovery; every row carries its consumer classification, reason, and trigger in-row",
+      dissolve_on: "witness rows carry derived consumer classification (per witness_exclusion_single_authority_reconciliation_note) or the enforcement-intent registry absorbs the roster"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "whole_tree_strict_resolve_exclusion_substrings"),
+    unit_kind: "strict-resolve probe path substring",
+    membership: DeclaredFrontier {
+      reason: "the strict-resolve-broken set, baked as single authority per operator ruling 2026-07-13; per-row audit receipts in whole_tree_strict_resolve_scaffold_exclusion_note",
+      dissolve_on: "per row: the file relocates under a /test/ path or the blanket /test/ exclusion policy changes so its resolve repairs; a row that excludes nothing deletes"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_entries"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs), so the hermetic envelope refuses them by construction; they run as the declared Wet-profiled batch (bin_witness_wet_note)",
+      dissolve_on: "these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "known-red frontier: witnesses red on main for feature gaps owned by named lanes, run on the falsifier probe cadence expecting red; per-entry diagnosis, owner, and trigger in known_red_frontier_note",
+      dissolve_on: "per entry: the owning lane greens the witness locally and the entry deletes (greening is a counted un-quarantine event)"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "resolution_divergence_census_roster_excluded_module_prefixes"),
+    unit_kind: "module path prefix",
+    membership: DeclaredFrontier {
+      reason: "v2.test.* intentional-ambiguity harness modules are excluded from the fn_parent_first_hit subset construction invariant (not from the genuine silent-pick join gate); receipts in falsifier_silent_pick_gate_note",
+      dissolve_on: "unique-on-chain resolution ships as the resolver's actual behavior; then telemetry, the gate witness, and this roster delete together"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.compiler.self_host.native_routing_frontier", decl_name: "native_routing_frontier_roster"),
+    unit_kind: "emit-on-demand witness family (subject construct declaration)",
+    membership: ByDerivation {
+      predicate: decl(
+        module_path: "v2.compiler.self_host.native_routing_frontier",
+        decl_name: "native_routing_row_membership_derived"
+      )
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.meta_exec_confinement", decl_name: "meta_exec_confinement_exception_roster"),
+    unit_kind: ".dag file path",
+    membership: DeclaredFrontier {
+      reason: "paths granted import of the confined meta-exec module outside realization edges; per-row reasons and triggers in-row (aggregate law in meta_exec_confinement_law)",
+      dissolve_on: "the meta-exec heavy-sequestration milestone lands (module-isolated bottom transport or symbol-level import visibility); rows delete as their sites migrate"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.realization_vocabulary_containment", decl_name: "realization_vocab_exception_roster"),
+    unit_kind: ".dag file path",
+    membership: DeclaredFrontier {
+      reason: "paths granted import of the bash-AST emit vocabulary outside realization edges; per-row reasons and triggers in-row",
+      dissolve_on: "shell-to-intent phase 3 (bash-AST containment wall green) re-homes or dissolves each site; rows delete as their sites migrate"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.inert_carrier", decl_name: "inert_carrier_roster"),
+    unit_kind: "type name",
+    membership: DeclaredFrontier {
+      reason: "modeled domain carriers with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader); per-row reasons and triggers in-row",
+      dissolve_on: "per row: a live consumer reads the carrier (the lens's stale-roster check forces the row's deletion when the carrier stops being inert)"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.complexity_linearity_audit", decl_name: "complexity_linearity_migration_debt_roster"),
+    unit_kind: "path::fn site key",
+    membership: DeclaredFrontier {
+      reason: "closed-coproduct wildcard sites classified migration-debt rather than kernel-permanent; per-row reasons and triggers in-row",
+      dissolve_on: "per row: the site's wildcard arm migrates to a total match and the row deletes; roster-wide, the construction justification dissolves to SubstrateMandatoryTag"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_known_infra_roster"),
+    unit_kind: "lens module path",
+    membership: DeclaredFrontier {
+      reason: "registry-infrastructure modules under v2.lens.* that are not themselves enforcing lenses; per-row reasons and triggers in-row",
+      dissolve_on: "per row: the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster"),
+    unit_kind: "lens module path",
+    membership: DeclaredFrontier {
+      reason: "lens modules deliberately without distinct registry rows because they consolidate onto an already-enrolled verdict authority; per-row reasons and triggers in-row (aggregate rationale in lens_registry_completeness_consolidated_roster_note)",
+      dissolve_on: "per row: the module gains its own verdict authority (then it enrolls) or folds entirely into its host lens and the module deletes"
+    }
+  },
+  RosterRegistration {
+    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note"),
+    unit_kind: "long-lane witness file (dag/test/claim/long/, src/v2/test/claim/long/)",
+    membership: ByContainment
+  }
+]
+
+fn registration_membership_is_standard(r: RosterRegistration) -> Bool {
+  match r.membership {
+    ByContainment => true
+    ByDerivation { predicate: _ } => true
+    DeclaredFrontier { reason: reason, dissolve_on: dissolve_on } =>
+      !(reason == "") && !(dissolve_on == "")
+  }
+}
