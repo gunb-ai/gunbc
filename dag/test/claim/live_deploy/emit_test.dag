@@ -358,6 +358,7 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_retract_preamble_acknowledges_shared_sudoers_install()
     && witness_apply_script_contains_systemd_and_tailscale()
     && witness_scripts_stay_within_ci_runner_grants()
+    && witness_tree_sync_restart_diagnoses_on_failure()
     && witness_retract_script_owned_only()
     && witness_apply_script_has_no_node_server()
     && witness_apply_script_has_no_frozen_page()
