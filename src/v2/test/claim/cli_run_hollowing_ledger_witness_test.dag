@@ -9,22 +9,116 @@ import gunbc.cli_run_hollowing_ledger {
   cli_run_hollowing_row_count_baseline,
   cli_run_hollowing_source_path
 }
-import v2.std.algebra { fold_list, length }
+import std.types { Int, List, String }
+import v2.std.algebra { Cons, Empty, fold_list, fold_list_right, length, skip }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data cli_run_hollowing_ledger_witness_note: String = "Structural receipt (quick-moth-273): cli_run.rs hollowing ledger on dag/gunbc/cli_run_hollowing_ledger.dag — every module-scope fn plus every test-fn mapped to a v2 dissolution feature. Enumeration and no-unclassified predicates fold cli_run_hollowing_ledger_rows (not parallel constants). witness_cli_run_hollowing_ledger_source_tie_holds reads cli_run.rs and refuses stale ledgers when any row fn_name is absent from source (adds/removes/renames require regen). Regenerate after cli_run.rs fn-surface edits: python3 scripts/generate_cli_run_hollowing_ledger.py; verify-only: python3 scripts/generate_cli_run_hollowing_ledger.py --verify. Dissolve-on: seed-shrink Chunk F."
+data cli_run_hollowing_ledger_witness_note: String = "Structural receipt (quick-moth-273): cli_run.rs hollowing ledger on dag/gunbc/cli_run_hollowing_ledger.dag — every module-scope fn plus every test-fn mapped to a v2 dissolution feature. Enumeration and no-unclassified predicates fold cli_run_hollowing_ledger_rows (not parallel constants). witness_cli_run_hollowing_ledger_source_tie_holds reads cli_run.rs and fail-closed ties the ledger both ways on (source_line, fn_name) pairs: every ledger row must appear on its declared line, and every in-scope source fn (column-0 plus #[test] nested) must have a matching ledger row — same scope as generate_cli_run_hollowing_ledger.py. Regenerate after cli_run.rs fn-surface edits: python3 scripts/generate_cli_run_hollowing_ledger.py; verify-only: python3 scripts/generate_cli_run_hollowing_ledger.py --verify. Dissolve-on: seed-shrink Chunk F."
 
-fn cli_run_hollowing_row_fn_present_in_source(source: String, row: CliRunHollowLedgerRow) -> Bool {
-  let decl = concat("fn ", row.fn_name)
-  string_contains(s: source, pattern: concat(decl, "("))
-    || string_contains(s: source, pattern: concat(decl, "<"))
+type CliRunHollowScopeFn {
+  source_line: Int,
+  fn_name: String
+}
+
+type CliRunHollowSourceCensusState {
+  test_search_remaining: Int,
+  line_number: Int,
+  scope_fns: List<CliRunHollowScopeFn>
+}
+
+fn cli_run_hollowing_line_is_col0(line: String) -> Bool {
+  !starts_with(s: line, prefix: " ") && !starts_with(s: line, prefix: "\t")
+}
+
+fn cli_run_hollowing_line_is_fn_decl(line: String) -> Bool {
+  string_contains(s: line, pattern: "fn ")
+}
+
+fn cli_run_hollowing_line_is_nested_fn_decl(line: String) -> Bool {
+  (starts_with(s: line, prefix: " ") || starts_with(s: line, prefix: "\t"))
+    && cli_run_hollowing_line_is_fn_decl(line: line)
+}
+
+fn cli_run_hollowing_fn_name_from_decl_line(line: String) -> String {
+  let after_fn = split(s: line, delimiter: "fn ").skip(n: 1).first()
+  let before_paren = split(s: after_fn, delimiter: "(").first()
+  trim(split(s: before_paren, delimiter: "<").first())
+}
+
+fn cli_run_hollowing_census_line(state: CliRunHollowSourceCensusState, line: String) -> CliRunHollowSourceCensusState {
+  let nested_test_fn = state.test_search_remaining > 0
+    && cli_run_hollowing_line_is_nested_fn_decl(line: line)
+  let col0_fn = cli_run_hollowing_line_is_col0(line: line)
+    && cli_run_hollowing_line_is_fn_decl(line: line)
+  let scope_fns = if col0_fn || nested_test_fn {
+    Cons {
+      head: CliRunHollowScopeFn {
+        source_line: state.line_number,
+        fn_name: cli_run_hollowing_fn_name_from_decl_line(line: line)
+      },
+      tail: state.scope_fns
+    }
+  } else {
+    state.scope_fns
+  }
+  let test_search_remaining = if string_contains(s: line, pattern: "#[test]") {
+    8
+  } else if nested_test_fn {
+    0
+  } else if state.test_search_remaining > 0 {
+    state.test_search_remaining - 1
+  } else {
+    0
+  }
+  CliRunHollowSourceCensusState {
+    test_search_remaining: test_search_remaining,
+    line_number: state.line_number + 1,
+    scope_fns: scope_fns
+  }
+}
+
+fn cli_run_hollowing_extract_scope_fns(source: String) -> List<CliRunHollowScopeFn> {
+  let lines = split(s: source, delimiter: "\n")
+  let census = fold_list_right(
+    xs: lines,
+    empty: CliRunHollowSourceCensusState {
+      test_search_remaining: 0,
+      line_number: 1,
+      scope_fns: Empty
+    },
+    snoc: fn(acc, line) { cli_run_hollowing_census_line(state: acc, line: line) }
+  )
+  census.scope_fns
+}
+
+fn cli_run_hollowing_source_line_at(source: String, line_number: Int) -> String {
+  split(s: source, delimiter: "\n").skip(n: line_number - 1).first()
+}
+
+fn cli_run_hollowing_row_present_at_source_line(source: String, row: CliRunHollowLedgerRow) -> Bool {
+  let line = cli_run_hollowing_source_line_at(source: source, line_number: row.source_line)
+  string_contains(s: line, pattern: concat("fn ", row.fn_name))
 }
 
 fn cli_run_hollowing_all_rows_present_in_source(source: String) -> Bool {
-  fold_list(xs: cli_run_hollowing_ledger_rows, empty: true, cons: fn(acc, row) { acc && cli_run_hollowing_row_fn_present_in_source(source: source, row: row) })
+  fold_list(xs: cli_run_hollowing_ledger_rows, empty: true, cons: fn(acc, row) {
+    acc && cli_run_hollowing_row_present_at_source_line(source: source, row: row)
+  })
+}
+
+fn cli_run_hollowing_ledger_has_scope_fn(scope_fn: CliRunHollowScopeFn) -> Bool {
+  fold_list(xs: cli_run_hollowing_ledger_rows, empty: false, cons: fn(acc, row) {
+    acc || (row.source_line == scope_fn.source_line && row.fn_name == scope_fn.fn_name)
+  })
+}
+
+fn cli_run_hollowing_all_scope_fns_in_ledger(scope_fns: List<CliRunHollowScopeFn>) -> Bool {
+  fold_list(xs: scope_fns, empty: true, cons: fn(acc, scope_fn) {
+    acc && cli_run_hollowing_ledger_has_scope_fn(scope_fn: scope_fn)
+  })
 }
 
 test fn witness_cli_run_hollowing_ledger_enumeration_holds() -> Bool {
@@ -38,5 +132,8 @@ test fn witness_cli_run_hollowing_ledger_no_unclassified_holds() -> Bool {
 
 test fn witness_cli_run_hollowing_ledger_source_tie_holds() -> Bool {
   let source = filesystem_read(path: cli_run_hollowing_source_path).content
+  let scope_fns = cli_run_hollowing_extract_scope_fns(source: source)
   cli_run_hollowing_all_rows_present_in_source(source: source)
+    && cli_run_hollowing_all_scope_fns_in_ledger(scope_fns: scope_fns)
+    && length(scope_fns) == length(cli_run_hollowing_ledger_rows)
 }
