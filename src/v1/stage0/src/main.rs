@@ -358,11 +358,10 @@ fn main() {
             // deliberately narrower, cost-motivated proxy, asymmetric in both
             // directions from the shared authority (review 41032):
             //   - fn_parent_first_hit: red-on-any raw count here, on the
-            //     construction-proven corpus invariant (with v2.test.* roster
-            //     exclusion) that every in-roster fn_parent_first_hit fire is
-            //     containment_ambiguous — verified by
-            //     resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus
-            //     and the nightly falsifier's subset refusal arm.
+            //     ASSERTED-not-construction-proven corpus invariant that every
+            //     fn_parent_first_hit fire is containment_ambiguous (the
+            //     fn-parent walk IS the containment walk) — over-strict if the
+            //     invariant is ever wrong (a false refusal), never silent.
             //   - global_bare_lcp: skipped entirely here (fires on whole-pool
             //     name overlap alone — ~483 benign corpus sites, not genuine
             //     under §13 unique-on-chain) — under-strict; a future genuine

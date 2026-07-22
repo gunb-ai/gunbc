@@ -20,7 +20,6 @@ import v2.compiler.self_host.frontier_probe_types {
   curated_cargo_probe_namespace_qualified_rust_emit_reason,
   curated_cargo_probe_import_closure_cargo_refuse_reason,
   curated_cargo_probe_emit_assemble_refuse_reason,
-  curated_cargo_probe_generic_type_render_reason,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
@@ -287,13 +286,11 @@ data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_meas
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
   module_path: "src/v2/compiler/03_name_resolve.dag",
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageAssemble,
-  located_reason: curated_cargo_probe_emit_assemble_refuse_reason,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
 data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -308,13 +305,11 @@ data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = execution_m
   tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 37, pre_flip_blocker: EmitSurfaceGap)
 )
 
-data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
   module_path: "src/v2/compiler/03_resolve.dag",
   closure_reads: 39,
   measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_generic_type_render_reason,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
 data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
