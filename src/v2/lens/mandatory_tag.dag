@@ -1,0 +1,290 @@
+module v2.lens.mandatory_tag
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.algebra { Cons, Empty }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node_query { find_named_child }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import v2.std.witness { Holds, Witness }
+import v2.extdeps.languages.dag {
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
+}
+
+data mandatory_tag_law: String = "The SubstrateMandatoryTag mechanism (std.disposition.ConstructionMechanism), reached region-by-region per dag/gunbc/plans/disposition_carrier.dag: a MandatoryTagRegion row declares that every module whose qualified name falls inside a namespace region MUST carry a top-level data declaration with a required name, a required declared type, and a value whose discriminating vocabulary atoms are drawn from an accepted subset. Enrolled in always_required_root_lenses, so a violating module FAILS COMPILATION with a typed, located diagnostic — the missing/misnamed/misvalued tag is unwritable at definition admission, not flagged post-hoc by a corpus scan (DESIGN 5: construction over validation). First region: extdeps external-authority anchors — this row is the dissolution of v2.lens.extdeps_external_authority and its cli_run.rs host text-scan scaffold (WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } discharged; the wall now exists, so the class is WallNow). The shadow-mask sub-check dissolved with it onto its own SingleAuthority ground: module-path collisions refuse loudly at index build, so a tag masked by a same-path shadow module is unwritable upstream of this gate. Grain: root - one rooted whole-tree walk locating dag_surface_module wrappers; per-module work is a direct-children scan plus a bounded atom read of one small declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar)."
+
+data mandatory_tag_value_vocabulary_law: String = "The value check is deliberately vocabulary-keyed, not field-path-keyed: the region names the closed set of discriminating variant atoms (for the extdeps region, the extdeps.uri scheme constructors) and the accepted subset (Http, Https - the intersubjectively reachable schemes; File and Ftp are non-external, the old NonExternalAnchorScheme refusal). The tagged declaration's lowered value expression is scanned for vocabulary atoms: none found refuses (the value does not speak the discriminating vocabulary - the old UnrecognizedAnchorScheme arm), any non-accepted atom refuses (fail-closed on ambiguous shapes: a value carrying both an accepted and a rejected vocabulary atom refuses rather than picking). This keys the wall on the closed constructor vocabulary the type authority already owns, not on a re-modeled field path into a lowered record shape."
+
+type MandatoryTagRegion {
+  region_dotted_prefix: String
+  required_decl_name: Symbol
+  required_type_name: Symbol
+  value_vocabulary: List<Symbol>
+  value_accepted: List<Symbol>
+  exempt_modules: List<String>
+  exempt_module_prefixes: List<String>
+  exempt_module_suffixes: List<String>
+}
+
+data extdeps_external_authority_region_note: String = "Region membership mirrors the dissolved host roster exactly: extdeps.uri and extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried forward: coverage was whole-tree at dissolution time, so no backfill concept survives."
+
+data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion {
+  region_dotted_prefix: "extdeps.",
+  required_decl_name: ^extdeps_external_authority_anchor,
+  required_type_name: ^ExternalAuthority,
+  value_vocabulary: [^Http, ^Https, ^File, ^Ftp],
+  value_accepted: [^Http, ^Https],
+  exempt_modules: ["extdeps.uri", "extdeps.external_authority"],
+  exempt_module_prefixes: ["extdeps.fixture."],
+  exempt_module_suffixes: [".mock_corpus"]
+}
+
+fn mandatory_tag_regions() -> List<MandatoryTagRegion> {
+  [extdeps_external_authority_region]
+}
+
+fn mandatory_tag_symbols_contain(xs: List<Symbol>, s: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == s })
+}
+
+fn mandatory_tag_strings_contain(xs: List<String>, s: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == s })
+}
+
+fn mandatory_tag_any_prefix(xs: List<String>, dotted: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, p) { acc || dotted.starts_with(prefix: p) })
+}
+
+fn mandatory_tag_any_suffix(xs: List<String>, dotted: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) { acc || dotted.ends_with(suffix: s) })
+}
+
+fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: String) -> Bool {
+  dotted.starts_with(prefix: region.region_dotted_prefix)
+    && !mandatory_tag_strings_contain(xs: region.exempt_modules, s: dotted)
+    && !mandatory_tag_any_prefix(xs: region.exempt_module_prefixes, dotted: dotted)
+    && !mandatory_tag_any_suffix(xs: region.exempt_module_suffixes, dotted: dotted)
+}
+
+fn mandatory_tag_subtree_atoms(n: Node) -> List<Symbol> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } => [s]
+          _ => []
+        }
+      },
+      step: fn(acc, _edge, child) { concat(acc, child) }
+    }
+  )
+}
+
+fn mandatory_tag_node_production_is(n: Node, want: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => id == want
+    Absent => false
+  }
+}
+
+fn mandatory_tag_decl_name_symbol(d: Node) -> Optional<Symbol> {
+  match find_named_child(root: d, name: ^dag_surface_data_decl_name) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: nm, diagnostics: _ } =>
+      match nm.kind {
+        TypeNode { connective: Atom { identity: s } } => optional_present(value: s)
+        _ =>
+          match mandatory_tag_subtree_atoms(n: nm) {
+            Cons { head: first, tail: _ } => optional_present(value: first)
+            Empty => optional_absent()
+          }
+      }
+  }
+}
+
+fn mandatory_tag_find_required_decl(module_node: Node, required_name: Symbol) -> Optional<Node> {
+  fold(module_node.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if mandatory_tag_node_production_is(n: e.target, want: ^dag_surface_data_decl) {
+          match mandatory_tag_decl_name_symbol(d: e.target) {
+            Present { value: nm } =>
+              if nm == required_name {
+                optional_present(value: e.target)
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn mandatory_tag_missing_decl_diagnostic(module_node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^mandatory_tag_missing_required_decl,
+    at: node_locus(node: module_node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn mandatory_tag_type_mismatch_diagnostic(d: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^mandatory_tag_required_decl_type_mismatch,
+    at: node_locus(node: d),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn mandatory_tag_value_unreadable_diagnostic(d: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^mandatory_tag_value_vocabulary_unreadable,
+    at: node_locus(node: d),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn mandatory_tag_value_not_accepted_diagnostic(d: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^mandatory_tag_value_not_accepted,
+    at: node_locus(node: d),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn mandatory_tag_type_findings(d: Node, region: MandatoryTagRegion) -> List<Diagnostic> {
+  match find_named_child(root: d, name: ^dag_surface_data_decl_type) {
+    Rejected { diagnostics: _ } => [mandatory_tag_type_mismatch_diagnostic(d: d)]
+    Accepted { value: ty, diagnostics: _ } =>
+      if mandatory_tag_symbols_contain(
+        xs: mandatory_tag_subtree_atoms(n: ty),
+        s: region.required_type_name
+      ) {
+        []
+      } else {
+        [mandatory_tag_type_mismatch_diagnostic(d: d)]
+      }
+  }
+}
+
+fn mandatory_tag_vocabulary_hits(atoms: List<Symbol>, vocabulary: List<Symbol>) -> List<Symbol> {
+  fold(atoms, init: [], f: fn(acc, a) {
+    if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
+      concat(acc, [a])
+    } else {
+      acc
+    }
+  })
+}
+
+fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Diagnostic> {
+  match find_named_child(root: d, name: ^dag_surface_data_decl_expr) {
+    Rejected { diagnostics: _ } => [mandatory_tag_value_unreadable_diagnostic(d: d)]
+    Accepted { value: expr, diagnostics: _ } =>
+      match mandatory_tag_vocabulary_hits(
+        atoms: mandatory_tag_subtree_atoms(n: expr),
+        vocabulary: region.value_vocabulary
+      ) {
+        Empty => [mandatory_tag_value_unreadable_diagnostic(d: d)]
+        Cons { head: first_hit, tail: rest_hits } =>
+          if fold(
+            Cons { head: first_hit, tail: rest_hits },
+            init: true,
+            f: fn(acc, a) { acc && mandatory_tag_symbols_contain(xs: region.value_accepted, s: a) }
+          ) {
+            []
+          } else {
+            [mandatory_tag_value_not_accepted_diagnostic(d: d)]
+          }
+      }
+  }
+}
+
+fn mandatory_tag_region_module_findings(
+  region: MandatoryTagRegion,
+  module_node: Node,
+  dotted: String
+) -> List<Diagnostic> {
+  if mandatory_tag_region_applies(region: region, dotted: dotted) {
+    match mandatory_tag_find_required_decl(
+      module_node: module_node,
+      required_name: region.required_decl_name
+    ) {
+      Absent => [mandatory_tag_missing_decl_diagnostic(module_node: module_node)]
+      Present { value: d } =>
+        concat(
+          mandatory_tag_type_findings(d: d, region: region),
+          mandatory_tag_value_findings(d: d, region: region)
+        )
+    }
+  } else {
+    []
+  }
+}
+
+fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
+  if mandatory_tag_node_production_is(n: n, want: ^dag_surface_module) {
+    match qualified_name_from_module_node(root: n) {
+      Rejected { diagnostics: _ } => []
+      Accepted { value: qn, diagnostics: _ } =>
+        let dotted = qualified_name_to_dotted_string(qn: qn)
+        fold(mandatory_tag_regions(), init: [], f: fn(acc, region) {
+          concat(
+            acc,
+            mandatory_tag_region_module_findings(
+              region: region,
+              module_node: n,
+              dotted: dotted
+            )
+          )
+        })
+    }
+  } else {
+    []
+  }
+}
+
+data mandatory_tag_nameless_module_note: String = "A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids."
+
+fn mandatory_tag_findings(root: Node) -> List<Diagnostic> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { mandatory_tag_module_findings(n: n0) },
+      step: fn(acc, _edge, child) { concat(acc, child) }
+    }
+  )
+}
+
+fn mandatory_tag_compile_gate(node: Node) -> Outcome<Witness<Node>> {
+  match mandatory_tag_findings(root: node) {
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+      }
+    Empty => outcome_accepted(value: Holds { value: node })
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow
+}
