@@ -15,6 +15,7 @@ import std.measure {
   MoneyPerMonth,
   amortization_months_count,
   basis_point_count,
+  basis_point_unity_count,
   billing_month_as_hour_count,
   hardware_thread_count_value,
   minutes_per_hour,
@@ -166,7 +167,7 @@ fn derive_runner_cost_floor_per_minute_usd(
           }
           let utilized_runner_eur = MoneyPerMinute {
             amount: money_amount_micro(
-              count: (money_per_minute_micros(q: per_minute_runner_eur) * 10000) / basis_point_count(bp: assumptions.runner_utilization_bp)
+              count: (money_per_minute_micros(q: per_minute_runner_eur) * basis_point_unity_count()) / basis_point_count(bp: assumptions.runner_utilization_bp)
             ),
             currency: Eur,
           }

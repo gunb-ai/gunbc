@@ -460,6 +460,10 @@ fn basis_point_count(bp: BasisPoint) -> Nat {
   measure_count(bp)
 }
 
+fn basis_point_unity_count() -> Nat {
+  10000
+}
+
 data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
 
 data basis_point_dissolve_on: String = "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname."
