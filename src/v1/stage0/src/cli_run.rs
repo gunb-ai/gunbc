@@ -21427,14 +21427,8 @@ mod reference_edge_producer_tests {
     fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
         use super::layer_import_facts;
 
-        let std_roots = vec![
-            "src/v2/std".to_string(),
-            "dag/std".to_string(),
-        ];
-        let extdeps_roots = vec![
-            "src/v2/extdeps".to_string(),
-            "dag/extdeps".to_string(),
-        ];
+        let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
+        let extdeps_roots = vec!["src/v2/extdeps".to_string(), "dag/extdeps".to_string()];
         let facts = layer_import_facts(&std_roots, &extdeps_roots);
         let violations: Vec<_> = facts
             .iter()
