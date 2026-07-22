@@ -14,6 +14,7 @@ import std.realization { Share, Recompute }
 import std.realize_pack {
   BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
 }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
@@ -63,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_kernel_note: String = "Witness-realization kernel ACCEPT witnesses (plan P3) for the emit_host_add family — the serial kernel's first customer, consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate is built ONCE per corpus pass. The single wet receipt is emit_on_demand_kernel_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (compile_skipped octet receipts), the eval-anchored agreement (run_test_claim_from_source_emit_vs_eval_cached, oracle = eval, primitive-five subject) and the wrong-oracle RED (primitive-six subject -> semantic mismatch) run WARM on the same build, then the changed-tree alt key colds in the SAME root (cache-impurity MISS discriminator). Formerly ~7 crate builds per pass (per-test eviction roots + 2 uncached agreement runs); now 2. Pure receipts unchanged. Workspace path suffix is emit_on_demand_key(inferred_tree_digest(tree), ...), not test_id."
 
-data kernel_cache_root: String = "/tmp/gunbc_emit_on_demand_kernel"
+data kernel_cache_root: String = emit_on_demand_family_cache_root(family: "kernel")
 data kernel_emitter: String = "v2.compiler.emit"
 data kernel_provider: CacheProvider = provider_row(
   id: "emit-on-demand-kernel",
