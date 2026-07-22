@@ -11,7 +11,7 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
-data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and optional supplementary claim-run. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_entry_rel = skip supplementary claim-run. Dissolve-on: modeled self-host behavioral-equivalence harness producer emits this carrier's operations without per-module copy-paste (parallel to slb/ssuv_scaffold_dissolution_trigger)."
+data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and zero or more supplementary claim-runs. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_runs = skip supplementary claim-runs. LANDED: the per-module copy-paste this note names is dissolved by tools.self_host_module_behavioral_transport_roster — one config row per frontier module, one generic compiler_module_behavioral_receipt_for(module_path) dispatch, this kernel unchanged as the sole executor."
 
 data cssl_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
 
@@ -135,28 +135,42 @@ fn cssl_run_generic_closure_assembly(
   assemble.success && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
 }
 
-fn cssl_supplemental_claim_ok(
+type CuratedSeedLinkedClaimRun {
+  entry_rel: String
+  function: String
+}
+
+fn cssl_supplemental_claim_run_ok(
   root: String,
   gunbc_bin: String,
-  claim_entry_rel: String,
-  claim_function: String
+  run: CuratedSeedLinkedClaimRun
 ) -> Bool {
-  if claim_entry_rel == "" {
-    true
-  } else {
-    let eval = gunbc.WitnessBin.Run(
-      workdir: root,
-      bin_path: gunbc_bin,
-      args: [
-        "run", "--claim-run",
-        "--source-root", "dag",
-        "--source-root", "src/v2",
-        "--entry", claim_entry_rel,
-        "--function", claim_function
-      ]
-    )
-    eval.success
-  }
+  let eval = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", run.entry_rel,
+      "--function", run.function
+    ]
+  )
+  eval.success
+}
+
+fn cssl_supplemental_claims_ok(
+  root: String,
+  gunbc_bin: String,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> Bool {
+  fold_list(
+    xs: claim_runs,
+    empty: true,
+    cons: fn(ok, run) {
+      ok && cssl_supplemental_claim_run_ok(root: root, gunbc_bin: gunbc_bin, run: run)
+    }
+  )
 }
 
 fn cssl_seed_linked_behavioral_receipt(
@@ -165,8 +179,7 @@ fn cssl_seed_linked_behavioral_receipt(
   shim_writes: List<CuratedSeedLinkedShimWrite>,
   driver_rel: String,
   pass_marker: String,
-  claim_entry_rel: String,
-  claim_function: String
+  claim_runs: List<CuratedSeedLinkedClaimRun>
 ) -> Bool {
   let root = git.Core.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
@@ -218,11 +231,10 @@ fn cssl_seed_linked_behavioral_receipt(
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
   let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
   let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
-  let claim_ok = cssl_supplemental_claim_ok(
+  let claim_ok = cssl_supplemental_claims_ok(
     root: root.path,
     gunbc_bin: gunbc_bin,
-    claim_entry_rel: claim_entry_rel,
-    claim_function: claim_function
+    claim_runs: claim_runs
   )
 
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
