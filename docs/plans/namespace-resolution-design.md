@@ -399,6 +399,18 @@ reference-derived dependency-edge lane, the same lane that dissolves this bridge
 **Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
 above — delete import grammar; container.member references become the sole
 dependency authority).
+**AMENDED 2026-07-22 (execution-diagnosed, merry-heron-629):** the closure's adequacy is
+**pool-membership coincidence** — a stripped file's bare names resolve iff the target module
+happens to be in the shared pool via *some unrelated unstripped import in the closure*; there
+is no per-file binding mechanism, so already-stripped files (batch-1's ~74) are green only by
+ambient coverage that any later unrelated strip can erode. **All further stripping is blocked
+corpus-wide** until a closure-independent binding mechanism (substantively: namespace-only
+resolution reaching the typecheck env — the §8 flip) or a provable-coverage construction check
+lands; additionally a strip wave must be closed under the imports-from relation (or PR-4 land
+first) — partial strips sever re-export chains at hub files. Mechanism receipts, controlled
+experiments, and the consolidated wave rule:
+[import-strip witness-discovery cascade diagnosis](import-strip-witness-discovery-cascade-diagnosis.md)
+§12–13 (PR #7061).
 
 ## 9. Open / to-verify
 
@@ -466,6 +478,50 @@ the desugar is exactly-one (header × explicit-brace composition defined; ambigu
 machinery the salvage stabilized — it lands as the FIRST follow-up PR on top of the merged
 #6848, not inside it. Step 2 follows once step 1's dissolves (metadata edge, prefix keys) are
 receipted.
+
+**Step-1 landed vs receipted — post-#6968 capture (2026-07-22, from stern-newt-142's closeout
+consult; this subsection is the durable authority for what was previously only in lane-plan
+session messages).** #6968 merged the graft carrier + normalize/`validate_module_roots` ingress
++ a partial C5 dissolve (symbol_index_fill metadata branch and the name_resolve
+export-admission header filter removed; graft-aware QN reader sweep), witnessed green
+(zero-metadata graft output, graft shape, marker strip, normalize long-lane). **The step-1
+receipt bar is NOT yet met**: the bar is both bolt-ons *dissolved into ordinary containment
+fill*, not merely dead-in-corpus behind the graft. Open dissolves, in stern-newt's leverage
+order:
+
+1. **QN-reader collapse ("C6" second half)** — `qualified_name_from_module_node_graft_aware`
+   is an interim dual-arm reader (`Scaffold → SingleAuthority`); dissolve = route grafted roots
+   through the nesting-position spine walk inside `v2.extdeps.languages.dag`
+   `qualified_name_from_module_node`, break the `std ↔ extdeps` import cycle (lift spine
+   helpers to std OR split pre-graft ingress to a parse-only boundary), delete the wrapper +
+   `namespace_graft_pre_graft_module_qn`. **Independent of the strip lane / pool-membership
+   blocker** (confirmed: touches only namespace_graft + the extdeps QN fn; no PR-5b, no
+   ci_layer_roots, no census machinery).
+2. **"C6" first half — v1 seed regen** after the wrapper deletion. Previously scoped ONLY in
+   the dashboard C1–C7 lane sequence (sunny-wolf green-light; "C6 regen + interim wrapper
+   dissolution remain on plan under nimble-owl shepherding"); #6968 merged WITHOUT it. This
+   paragraph is its capture.
+3. **"C7" — completion receipts**: wet `source_root_ingest_gate_passes` + real-ingest RED
+   controls green = the wrapper-collapse completion signal (named in the carrier trigger).
+4. **Metadata-edge chain cleanup**: `dag_surface_module_header_metadata_edge` predicate + the
+   `03_resolve` `under_module_root` preserve OR-chain
+   (`dag_resolve_preserve_module_metadata_subtree`, `namespace_graft_parse_projection_edge`)
+   still live as pre-graft/ModuleShell backstops; `body_lowering_fold` still calls the
+   preserve fn at 3 sites (gated on body-lowering consuming grafted trees).
+5. **SymbolIndex prefix-key dissolution**: `symbol_index_fill_module_root` still seeds the
+   path from the `module_qn` string (`qualified_name_snoc` bolt-on);
+   `symbol_index_containment_disposition` is `Scaffold` → `symbol_index_fill_containment_node`
+   — the containment walk exists but pure nesting-position keys are not yet the authority.
+6. **Review-41316 follow-ups (non-blocking)**: `try_admitted_export_binding` admission-entry
+   construction hardening (refuse non-grafted admission); the
+   `ends_with(.., "_node_projection")` suffix heuristic → declared grammar-projection rows.
+
+**Post-C5 interim census protocol** (durable pointer): the 83-row exclude set is pinned
+git-visible at `docs/probes/census_extra_excludes.txt` + `docs/probes/
+still-hawk-row-coordination.txt` — ephemeral CLI application only, **never** baked into
+`ci_layer_roots`; fierce-heron oracle = `derived(tip) == recovered-83`. Coordination note:
+stern-owl-401's §13 containment-walk binding (#6979) was sequenced to coordinate after C5 on
+the same files — clear to proceed since #6968 merged.
 
 ## 11. Terminology: "module" → "namespace" (operator-ruled, 2026-07-19)
 
