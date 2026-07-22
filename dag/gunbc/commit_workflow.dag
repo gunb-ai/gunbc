@@ -76,7 +76,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
-    surfaces: [GithubActionsCiJob, GitPrePushHook]
+    surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
@@ -645,11 +645,6 @@ fn local_tidy_check_eq(a: LocalTidyCheck, b: LocalTidyCheck) -> Bool {
           entry == entry2 && string_list_eq(left: check_fns, right: check_fns2)
         _ => false
       }
-    LocalTidyGateCheck { gate } =>
-      match b {
-        LocalTidyGateCheck { gate: gate2 } => gate_eq(a: gate, b: gate2)
-        _ => false
-      }
     LocalTidyCargoFmtCheck =>
       match b { LocalTidyCargoFmtCheck => true  _ => false }
   }
@@ -659,10 +654,7 @@ fn project_local_tidy_checks(roster: List<CommitCheckEnrollment>) -> List<LocalT
   let pre_push = filter(roster, e => enrollment_has_surface(e: e, surface: GitPrePushHook))
   concat(
     project_local_tidy_witness_rows(roster: pre_push),
-    concat(
-      project_local_tidy_gate_rows(roster: pre_push),
-      project_local_tidy_fmt_rows(roster: pre_push)
-    )
+    project_local_tidy_fmt_rows(roster: pre_push)
   )
 }
 
@@ -672,17 +664,6 @@ fn project_local_tidy_witness_rows(roster: List<CommitCheckEnrollment>) -> List<
       CommitWitnessClaim { entry, check_fns, kind: _, span: _ } =>
         concat(acc, [LocalTidyWitnessCheck { entry: entry, check_fns: check_fns }])
       CommitSpecGate { gate: _ } => acc
-      CommitCargoFmtCheck => acc
-    }
-  })
-}
-
-fn project_local_tidy_gate_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
-  fold(roster, init: [], f: fn(acc, row) {
-    match row.check {
-      CommitSpecGate { gate: g } =>
-        concat(acc, [LocalTidyGateCheck { gate: g }])
-      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
       CommitCargoFmtCheck => acc
     }
   })

@@ -4,7 +4,6 @@ import gunbc.githooks_pre_push_plan {
   pre_push_all_bindings,
   pre_push_active_kinds,
   pre_push_zero_sha_authority,
-  pre_push_needs_artifact_drift_probe,
   pre_push_check_only_note,
   pre_push_witness_corpus_plan_fn_authority,
 }
@@ -20,7 +19,6 @@ fn witness_plan_roster_authority() -> Bool {
       pre_push_all_bindings(),
       b => match b.kind {
         DocWitnessRun { entry: _, function: _ } => true
-        ArtifactDriftCheck { entry: _, function: _, stale_recipe: _ } => true
         CargoFmtCheck { fail_recipe: _ } => true
         WitnessCorpusRun { fail_recipe: _ } => true
       }
@@ -28,37 +26,22 @@ fn witness_plan_roster_authority() -> Bool {
 }
 
 fn witness_plan_fires_on_dag_path() -> Bool {
-  length(pre_push_active_kinds(changed_paths: ["dag/gunbc/foo.dag"], artifact_drift_detected: false)) > 0
+  length(pre_push_active_kinds(changed_paths: ["dag/gunbc/foo.dag"])) > 0
 }
 
 fn witness_plan_skips_unrelated_path() -> Bool {
-  length(pre_push_active_kinds(changed_paths: ["README"], artifact_drift_detected: false)) == 0
-}
-
-fn witness_plan_artifact_probe_arm() -> Bool {
-  length(pre_push_active_kinds(changed_paths: [], artifact_drift_detected: true)) > 0
+  length(pre_push_active_kinds(changed_paths: ["README"])) == 0
 }
 
 fn witness_nested_rs_triggers_fmt() -> Bool {
   path_is_rust_monolith(path: "src/v1/stage0/src/foo.rs")
     && length(
-      pre_push_active_kinds(
-        changed_paths: ["src/v1/stage0/src/foo.rs"],
-        artifact_drift_detected: false
-      )
+      pre_push_active_kinds(changed_paths: ["src/v1/stage0/src/foo.rs"])
     ) > 0
 }
 
 fn witness_suffix_glob_matches_nested_rs() -> Bool {
   local_tidy_path_matches_glob(path: "src/v1/stage0/src/foo.rs", glob: "*.rs")
-}
-
-fn witness_probe_skips_when_artifact_path_hit() -> Bool {
-  pre_push_needs_artifact_drift_probe(changed_paths: [".githooks/pre-push"]) == false
-}
-
-fn witness_probe_runs_on_miss() -> Bool {
-  pre_push_needs_artifact_drift_probe(changed_paths: ["README"]) == true
 }
 
 fn witness_check_only_policy_documented() -> Bool {
@@ -71,10 +54,7 @@ fn witness_witness_corpus_plan_authority() -> Bool {
 
 fn witness_witness_corpus_fires_on_v2_path() -> Bool {
   length(
-    pre_push_active_kinds(
-      changed_paths: ["src/v2/std/text.dag"],
-      artifact_drift_detected: false
-    )
+    pre_push_active_kinds(changed_paths: ["src/v2/std/text.dag"])
   ) > 0
 }
 
@@ -82,11 +62,8 @@ test fn githooks_pre_push_plan_witnesses() -> Bool {
   witness_plan_roster_authority()
     && witness_plan_fires_on_dag_path()
     && witness_plan_skips_unrelated_path()
-    && witness_plan_artifact_probe_arm()
     && witness_nested_rs_triggers_fmt()
     && witness_suffix_glob_matches_nested_rs()
-    && witness_probe_skips_when_artifact_path_hit()
-    && witness_probe_runs_on_miss()
     && witness_check_only_policy_documented()
     && witness_witness_corpus_plan_authority()
     && witness_witness_corpus_fires_on_v2_path()

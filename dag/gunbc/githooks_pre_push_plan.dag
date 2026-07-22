@@ -5,14 +5,11 @@ import gunbc.commit_workflow {
   project_local_tidy_checks,
   LocalTidyCheck,
   LocalTidyWitnessCheck,
-  LocalTidyGateCheck,
   LocalTidyCargoFmtCheck,
 }
 import gunbc.local_tidy_spec {
   local_tidy_trigger_globs,
-  local_tidy_gate_entry,
   local_tidy_path_matches_glob,
-  generated_artifact_drift_gate_check_fn,
 }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.rust_stage0_gates { path_is_rust_monolith }
@@ -20,17 +17,13 @@ import extdeps.git.hooks { pre_push_zero_sha }
 
 type PrePushGateKind
   = DocWitnessRun { entry: String, function: String }
-  | ArtifactDriftCheck { entry: String, function: String, stale_recipe: String }
   | CargoFmtCheck { fail_recipe: String }
   | WitnessCorpusRun { fail_recipe: String }
 
 type PrePushGateBinding {
   kind: PrePushGateKind
   trigger_globs: List<String>
-  probe_drift_on_miss: Bool
 }
-
-data pre_push_stale_artifact_recipe: String = "generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)"
 
 data pre_push_fmt_fail_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
 
@@ -64,8 +57,7 @@ fn pre_push_witness_trigger_globs() -> List<String> {
 fn pre_push_witness_binding() -> PrePushGateBinding {
   PrePushGateBinding {
     kind: WitnessCorpusRun { fail_recipe: pre_push_witness_fail_recipe },
-    trigger_globs: pre_push_witness_trigger_globs(),
-    probe_drift_on_miss: false
+    trigger_globs: pre_push_witness_trigger_globs()
   }
 }
 
@@ -80,64 +72,31 @@ fn pre_push_bindings() -> List<PrePushGateBinding> {
         fold(check_fns, init: acc, f: fn(inner, fn_name) {
           concat(inner, [PrePushGateBinding {
             kind: DocWitnessRun { entry: entry, function: fn_name },
-            trigger_globs: local_tidy_trigger_globs(check: check),
-            probe_drift_on_miss: false
+            trigger_globs: local_tidy_trigger_globs(check: check)
           }])
         })
-      LocalTidyGateCheck { gate: _ } =>
-        concat(acc, [PrePushGateBinding {
-          kind: ArtifactDriftCheck {
-            entry: local_tidy_gate_entry(),
-            function: generated_artifact_drift_gate_check_fn,
-            stale_recipe: pre_push_stale_artifact_recipe
-          },
-          trigger_globs: local_tidy_trigger_globs(check: check),
-          probe_drift_on_miss: true
-        }])
       LocalTidyCargoFmtCheck =>
         concat(acc, [PrePushGateBinding {
           kind: CargoFmtCheck { fail_recipe: pre_push_fmt_fail_recipe },
-          trigger_globs: local_tidy_trigger_globs(check: check),
-          probe_drift_on_miss: false
+          trigger_globs: local_tidy_trigger_globs(check: check)
         }])
     }
   })
 }
 
-fn pre_push_changed_hits_artifact_globs(changed_paths: List<String>) -> Bool {
-  any(
-    pre_push_all_bindings(),
-    b => match b.kind {
-      ArtifactDriftCheck { entry: _, function: _, stale_recipe: _ } =>
-        any(changed_paths, p => pre_push_path_hits_globs(path: p, globs: b.trigger_globs))
-      _ => false
-    }
-  )
-}
-
-fn pre_push_needs_artifact_drift_probe(changed_paths: List<String>) -> Bool {
-  !pre_push_changed_hits_artifact_globs(changed_paths: changed_paths)
-}
-
 fn pre_push_binding_active(
   binding: PrePushGateBinding,
-  changed_paths: List<String>,
-  artifact_drift_detected: Bool
+  changed_paths: List<String>
 ) -> Bool {
-  let path_hit = any(
+  any(
     changed_paths,
     p => pre_push_path_hits_binding(path: p, binding: binding)
   )
-  path_hit || (binding.probe_drift_on_miss && artifact_drift_detected)
 }
 
-fn pre_push_active_kinds(changed_paths: List<String>, artifact_drift_detected: Bool) -> List<PrePushGateKind> {
+fn pre_push_active_kinds(changed_paths: List<String>) -> List<PrePushGateKind> {
   fold(pre_push_all_bindings(), init: [], f: fn(acc, b) {
-    if pre_push_binding_active(
-      binding: b,
-      changed_paths: changed_paths,
-      artifact_drift_detected: artifact_drift_detected
-    ) {
+    if pre_push_binding_active(binding: b, changed_paths: changed_paths) {
       concat(acc, [b.kind])
     } else {
       acc
@@ -147,14 +106,6 @@ fn pre_push_active_kinds(changed_paths: List<String>, artifact_drift_detected: B
 
 fn pre_push_zero_sha_authority() -> String {
   pre_push_zero_sha
-}
-
-fn pre_push_artifact_drift_probe() -> PrePushGateKind {
-  ArtifactDriftCheck {
-    entry: local_tidy_gate_entry(),
-    function: generated_artifact_drift_gate_check_fn,
-    stale_recipe: pre_push_stale_artifact_recipe
-  }
 }
 
 fn pre_push_witness_corpus_plan_entry_authority() -> String {

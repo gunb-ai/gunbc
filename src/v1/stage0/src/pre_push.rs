@@ -20,20 +20,10 @@ struct PrePushStdinRow {
     remote_sha: String,
 }
 
-struct ArtifactProbe {
-    entry: String,
-    function: String,
-}
-
 enum ActiveGate {
     DocWitness {
         entry: String,
         function: String,
-    },
-    ArtifactDrift {
-        entry: String,
-        function: String,
-        stale_recipe: String,
     },
     CargoFmt {
         fail_recipe: String,
@@ -79,14 +69,7 @@ fn run_inner() -> Result<ExitCode, String> {
     }
 
     let claim_batch = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let probe = load_artifact_probe(&plan)?;
-    let needs_probe = eval_needs_artifact_drift_probe(&plan, &changed)?;
-    let artifact_drift = if needs_probe {
-        !probe_artifact_drift_with(&claim_batch, &plan, &probe)?
-    } else {
-        false
-    };
-    let active = load_active_gates(&plan, &changed, artifact_drift)?;
+    let active = load_active_gates(&plan, &changed)?;
 
     if active.is_empty() {
         return Ok(ExitCode::SUCCESS);
@@ -127,55 +110,9 @@ fn load_source_roots(plan: &PlanCtx) -> Result<Vec<String>, String> {
     string_list_from_value(&val, "pre_push_source_roots")
 }
 
-fn load_artifact_probe(plan: &PlanCtx) -> Result<ArtifactProbe, String> {
-    let val = eval_fn(plan, "pre_push_artifact_drift_probe")?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &val
-    else {
-        return Err(format!(
-            "pre_push_artifact_drift_probe not a Variant: {val:?}"
-        ));
-    };
-    if !plan.eval_ctx.sym_eq(*variant_name, "ArtifactDriftCheck") {
-        return Err("pre_push_artifact_drift_probe wrong variant".to_string());
-    }
-    Ok(ArtifactProbe {
-        entry: field_str(&plan.eval_ctx, fields, "entry")?,
-        function: field_str(&plan.eval_ctx, fields, "function")?,
-    })
-}
-
-fn eval_needs_artifact_drift_probe(plan: &PlanCtx, changed: &[String]) -> Result<bool, String> {
+fn load_active_gates(plan: &PlanCtx, changed: &[String]) -> Result<Vec<ActiveGate>, String> {
     let changed_val = string_list_to_value(changed);
-    let result = v1_interpreter::run_in_context_with_args(
-        &plan.eval_ctx,
-        "pre_push_needs_artifact_drift_probe",
-        &[(Some("changed_paths".to_string()), changed_val)],
-        false,
-    )
-    .map_err(|e| format!("pre_push_needs_artifact_drift_probe: {e}"))?;
-    match result {
-        Value::Bool(b) => Ok(b),
-        other => Err(format!(
-            "pre_push_needs_artifact_drift_probe not a Bool: {other:?}"
-        )),
-    }
-}
-
-fn load_active_gates(
-    plan: &PlanCtx,
-    changed: &[String],
-    artifact_drift: bool,
-) -> Result<Vec<ActiveGate>, String> {
-    let changed_val = string_list_to_value(changed);
-    let drift_val = Value::Bool(artifact_drift);
-    let args = [
-        (Some("changed_paths".to_string()), changed_val),
-        (Some("artifact_drift_detected".to_string()), drift_val),
-    ];
+    let args = [(Some("changed_paths".to_string()), changed_val)];
     let result = v1_interpreter::run_in_context_with_args(
         &plan.eval_ctx,
         "pre_push_active_kinds",
@@ -230,13 +167,6 @@ fn parse_gate_kind(ctx: &v1_interpreter::InterpContext, val: &Value) -> Result<A
             function: field_str(ctx, fields, "function")?,
         });
     }
-    if ctx.sym_eq(*variant_name, "ArtifactDriftCheck") {
-        return Ok(ActiveGate::ArtifactDrift {
-            entry: field_str(ctx, fields, "entry")?,
-            function: field_str(ctx, fields, "function")?,
-            stale_recipe: field_str(ctx, fields, "stale_recipe")?,
-        });
-    }
     if ctx.sym_eq(*variant_name, "CargoFmtCheck") {
         return Ok(ActiveGate::CargoFmt {
             fail_recipe: field_str(ctx, fields, "fail_recipe")?,
@@ -271,26 +201,6 @@ fn execute_gate(
         ActiveGate::DocWitness { entry, function } => {
             eprintln!("[pre-push] doc reachability: {function}");
             run_claim_batch(claim_batch, plan, entry, function, &["--claim-run"])
-        }
-        ActiveGate::ArtifactDrift {
-            entry,
-            function,
-            stale_recipe,
-        } => {
-            eprintln!("[pre-push] generated-artifact drift gate");
-            if probe_artifact_drift_with(
-                claim_batch,
-                plan,
-                &ArtifactProbe {
-                    entry: entry.clone(),
-                    function: function.clone(),
-                },
-            )? {
-                Ok(())
-            } else {
-                eprintln!("[pre-push] {stale_recipe}");
-                Err("artifact drift".to_string())
-            }
         }
         ActiveGate::CargoFmt { fail_recipe } => {
             eprintln!("[pre-push] cargo fmt --all --check");
@@ -339,31 +249,6 @@ fn run_claim_batch(
     } else {
         Err(format!("claim_batch {function} failed"))
     }
-}
-
-fn probe_artifact_drift_with(
-    claim_batch: &Path,
-    plan: &PlanCtx,
-    probe: &ArtifactProbe,
-) -> Result<bool, String> {
-    let roots = load_source_roots(plan)?;
-    let mut cmd = Command::new(claim_batch);
-    for root in roots {
-        cmd.arg("--source-root").arg(root);
-    }
-    let status = cmd
-        .args([
-            "--entry",
-            &probe.entry,
-            "--function",
-            &probe.function,
-            "--wet",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|e| format!("claim_batch drift probe: {e}"))?;
-    Ok(status.success())
 }
 
 fn is_executable(path: &Path) -> bool {
