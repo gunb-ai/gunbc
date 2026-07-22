@@ -2424,7 +2424,7 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_match_loop_fold_family_prelude: String = "\n\nfn helper(a: i32, b: i32) -> i32 { a + b }"
+data rust_match_loop_fold_family_prelude: String = "\n\nfn fold_call_callee(xs: i32, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { f(xs, z) }"
 
 data rust_match_loop_fold_family_member_match: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "match",
@@ -2438,7 +2438,7 @@ data rust_match_loop_fold_family_member_loop: RustEmitHostFamilyMember = RustEmi
 
 data rust_match_loop_fold_family_member_fold: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "fold",
-  result_expression: "add(3, 4)"
+  result_expression: "fold_demo(3, 4)"
 }
 
 fn rust_match_loop_fold_family_dispatch_members() -> List<RustEmitHostFamilyMember> {

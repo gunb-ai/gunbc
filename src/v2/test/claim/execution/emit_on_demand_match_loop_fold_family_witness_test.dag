@@ -167,11 +167,15 @@ fn mlf_family_members(
   ]
 }
 
+fn mlf_no_member_digests() -> List<ContentHash> {
+  []
+}
+
 fn mlf_family_digest(members: List<EmitFamilyMember>) -> ContentHash {
   family_closure_digest(
     members: fold_list(
       xs: members,
-      empty: [],
+      empty: mlf_no_member_digests(),
       cons: fn(acc, member) {
         concat(acc, [inferred_tree_digest(tree: member.tree)])
       }
