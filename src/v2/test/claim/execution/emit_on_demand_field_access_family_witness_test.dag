@@ -266,7 +266,7 @@ test fn emit_on_demand_field_access_closure_keys_differ_for_distinct_trees_holds
   }
 }
 
-data field_access_alt_native_quarantine_note: String = "KNOWN-RED debt, surfaced by executing what the offline-recipe exclusion had left unexecuted (merry-pike-487 fan-out): the wrong-field ALT tree's emitted source is fn get(r: (i32,)) -> i32 { r.1 } under main-suffix get((9,)) — field 1 on a 1-tuple, rustc E0609, the crate cannot build — so the former emit_on_demand_field_access_native_content_change_cold_rebuild_holds (alt octet 1) was never satisfiable and never ran in CI. The alt-tree NATIVE leg is therefore not asserted here: content-change key sensitivity stays PURE (closure_keys_differ), the wrong-fixture RED stays eval-anchored (semantic mismatch on the primary build), and the alt native execution belongs to the native-path repair PR #6990's reconciliation (named owner) — un-quarantine by restoring the alt cold run with its octet flip when the emitted alt source compiles."
+data field_access_alt_native_quarantine_note: String = "Pointer only — the ALT-tree NATIVE leg of this suite is scoped out as a known-red admission whose single authority is gunbc.ci_layer_roots known_red_frontier_note (admitted 2026-07-22, merry-pike-487): rustc E0609 on the emitted alt source, owner = PR 6990 reconciliation, dissolve-on = alt source compiles, restore the alt cold run in emit_on_demand_field_access_native_one_build_holds and delete both notes."
 
 test fn emit_on_demand_field_access_native_one_build_holds() -> Bool {
   match field_access_family_primary_tree() {
