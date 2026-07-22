@@ -1,0 +1,91 @@
+module v2.test.claim.roster_registry_test
+
+import gunbc.roster_registry {
+  GroupMembership,
+  ByContainment,
+  ByDerivation,
+  DeclaredFrontier,
+  RosterRegistration,
+  roster_registry,
+  decl
+}
+import v2.lens.roster_registry {
+  roster_registry_nonstandard_count,
+  roster_registry_nonstandard_count_from,
+  roster_registry_standard_holds,
+  nonstandard_registrations_from
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data roster_registry_test_note: String = "GREEN: the enrolled registry holds (every registration ByContainment, ByDerivation, or DeclaredFrontier with nonempty reason+trigger). RED controls: a synthetic DeclaredFrontier registration with an empty dissolve_on reds, and a synthetic nickname-class registration (empty reason AND empty trigger) reds — both located to their roster ref."
+
+fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
+  RosterRegistration {
+    roster: decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
+    unit_kind: "synthetic unit",
+    membership: membership
+  }
+}
+
+fn empty_trigger_registration() -> RosterRegistration {
+  synthetic_registration(
+    membership: DeclaredFrontier {
+      reason: "a reason without a trigger is not a frontier row",
+      dissolve_on: ""
+    }
+  )
+}
+
+fn nickname_registration() -> RosterRegistration {
+  synthetic_registration(
+    membership: DeclaredFrontier { reason: "", dissolve_on: "" }
+  )
+}
+
+test fn roster_registry_standard_holds_live() -> Bool {
+  roster_registry_standard_holds() && (roster_registry_nonstandard_count() == 0)
+}
+
+test fn roster_registry_enrolls_known_rosters() -> Bool {
+  length(xs: roster_registry) >= 13
+}
+
+test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
+  roster_registry_nonstandard_count_from(
+    registrations: [empty_trigger_registration()]
+  ) == 1
+}
+
+test fn roster_registry_red_control_nickname_reds() -> Bool {
+  let findings = nonstandard_registrations_from(
+    registrations: [nickname_registration()]
+  )
+  (length(xs: findings) == 1)
+    && fold(
+      findings,
+      init: true,
+      f: fn(acc, f) { acc && (f.roster_decl_name == "synthetic_roster") }
+    )
+}
+
+test fn roster_registry_green_control_standard_forms_pass() -> Bool {
+  roster_registry_nonstandard_count_from(
+    registrations: [
+      synthetic_registration(membership: ByContainment),
+      synthetic_registration(
+        membership: ByDerivation {
+          predicate: decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
+        }
+      ),
+      synthetic_registration(
+        membership: DeclaredFrontier {
+          reason: "declared with a reason",
+          dissolve_on: "and a trigger"
+        }
+      )
+    ]
+  ) == 0
+}

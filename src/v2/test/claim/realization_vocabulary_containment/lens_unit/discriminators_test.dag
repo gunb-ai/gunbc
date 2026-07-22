@@ -2,7 +2,7 @@ module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
 import v2.lens.layering_imports { LayerImportFact }
 import v2.lens.realization_vocabulary_containment {
-  realization_vocab_exception_roster,
+  realization_vocab_exception_paths,
   realization_vocab_leak_count,
   realization_vocab_leak_count_canonical
 }
@@ -86,12 +86,12 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 }
 
 test fn ci_spec_excused_from_bash_roster_holds() -> Bool {
-  !list_contains_str(xs: realization_vocab_exception_roster, target: "dag/gunbc/ci_spec.dag")
+  !list_contains_str(xs: realization_vocab_exception_paths(), target: "dag/gunbc/ci_spec.dag")
 }
 
 test fn build_step_rostered_for_bash_build_holds() -> Bool {
   list_contains_str(
-    xs: realization_vocab_exception_roster,
+    xs: realization_vocab_exception_paths(),
     target: "dag/tools/build_step.dag"
   )
 }
@@ -122,7 +122,7 @@ test fn bash_vocab_realization_edge_import_is_not_leak_holds() -> Bool {
 
 test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
   list_contains_str(
-    xs: realization_vocab_exception_roster,
+    xs: realization_vocab_exception_paths(),
     target: "dag/gunbc/node_http_server_emit.dag"
   )
 }

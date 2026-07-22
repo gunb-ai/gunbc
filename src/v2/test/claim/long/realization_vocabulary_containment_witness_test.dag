@@ -3,7 +3,7 @@ module v2.test.long.realization_vocabulary_containment_witness
 import v2.lens.layering_imports { layer_import_facts_live }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_consumer_scan_roots,
-  realization_vocab_exception_roster,
+  realization_vocab_exception_paths,
   realization_vocab_leak_count,
   realization_vocab_leak_candidate_paths_from_facts,
   realization_vocab_roster_sound
@@ -21,9 +21,9 @@ test fn realization_vocab_live_corpus_receipt_holds() -> Bool {
     std_roots: realization_vocab_consumer_scan_roots,
     extdeps_roots: []
   )
-  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_roster) == 0
+  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_paths()) == 0
     && realization_vocab_roster_sound(
-      roster: realization_vocab_exception_roster,
+      roster: realization_vocab_exception_paths(),
       live_leak_paths: realization_vocab_leak_candidate_paths_from_facts(facts: facts)
     )
 }
