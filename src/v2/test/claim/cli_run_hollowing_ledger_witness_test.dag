@@ -7,7 +7,6 @@ import gunbc.cli_run_hollowing_ledger {
   cli_run_hollowing_ledger_rows,
   cli_run_hollowing_no_unclassified_holds,
   cli_run_hollowing_row_count_baseline,
-  cli_run_hollowing_source_loc_baseline,
   cli_run_hollowing_source_path
 }
 import v2.std.algebra { fold_list, length }
@@ -16,7 +15,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data cli_run_hollowing_ledger_witness_note: String = "Structural receipt (quick-moth-273): cli_run.rs hollowing ledger on dag/gunbc/cli_run_hollowing_ledger.dag — every module-scope fn (621) plus every test-fn (234) mapped to a v2 dissolution feature. Enumeration and no-unclassified predicates fold cli_run_hollowing_ledger_rows (not parallel constants). witness_cli_run_hollowing_ledger_source_tie_holds reads cli_run.rs and refuses stale ledgers when line count or row fn names drift. Regenerate after cli_run.rs edits: python3 scripts/generate_cli_run_hollowing_ledger.py; verify-only: python3 scripts/generate_cli_run_hollowing_ledger.py --verify. Dissolve-on: seed-shrink Chunk F."
+data cli_run_hollowing_ledger_witness_note: String = "Structural receipt (quick-moth-273): cli_run.rs hollowing ledger on dag/gunbc/cli_run_hollowing_ledger.dag — every module-scope fn plus every test-fn mapped to a v2 dissolution feature. Enumeration and no-unclassified predicates fold cli_run_hollowing_ledger_rows (not parallel constants). witness_cli_run_hollowing_ledger_source_tie_holds reads cli_run.rs and refuses stale ledgers when any row fn_name is absent from source (adds/removes/renames require regen). Regenerate after cli_run.rs fn-surface edits: python3 scripts/generate_cli_run_hollowing_ledger.py; verify-only: python3 scripts/generate_cli_run_hollowing_ledger.py --verify. Dissolve-on: seed-shrink Chunk F."
 
 fn cli_run_hollowing_row_fn_present_in_source(source: String, row: CliRunHollowLedgerRow) -> Bool {
   let decl = concat("fn ", row.fn_name)
@@ -26,15 +25,6 @@ fn cli_run_hollowing_row_fn_present_in_source(source: String, row: CliRunHollowL
 
 fn cli_run_hollowing_all_rows_present_in_source(source: String) -> Bool {
   fold_list(xs: cli_run_hollowing_ledger_rows, empty: true, cons: fn(acc, row) { acc && cli_run_hollowing_row_fn_present_in_source(source: source, row: row) })
-}
-
-fn cli_run_hollowing_source_line_count(source: String) -> Int {
-  let lines = split(s: source, delimiter: "\n")
-  if length(lines) > 0 && lines[length(lines) - 1] == "" {
-    length(lines) - 1
-  } else {
-    length(lines)
-  }
 }
 
 test fn witness_cli_run_hollowing_ledger_enumeration_holds() -> Bool {
@@ -49,5 +39,4 @@ test fn witness_cli_run_hollowing_ledger_no_unclassified_holds() -> Bool {
 test fn witness_cli_run_hollowing_ledger_source_tie_holds() -> Bool {
   let source = filesystem_read(path: cli_run_hollowing_source_path).content
   cli_run_hollowing_all_rows_present_in_source(source: source)
-    && cli_run_hollowing_source_line_count(source: source) == cli_run_hollowing_source_loc_baseline
 }

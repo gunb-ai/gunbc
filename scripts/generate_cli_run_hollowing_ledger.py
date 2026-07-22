@@ -40,7 +40,8 @@ RULES: list[tuple[str, str]] = [
         r"module_interface_key|typed_module_key|check_module_source_identity|check_index_module|"
         r"index_get_typed|index_insert_typed|shared_get_typed|index_retention|retention_snapshot|"
         r"enforce_typed_cache|try_reconcile_all_cache|note_interface_hash|note_source_hash|"
-        r"finish_resolved_graph|with_typecheck_compute|typecheck_compute_count|shared_caches_",
+        r"finish_resolved_graph|with_typecheck_compute|typecheck_compute_count|shared_caches_|"
+        r"typed_key_dependency",
         "TypedModuleCacheComputationIdentity",
     ),
     (
@@ -64,7 +65,7 @@ RULES: list[tuple[str, str]] = [
         r"declared_repo_paths|destructuring_bound_spans|entry_has_edited_test_fn|"
         r"matching_discovery_exclusion|path_matches_any_substring|path_matches_any_subpath|"
         r"witness_budget_policy|newline_index_for_span|span_file_matches|"
-        r"source_line_has_path_like",
+        r"source_line_has_path_like|whole_tree_probe",
         "AffectedSetSelection",
     ),
     (
@@ -79,7 +80,9 @@ RULES: list[tuple[str, str]] = [
         r"resolve_transitively|resolve_func_sigs|peel_|flat_parents|scoped_gate|"
         r"process_resolve_store|module_schedule|pool_head|pool_parse|pool_qualified|"
         r"pool_bare|pool_roots|parse_module_heads|parse_module_node|tree_bare_census|"
-        r"collect_both_closure|extend_sources_to_both|entry_source_from_index|"
+        r"collect_both_closure|extend_sources_to_both|extend_sources_via|"
+        r"both_closure_edge|reference_pull_paths|bare_reference_pull|"
+        r"source_declares_import|closure_path_to_authored|entry_source_from_index|"
         r"canonical_shared_index|closure_subject|whole_tree_ancestry|make_eval_context|"
         r"format_error|defining_module|resolved_decl|resolved_initializer|"
         r"declared_type_name|path_to_source|workspace_relative|same_canonical_file|"
@@ -101,7 +104,8 @@ RULES: list[tuple[str, str]] = [
         r"resolve_floor_runner|memory_governor|adaptive_governor|claim_executor|run_walk|"
         r"entry_row_groups|merge_discovery_summaries|emit_floor_drain|floor_drain|"
         r"peak_rss|compute_percentiles|top_n_slowest|compute_histogram|realize_advisory|"
-        r"emit_realize_advisory|wet_hermetic|is_governed_service|accumulate|attributed_total",
+        r"emit_realize_advisory|wet_hermetic|is_governed_service|accumulate|attributed_total|"
+        r"install_effect_stream",
         "RealizationMaterializationScheduling",
     ),
     (r"^regen_", "RegenSelfHost"),
@@ -113,7 +117,7 @@ RULES: list[tuple[str, str]] = [
     ),
     (
         r"inert_lens|inert_carrier|non_fold_residue|fact_cardinality|languages_consumer|"
-        r"layer_import|transport_script|extdeps_|doc_graph|complexity_linearity|"
+        r"layer_import|layer_prefix|importer_roots_have_importless|transport_script|extdeps_|doc_graph|complexity_linearity|"
         r"construction_justification|sidecar_placement|test_migration|medium_structure|"
         r"lens_string|census_corpus|fn_arrow_decl_substrate|census_heads|stripped_fn_body|"
         r"is_census_heads|wall_now_authority|construction_authority|unjustified_lens|"

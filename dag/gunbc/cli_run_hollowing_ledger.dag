@@ -37,11 +37,11 @@ type CliRunHollowLedgerRow {
 data cli_run_hollowing_row_count_baseline: Int = 867
 data cli_run_hollowing_production_row_baseline: Int = 628
 data cli_run_hollowing_test_row_baseline: Int = 239
-data cli_run_hollowing_unclassified_baseline: Int = 12
+data cli_run_hollowing_unclassified_baseline: Int = 0
 data cli_run_hollowing_source_path: String = "src/v1/stage0/src/cli_run.rs"
 data cli_run_hollowing_source_loc_baseline: Int = 26668
 
-data cli_run_hollowing_ledger_law: String = "cli_run.rs hollowing ledger quick-moth-273: every module-scope fn and test-fn mapped to a v2 dissolution feature. Receipt 867 rows (628 production, 239 test), 12 unclassified. Regenerate via generate_cli_run_hollowing_ledger script. Dissolve-on seed-shrink Chunk F."
+data cli_run_hollowing_ledger_law: String = "cli_run.rs hollowing ledger quick-moth-273: every module-scope fn and test-fn mapped to a v2 dissolution feature. Receipt 867 rows (628 production, 239 test), 0 unclassified. Regenerate via generate_cli_run_hollowing_ledger script. Dissolve-on seed-shrink Chunk F."
 
 data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
   CliRunHollowLedgerRow {
@@ -222,7 +222,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_675_layer_prefix_from_dotted_module_scaffold_marker_is_declared,
     fn_name: "layer_prefix_from_dotted_module_scaffold_marker_is_declared",
     source_line: 675,
-    disposition: TestReceiptRow { subject_feature: TestReceiptLane }
+    disposition: TestReceiptRow { subject_feature: LensHostBridge }
   },
   CliRunHollowLedgerRow {
     id: ^line_683_declared_source_ref_selection_bridge_scaffold_marker_is_declared,
@@ -402,7 +402,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_1405_whole_tree_probe_exclusion_substrings,
     fn_name: "whole_tree_probe_exclusion_substrings",
     source_line: 1405,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: AffectedSetSelection, v2_authority: "v2.lens.affected_set / v2.workflow.affected_set_floor_runner / tools.dag_compile_clean_scope" }
   },
   CliRunHollowLedgerRow {
     id: ^line_1411_compile_clean_live_pipeline_module_paths,
@@ -966,37 +966,37 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_4595_source_declares_import_lines,
     fn_name: "source_declares_import_lines",
     source_line: 4595,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4602_extend_sources_via_edge_map,
     fn_name: "extend_sources_via_edge_map",
     source_line: 4602,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4642_bare_reference_pull_paths_for_source,
     fn_name: "bare_reference_pull_paths_for_source",
     source_line: 4642,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4795_reference_pull_paths_for_source,
     fn_name: "reference_pull_paths_for_source",
     source_line: 4795,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4823_build_both_closure_edge_index,
     fn_name: "build_both_closure_edge_index",
     source_line: 4823,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4848_both_closure_edge_index,
     fn_name: "both_closure_edge_index",
     source_line: 4848,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_4866_extend_with_bare_reference_closure,
@@ -1128,7 +1128,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_5331_both_closure_edges_initialized_for_test,
     fn_name: "both_closure_edges_initialized_for_test",
     source_line: 5331,
-    disposition: HollowTarget { feature: TestReceiptLane, v2_authority: "dissolves with its subject feature v2 witness" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_5336_both_closure_bare_edge_rows_for_test,
@@ -1248,13 +1248,13 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_5607_closure_path_to_authored_name_map,
     fn_name: "closure_path_to_authored_name_map",
     source_line: 5607,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: NamespaceResolutionSymbolIndex, v2_authority: "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design" }
   },
   CliRunHollowLedgerRow {
     id: ^line_5623_typed_key_dependency_hash_not_ready,
     fn_name: "typed_key_dependency_hash_not_ready",
     source_line: 5623,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: TypedModuleCacheComputationIdentity, v2_authority: "std.cache_interface / std.materialize / extdeps.realization.resolved_graph" }
   },
   CliRunHollowLedgerRow {
     id: ^line_5627_typed_module_content_key,
@@ -1584,7 +1584,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_7590_install_effect_stream_policy,
     fn_name: "install_effect_stream_policy",
     source_line: 7590,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: RealizationMaterializationScheduling, v2_authority: "std.realization_schedule / gunbc.ci_floor_plan / gunbc.floor_materialization" }
   },
   CliRunHollowLedgerRow {
     id: ^line_7651_install_group_syntax,
@@ -3330,7 +3330,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_17848_layer_prefix_from_dotted_module,
     fn_name: "layer_prefix_from_dotted_module",
     source_line: 17848,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: LensHostBridge, v2_authority: "v2.lens.* projections / hand_lens_host_bridge_scaffold_watchdog" }
   },
   CliRunHollowLedgerRow {
     id: ^line_17871_rel_path_for_layer_import,
@@ -3354,7 +3354,7 @@ data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [
     id: ^line_17904_importer_roots_have_importless_dag_files,
     fn_name: "importer_roots_have_importless_dag_files",
     source_line: 17904,
-    disposition: HollowTarget { feature: Unclassified, v2_authority: "ESCALATE - assign before Chunk F dissolution" }
+    disposition: HollowTarget { feature: LensHostBridge, v2_authority: "v2.lens.* projections / hand_lens_host_bridge_scaffold_watchdog" }
   },
   CliRunHollowLedgerRow {
     id: ^line_17929_project_layer_import_syntax_facts,
@@ -5297,5 +5297,5 @@ fn cli_run_hollowing_no_unclassified_holds() -> Bool {
 }
 
 fn cli_run_hollowing_feature_counts_note() -> String {
-  "AffectedSetSelection=140, CompileCleanGate=27, HostPhysics=30, LensHostBridge=222, ModuleIdentityStorage=16, NamespaceResolutionSymbolIndex=206, PhaseProfileInstrumentation=1, RealizationMaterializationScheduling=40, RegenSelfHost=9, SerializationOneGrammar=63, TestReceiptLane=6, TypedModuleCacheComputationIdentity=41, Unclassified=12, WitnessDiscoveryExecution=42, WorkflowHostEffect=12"
+  "AffectedSetSelection=141, CompileCleanGate=27, HostPhysics=30, LensHostBridge=225, ModuleIdentityStorage=16, NamespaceResolutionSymbolIndex=214, PhaseProfileInstrumentation=1, RealizationMaterializationScheduling=41, RegenSelfHost=9, SerializationOneGrammar=63, TestReceiptLane=4, TypedModuleCacheComputationIdentity=42, WitnessDiscoveryExecution=42, WorkflowHostEffect=12"
 }
