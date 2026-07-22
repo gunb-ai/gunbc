@@ -22834,28 +22834,29 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let tco_movable =
-            filtered_params.clone().iter().cloned().fold(
-                emit_info.movable.clone(),
-                |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
-                    let pname = param_node_name_at(p.clone(), si.clone());
-                    let ref_count = filtered_arg_values.clone().iter().cloned().fold(
-                        0,
-                        |n: i64, av: Rc<Node>| {
+        let tco_movable = filtered_params.clone().iter().cloned().fold(
+            emit_info.movable.clone(),
+            |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+                let ref_count =
+                    filtered_arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(0, |n: i64, av: _| {
                             if expr_references_var(av.clone(), pname.clone(), si.clone()) {
                                 (n.clone() + 1)
                             } else {
                                 n.clone()
                             }
-                        },
-                    );
-                    if (ref_count.clone() <= 1) {
-                        v1_rt::rc_set_insert(m.clone(), pname.clone())
-                    } else {
-                        m.clone()
-                    }
-                },
-            );
+                        });
+                if (ref_count.clone() <= 1) {
+                    v1_rt::rc_set_insert(m.clone(), pname.clone())
+                } else {
+                    m.clone()
+                }
+            },
+        );
         let tco_emit_info = Rc::new(EmitGraphInfo {
             movable: tco_movable.clone(),
             ..(*emit_info.clone()).clone()
