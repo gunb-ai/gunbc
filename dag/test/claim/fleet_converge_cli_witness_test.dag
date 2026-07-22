@@ -11,6 +11,11 @@ fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
     }
 }
 
+fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Bool {
+  converge_cli_routes_to_slice1(host: "srv3")
+    && !converge_cli_routes_to_slice1(host: "srv2")
+}
+
 fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
   let r = converge_cli_run(host: "srv2")
   r.host == "srv2"
@@ -122,6 +127,7 @@ fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 
 test fn fleet_converge_cli_witness_holds() -> Bool {
   witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier()
+    && witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier()
     && witness_converge_cli_run_srv2_fails_closed_on_knob_frontier()
     && witness_converge_cli_run_unknown_host_refuses()
     && witness_converge_cli_refusal_causes_discriminate()

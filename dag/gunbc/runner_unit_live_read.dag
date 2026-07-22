@@ -6,6 +6,7 @@ type RunnerUnitLiveReadRow {
   memory_max_raw: String
   memory_swap_max_raw: String
   memory_high_raw: String
+  memory_current_raw: String
   probed_at: NonEmptyStr
 }
 
@@ -14,6 +15,7 @@ type RunnerUnitMemoryLiveRead {
   memory_max: SystemdCgroupMemoryLimit
   memory_swap_max: SystemdCgroupMemoryLimit
   memory_high: SystemdCgroupMemoryLimit
+  memory_current: SystemdCgroupMemoryLimit
   probed_at: NonEmptyStr
 }
 
@@ -39,6 +41,7 @@ data gunbc_srv1_runner_unit_live_read_fixture: RunnerUnitLiveReadRow = RunnerUni
   memory_max_raw: "infinity",
   memory_swap_max_raw: "0",
   memory_high_raw: "infinity",
+  memory_current_raw: "",
   probed_at: "2026-07-01",
 }
 
@@ -48,7 +51,17 @@ fn runner_unit_live_read_typed(row: RunnerUnitLiveReadRow) -> RunnerUnitMemoryLi
     memory_max: parse_systemd_memory_limit_show(raw: row.memory_max_raw),
     memory_swap_max: parse_systemd_memory_limit_show(raw: row.memory_swap_max_raw),
     memory_high: parse_systemd_memory_limit_show(raw: row.memory_high_raw),
+    memory_current: parse_systemd_memory_limit_show(raw: row.memory_current_raw),
     probed_at: row.probed_at,
+  }
+}
+
+fn runner_unit_usage_exceeds_bytes(read: RunnerUnitMemoryLiveRead, target_bytes: ByteSize) -> Bool? {
+  match read.memory_current {
+    MemoryLimitBytes { bytes: current } =>
+      Present { value: byte_size_count(b: current) > byte_size_count(b: target_bytes) }
+    MemoryLimitUnbounded => none
+    MemoryLimitAbsent => none
   }
 }
 
