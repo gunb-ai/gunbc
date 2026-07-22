@@ -14,6 +14,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
+  live_deploy_roadmap_unit_expected_startup,
+  live_deploy_service_ready_poll_bound_margin_factor,
   UnitDiagnosis,
   UnitDiagnosisUnavailable,
   UnitDiagnosisCaptured,
@@ -52,7 +54,20 @@ fn witness_service_not_ready_reason_is_located() -> Bool {
 
 fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
   live_deploy_readiness_poll_bound_is_positive()
-    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 30
+    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 120
+}
+
+fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
+  let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
+  let bound = second_count(s: live_deploy_service_ready_poll_bound)
+  bound > expected
+    && live_deploy_service_ready_poll_bound_margin_factor > 1
+    && bound == expected * live_deploy_service_ready_poll_bound_margin_factor
+}
+
+fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
+  let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
+  expected >= 39
 }
 
 fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
@@ -89,7 +104,7 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   )
   let reason = service_not_ready_reason(refusal: refusal)
   string_contains(s: reason, pattern: "ServiceNotReady")
-    && string_contains(s: reason, pattern: "waited_s=30")
+    && string_contains(s: reason, pattern: "waited_s=120")
     && string_contains(s: reason, pattern: "health probe never succeeded")
     && string_contains(s: reason, pattern: "status=1/FAILURE")
     && !string_contains(s: reason, pattern: "converged")
@@ -126,7 +141,7 @@ fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
 }
 
 fn witness_poll_max_attempts_is_thirty() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == 30
+  live_deploy_service_ready_poll_max_attempts() == 120
 }
 
 fn witness_poll_max_attempts_tracks_cadence() -> Bool {
