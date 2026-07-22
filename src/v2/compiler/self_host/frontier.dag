@@ -525,6 +525,7 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/discovery_enumeration.dag",
   "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/self_host.dag",
+  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/07_target_carriers.dag",
   "src/v2/compiler/fold_lowering.dag",
   "src/v2/compiler/03_normalize.dag",
@@ -544,7 +545,6 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/source_authority.dag",
   "src/v2/compiler/00_compile.dag",
   "src/v2/compiler/03_ingest.dag",
-  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/03_body_producer.dag",
   "src/v2/compiler/program_assembly.dag"
 ]
