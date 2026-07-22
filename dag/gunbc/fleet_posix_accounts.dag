@@ -150,10 +150,6 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   ]
 }
 
-fn fleet_posix_ci_runner_sudo_command_paths() -> List<NonEmptyStr> {
-  map(fleet_posix_ci_runner_sudo_grants(), g => g.command_path)
-}
-
 fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
