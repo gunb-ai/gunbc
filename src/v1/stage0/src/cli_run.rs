@@ -3565,6 +3565,19 @@ impl ModuleGraphFactsLive {
         &self,
         importer_repo_path: &str,
     ) -> Vec<String> {
+        self.reference_only_direct_import_paths(importer_repo_path)
+            .into_iter()
+            .filter_map(|p| self.path_to_module.get(&p).cloned())
+            .collect()
+    }
+
+    /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
+    /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
+    /// `selection_adjacency` already carries; module names are derived only for diagnostics.
+    pub(crate) fn reference_only_direct_import_paths(
+        &self,
+        importer_repo_path: &str,
+    ) -> Vec<String> {
         let import_targets: HashSet<&str> = self
             .adjacency
             .get(importer_repo_path)
@@ -3578,7 +3591,7 @@ impl ModuleGraphFactsLive {
             .into_iter()
             .flatten()
             .filter(|p| !import_targets.contains(p.as_str()))
-            .filter_map(|p| self.path_to_module.get(p).cloned())
+            .cloned()
             .collect();
         out.sort();
         out.dedup();
@@ -5511,12 +5524,34 @@ fn shared_caches_write<'a>(
 /// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
 ///   single authority the resolved-graph subject digest consumes (§3: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
+fn closure_path_to_authored_name_map<'a>(
+    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_names: &'a [String],
+) -> HashMap<String, &'a str> {
+    closure_modules
+        .iter()
+        .zip(closure_names.iter())
+        .map(|(resolved, name)| {
+            (
+                workspace_relative_repo_path(&resolved.module.span.file),
+                name.as_str(),
+            )
+        })
+        .collect()
+}
+
+fn typed_key_dependency_hash_not_ready(err: &str) -> bool {
+    err.contains("typed-module content key refused:") && err.contains("has no interface hash yet")
+}
+
 fn typed_module_content_key(
     index: &MultiEntryIndex,
     resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
     interface_hash_by_name: &std::collections::HashMap<String, String>,
     closure_names: &std::collections::HashSet<&str>,
+    closure_path_to_authored_name: &HashMap<String, &str>,
+    include_reference_derived_term: bool,
 ) -> Result<String, String> {
     let file = &resolved.module.span.file;
     let source_hash = index
@@ -5555,32 +5590,38 @@ fn typed_module_content_key(
     // selection already consumes (DESIGN §3: no second edge producer), strict-tier only
     // (Qualified + UniqueBare — an AmbiguousBare homonym is not a declared dependency).
     let file_rel = workspace_relative_repo_path(file);
-    for ref_mod in index
-        .module_graph_facts
-        .reference_only_direct_import_modules(&file_rel)
-    {
-        // The loader is deliberately import-only (build_module_graph_facts_live_uncached):
-        // selection_adjacency's reference-derived edges are census-wide and tuned for the
-        // affected-set consumer's tolerance of an over-connected false positive, not as a
-        // hard dependency authority. A target this resolve's closure never loaded cannot
-        // have influenced this compile's typed result, so it is not a term in this key —
-        // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
-        // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
-        // substitute for a precision we failed to compute.
-        if !closure_names.contains(ref_mod.as_str()) {
-            continue;
+    if include_reference_derived_term {
+        for dep_path in index
+            .module_graph_facts
+            .reference_only_direct_import_paths(&file_rel)
+        {
+            // The loader is deliberately import-only (build_module_graph_facts_live_uncached):
+            // selection_adjacency's reference-derived edges are census-wide and tuned for the
+            // affected-set consumer's tolerance of an over-connected false positive, not as a
+            // hard dependency authority. A target this resolve's closure never loaded cannot
+            // have influenced this compile's typed result, so it is not a term in this key —
+            // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
+            // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
+            // substitute for a precision we failed to compute.
+            let Some(dep_authored) = closure_path_to_authored_name.get(dep_path.as_str()) else {
+                continue;
+            };
+            if !closure_names.contains(dep_authored) {
+                continue;
+            }
+            let hash = interface_hash_by_name
+                .get(*dep_authored)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "typed-module content key refused: reference-derived dependency \
+                     '{dep_authored}' (path '{dep_path}') of stripped module '{mod_name}' has \
+                     no interface hash yet — its bare-name dependencies must be typechecked \
+                     (or cache-served) before it is keyed"
+                    )
+                })?;
+            import_hashes.push_back(hash);
         }
-        let hash = interface_hash_by_name
-            .get(&ref_mod)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "typed-module content key refused: reference-derived dependency '{ref_mod}' \
-                     of stripped module '{mod_name}' has no interface hash yet — its bare-name \
-                     dependencies must be typechecked (or cache-served) before it is keyed"
-                )
-            })?;
-        import_hashes.push_back(hash);
     }
     Ok(typed_module_key(
         module_key(source_hash, Rc::new(import_hashes)),
@@ -6389,7 +6430,7 @@ fn module_schedule_batches(
     modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     module_names: &[String],
     index: &MultiEntryIndex,
-) -> Vec<Vec<usize>> {
+) -> (Vec<Vec<usize>>, HashSet<usize>) {
     let position: HashMap<&str, usize> = module_names
         .iter()
         .enumerate()
@@ -6407,24 +6448,43 @@ fn module_schedule_batches(
                 .collect::<Vec<_>>()
         })
         .collect();
+    let path_to_slot: HashMap<String, usize> = modules
+        .iter()
+        .enumerate()
+        .map(|(i, resolved)| (workspace_relative_repo_path(&resolved.module.span.file), i))
+        .collect();
     // Stripped modules' bare-name dependencies (`selection_adjacency` minus `adjacency`, the
     // same reference-derived term `typed_module_content_key` now folds into the content key)
     // must precede their dependent in the schedule too, or the content-key fail-closed refuse
     // fires on a dependency whose interface hash simply hasn't been produced yet — an ordering
     // gap, not a missing term. A dangling reference target (outside this closure) is not a
-    // schedule edge, matching the declared-import case above.
+    // schedule edge, matching the declared-import case above. Match by repo path — the same
+    // grain `selection_adjacency` carries — not declaration module name, so schedule edges stay
+    // aligned with the closure's authored-name interface-hash table.
     for (i, resolved) in modules.iter().enumerate() {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        for dep_name in index
+        for dep_path in index
             .module_graph_facts
-            .reference_only_direct_import_modules(&decl_file)
+            .reference_only_direct_import_paths(&decl_file)
         {
-            if let Some(&src) = position.get(dep_name.as_str()) {
+            if let Some(&src) = path_to_slot.get(dep_path.as_str()) {
                 edges.push((src, i));
             }
         }
     }
-    schedule_batches_from_edges(modules.len(), &edges)
+    let batches = schedule_batches_from_edges(modules.len(), &edges);
+    let mut cycle_residue_slots = HashSet::new();
+    if let Some(residue) = batches.last() {
+        let scheduled_before_residue: usize = batches
+            .iter()
+            .take(batches.len().saturating_sub(1))
+            .map(|b| b.len())
+            .sum();
+        if scheduled_before_residue < modules.len() && residue.len() > 1 {
+            cycle_residue_slots.extend(residue.iter().copied());
+        }
+    }
+    (batches, cycle_residue_slots)
 }
 
 /// The pure batching core of `module_schedule_batches`: nodes are `0..n` in dependency-view
@@ -6583,6 +6643,7 @@ fn try_reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     schedule: &[Vec<usize>],
+    cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
@@ -6597,25 +6658,62 @@ fn try_reconcile_all_cache_hits(
         std::collections::HashMap::with_capacity(closure_modules.len());
     let closure_name_set: std::collections::HashSet<&str> =
         closure_names.iter().map(|s| s.as_str()).collect();
+    let closure_path_to_authored_name =
+        closure_path_to_authored_name_map(closure_modules, closure_names);
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
-    for &slot in schedule.iter().flatten() {
-        let resolved = &closure_modules[slot];
-        let mod_name = &closure_names[slot];
-        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_index_module_source_identity(index, mod_name, &decl_file)?;
-        let typed_key = typed_module_content_key(
-            index,
-            resolved,
-            mod_name,
-            &interface_hash_by_name,
-            &closure_name_set,
-        )?;
-        let Some(tc_result) = index_get_typed(index, &typed_key)? else {
-            return Ok(None);
-        };
-        note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
-        results[slot] = Some(tc_result);
+    let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
+    let mut defer_pass = 0usize;
+    while !pending.is_empty() {
+        let mut next_pending = Vec::new();
+        let mut progressed = false;
+        for slot in pending.drain(..) {
+            let resolved = &closure_modules[slot];
+            let mod_name = &closure_names[slot];
+            let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+            check_index_module_source_identity(index, mod_name, &decl_file)?;
+            let typed_key = match typed_module_content_key(
+                index,
+                resolved,
+                mod_name,
+                &interface_hash_by_name,
+                &closure_name_set,
+                &closure_path_to_authored_name,
+                !cycle_residue_slots.contains(&slot),
+            ) {
+                Ok(key) => key,
+                Err(ref e) if typed_key_dependency_hash_not_ready(e) => {
+                    next_pending.push(slot);
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+            let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+                return Ok(None);
+            };
+            note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
+            results[slot] = Some(tc_result);
+            progressed = true;
+        }
+        if !progressed {
+            defer_pass += 1;
+            if defer_pass > next_pending.len().max(1) {
+                let stuck: Vec<&str> = next_pending
+                    .iter()
+                    .map(|&slot| closure_names[slot].as_str())
+                    .collect();
+                return Err(format!(
+                    "typed-module all-hits probe refused: reference-derived schedule ordering \
+                     cycle among {} module(s): {}",
+                    stuck.len(),
+                    stuck.join(", ")
+                ));
+            }
+            pending = next_pending;
+        } else {
+            defer_pass = 0;
+            pending = next_pending;
+        }
     }
 
     // Pass 2 — resolver's ORIGINAL order, assembling the `ResolvedGraph` byte-identically to
@@ -7000,11 +7098,13 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    let schedule = module_schedule_batches(&closure_modules, &closure_names, index);
+    let (schedule, cycle_residue_slots) =
+        module_schedule_batches(&closure_modules, &closure_names, index);
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
         &schedule,
+        &cycle_residue_slots,
         source_indices.clone(),
         index,
     )? {
@@ -7036,6 +7136,8 @@ fn reconcile_with_typed_cache(
         std::collections::HashMap::with_capacity(closure_modules.len());
     let closure_name_set: std::collections::HashSet<&str> =
         closure_names.iter().map(|s| s.as_str()).collect();
+    let closure_path_to_authored_name =
+        closure_path_to_authored_name_map(&closure_modules, &closure_names);
     let mut dispatched: Vec<
         Option<(
             Rc<im::Vector<Rc<ErrorNode>>>,
@@ -7044,108 +7146,148 @@ fn reconcile_with_typed_cache(
     > = vec![None; closure_modules.len()];
 
     for batch in &schedule {
-        for &slot in batch {
-            let resolved = closure_modules[slot].clone();
-            let mod_name = closure_names[slot].clone();
-            // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
-            // authored name and shared across every co-resident entry, so a name that resolves
-            // from two DIFFERENT declaring files in one process is a co-residence surprise — the
-            // shared store must fail loud here, never silently serve one file's typecheck for the
-            // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
-            // build_module_index already walls tree-wide module-path collisions at index build;
-            // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
-            // module path shadows an indexed module reached via entry_source_from_index_or_disk).
-            // Normalize to the workspace-relative form so a module reached both index-loaded
-            // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
-            // authority — the guard must fire on genuinely different files, not path representations.
-            let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-            {
-                check_index_module_source_identity(index, &mod_name, &decl_file)?;
-            }
-            let typed_key = typed_module_content_key(
-                index,
-                &resolved,
-                &mod_name,
-                &interface_hash_by_name,
-                &closure_name_set,
-            )?;
-            let cached = index_get_typed(index, &typed_key)?;
-            let was_cache_hit = cached.is_some();
-            let parent_diags = if was_cache_hit {
-                Rc::new(im::Vector::new())
-            } else {
-                let parent_envs_started = std::time::Instant::now();
-                let parent_result = v1_compiler_infer::collect_parent_envs(
-                    resolved.clone(),
-                    module_index.clone(),
-                    source_indices.clone(),
-                );
-                resolve_stage_slot_add(|s| {
-                    s.parent_envs += parent_envs_started.elapsed().as_nanos()
-                });
-                parent_result.diagnostics.clone()
-            };
-            let tc_result = match cached {
-                Some(hit) => hit,
-                None => {
-                    // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
-                    bump_typecheck_compute_count();
-                    if phase_profile::phase_profile_enabled() {
-                        eprintln!("[typecheck-attribution] module={mod_name} start");
+        let mut pending: Vec<usize> = batch.clone();
+        let mut defer_pass = 0usize;
+        while !pending.is_empty() {
+            let mut next_pending = Vec::new();
+            let mut progressed = false;
+            for slot in pending.drain(..) {
+                let resolved = closure_modules[slot].clone();
+                let mod_name = closure_names[slot].clone();
+                // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
+                // authored name and shared across every co-resident entry, so a name that resolves
+                // from two DIFFERENT declaring files in one process is a co-residence surprise — the
+                // shared store must fail loud here, never silently serve one file's typecheck for the
+                // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
+                // build_module_index already walls tree-wide module-path collisions at index build;
+                // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
+                // module path shadows an indexed module reached via entry_source_from_index_or_disk).
+                // Normalize to the workspace-relative form so a module reached both index-loaded
+                // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
+                // authority — the guard must fire on genuinely different files, not path representations.
+                let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+                {
+                    check_index_module_source_identity(index, &mod_name, &decl_file)?;
+                }
+                let typed_key = match typed_module_content_key(
+                    index,
+                    &resolved,
+                    &mod_name,
+                    &interface_hash_by_name,
+                    &closure_name_set,
+                    &closure_path_to_authored_name,
+                    !cycle_residue_slots.contains(&slot),
+                ) {
+                    Ok(key) => key,
+                    Err(ref e) if typed_key_dependency_hash_not_ready(e) => {
+                        next_pending.push(slot);
+                        continue;
                     }
-                    let module_tc_started = std::time::Instant::now();
-                    // Same-tree bare underlay for the module being typechecked
-                    // (bare = own tree, qualified = whole pool); out-of-root
-                    // modules keep the closure-only bare universe.
-                    let module_symbol_index =
-                        match source_tree_root_of(&index.source_roots, &decl_file) {
-                            Some(root) => match tree_symbol_index_memo.get(&root) {
-                                Some(hit) => hit.clone(),
-                                None => {
-                                    let composed = v1_compiler_infer::symbol_index_with_bare_fill(
-                                        symbol_index.clone(),
-                                        tree_bare_census_for_root(index, &root)?,
-                                    );
-                                    tree_symbol_index_memo.insert(root, composed.clone());
-                                    composed
-                                }
-                            },
-                            None => symbol_index.clone(),
-                        };
-                    let computed = v1_compiler_infer::typecheck_module(
+                    Err(e) => return Err(e),
+                };
+                let cached = index_get_typed(index, &typed_key)?;
+                let was_cache_hit = cached.is_some();
+                let parent_diags = if was_cache_hit {
+                    Rc::new(im::Vector::new())
+                } else {
+                    let parent_envs_started = std::time::Instant::now();
+                    let parent_result = v1_compiler_infer::collect_parent_envs(
                         resolved.clone(),
                         module_index.clone(),
-                        variant_surfaces.clone(),
                         source_indices.clone(),
-                        intern_table.clone(),
-                        module_symbol_index,
                     );
-                    // Per-module attribution for the typecheck-dominant resolves measured
-                    // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
-                    // parse+resolve+normalize). Threshold keeps the floor log quiet;
-                    // anything over it is a pathology-lane candidate by name.
-                    let module_tc_elapsed = module_tc_started.elapsed();
-                    resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
-                    let module_tc_ms = module_tc_elapsed.as_millis();
-                    if module_tc_ms >= 2_000 {
-                        eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
+                    resolve_stage_slot_add(|s| {
+                        s.parent_envs += parent_envs_started.elapsed().as_nanos()
+                    });
+                    parent_result.diagnostics.clone()
+                };
+                let tc_result = match cached {
+                    Some(hit) => hit,
+                    None => {
+                        // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
+                        bump_typecheck_compute_count();
+                        if phase_profile::phase_profile_enabled() {
+                            eprintln!("[typecheck-attribution] module={mod_name} start");
+                        }
+                        let module_tc_started = std::time::Instant::now();
+                        // Same-tree bare underlay for the module being typechecked
+                        // (bare = own tree, qualified = whole pool); out-of-root
+                        // modules keep the closure-only bare universe.
+                        let module_symbol_index =
+                            match source_tree_root_of(&index.source_roots, &decl_file) {
+                                Some(root) => match tree_symbol_index_memo.get(&root) {
+                                    Some(hit) => hit.clone(),
+                                    None => {
+                                        let composed =
+                                            v1_compiler_infer::symbol_index_with_bare_fill(
+                                                symbol_index.clone(),
+                                                tree_bare_census_for_root(index, &root)?,
+                                            );
+                                        tree_symbol_index_memo.insert(root, composed.clone());
+                                        composed
+                                    }
+                                },
+                                None => symbol_index.clone(),
+                            };
+                        let computed = v1_compiler_infer::typecheck_module(
+                            resolved.clone(),
+                            module_index.clone(),
+                            variant_surfaces.clone(),
+                            source_indices.clone(),
+                            intern_table.clone(),
+                            module_symbol_index,
+                        );
+                        // Per-module attribution for the typecheck-dominant resolves measured
+                        // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                        // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                        // anything over it is a pathology-lane candidate by name.
+                        let module_tc_elapsed = module_tc_started.elapsed();
+                        resolve_stage_slot_add(|s| {
+                            s.typecheck_compute += module_tc_elapsed.as_nanos()
+                        });
+                        let module_tc_ms = module_tc_elapsed.as_millis();
+                        if module_tc_ms >= 2_000 {
+                            eprintln!(
+                                "[typecheck-attribution] module={mod_name} ms={module_tc_ms}"
+                            );
+                        }
+                        let computed = index_insert_typed(index, typed_key.clone(), computed)?;
+                        computed
                     }
-                    let computed = index_insert_typed(index, typed_key.clone(), computed)?;
-                    computed
+                };
+                note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
+                let typed = tc_result.typed.clone();
+                let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+                let variant_surface = v1_compiler_infer::build_variant_export_surface(
+                    typed.clone(),
+                    variant_surfaces.clone(),
+                    source_indices.clone(),
+                );
+                variant_surfaces =
+                    v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
+                dispatched[slot] = Some((parent_diags, tc_result));
+                progressed = true;
+            }
+            if !progressed {
+                defer_pass += 1;
+                if defer_pass > batch.len().max(1) {
+                    let stuck: Vec<&str> = next_pending
+                        .iter()
+                        .map(|&slot| closure_names[slot].as_str())
+                        .collect();
+                    return Err(format!(
+                        "typed-module reconcile refused: reference-derived schedule ordering \
+                         cycle among {} module(s) in one antichain batch: {}",
+                        stuck.len(),
+                        stuck.join(", ")
+                    ));
                 }
-            };
-            note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
-            let typed = tc_result.typed.clone();
-            let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-            let variant_surface = v1_compiler_infer::build_variant_export_surface(
-                typed.clone(),
-                variant_surfaces.clone(),
-                source_indices.clone(),
-            );
-            variant_surfaces =
-                v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
-            module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
-            dispatched[slot] = Some((parent_diags, tc_result));
+                pending = next_pending;
+            } else {
+                defer_pass = 0;
+                pending = next_pending;
+            }
         }
     }
 
