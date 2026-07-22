@@ -1912,6 +1912,131 @@ pub fn type_var_in_fn_generic_scope(id: String, generic_param_names: Rc<Vec<Stri
     }
 }
 
+pub fn rust_fold_rendered_type_has_spurious_generic_atom(
+    type_str: String,
+    atom: String,
+    generic_param_names: Rc<Vec<String>>,
+) -> bool {
+    if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
+        false
+    } else {
+        if type_var_in_fn_generic_scope(atom.clone(), generic_param_names.clone()) {
+            false
+        } else {
+            v1_rt::string_contains(
+                &type_str,
+                v1_rt::concat(
+                    v1_rt::concat("<".to_string(), atom.clone()),
+                    ">".to_string(),
+                ),
+            )
+        }
+    }
+}
+
+pub fn type_leaf_is_unbound_in_closure_scope(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if type_var_in_fn_generic_scope(name.clone(), generic_param_names.clone()) {
+        false
+    } else {
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(resolved_node) => {
+                if ((resolved_node.inferred.clone() != None)
+                    && is_type_variable(resolved_node.inferred.clone().clone().unwrap()))
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            None => true,
+        }
+    }
+}
+
+pub fn type_node_has_closure_unbound_generic_atom(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let leaf_name = authored_name_at(source_indices.clone(), n.clone());
+        if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
+            if type_leaf_is_unbound_in_closure_scope(
+                leaf_name.clone(),
+                generic_param_names.clone(),
+                env.clone(),
+            ) {
+                return true;
+            }
+        }
+        if (n.inferred.clone() != None) {
+            match (*n.inferred.clone().clone().unwrap()).clone() {
+                InferredNode::TypeVariable { id: tv, .. } => {
+                    if !type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
+                        return true;
+                    }
+                }
+                InferredNode::Resolved { node: rt, .. } => {
+                    if type_node_has_closure_unbound_generic_atom(
+                        rt.clone(),
+                        generic_param_names.clone(),
+                        env.clone(),
+                        source_indices.clone(),
+                    ) {
+                        return true;
+                    }
+                }
+                _ => (),
+            }
+        }
+        if {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if type_node_has_closure_unbound_generic_atom(
+                    child_type_node(c.clone()),
+                    generic_param_names.clone(),
+                    env.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            true
+        } else {
+            match find_property(
+                n.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => {
+                    let mut __found = false;
+                    for c in applied.children.clone().iter().cloned() {
+                        if type_node_has_closure_unbound_generic_atom(
+                            c.clone(),
+                            generic_param_names.clone(),
+                            env.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+                None => false,
+            }
+        }
+    })
+}
+
 pub fn type_node_has_unbound_type_variable(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -4577,7 +4702,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
 pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus.".to_string()
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): TYPE unlisted names (arm 1) run ONLY for import-free modules — the namespace-resolution case the post-PR-6848 regression is about. VALUE refs (arm 2) run for import-bearing modules ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics) must synthesize the missing fn-value use-line without re-deriving type imports that emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the value walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen. This is where UnlistedImportUse already fires exactly for types on import-free modules; fn-value closure extends the same derivation to partial-import FaithfulFreeMonoid modules.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4833,7 +4958,7 @@ pub fn emit_module_full(
             }),
             collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
         );
-        let prelude = emit_prelude(prelude_imported_names.clone());
+        let prelude = emit_prelude(prelude_imported_names.clone(), local_type_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
             emit_info.clone(),
@@ -4913,7 +5038,23 @@ pub fn emit_module_full(
                 module_index.clone(),
             )
         } else {
-            Rc::new(vec![])
+            if corpus_repr_is_faithful(emit_info.corpus_repr.clone()) {
+                reference_derived_use_lines(
+                    typed_module.items.clone(),
+                    Rc::new(vec![]),
+                    authored_name(scope.type_env.clone(), m.clone()),
+                    registry.clone(),
+                    emit_info.clone(),
+                    local_type_names.clone(),
+                    already_imported_names.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    module_index.clone(),
+                )
+            } else {
+                Rc::new(vec![])
+            }
         };
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
@@ -8981,7 +9122,7 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
+pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<String>>) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
@@ -8993,6 +9134,11 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
                 "use std::rc::Rc;\n".to_string(),
             ),
             "use crate::v1_rt;".to_string(),
+        );
+        let witness_locally_defined = rust_import_name_already_resolved(
+            imported_names.clone(),
+            local_type_names.clone(),
+            "Witness".to_string(),
         );
         let has_witness = {
             let mut __found = false;
@@ -9024,24 +9170,28 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
             }
             __found
         };
-        let witness_line = if ((has_witness.clone() || has_holds.clone()) || has_violates.clone()) {
+        let witness_line = if (((witness_locally_defined.clone() || has_witness.clone())
+            || has_holds.clone())
+            || has_violates.clone())
+        {
             "".to_string()
         } else {
             "\nuse crate::v1_rt::Witness;".to_string()
         };
-        let variant_line = if (has_holds.clone() && has_violates.clone()) {
-            "".to_string()
-        } else {
-            if has_holds.clone() {
-                "\nuse crate::v1_rt::Witness::Violates;".to_string()
+        let variant_line =
+            if (witness_locally_defined.clone() || (has_holds.clone() && has_violates.clone())) {
+                "".to_string()
             } else {
-                if has_violates.clone() {
-                    "\nuse crate::v1_rt::Witness::Holds;".to_string()
+                if has_holds.clone() {
+                    "\nuse crate::v1_rt::Witness::Violates;".to_string()
                 } else {
-                    "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
+                    if has_violates.clone() {
+                        "\nuse crate::v1_rt::Witness::Holds;".to_string()
+                    } else {
+                        "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
+                    }
                 }
-            }
-        };
+            };
         let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v1_rt::concat(
             v1_rt::concat(
@@ -14267,6 +14417,29 @@ pub fn variant_ref_self_wraps(
         || v1_rt::set_contains(&shared_types, enum_name.clone()))
 }
 
+pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
+    if v1_rt::string_contains(&name, ".".to_string()) {
+        {
+            let leaf = qualified_last_segment(name.clone());
+            match v1_rt::map_get(&registry, leaf.clone()) {
+                Some(info) => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "crate::".to_string(),
+                            module_to_filename(info.module_name.clone()),
+                        ),
+                        "::".to_string(),
+                    ),
+                    emit_import_name(leaf.clone(), registry.clone()),
+                ),
+                None => emit_ident(name.clone(), RenderTarget::Rust),
+            }
+        }
+    } else {
+        emit_ident(name.clone(), RenderTarget::Rust)
+    }
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -14345,7 +14518,8 @@ pub fn emit_var_ref(
                                                 Some(VarBindingKind::FunctionValueBinding) => true,
                                                 _ => false,
                                             };
-                                        let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                        let ident =
+                                            emit_value_ref_ident(name.clone(), registry.clone());
                                         let ident_str = if is_function_value.clone() {
                                             ident.clone()
                                         } else {
@@ -14366,7 +14540,7 @@ pub fn emit_var_ref(
                                 }
                             }
                             None => {
-                                let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                let ident = emit_value_ref_ident(name.clone(), registry.clone());
                                 let ident_str = if moves_by_value.clone() {
                                     ident.clone()
                                 } else {
@@ -14463,10 +14637,10 @@ pub fn emit_typed_expr_base(
                                     if is_data.clone() {
                                         v1_rt::concat(to_snake(n.clone()), "()".to_string())
                                     } else {
-                                        emit_ident(n.clone(), RenderTarget::Rust)
+                                        emit_value_ref_ident(n.clone(), registry.clone())
                                     }
                                 }
-                                None => emit_ident(n.clone(), RenderTarget::Rust),
+                                None => emit_value_ref_ident(n.clone(), registry.clone()),
                             },
                         }
                     }
@@ -16891,6 +17065,7 @@ pub fn collection_element_type(
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
+    type_env: Rc<TypeEnv>,
 ) -> String {
     match receiver_type.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -16909,7 +17084,14 @@ pub fn collection_element_type(
                         } else {
                             false
                         };
-                        if (elem_is_error.clone() || elem_is_type_var.clone()) {
+                        if ((elem_is_error.clone() || elem_is_type_var.clone())
+                            || type_node_has_closure_unbound_generic_atom(
+                                elem_node.clone(),
+                                emit_info.fn_generic_param_names.clone(),
+                                type_env.clone(),
+                                source_indices.clone(),
+                            ))
+                        {
                             "_".to_string()
                         } else {
                             render_rust_type(
@@ -16978,6 +17160,7 @@ pub fn lambda_param_type_strs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
     fold_acc_uses_fallback: bool,
+    type_env: Rc<TypeEnv>,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -17017,13 +17200,22 @@ pub fn lambda_param_type_strs(
                                 if (param_is_type_var.clone() || param_is_error.clone()) {
                                     None
                                 } else {
-                                    Some(render_rust_type(
+                                    if type_node_has_closure_unbound_generic_atom(
                                         param_type.clone(),
-                                        shared_types.clone(),
-                                        corpus_repr.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
+                                        type_env.clone(),
                                         source_indices.clone(),
-                                        emit_info.clone(),
-                                    ))
+                                    ) {
+                                        None
+                                    } else {
+                                        Some(render_rust_type(
+                                            param_type.clone(),
+                                            shared_types.clone(),
+                                            corpus_repr.clone(),
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        ))
+                                    }
                                 }
                             }
                             _ => None,
@@ -17090,6 +17282,7 @@ pub fn emit_typed_collection_lambda(
                 scope.type_env.clone().source_indices.clone(),
                 emit_info.clone(),
                 false,
+                scope.type_env.clone(),
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -17186,6 +17379,7 @@ pub fn emit_typed_fold_lambda(
                 scope.type_env.clone().source_indices.clone(),
                 emit_info.clone(),
                 true,
+                scope.type_env.clone(),
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -17280,6 +17474,7 @@ pub fn emit_rust_fold_method_call(
             emit_info.corpus_repr.clone(),
             scope.type_env.clone().source_indices.clone(),
             emit_info.clone(),
+            scope.type_env.clone(),
         );
         let contextual_acc_type = match result_type.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
@@ -17508,15 +17703,39 @@ pub fn emit_rust_fold_method_call(
             emit_info.fn_generic_param_names.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
+        let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(
+            acc_type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            scope.type_env.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let acc_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(
+            acc_type_str.clone(),
+            "T".to_string(),
+            emit_info.fn_generic_param_names.clone(),
+        );
+        let elem_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(
+            elem_type_str.clone(),
+            "T".to_string(),
+            emit_info.fn_generic_param_names.clone(),
+        );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((is_bare_container.clone() || acc_type_is_type_var.clone())
+        let lambda_acc_type_str = if (((((is_bare_container.clone()
+            || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
+            || acc_has_closure_unbound_generic.clone())
+            || acc_render_has_spurious_t.clone())
         {
             "_".to_string()
         } else {
             acc_type_str.clone()
+        };
+        let fold_elem_type_str = if elem_render_has_spurious_t.clone() {
+            "_".to_string()
+        } else {
+            elem_type_str.clone()
         };
         let acc_has_unit_child = ({
             let mut __found = false;
@@ -17626,7 +17845,7 @@ pub fn emit_rust_fold_method_call(
             Some(a) => emit_typed_fold_lambda(
                 arg_value(a.clone()),
                 lambda_acc_type_str.clone(),
-                elem_type_str.clone(),
+                fold_elem_type_str.clone(),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -22631,28 +22850,29 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let tco_movable =
-            filtered_params.clone().iter().cloned().fold(
-                emit_info.movable.clone(),
-                |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
-                    let pname = param_node_name_at(p.clone(), si.clone());
-                    let ref_count = filtered_arg_values.clone().iter().cloned().fold(
-                        0,
-                        |n: i64, av: Rc<Node>| {
+        let tco_movable = filtered_params.clone().iter().cloned().fold(
+            emit_info.movable.clone(),
+            |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+                let ref_count =
+                    filtered_arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(0, |n: i64, av: _| {
                             if expr_references_var(av.clone(), pname.clone(), si.clone()) {
                                 (n.clone() + 1)
                             } else {
                                 n.clone()
                             }
-                        },
-                    );
-                    if (ref_count.clone() <= 1) {
-                        v1_rt::rc_set_insert(m.clone(), pname.clone())
-                    } else {
-                        m.clone()
-                    }
-                },
-            );
+                        });
+                if (ref_count.clone() <= 1) {
+                    v1_rt::rc_set_insert(m.clone(), pname.clone())
+                } else {
+                    m.clone()
+                }
+            },
+        );
         let tco_emit_info = Rc::new(EmitGraphInfo {
             movable: tco_movable.clone(),
             ..(*emit_info.clone()).clone()
