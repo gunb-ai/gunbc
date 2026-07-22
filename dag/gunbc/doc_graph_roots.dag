@@ -60,6 +60,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)" },
   },
   HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "fleet-self-converge-enforcement-design",
+    work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "companion detail for the host-effect plan's Phase E (pull-mode self-converge); dissolves when Phase E's enforcement topology lands in carriers or the doc registers as a gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "curated_cargo_frontier_probe_report",
     work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
