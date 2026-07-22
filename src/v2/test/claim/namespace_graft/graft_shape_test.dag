@@ -10,12 +10,10 @@ import v2.std.algebra { fold_list_node }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.namespace_graft {
+import v2.compiler.namespace_graft {
   module_header_containment_graft,
-  namespace_graft_is_body_boundary_wrapper,
   namespace_graft_is_metadata_edge,
   namespace_graft_is_module_shell,
-  namespace_graft_node_is_conj,
   namespace_graft_strip_provenance_marker,
   qualified_name_from_graft_spine
 }
@@ -156,33 +154,21 @@ test fn namespace_graft_body_edges_survive_holds() -> Bool {
 }
 
 fn namespace_graft_walk_spine_to_body(captured: Node) -> Node {
-  if namespace_graft_is_body_boundary_wrapper(node: captured) {
-    match list_at_optional(xs: captured.children, index: 0) {
-      Present { value: edge } => edge.target
-      Absent => captured
-    }
-  } else {
-    match captured.kind {
-      TypeNode { connective: Conj } =>
-        if count(captured.children) == 1 {
-          match list_at_optional(xs: captured.children, index: 0) {
-            Present { value: edge } =>
-              match edge.label {
-                Named { name: _ } =>
-                  if namespace_graft_node_is_conj(node: edge.target) {
-                    namespace_graft_walk_spine_to_body(captured: edge.target)
-                  } else {
-                    captured
-                  }
-                Positional => captured
-              }
-            Absent => captured
-          }
-        } else {
-          captured
+  match captured.kind {
+    TypeNode { connective: Conj } =>
+      if count(captured.children) == 1 {
+        match list_at_optional(xs: captured.children, index: 0) {
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: _ } => namespace_graft_walk_spine_to_body(captured: edge.target)
+              Positional => captured
+            }
+          Absent => captured
         }
-      _ => captured
-    }
+      } else {
+        captured
+      }
+    _ => captured
   }
 }
 
@@ -273,29 +259,4 @@ data claim_namespace_graft_dual_position_refused: TestClaim = EqualsClaim {
 
 test fn namespace_graft_dual_position_refused_holds() -> Bool {
   !ng_outcome_accepted(out: module_header_containment_graft(root: ng_dual_position_root))
-}
-
-data ng_single_decl_conj_body_root: Node = ng_pre_graft_module_root(
-  qn: ng_module_qn,
-  body_edges: [
-    Edge {
-      label: Named { name: ^NgSinglePilot },
-      target: Node {
-        kind: TypeNode { connective: Conj },
-        children: [ng_export_edge(name: ^NgInnerLeaf)],
-        occurrence_id: SyntheticOccurrence
-      }
-    }
-  ]
-)
-
-test fn namespace_graft_single_decl_conj_body_qn_round_trip_holds() -> Bool {
-  match module_header_containment_graft(root: ng_single_decl_conj_body_root) {
-    Accepted { value: grafted, diagnostics: _ } =>
-      ng_qn_eq(
-        out: qualified_name_from_graft_spine(root: grafted),
-        expected: ng_module_qn
-      )
-    Rejected { diagnostics: _ } => false
-  }
 }

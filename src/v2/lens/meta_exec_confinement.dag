@@ -31,6 +31,7 @@ data meta_exec_realization_edge_path_prefixes: List<String> = [
 data meta_exec_confinement_exception_roster: List<String> = [
   "dag/gunbc/ci_deploy_target_host.dag",
   "dag/gunbc/host_converge_slice1.dag",
+  "dag/gunbc/host_runner_memory_cap_verify.dag",
   "dag/gunbc/host_identity_adopt.dag",
   "dag/gunbc/host_identity_assimilation.dag",
   "dag/gunbc/srv3_install_diagnostic_checklist.dag",

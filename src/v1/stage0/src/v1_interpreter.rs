@@ -5620,6 +5620,102 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
     }
 }
 
+/// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an
+/// effect would do. There is deliberately no `ExpectAny`: an unknown expectation
+/// would make every observation agree, which is the empty set the untyped
+/// `exit != 0` proxy assumed (DESIGN §5 — a failure arm refuses, never widens).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExpectedOutcome {
+    ExpectSuccess,
+    ExpectFailure,
+}
+
+/// Carrier for `gunbc.output_policy.StreamDisposition` — what becomes of an effect's
+/// CAPTURED SUBJECT STREAMS. Distinct from `OutputDecision`, which grades a trace
+/// line this repo authored; see the `.dag` authority's note for why it is not a
+/// second spelling of it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StreamDisposition {
+    SurfaceContent,
+    SummarizeCounts,
+    StreamSuppressed,
+}
+
+/// The `.dag` authority's four corners of `effect_stream_disposition` at the
+/// ShellTrace channel and the run's verbosity, plus the guard literal
+/// `neutralize_workflow_commands` prefixes each subject line with. The seed holds
+/// evaluated verdicts and one literal — never the rule.
+#[derive(Clone)]
+pub struct InstalledEffectStreamPolicy {
+    /// Indexed by `stream_policy_index(expected, observed_success)`.
+    pub dispositions: [StreamDisposition; 4],
+    pub subject_line_guard: String,
+}
+
+static EFFECT_STREAM_POLICY: std::sync::OnceLock<InstalledEffectStreamPolicy> =
+    std::sync::OnceLock::new();
+
+/// Uninstalled default, as DATA rather than a re-derivation of the `.dag` rule:
+/// the four corners at `Normal` verbosity. It is behaviour-preserving — at the
+/// migration default `ExpectSuccess` it says "content on non-zero exit, counts on
+/// zero", exactly what this file did before the expectation axis existed.
+/// `effect_stream_policy_mirror_matches_dag_authority` pins it to the same golden
+/// the `.dag` witness asserts, so the two cannot drift silently.
+const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 4] = [
+    StreamDisposition::SummarizeCounts, // ExpectSuccess × observed success
+    StreamDisposition::SurfaceContent,  // ExpectSuccess × observed failure
+    StreamDisposition::SurfaceContent,  // ExpectFailure × observed success
+    StreamDisposition::SummarizeCounts, // ExpectFailure × observed failure
+];
+
+/// Mirror of `extdeps.github.log_annotations.subject_text_line_guard`, used when no
+/// entry binary installed a policy. Pinned by the mirror test above.
+const SUBJECT_LINE_GUARD_FALLBACK: &str = "| ";
+
+fn stream_policy_index(expected: ExpectedOutcome, observed_success: bool) -> usize {
+    match (expected, observed_success) {
+        (ExpectedOutcome::ExpectSuccess, true) => 0,
+        (ExpectedOutcome::ExpectSuccess, false) => 1,
+        (ExpectedOutcome::ExpectFailure, true) => 2,
+        (ExpectedOutcome::ExpectFailure, false) => 3,
+    }
+}
+
+/// Install the effect-stream policy the entry binary evaluated from
+/// `gunbc.output_policy.resolve_shell_trace_stream_policy`. Same lifecycle as
+/// `set_output_policy`: set once at startup, first install wins.
+pub fn set_effect_stream_policy(policy: InstalledEffectStreamPolicy) {
+    let _ = EFFECT_STREAM_POLICY.set(policy);
+}
+
+/// The installed disposition for an effect whose caller declared `expected` and
+/// whose observed exit is `exit_code`.
+pub fn effect_stream_disposition(expected: ExpectedOutcome, exit_code: i32) -> StreamDisposition {
+    let idx = stream_policy_index(expected, exit_code == 0);
+    match EFFECT_STREAM_POLICY.get() {
+        Some(p) => p.dispositions[idx],
+        None => EFFECT_STREAM_POLICY_FALLBACK[idx],
+    }
+}
+
+fn subject_line_guard() -> String {
+    match EFFECT_STREAM_POLICY.get() {
+        Some(p) => p.subject_line_guard.clone(),
+        None => SUBJECT_LINE_GUARD_FALLBACK.to_string(),
+    }
+}
+
+/// Transport of `extdeps.github.log_annotations.neutralize_workflow_commands`:
+/// prefix every line of relayed subject text with the guard so it cannot occupy the
+/// line-initial `::` position GitHub reads as a workflow command. Unconditional —
+/// there is no target probe that could be wrong, and the guard is readable on a
+/// plain terminal. The transformation is the `.dag` authority's; this only applies
+/// the literal it published.
+fn neutralize_workflow_commands(text: &str) -> String {
+    let guard = subject_line_guard();
+    format!("{guard}{}", text.replace('\n', &format!("\n{guard}")))
+}
+
 /// Carrier for `extdeps.render.surface.GroupSyntax` — the per-target group-marker
 /// strings the entry binary evaluated from `resolve_group_syntax(github_actions)`.
 /// `close_line` is `None` for a plain terminal (a section closes implicitly) and
@@ -5728,12 +5824,18 @@ fn shell_completion_trace_line(
 /// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
 /// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
 ///
-/// On non-zero exit the captured stderr CONTENT is surfaced (tail-bounded), not just its
-/// byte count: a failing op whose error text is discarded is an undiagnosable failure
-/// (DESIGN §5 — a failure must be a visible, located diagnostic, never an opaque count;
-/// a whole self-host build failure was invisible in CI because only `stderr=N bytes` was
-/// logged). Success stays count-only so benign compiler warnings do not drown the trace.
+/// Whether the captured stderr CONTENT is surfaced (tail-bounded) or left as a byte
+/// count is the `.dag` authority's `effect_stream_disposition`, keyed on what the
+/// caller DECLARED this effect would do: divergence surfaces, agreement counts. At
+/// the migration default `ExpectSuccess` that is the previous behaviour exactly —
+/// content on non-zero exit (a failing op whose error text is discarded is an
+/// undiagnosable failure, DESIGN §5; a whole self-host build failure was once
+/// invisible in CI because only `stderr=N bytes` was logged), counts on success so
+/// benign compiler warnings do not drown the trace. What the expectation axis adds
+/// is the other direction: an effect declared `ExpectFailure` that SUCCEEDS is
+/// divergence, and now surfaces instead of passing silently.
 fn render_shell_completion_trace(
+    expected: ExpectedOutcome,
     exit_code: i32,
     stdout_bytes: usize,
     stderr: &[u8],
@@ -5743,17 +5845,24 @@ fn render_shell_completion_trace(
         OutputChannel::ShellTrace,
         &shell_completion_trace_line(exit_code, stdout_bytes, stderr.len(), wall),
     );
-    if let Some(block) = shell_completion_stderr_trace_block(exit_code, stderr) {
+    let disposition = effect_stream_disposition(expected, exit_code);
+    if let Some(block) = shell_completion_stderr_trace_block(disposition, exit_code, stderr) {
         trace_emit(OutputChannel::ShellTrace, &block);
     }
 }
 
-/// Pure tail-bounding of captured stderr for the completion trace. Returns `None` when there
-/// is nothing to surface (success exit, or empty stderr); `Some(block)` is the `[shell] stderr`
-/// diagnostic, its content tail-bounded with a leading elision marker when it exceeds the cap.
-/// Kept pure (no `trace_emit`) so the surfacing decision is unit-testable with a RED control.
-fn shell_completion_stderr_trace_block(exit_code: i32, stderr: &[u8]) -> Option<String> {
-    if exit_code == 0 || stderr.is_empty() {
+/// Pure tail-bounding of captured stderr for the completion trace. Returns `None` when the
+/// disposition is not `SurfaceContent`, or when there is no stderr to surface; `Some(block)`
+/// is the `[shell] stderr` diagnostic, its content tail-bounded with a leading elision marker
+/// when it exceeds the cap and every subject line guarded so relayed text cannot mint workflow
+/// commands in the parent run. Kept pure (no `trace_emit`) so the surfacing decision is
+/// unit-testable with a RED control.
+fn shell_completion_stderr_trace_block(
+    disposition: StreamDisposition,
+    exit_code: i32,
+    stderr: &[u8],
+) -> Option<String> {
+    if disposition != StreamDisposition::SurfaceContent || stderr.is_empty() {
         return None;
     }
     const MAX_STDERR_TRACE: usize = 16384;
@@ -5772,7 +5881,11 @@ fn shell_completion_stderr_trace_block(exit_code: i32, stderr: &[u8]) -> Option<
     };
     Some(format!(
         "[shell] stderr (exit={exit_code}):\n{prefix}{}",
-        String::from_utf8_lossy(tail)
+        // Trailing newlines are stripped before guarding so a subject whose stderr
+        // ends in `\n` (almost all of them) does not render a stray guard-only line.
+        // This is presentation of the block, not a change to the guard rule: the
+        // .dag authority still prefixes every line of whatever text it is given.
+        neutralize_workflow_commands(String::from_utf8_lossy(tail).trim_end_matches('\n'))
     ))
 }
 
@@ -5818,6 +5931,16 @@ fn dispatch_shell(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<ShellResult> {
+    // Migration default: every effect issues as `ExpectSuccess`, which makes the
+    // dispatch below behaviour-identical to the untyped `exit != 0` proxy it
+    // replaces. This single binding is the seam a declared per-call-site
+    // expectation threads through, so probes can annotate `ExpectFailure`; where
+    // that declaration LIVES is still open (a service-op `input {}` would put it in
+    // `param_env` here, but it would also join `content_hash_service_inputs`, and
+    // two invocations differing only in what the caller expected are the same
+    // request — a cache-identity impurity, plus caller policy declared in extdeps
+    // is the layer inversion DESIGN §3 names).
+    let expected = ExpectedOutcome::ExpectSuccess;
     let argv_nodes = &transport.children;
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
@@ -5882,6 +6005,7 @@ fn dispatch_shell(
             })?;
         }
         render_shell_completion_trace(
+            expected,
             output.status.code().unwrap_or(-1),
             output.stdout.len(),
             &output.stderr,
@@ -5897,6 +6021,7 @@ fn dispatch_shell(
                 msg: format!("failed to execute '{}': {}", argv[0], e),
             })?;
         render_shell_completion_trace(
+            expected,
             output.status.code().unwrap_or(-1),
             output.stdout.len(),
             &output.stderr,
@@ -8613,7 +8738,18 @@ fn eval_builtin_inner(
             crate::cli_run::extdeps_external_authority_live_roster_module_count(),
         ))),
 
-        "doc_graph_orphan_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count()))),
+        "doc_graph_orphan_count" => {
+            let extra_roots = expect_str_list(positional.first().copied(), name)?;
+            Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
+                extra_roots,
+            ))))
+        }
+        "doc_graph_admitted_root_count" => {
+            let extra_roots = expect_str_list(positional.first().copied(), name)?;
+            Ok(Some(Value::Int(
+                crate::cli_run::doc_graph_admitted_root_count(extra_roots),
+            )))
+        }
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
             crate::cli_run::doc_graph_dangling_link_count(),
         ))),
@@ -9915,9 +10051,21 @@ mod dispatch_rest_decision_tests {
 #[cfg(test)]
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
+    use super::neutralize_workflow_commands;
     use super::shell_completion_stderr_trace_block;
     use super::shell_completion_trace_line;
+    use super::{
+        effect_stream_disposition, ExpectedOutcome, StreamDisposition,
+        EFFECT_STREAM_POLICY_FALLBACK, SUBJECT_LINE_GUARD_FALLBACK,
+    };
     use std::time::Duration;
+
+    /// Convenience for the tests below: the disposition a failing effect gets when
+    /// its caller declared success — the migration default, and what every call
+    /// site issues today.
+    fn surfacing() -> StreamDisposition {
+        StreamDisposition::SurfaceContent
+    }
 
     #[test]
     fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
@@ -9930,32 +10078,115 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn stderr_block_surfaces_content_on_nonzero_exit() {
-        let block = shell_completion_stderr_trace_block(101, b"error: manifest not found\n")
-            .expect("non-zero exit with stderr must surface a diagnostic block");
+        let block =
+            shell_completion_stderr_trace_block(surfacing(), 101, b"error: manifest not found\n")
+                .expect("non-zero exit with stderr must surface a diagnostic block");
         assert!(block.starts_with("[shell] stderr (exit=101):\n"));
         assert!(block.contains("error: manifest not found"));
     }
 
     #[test]
-    fn stderr_block_none_on_success_or_empty() {
-        // RED control: success (even with stderr) and empty-stderr failures surface nothing,
-        // so benign compiler warnings never drown the trace and there is no empty block noise.
+    fn stderr_block_none_when_disposition_is_not_surface_content() {
+        // RED control: the block is gated on the .dag disposition, not on a local
+        // `exit != 0` re-derivation — a non-surfacing disposition yields nothing even
+        // with a non-zero exit and non-empty stderr, and an empty stderr yields
+        // nothing even when the disposition says surface.
         assert_eq!(
-            shell_completion_stderr_trace_block(0, b"warning: unused\n"),
+            shell_completion_stderr_trace_block(
+                StreamDisposition::SummarizeCounts,
+                1,
+                b"error: real failure\n"
+            ),
             None
         );
-        assert_eq!(shell_completion_stderr_trace_block(1, b""), None);
+        assert_eq!(
+            shell_completion_stderr_trace_block(
+                StreamDisposition::StreamSuppressed,
+                1,
+                b"error: real failure\n"
+            ),
+            None
+        );
+        assert_eq!(
+            shell_completion_stderr_trace_block(surfacing(), 1, b""),
+            None
+        );
     }
 
     #[test]
     fn stderr_block_tail_bounds_and_marks_elision() {
         let big = vec![b'x'; 16384 + 500];
-        let block =
-            shell_completion_stderr_trace_block(1, &big).expect("oversized stderr surfaces");
+        let block = shell_completion_stderr_trace_block(surfacing(), 1, &big)
+            .expect("oversized stderr surfaces");
         assert!(block.contains("<500 earlier stderr bytes elided>"));
         // Only the 16384-byte tail is carried, not the full 16884-byte body: the trailing
-        // contiguous run of stderr bytes is exactly the cap.
+        // contiguous run of stderr bytes is exactly the cap. The guard prefix is a
+        // line-initial insertion, so it does not disturb the trailing run.
         assert_eq!(block.chars().rev().take_while(|c| *c == 'x').count(), 16384);
+    }
+
+    #[test]
+    fn surfaced_subject_text_cannot_mint_workflow_commands() {
+        // The priced incident: a child's stderr legitimately carrying `::error::`
+        // annotated the PARENT run as failing. Every relayed line is guarded, so no
+        // subject text can occupy the line-initial `::` position GitHub parses.
+        let block = shell_completion_stderr_trace_block(
+            surfacing(),
+            1,
+            b"::error::build verification: artifact absent\n::warning::next\n",
+        )
+        .expect("failing effect surfaces its stderr");
+        for line in block.lines().skip(1) {
+            assert!(
+                !line.trim_start().starts_with("::"),
+                "relayed subject line is command-bearing: {line:?}"
+            );
+        }
+        assert!(block.contains("| ::error::build verification: artifact absent"));
+    }
+
+    #[test]
+    fn effect_stream_policy_mirror_matches_dag_authority() {
+        // Mirror pin for the uninstalled fallback: these are the four corners the
+        // .dag witness `w_shell_trace_stream_policy_projects_the_four_corners`
+        // asserts at Normal verbosity, and the guard literal
+        // `extdeps.github.log_annotations.subject_text_line_guard` publishes. If the
+        // authority moves and this does not, the two go red together rather than
+        // drifting silently.
+        assert_eq!(
+            EFFECT_STREAM_POLICY_FALLBACK,
+            [
+                StreamDisposition::SummarizeCounts,
+                StreamDisposition::SurfaceContent,
+                StreamDisposition::SurfaceContent,
+                StreamDisposition::SummarizeCounts,
+            ]
+        );
+        assert_eq!(SUBJECT_LINE_GUARD_FALLBACK, "| ");
+        assert_eq!(neutralize_workflow_commands("a\nb"), "| a\n| b");
+    }
+
+    #[test]
+    fn divergence_surfaces_and_agreement_counts() {
+        // The whole rule, both directions. The second pair is the leak nobody had
+        // hit: an effect declared to fail that SUCCEEDS is the most
+        // diagnosis-worthy event in the system and previously logged nothing.
+        assert_eq!(
+            effect_stream_disposition(ExpectedOutcome::ExpectSuccess, 1),
+            StreamDisposition::SurfaceContent
+        );
+        assert_eq!(
+            effect_stream_disposition(ExpectedOutcome::ExpectSuccess, 0),
+            StreamDisposition::SummarizeCounts
+        );
+        assert_eq!(
+            effect_stream_disposition(ExpectedOutcome::ExpectFailure, 1),
+            StreamDisposition::SummarizeCounts
+        );
+        assert_eq!(
+            effect_stream_disposition(ExpectedOutcome::ExpectFailure, 0),
+            StreamDisposition::SurfaceContent
+        );
     }
 
     #[test]

@@ -7168,6 +7168,69 @@ pub fn install_output_policy(source_roots: &[String]) {
         decision("shell_trace"),
         decision("instrumentation"),
     ]);
+
+    install_effect_stream_policy(&ctx, verbose, quiet);
+}
+
+/// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
+/// authority module `install_output_policy` already resolved, and install the four
+/// (expected × observed) corners plus the subject-line guard literal. Like its
+/// sibling, this transports evaluated verdicts only — the divergence rule and the
+/// neutralization guard stay the .dag authority's. Best-effort: on any failure the
+/// funnel keeps its documented fallback table (behaviour-preserving at the
+/// migration default).
+fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bool, quiet: bool) {
+    use v1_interpreter::{InstalledEffectStreamPolicy, StreamDisposition, Value};
+    let policy = match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "resolve_shell_trace_stream_policy",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &policy else {
+        return;
+    };
+    let disposition = |name: &str| -> Option<StreamDisposition> {
+        match ctx.field(fields, name) {
+            Some(Value::Variant { variant_name, .. }) => {
+                if ctx.sym_eq(*variant_name, "SurfaceContent") {
+                    Some(StreamDisposition::SurfaceContent)
+                } else if ctx.sym_eq(*variant_name, "SummarizeCounts") {
+                    Some(StreamDisposition::SummarizeCounts)
+                } else if ctx.sym_eq(*variant_name, "StreamSuppressed") {
+                    Some(StreamDisposition::StreamSuppressed)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    // Fail-closed on a partial read: an unrecognised arm or a missing field would
+    // otherwise be silently defaulted, which is the fabricated-plausible-output the
+    // funnel exists to avoid. Leave the policy uninstalled instead — the documented
+    // fallback table is honest about being a fallback.
+    let (Some(ess), Some(esf), Some(efs), Some(eff)) = (
+        disposition("expect_success_observed_success"),
+        disposition("expect_success_observed_failure"),
+        disposition("expect_failure_observed_success"),
+        disposition("expect_failure_observed_failure"),
+    ) else {
+        return;
+    };
+    let Some(Value::Str(guard)) = ctx.field(fields, "subject_line_guard") else {
+        return;
+    };
+    v1_interpreter::set_effect_stream_policy(InstalledEffectStreamPolicy {
+        dispositions: [ess, esf, efs, eff],
+        subject_line_guard: guard.to_string(),
+    });
 }
 
 /// Evaluate `extdeps.render.surface.resolve_group_syntax(github_actions)` from the
@@ -16028,6 +16091,42 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
+    fn deletion_hunk_after_modified_file_does_not_false_fire_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let modified = "dag/gunbc/ci_workflow.dag";
+        let deleted = "dag/gunbc/host_effect_deploy_access_probe_script.dag";
+        let diff = format!(
+            "diff --git a/{modified} b/{modified}\n\
+             --- a/{modified}\n\
+             +++ b/{modified}\n\
+             @@ -135,6 +135,12 @@ fn ci_prelude_steps() -> List<Step> {{\n\
+              ]\n\
+              }}\n\
+             \n\
+             +data note: String = \"new\"\n\
+             +\n\
+             +fn new_steps() -> List<Step> {{\n\
+             +  [ci_checkout_step()]\n\
+             +}}\n\
+             \n\
+             diff --git a/{deleted} b/{deleted}\n\
+             deleted file mode 100644\n\
+             --- a/{deleted}\n\
+             +++ /dev/null\n\
+             @@ -1,3 +0,0 @@\n\
+             -module gunbc.host_effect_deploy_access_probe_script\n\
+             -\n\
+             -fn gone() -> Bool {{ true }}\n"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("deletion hunk must not leak onto prior modified file: {e}")
+        });
+    }
+
+    #[test]
     fn mixed_dag_and_non_dag_diff_scopes_from_dag_only() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
@@ -22431,39 +22530,6 @@ fn normalize_doc_path(path: &Path) -> String {
     parts.join("/")
 }
 
-fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for root in witness_layer_roots() {
-        let mut dag_files = Vec::new();
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut dag_files);
-        for path in dag_files {
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for target in bind_md_refs(&content) {
-                out.insert(target);
-            }
-        }
-    }
-    out
-}
-
-fn bind_md_refs(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for (idx, _) in content.match_indices("bind:") {
-        let rest = content[idx + "bind:".len()..].trim_start();
-        let token: String = rest
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
-            .collect();
-        if token.ends_with(".md") {
-            out.push(normalize_doc_path(Path::new(&token)));
-        }
-    }
-    out
-}
-
 fn doc_reachable_set(
     roots: &BTreeSet<String>,
     edges: &HashMap<String, Vec<String>>,
@@ -22491,11 +22557,17 @@ struct DocGraphReport {
     doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
+    admitted_extra_roots: usize,
 }
 
-fn build_doc_graph_report() -> DocGraphReport {
+// `extra_roots` are the dag-derived roots (gunbc.doc_graph_roots.doc_graph_roots_all: registered
+// PlanArtifacts derive theirs, hand-authored docs declare typed HandAuthoredDocBind rows), passed
+// through the doc_graph_* builtins so the root set is a walked substrate fact — the former `bind:`
+// text-scan over .dag content is deleted. Admission is counted (admitted_extra_roots), so a root
+// naming no doc in the universe is observable — the witness pins admitted == passed, never a
+// silent drop.
+fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     let universe = doc_universe();
-    let bind_refs = dag_comment_bind_doc_refs();
 
     let mut roots: BTreeSet<String> = BTreeSet::new();
     for r in DOC_PLAN_ROOTS {
@@ -22504,9 +22576,12 @@ fn build_doc_graph_report() -> DocGraphReport {
     if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
         roots.insert(DOC_RUNBOOK_ROOT.to_string());
     }
-    for b in &bind_refs {
-        if universe.contains(b) {
-            roots.insert(b.clone());
+    let mut admitted_extra_roots = 0usize;
+    for r in extra_roots {
+        let norm = normalize_doc_path(Path::new(r));
+        if universe.contains(&norm) {
+            admitted_extra_roots += 1;
+            roots.insert(norm);
         }
     }
 
@@ -22557,24 +22632,39 @@ fn build_doc_graph_report() -> DocGraphReport {
         doc_count: universe.len(),
         orphans,
         dangling,
+        admitted_extra_roots,
     }
 }
 
-fn doc_graph_report() -> &'static DocGraphReport {
-    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
-    REPORT.get_or_init(build_doc_graph_report)
+// Memo keyed on the declared input (the extra-roots list) — cache-impurity discipline: a
+// roots-blind OnceLock would serve the first caller's report to every later root set.
+fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
+    static CACHE: OnceLock<std::sync::Mutex<HashMap<Vec<String>, std::sync::Arc<DocGraphReport>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    if let Some(r) = guard.get(extra_roots) {
+        return r.clone();
+    }
+    let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    guard.insert(extra_roots.to_vec(), report.clone());
+    report
 }
 
-pub fn doc_graph_orphan_count() -> i64 {
-    doc_graph_report().orphans.len() as i64
+pub fn doc_graph_orphan_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).orphans.len() as i64
+}
+
+pub fn doc_graph_admitted_root_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).admitted_extra_roots as i64
 }
 
 pub fn doc_graph_dangling_link_count() -> i64 {
-    doc_graph_report().dangling.len() as i64
+    doc_graph_report(&[]).dangling.len() as i64
 }
 
 pub fn doc_graph_doc_count() -> i64 {
-    doc_graph_report().doc_count as i64
+    doc_graph_report(&[]).doc_count as i64
 }
 
 // Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
@@ -24724,13 +24814,6 @@ mod doc_reachability_tests {
             1,
             "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
         );
-    }
-
-    #[test]
-    fn bind_md_refs_basic() {
-        let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
-        let t = bind_md_refs(c);
-        assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
     }
 }
 

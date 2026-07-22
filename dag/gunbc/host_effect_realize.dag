@@ -42,6 +42,12 @@ import v2.std.algebra { fold_list }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
@@ -120,9 +126,13 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import gunbc.host_identity_observation_script { host_identity_short_hostname_script }
-import gunbc.host_effect_deploy_access_probe_script {
-  host_effect_read_effective_posix_principal_script,
-  host_effect_sudo_nopasswd_execute_probe_script,
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.access.posix_effective_principal_read_op {
+  posix_effective_principal_read_argv,
+}
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.sudo.nopasswd_execute_probe_check_op {
+  sudo_nopasswd_execute_probe_argv,
 }
 import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
@@ -157,6 +167,8 @@ type ResolvedHostEffectCell =
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
+  | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
+  | SudoNopasswdProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -244,12 +256,9 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
                   HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
                 ReadEffectivePosixPrincipal { read: r } =>
-                  ShellOnHost { node: n, script: host_effect_read_effective_posix_principal_script(read: r) }
+                  EffectivePrincipalReadOnHost { node: n, read: r }
                 SudoNopasswdExecuteProbe { probe: p } =>
-                  ShellOnHost {
-                    node: n,
-                    script: host_effect_sudo_nopasswd_execute_probe_script(probe: p),
-                  }
+                  SudoNopasswdProbeOnHost { node: n, probe: p }
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
                 HostIdentityShortHostnameRead =>
@@ -1262,18 +1271,109 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
   }
 }
 
-fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let result = run_shell_transport(script: script, transport: transport)
-  let grounding = if result.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: result.exit_code, stdout: result.stdout } }
+fn reconcile_shell_exec_observed(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
     } else {
-      DoesNotGround { reason: shell_exec_failure_reason(observed: result) }
+      DoesNotGround { reason: shell_exec_failure_reason(observed: observed) }
     }
   reconcile_grounded(
     apply_effect: intent,
-    show_read: ReadObserved { value: result },
+    show_read: ReadObserved { value: observed },
     grounding: grounding
   )
+}
+
+fn reconcile_ssh_argv_exec_outcome(
+  outcome: TypedArgvExecOutcome,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: r.exit_code,
+          success: r.success,
+          stdout: r.stdout,
+          stderr: r.stderr,
+        },
+        intent: intent,
+      )
+    TypedArgvExecRefused { reason: why } =>
+      NotConverged { reason: why, applied: intent }
+  }
+}
+
+fn realize_effective_principal_read_on_host(
+  read: EffectivePosixPrincipalRead,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let argv = posix_effective_principal_read_argv()
+  match transport {
+    LocalShell => {
+      let result = access.PosixEffectivePrincipal.Read(read: read)
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+        intent: intent,
+      )
+    }
+    SshShell { ssh_host: h } =>
+      reconcile_ssh_argv_exec_outcome(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        intent: intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: ReadEffectivePosixPrincipal cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
+  }
+}
+
+fn realize_sudo_nopasswd_probe_on_host(
+  probe: SudoNopasswdExecuteProbeShape,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let argv = sudo_nopasswd_execute_probe_argv(probe: probe)
+  match transport {
+    LocalShell => {
+      let result = sudo.NopasswdExecuteProbe.Check(probe: probe)
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: if result.success { 0 } else { 1 },
+          success: result.success,
+          stdout: "",
+          stderr: "",
+        },
+        intent: intent,
+      )
+    }
+    SshShell { ssh_host: h } =>
+      reconcile_ssh_argv_exec_outcome(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        intent: intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: SudoNopasswdExecuteProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
+  }
+}
+
+fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let result = run_shell_transport(script: script, transport: transport)
+  reconcile_shell_exec_observed(observed: result, intent: intent)
 }
 
 fn realize_set_hostname_cas_on_host(
@@ -1360,6 +1460,10 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
+    EffectivePrincipalReadOnHost { node: _, read: r } =>
+      realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
+    SudoNopasswdProbeOnHost { node: _, probe: p } =>
+      realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1512,6 +1616,10 @@ fn host_effect_apply_gated(
           realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
+        EffectivePrincipalReadOnHost { node: _, read: r } =>
+          realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
+        SudoNopasswdProbeOnHost { node: _, probe: p } =>
+          realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1563,6 +1671,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            SudoNopasswdProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
