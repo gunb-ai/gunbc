@@ -9,6 +9,7 @@ use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
+use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
@@ -347,6 +348,27 @@ fn main() {
             dependency_pool_index,
             entry,
         } => {
+            // #6967/§13 silent-pick piggyback: drain resolution silent-pick
+            // telemetry over this same compile. This is NOT the shared
+            // resolution_divergence_silent_pick_refusal authority (cli_run.rs)
+            // — that requires the full whole-tree census join against
+            // containment_ambiguous_rows/diverge_rows, too costly to run on
+            // every `gunbc compile` (measured >90s/3GB+ RSS whole-tree, per
+            // ci_layer_roots.dag's falsifier_silent_pick_gate_note). This is a
+            // deliberately narrower, cost-motivated proxy, asymmetric in both
+            // directions from the shared authority (review 41032):
+            //   - fn_parent_first_hit: red-on-any raw count here, on the
+            //     ASSERTED-not-construction-proven corpus invariant that every
+            //     fn_parent_first_hit fire is containment_ambiguous (the
+            //     fn-parent walk IS the containment walk) — over-strict if the
+            //     invariant is ever wrong (a false refusal), never silent.
+            //   - global_bare_lcp: skipped entirely here (fires on whole-pool
+            //     name overlap alone — ~483 benign corpus sites, not genuine
+            //     under §13 unique-on-chain) — under-strict; a future genuine
+            //     global_bare_lcp pick is caught only by the nightly full-join
+            //     falsifier backstop, not at compile time.
+            // Tracked fast-follow, not a single authority today.
+            v1_rt::resolution_silent_pick_enable();
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
@@ -570,6 +592,24 @@ fn main() {
                     "compiled: {} files emitted, {} diagnostics",
                     total_files, total_diagnostics
                 );
+            }
+
+            let silent_pick = v1_rt::resolution_silent_pick_disable();
+            if !silent_pick.fn_parent_first_hits.is_empty() {
+                eprintln!(
+                    "SILENT-PICK-GATE: {} fn_parent_first_hit silent pick(s) in this compile (raw-count proxy gate, not the join-filtered resolution_divergence_silent_pick_refusal authority — §13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
+                    silent_pick.fn_parent_first_hits.len()
+                );
+                for site in &silent_pick.fn_parent_first_hits {
+                    eprintln!(
+                        "  SILENT-PICK-GATE fn_parent_first_hit module={} name={} parent_match_count={} chosen_parent_module={}",
+                        site.env_module_path,
+                        site.name,
+                        site.parent_match_count,
+                        site.chosen_parent_module
+                    );
+                }
+                std::process::exit(1);
             }
         }
 
