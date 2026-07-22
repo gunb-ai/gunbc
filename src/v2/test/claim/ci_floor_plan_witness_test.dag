@@ -16,6 +16,8 @@ import v2.workflow.ci_floor_plan {
   gate_runnable,
   gunbc_ci_cheap_floor_gate_membership,
   gate_in_cheap_floor_membership,
+  gate_node,
+  floor_resource_anchor_node,
   witness_floor_corpus_exclusion_edges_exist,
   witness_floor_compile_gate_honest_heavy_profile,
   witness_floor_no_corpus_resource_edge_to_compile_anchor,
@@ -455,9 +457,15 @@ fn falsifier_plan_structure_holds() -> Bool {
   (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok
 }
 
+fn witness_cheap_gates_are_resource_anchors() -> Bool {
+  gate_in_cheap_floor_membership(g: LayeringImportsGate)
+    && floor_resource_anchor_node(node: gate_node(g: LayeringImportsGate))
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
     witness_cheap_gate_membership_declared() &&
+    witness_cheap_gates_are_resource_anchors() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
     witness_cheap_gates_precede_compile_root() &&
     witness_corpus_not_before_compile() &&

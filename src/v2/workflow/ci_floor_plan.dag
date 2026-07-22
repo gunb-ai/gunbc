@@ -80,7 +80,7 @@ data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
   GeneratedArtifactDriftGate,
 ]
 
-data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the three negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that scan imports, extdeps authority, and generated-artifact drift — seconds each, no whole-tree compile. They run in batch 0 BEFORE DagCompileCleanGate so a layering/drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Dissolve-on: gate_runnable_profile cost envelopes become the single authority (realization-measurement lane) and this list retires when negligible+non-heavy_whole_tree_resolve gates are schedulable-first by construction."
+data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the three negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that scan imports, extdeps authority, and generated-artifact drift — seconds each, no whole-tree compile. They run in batch 0 BEFORE DagCompileCleanGate so a layering/drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: gate_runnable_profile cost envelopes become the single authority (realization-measurement lane) and this list retires when negligible+non-heavy_whole_tree_resolve gates are schedulable-first by construction."
 
 data gunbc_ci_cheap_floor_gate_membership_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -195,7 +195,13 @@ fn floor_compile_root_node() -> Node {
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
-  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node) || (node == bin_witness_corpus_node)
+  (node == floor_compile_root_node())
+    || (node == floor_corpus_node)
+    || (node == execution_corpus_node)
+    || (node == bin_witness_corpus_node)
+    || fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(acc, g) {
+      acc || (node == gate_node(g: g))
+    })
 }
 
 data gate_profile_memory_marker_note: String = "Gate memory classes are structural markers (Negligible vs Substantial) since the 2026-07-12 adaptive-width ruling: the fabricated per-gate byte predictions (per-shard peak, host-compiler spawn peak, and their sums) retired with the width folds they fed. Run-time concurrency is governed by the executor's memory governor against the slot's own cgroup budget; the marker still feeds co-residence structure (runnable_excludes_corpus_co_residence)."
