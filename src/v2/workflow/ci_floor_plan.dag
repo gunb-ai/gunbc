@@ -2,7 +2,7 @@ module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs
@@ -224,8 +224,6 @@ fn gate_runnable(g: Gate) -> Runnable {
 fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
-
-data witness_realization_plan_doc_provenance: String = "bind: docs/plans/witness-realization-plan.md — the staged path off the execution crutch (P0 field wall, P1 ObservePeakResidentAtSubject + space seq=max/par=add, P2 content-addressed artifact store, P4 realize packing min(width, budget/measured_peak)); its P4 is the adaptive-width note's own dissolve-on made concrete (graph-derived per-node demand from MeasuredBy receipts demotes the governor to a safety net). The plan links its companion audit (v2-memory-control-audit.md — space unobservable; eviction write-only; F10 v1-deletion ordering). Hand-authored staging bind per the doc-reachability wall (gunbc#6654 restored its never-skip tooth; that wall caught these very docs as orphans pre-merge, gunbc#6663); dissolves into a registered gunbc.plan.Plan row when P1 lands."
 
 data gunbc_ci_adaptive_width_note: String = "Adaptive width (operator ruling 2026-07-12, superseding the pinned-cap regime): the plan no longer authors spawn widths or per-shard byte predictions — the retired machinery was gunbc_ci_corpus_discovery_spawn_width_cap (pinned 1 after the run 28999086030 width=2 OOM), the per-plan *_plan_spawn_width fns the executor evaluated by name, and the gunbc.ci_floor_measurement width folds over hand-edited peak samples (pins freezing derivations: stale samples predated the enrollment flip, and the base-overhead re-measure chased its own tail — the July OOM/wedge regime). The executor now governs concurrency at run time: v1_compiler::memory_governor admits workers AIMD-style against the slot's OWN declared budget (memory.high else memory.max else MemAvailable else MemTotal — MemAvailable precedes MemTotal on uncapped hosts because the kernel's availability estimate excludes the co-tenant baseline that let run 29180195694 reach physical RAM; GUNBC_MEMORY_BUDGET_BYTES to override). Admission is paced (at most one worker whose front-loaded index-build cost has not yet landed), predictive (the run measures its first worker's share over the pool baseline and admits only while current + share fits under high-water), and ceilinged at half the budget — the maturation reserve: the 2026-07-12 run series proved admitted demand matures minutes after admission at ~7x its digest-time footprint, so reactive arms alone always observe it too late and half the pipe stays reserved for in-flight growth. The creep-episode edge (memory.current high-water, PSI some avg10, swap growth) halves the window AND holds admissions — early congestion is TCP's ECN, not a stop-and-hope — while hard events halve it again (memory.events high/oom_kill deltas) and memory.current crossing the declared budget itself collapses the window to one (the reachable loss signal on uncapped hosts, where memory.events never fires); the width-1 progress floor still guarantees forward motion. The window re-grows additively on calm completions. Every hold/back-off is typed, counted, and surfaced in the [governor] receipt line (DESIGN §5: loud bounded degradation, never an absorbing widen). Dissolve-on: graph-derived per-node demand (CostAccount.space measured, the realization-measurement lane) replaces the reactive estimator and the governor demotes to a safety net."
 
@@ -658,6 +656,29 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
       execution_mode: Wet
     )
   }
+}
+
+data gunbc_falsifier_native_cache_cold_note: String = "Native-cache cold control plan (widen-only, the compile-clean cold-control pattern): the COLD-VALID roster (falsifier_native_cache_cold_roster — agreement + native_cold legs only, never the full aggregates whose cold_then_warm legs assert the warm-ness this control deliberately destroys), run by the falsifier cold-control step with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1 so every .native_ready marker is ignored and the full emit+cargo+run chain executes cold. Can only force MORE work per entry than the warm nightly batch, never less; a warm-poisoned entry (content_verified_on_read=false in extdeps.realization.native_artifact_cache) surfaces here as a cold-vs-warm receipt divergence."
+
+fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_native_cache_cold_roster(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+fn gunbc_falsifier_native_cache_cold_batches() -> List<List<Runnable>> {
+  [[gunbc_falsifier_native_cache_cold_batch()]]
 }
 
 fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: Runnable) -> List<List<Runnable>> {

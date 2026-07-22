@@ -50,8 +50,16 @@ import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pbf_graft_module_root(root: Node) -> Node {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: grafted, diagnostics: _ } => grafted
+    Rejected { diagnostics: _ } => root
+  }
+}
 
 fn pbf_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model()
@@ -278,12 +286,14 @@ fn pbf_subject_with_import_use() -> Node {
 
 fn pbf_cross_file_roots() -> FreeMonoid<Node> {
   Cons {
-    head: pbf_subject_with_import_use(),
+    head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
     tail: Cons {
-      head: pbf_module_root(
-        seg: ^pbf_imported_seg,
-        export_sym: ^pbf_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: pbf_graft_module_root(
+        root: pbf_module_root(
+          seg: ^pbf_imported_seg,
+          export_sym: ^pbf_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -369,18 +379,22 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
 
 fn pbf_ambiguous_import_roots() -> FreeMonoid<Node> {
   Cons {
-    head: pbf_subject_with_ambiguous_import_use(),
+    head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
     tail: Cons {
-      head: pbf_module_root(
-        seg: ^pbf_ambiguous_import_a_seg,
-        export_sym: ^pbf_ambiguous_export_sym,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: pbf_graft_module_root(
+        root: pbf_module_root(
+          seg: ^pbf_ambiguous_import_a_seg,
+          export_sym: ^pbf_ambiguous_export_sym,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Cons {
-        head: pbf_module_root(
-          seg: ^pbf_ambiguous_import_b_seg,
-          export_sym: ^pbf_ambiguous_export_sym,
-          export_atom: ^dag_c3_surface_sugar_type
+        head: pbf_graft_module_root(
+          root: pbf_module_root(
+            seg: ^pbf_ambiguous_import_b_seg,
+            export_sym: ^pbf_ambiguous_export_sym,
+            export_atom: ^dag_c3_surface_sugar_type
+          )
         ),
         tail: Empty
       }

@@ -140,6 +140,9 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
     ReadEffectivePosixPrincipal { read: _ } => Absent
     SudoNopasswdExecuteProbe { probe: _ } => Absent
+    HostIdentityShortHostnameRead => Absent
+    SystemdUnitMemoryMaxRead { unit: _ } => Absent
+    SystemdUnitMemoryPropertiesRead { unit: _ } => Absent
     LiveDeployApply { spec: _ } => Absent
     LiveDeployRetract { spec: _ } => Absent
     LiveDeployEnsureDependency { dep: _ } => Absent

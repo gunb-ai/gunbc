@@ -21,8 +21,13 @@ import v2.std.resolution_policy {
 }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
-  dag_surface_module_header_metadata_edge,
-  qualified_name_from_module_node
+  dag_surface_module_header_metadata_edge
+}
+import v2.compiler.namespace_graft {
+  qualified_name_from_module_node_graft_aware,
+  namespace_graft_already_grafted,
+  namespace_graft_spine_segment_edge_optional,
+  namespace_graft_strip_provenance_marker
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
@@ -192,7 +197,7 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
           ModuleRootsProjectionRejected { diagnostics: d }
         ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
           if well_formed(n: root) {
-            match qualified_name_from_module_node(root: root) {
+            match qualified_name_from_module_node_graft_aware(root: root) {
               Rejected { diagnostics: d } =>
                 ModuleRootsProjectionRejected {
                   diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
@@ -255,7 +260,7 @@ fn module_root_find(
             ManyPassingCandidates =>
               Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
-              match qualified_name_from_module_node(root: root) {
+              match qualified_name_from_module_node_graft_aware(root: root) {
                 Rejected { diagnostics: d } =>
                   Rejected { diagnostics: d }
                 Accepted { value: candidate, diagnostics: _ } =>
@@ -350,15 +355,34 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
+fn admit_named_exports_body_root(root: Node) -> Node {
+  if namespace_graft_already_grafted(root: root) {
+    admit_named_exports_descend_spine(
+      node: namespace_graft_strip_provenance_marker(root: root)
+    )
+  } else {
+    root
+  }
+}
+
+fn admit_named_exports_descend_spine(node: Node) -> Node {
+  match namespace_graft_spine_segment_edge_optional(node: node) {
+    Present { value: edge } =>
+      admit_named_exports_descend_spine(node: edge.target)
+    Absent => node
+  }
+}
+
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match root.kind {
+  let working = admit_named_exports_body_root(root: root)
+  match working.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
-        n: root,
+        n: working,
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,

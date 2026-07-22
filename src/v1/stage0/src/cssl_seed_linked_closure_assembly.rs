@@ -231,7 +231,8 @@ fn sanitize_emit_artifact_content(content: &str) -> String {
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
-/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · typed Refused.
+/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · whole-closure
+/// emit-retain default (typed Refused only when closure mod lacks emitted .rs).
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
@@ -311,11 +312,11 @@ pub fn assemble_seed_linked_closure(
             continue;
         }
 
-        return Err(AssemblyError::RefusedDep {
-            module,
-            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)"
-                .to_string(),
-        });
+        // Whole-closure default (cssl_closure_assembly_note): any module in the
+        // gunbc-emitted closure manifest with a sibling .rs is emit-retained —
+        // gunbc_* product modules, test_* witnesses, tools_*, etc. Refusal
+        // relocates to the cargo verdict, not assemble-time prefix whitelisting.
+        sanitize_emitter_artifact_in_place(&dest)?;
     }
 
     let entry_hash_after = sha256_hex(&entry_file)?;
@@ -623,15 +624,79 @@ mod tests {
     }
 
     #[test]
-    fn unknown_closure_dep_is_typed_refused() {
+    fn gunbc_product_closure_dep_emit_retained() {
         let root = temp_fixture_root();
         let out = write_minimal_emit_tree(
             &root,
-            "v2_compiler_tokenize",
-            &["not_a_routable_mod", "v2_compiler_tokenize"],
+            "v2_compiler_name_resolve",
+            &["gunbc_plans_md_helpers", "v2_compiler_name_resolve"],
         )
         .expect("tree");
         let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
+        assert!(kept.contains("emitted gunbc_plans_md_helpers"));
+    }
+
+    #[test]
+    fn test_witness_closure_dep_emit_retained() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_emit",
+            &[
+                "test_claim_materialization_ladder_witness",
+                "v2_compiler_emit",
+            ],
+        )
+        .expect("tree");
+        let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/05_emit.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
+            .expect("read");
+        assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
+    }
+
+    #[test]
+    fn closure_mod_missing_emitted_rs_is_typed_refused() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod not_a_routable_mod;\npub mod v2_compiler_tokenize;\n",
+        )
+        .expect("lib");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
@@ -649,7 +714,7 @@ mod tests {
         match err {
             AssemblyError::RefusedDep { module, reason } => {
                 assert_eq!(module, "not_a_routable_mod");
-                assert!(reason.contains("unroutable"));
+                assert!(reason.contains("missing emitted .rs"));
             }
             other => panic!("expected RefusedDep, got {other:?}"),
         }

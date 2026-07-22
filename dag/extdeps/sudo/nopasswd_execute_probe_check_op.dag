@@ -1,0 +1,38 @@
+module extdeps.sudo.nopasswd_execute_probe_check_op
+
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+data sudo_nopasswd_execute_probe_check_op_note: String = "Typed argv transport for sudo.NopasswdExecuteProbe.Check — program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice)."
+
+fn sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape) -> List<String> {
+  ["sudo", "-n", probe.command_path as String, probe.check_argv as String]
+}
+
+service sudo.NopasswdExecuteProbe {
+  operation Check {
+    input { probe: SudoNopasswdExecuteProbeShape }
+    output { success: Bool from "exit_success" }
+    readonly
+
+    transport shell {
+      argv: ["sudo", "-n", "{probe.command_path}", "{probe.check_argv}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sudo nopasswd execute probe failed"
+    }
+    mock_response {
+      0 => { success: true } "hermetic sudo.NopasswdExecuteProbe.Check"
+    }
+  }
+}

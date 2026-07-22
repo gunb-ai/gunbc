@@ -1,0 +1,129 @@
+module gunbc.doc_graph_roots
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.plan { Plan, plan_path, plan_doc_path, DissolutionTrigger, HasTrigger }
+import gunbc.plan_registry { all_plans }
+
+data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and the trigger that deletes the row. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
+
+fn plan_doc_graph_roots() -> List<String> {
+  map(all_plans, p => plan_path(p: p))
+}
+
+type DocHome
+  = PlanDoc
+  | ProbeDoc
+
+type HandAuthoredDocBind {
+  home: DocHome,
+  slug: String,
+  work: DeclarationRef,
+  dissolution: DissolutionTrigger,
+}
+
+fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
+  match b.home {
+    PlanDoc => plan_doc_path(slug: b.slug)
+    ProbeDoc => concat("docs/probes/", concat(b.slug, ".md"))
+  }
+}
+
+data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "accelerator-demo-roundtrip",
+    work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row; §6 item 2 execution lane lands on the simd handler" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "accelerator-demo-roundtrip",
+    work: DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "machine-shape-orthogonal-scheduling",
+    work: DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row at its Phase-1 landing (trigger declared in the md header)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "commit-workflow",
+    work: DeclarationRef { module_path: "gunbc.plans.commit_workflow", decl_name: "commit_workflow_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "commit_workflow_plan registers in gunbc.plan_registry (its deferred checkpoint 1); the registration becomes the binding" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "effect-namespace-grants",
+    work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "fleet-self-converge-enforcement-design",
+    work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "companion detail for the host-effect plan's Phase E (pull-mode self-converge); dissolves when Phase E's enforcement topology lands in carriers or the doc registers as a gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "curated_cargo_frontier_probe_report",
+    work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "modeled probe transport lands (bash-emit #5828)" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "emitter_residual_site_map_2026-07-21",
+    work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves with the emitter residual classes it maps (dotted-alias #6981, generic-T fold closures)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "rc-ownership-wrap-decision-design",
+    work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "module-identity-storage-binding-design",
+    work: DeclarationRef { module_path: "v2.lens.effect_reach", decl_name: "effect_reach_law", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "typed SourceRef at host boundaries is ENFORCED and the bare-string file-dependency class is migrated (effect_reach_law's own dissolve condition)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "module-identity-storage-binding-design",
+    work: DeclarationRef { module_path: "v2.workflow.witness_admission", decl_name: "consumer_for_explicit_rosters", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "live-read-witness-classification-design",
+    work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification_law", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "witness-realization-plan",
+    work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row when its P1 lands" },
+  },
+]
+
+fn hand_authored_doc_graph_roots() -> List<String> {
+  map(hand_authored_doc_binds, b => hand_authored_doc_path(b: b))
+}
+
+fn doc_graph_roots_all() -> List<String> {
+  concat(plan_doc_graph_roots(), hand_authored_doc_graph_roots())
+}
+
+fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
+  match b.home {
+    PlanDoc => all(all_plans, p => p.slug != b.slug)
+    ProbeDoc => true
+  }
+}
+
+fn hand_authored_slugs_all_unregistered() -> Bool {
+  all(hand_authored_doc_binds, b => hand_authored_plan_slug_is_unregistered(b: b))
+}

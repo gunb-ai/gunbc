@@ -101,7 +101,6 @@ fn commit_workflow_body() -> List<MarkdownBlock> {
   ]
 }
 
-data commit_workflow_plan_doc_provenance: String = "bind: docs/plans/commit-workflow.md"
 
 data commit_workflow_plan: Plan = Plan {
   slug: "commit-workflow",

@@ -12,6 +12,14 @@ data emit_on_demand_module_note: String = "Witness-realization kernel (plan P3):
 
 data emit_on_demand_cache_key_authority_note: String = "Cache key purity (§5 cache-impurity): emit_on_demand_key hashes ArtifactKey { closure_digest, emitter_identity, target_language, toolchain } — closure_digest is the content hash of declared inputs (inferred_tree_digest over the witness root + evaluated facts; emitted source + build inputs derive from that tree). Witness test_id subdirectories under /tmp are isolation-only shims; they are NOT key material. A changed subject changes closure_digest -> new key -> new workspace path -> cold rebuild (witness: the one-build receipts, e.g. emit_on_demand_kernel_native_one_build_holds's alt-key cold leg and family_crate_member_change_cold_rebuild_holds)."
 
+data emit_on_demand_native_cache_root_note: String = "Single authority for the native-cache scratch prefix (the durable-cache contract): every family cache root = concat(this root, '_<family>'). The prefix is load-bearing three ways: (a) the artifact-store scratch grant admits /tmp/gunbc_-prefixed roots; (b) the cached host transport (v1_interpreter emit_host_run_transport_cached) rebases exactly this /tmp/gunbc_ prefix onto GUNBC_NATIVE_CACHE_ROOT when set (durable re-root: the root is WHERE, never WHAT — content-hash path components stay the key); (c) the falsifier cold control (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL) forces cold rebuilds against whatever root is active, widen-only. Realization row: extdeps.realization.native_artifact_cache."
+
+data emit_on_demand_native_cache_root: String = "/tmp/gunbc_emit_on_demand"
+
+fn emit_on_demand_family_cache_root(family: String) -> String {
+  concat(emit_on_demand_native_cache_root, "_", family)
+}
+
 data witness_family_build_grain_ruling: String = "Build-grain ruling (operator-directed 2026-07-21, answered by measurement): per-witness native crates cost ~17s of cargo build EACH and lose to the interpreter on wall clock; ONE family-grain crate — every member fn concatenated into one emitted source with an argv-dispatched main — pays the build once, and every member run after the first is compile_skipped. Build at family grain, never per witness. This supersedes witness-realization-plan FLAG B v0 (one binary per entry closure). The family artifact reuses the SAME key authority: emit_on_demand_key over family_closure_digest(member digests) — the family is a different closure input, not a second key scheme. Member LIST ORDER is declared key material (concat order and dispatcher arm order are artifact content); the digest is tag-seeded so a singleton family never collides with its bare member digest. Receipt by execution: emit_on_demand_family_crate_witness_test (one-build-members-warm, unknown-member RED, member-change cold rebuild)."
 
 fn family_closure_digest(members: List<ContentHash>) -> ContentHash {

@@ -6,7 +6,8 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.compile { compile_source_root_ingest_with_admission }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { parse_production_emitted_identity_optional, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.module_graph {
   ImportResolutionFact,
@@ -116,7 +117,7 @@ type AdmissionDerivation
   | AdmissionDerived { admission: Admission }
 
 fn derive_module_admission(root: Node) -> AdmissionDerivation {
-  match qualified_name_from_module_node(root: root) {
+  match qualified_name_from_module_node_graft_aware(root: root) {
     Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
     Accepted { value: subject_qn, diagnostics: _ } =>
       match import_rows_from_parsed_module(root: root) {

@@ -1,0 +1,180 @@
+module extdeps.cpu.amd
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
+  }
+}
+
+data amd_ryzen_5_3600_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-5-3600"
+  }
+}
+
+data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-7-pro-8700ge"
+  }
+}
+
+data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-9-7950x3d"
+  }
+}
+
+data amd_ryzen_thread_count_citation_note: String = "cores and threads are cited from each model's AMD product page (authorities above). threads is stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps."
+
+data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: byte_size(32768),
+  instruction_capacity_per_core: byte_size(32768),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l1_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "data_capacity_per_core",
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: byte_size(524288),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l2_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "capacity_per_core",
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data amd_zen2_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(33554432),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "capacity",
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: byte_size(32768),
+  instruction_capacity_per_core: byte_size(32768),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l1_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "data_capacity_per_core",
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data amd_zen4_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: byte_size(1048576),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l2_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "capacity_per_core",
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data amd_zen4_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(67108864),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l3_cache_citations: List<CacheGeometryCitation> = [
+  CacheGeometryCitation {
+    field: "capacity",
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "3600",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 6,
+  threads: hardware_thread_count(12),
+  nominal_sustained_per_thread_hz: hertz(3600000000),
+  socket: CpuSocket { package: PinGridArray, contact_count: 1331 },
+  tdp_watts: watt(65),
+  l1_cache: amd_zen2_l1_cache_geometry,
+  l1_cache_citations: amd_zen2_l1_cache_citations,
+  l2_cache: amd_zen2_l2_cache_geometry,
+  l2_cache_citations: amd_zen2_l2_cache_citations,
+  l3_cache: amd_zen2_l3_cache_geometry,
+  l3_cache_citations: amd_zen2_l3_cache_citations,
+}
+
+data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "8700GE",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 8,
+  threads: hardware_thread_count(16),
+  nominal_sustained_per_thread_hz: hertz(3300000000),
+  socket: CpuSocket { package: PinGridArray, contact_count: 1718 },
+  tdp_watts: watt(65),
+  l1_cache: amd_zen4_l1_cache_geometry,
+  l1_cache_citations: amd_zen4_l1_cache_citations,
+  l2_cache: amd_zen4_l2_cache_geometry,
+  l2_cache_citations: amd_zen4_l2_cache_citations,
+  l3_cache: amd_zen4_l3_cache_geometry,
+  l3_cache_citations: amd_zen4_l3_cache_citations,
+}
+
+data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "7950X3D",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 16,
+  threads: hardware_thread_count(32),
+  nominal_sustained_per_thread_hz: hertz(4200000000),
+  socket: CpuSocket { package: PinGridArray, contact_count: 1718 },
+  tdp_watts: watt(120),
+  l1_cache: amd_zen4_l1_cache_geometry,
+  l1_cache_citations: amd_zen4_l1_cache_citations,
+  l2_cache: amd_zen4_l2_cache_geometry,
+  l2_cache_citations: amd_zen4_l2_cache_citations,
+  l3_cache: amd_zen4_l3_cache_geometry,
+  l3_cache_citations: amd_zen4_l3_cache_citations,
+}
+
+data ryzen_5_3600_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_5_3600_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(3600000000),
+  },
+}
+
+data ryzen_7_pro_8700ge_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_7_pro_8700ge_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(3300000000),
+  },
+}
+
+data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_9_7950x3d_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(4200000000),
+  },
+}

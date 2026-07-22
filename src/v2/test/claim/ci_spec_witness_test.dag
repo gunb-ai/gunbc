@@ -15,8 +15,7 @@ import gunbc.ci_spec {
   scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_floor_build_verify_script,
   ci_repo_root_shell,
-  ci_documentation_only_floor_policy_note,
-  compile_clean_floor_skip_witness_bin,
+  ci_documentation_only_floor_shortcut_retired_note,
 }
 import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
@@ -198,25 +197,15 @@ fn witness_workflow_run_is_floor_only_script() -> Bool {
   gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
 }
 
-fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
+fn witness_documentation_only_floor_shortcut_retired() -> Bool {
   let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
-    string_contains(s: script, pattern: merge_admission_floor_disposition_documentation_only_skipped) &&
-    string_contains(s: script, pattern: ci_floor_disposition_marker_path) &&
-    string_contains(s: script, pattern: "mkdir -p target") &&
-    string_contains(s: script, pattern: compile_clean_floor_skip_witness_bin) &&
-    string_contains(s: script, pattern: "documentation_only_skip") &&
-    string_contains(s: script, pattern: "--plan-entry src/v2/workflow/ci_floor_plan.dag") &&
-    string_contains(s: script, pattern: "--plan-function gunbc_ci_plan_artifact_batches") &&
-    string_contains(s: script, pattern: merge_admission_stamp_invoke()) &&
-    string_contains(s: script, pattern: "--source-root dag") &&
-    string_contains(s: script, pattern: ci_documentation_only_floor_policy_note) &&
-    string_contains(s: script, pattern: "affected-set compile-clean skip") &&
-    !string_contains(s: script, pattern: "CI_FLOOR_EXIT=0") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == docs/* ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
-    !string_contains(s: script, pattern: "PLAN_ARTIFACT_ONLY") &&
-    !string_contains(s: script, pattern: "printf '%s")
+  string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_retired_note) &&
+    string_contains(s: script, pattern: "gunbc#7023") &&
+    !string_contains(s: script, pattern: "_ci_floor_skip=$(\"") &&
+    !string_contains(s: script, pattern: "if [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then") &&
+    !string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
+    !string_contains(s: script, pattern: "CI_FLOOR_DISPOSITION=documentation_only_skipped") &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
 }
 
 fn witness_merge_base_ref_single_authority() -> Bool {
@@ -251,16 +240,14 @@ fn witness_floor_disposition_marker_init_emits_dissolve_on_in_floor_runner() -> 
   string_contains(s: gunbc_ci_floor_only_script(spec: gunbc_ci_spec), pattern: marker)
 }
 
-fn witness_floor_disposition_marker_initialized_before_docs_only_branch() -> Bool {
+fn witness_floor_disposition_marker_initialized_at_floor_start() -> Bool {
   let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   let stamp = concat(
     concat("echo ", merge_admission_floor_disposition_floor_running),
     concat(" > ", ci_floor_disposition_marker_path)
   )
   string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
-    string_contains(s: script, pattern: stamp) &&
-    string_contains(s: script, pattern: compile_clean_floor_skip_witness_bin) &&
-    string_contains(s: script, pattern: "2>/dev/null || echo run_full_floor")
+    string_contains(s: script, pattern: stamp)
 }
 
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
@@ -284,8 +271,8 @@ test fn ci_spec_witnesses() -> Bool {
     witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_floor_only_script() &&
-    witness_documentation_only_shortcut_in_floor_script() &&
-    witness_floor_disposition_marker_initialized_before_docs_only_branch() &&
+    witness_documentation_only_floor_shortcut_retired() &&
+    witness_floor_disposition_marker_initialized_at_floor_start() &&
     witness_floor_disposition_marker_init_dissolve_on_named() &&
     witness_floor_disposition_marker_init_emits_dissolve_on_in_floor_runner() &&
     witness_merge_base_ref_single_authority() &&
