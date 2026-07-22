@@ -21570,8 +21570,15 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
     let index = build_multi_entry_index(&roots);
+    let mut entry_cache = std::collections::HashMap::new();
     matches!(
-        commit_witness_claim_pair_resolvability_with_index(&index, &roots, entry, function),
+        commit_witness_claim_pair_resolvability_with_index(
+            &index,
+            &roots,
+            entry,
+            function,
+            &mut entry_cache,
+        ),
         CommitWitnessClaimPairResolvability::Resolvable
     )
 }
@@ -21645,22 +21652,6 @@ fn commit_witness_claim_pair_resolvability_with_index(
             }
         }
     }
-}
-
-fn commit_witness_claim_pair_resolvability(
-    entry: &str,
-    function: &str,
-) -> CommitWitnessClaimPairResolvability {
-    let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
-    let mut entry_cache = std::collections::HashMap::new();
-    commit_witness_claim_pair_resolvability_with_index(
-        &index,
-        &roots,
-        entry,
-        function,
-        &mut entry_cache,
-    )
 }
 
 pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
