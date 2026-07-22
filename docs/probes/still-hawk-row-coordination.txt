@@ -1,7 +1,7 @@
-# Dual-lane census CLI exclude coordination (ephemeral --exclude-subpath only; NO authority bake)
-# Git-readable pin for fierce-heron-512 oracle witness (derived(tip) == recovered-83 set equality).
-# Recovered 2026-07-21 on tip 655352 — 4 iterations (27 seeds -> 83 rows).
-# Authority rows remain still-hawk #6967; this lane does NOT bake into ci_layer_roots.
+# Dual-lane census CLI exclude coordination (ephemeral --exclude-subpath probe override only)
+# Historical drift witness: fierce-heron-512 oracle pin (derived(tip) may diverge post-#6938 strip).
+# Authority: whole_tree_probe_exclusion_substrings() in cli_run/census_exclude_derive (pattern ∪ derived closure).
+# Recovered 2026-07-21 on tip 655352 — 4 iterations (27 seeds -> 83 rows) under prior strict semantics.
 
 ## Paths (git-readable on session/stern-newt-142)
 EXCLUDE_LIST: docs/probes/census_extra_excludes.txt

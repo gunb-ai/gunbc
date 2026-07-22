@@ -50,7 +50,7 @@ ExecStart=/usr/bin/rsync -rlpt "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
 GUNBC_TREE_SYNC_EOF
 sudo -n install -m 0644 "$_gunbc_stage/gunbc-tree-sync.service" /etc/systemd/system/gunbc-tree-sync.service
 sudo -n systemctl daemon-reload
-sudo -n systemctl restart gunbc-tree-sync.service
+sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }
 sudo -n install -d -m 0755 /opt/gunbc/bin
 sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc
 sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees

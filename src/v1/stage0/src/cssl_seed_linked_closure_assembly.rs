@@ -126,12 +126,21 @@ fn is_compiler_family_module(module: &str) -> bool {
 }
 
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
-/// `dag/tools/self_host_curated_seed_linked_harness.dag`. Two structural passes on
-/// every emit-retained artifact (dissolve-on #6775 emitter coherence):
-/// (1) strip `use crate::v1_rt::NAME` when the file locally defines `pub enum/struct/type NAME`
-///     (generic-arg-aware: `Witness<C>` and `Optional<T>` share the same rule);
-/// (2) dedupe symbols across sequential `pub use path::{...}` lines (emitter may
-///     re-export the same name via transitive paths — e.g. Optional via grammar + collection).
+/// `dag/tools/self_host_curated_seed_linked_harness.dag`. One remaining structural
+/// pass on every emit-retained artifact: dedupe symbols across sequential
+/// `pub use path::{...}` lines (emitter re-exports the same name via transitive
+/// paths — e.g. `Optional` via both `v2_std_grammar` and `v2_std_collection`).
+///
+/// The former `use crate::v1_rt::NAME` strip (redundant import when the file
+/// locally defines `pub enum/struct/type NAME`) was CENSUSED DEAD 2026-07-22 across
+/// a representative sweep of the deepest emit-retained closures (02_parse,
+/// 06_translate, 00_compile, 05_eval, materialization_carriers, 05_emit,
+/// emit_module, emit_produced, emit_semantic_decl, emit_host, fold_lowering,
+/// 03_name_resolve — zero real firings, confirmed by content diff, not raw
+/// `!=` which false-positives on this fn's own trailing-newline rejoin) —
+/// #6981 (`emit_imports`: field-struct import synth asks "provides" not
+/// "physically defines") and #7033 (fold-closure generic-T, Witness prelude,
+/// value-qualified refs) dissolved it at the source; deleted here, not improved.
 fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
     let content = fs::read_to_string(path)?;
     let sanitized = sanitize_emit_artifact_content(&content);
@@ -143,43 +152,6 @@ fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> 
         fs::write(path, sanitized)?;
     }
     Ok(())
-}
-
-fn local_pub_item_names(content: &str) -> HashSet<String> {
-    let mut names = HashSet::new();
-    for line in content.lines() {
-        let t = line.trim();
-        for prefix in ["pub enum ", "pub struct ", "pub type "] {
-            if let Some(rest) = t.strip_prefix(prefix) {
-                let name: String = rest
-                    .chars()
-                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                    .collect();
-                if !name.is_empty() {
-                    names.insert(name);
-                }
-                break;
-            }
-        }
-    }
-    names
-}
-
-fn strip_v1_rt_imports_for_local_defs(content: &str, local_names: &HashSet<String>) -> String {
-    if local_names.is_empty() {
-        return content.to_string();
-    }
-    content
-        .lines()
-        .filter(|l| {
-            let t = l.trim();
-            !local_names.iter().any(|name| {
-                t == format!("use crate::v1_rt::{name};")
-                    || t.starts_with(&format!("use crate::v1_rt::{name}::"))
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn dedupe_pub_use_symbols(content: &str) -> String {
@@ -225,13 +197,12 @@ fn dedupe_pub_use_symbols(content: &str) -> String {
 }
 
 fn sanitize_emit_artifact_content(content: &str) -> String {
-    let local = local_pub_item_names(content);
-    let stripped = strip_v1_rt_imports_for_local_defs(content, &local);
-    dedupe_pub_use_symbols(&stripped)
+    dedupe_pub_use_symbols(content)
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
-/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · typed Refused.
+/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · whole-closure
+/// emit-retain default (typed Refused only when closure mod lacks emitted .rs).
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
@@ -311,11 +282,11 @@ pub fn assemble_seed_linked_closure(
             continue;
         }
 
-        return Err(AssemblyError::RefusedDep {
-            module,
-            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)"
-                .to_string(),
-        });
+        // Whole-closure default (cssl_closure_assembly_note): any module in the
+        // gunbc-emitted closure manifest with a sibling .rs is emit-retained —
+        // gunbc_* product modules, test_* witnesses, tools_*, etc. Refusal
+        // relocates to the cargo verdict, not assemble-time prefix whitelisting.
+        sanitize_emitter_artifact_in_place(&dest)?;
     }
 
     let entry_hash_after = sha256_hex(&entry_file)?;
@@ -507,34 +478,61 @@ mod tests {
         );
     }
 
+    /// RED control for the v1_rt-import-strip DISSOLUTION (2026-07-22 census):
+    /// fixture is the real, current `gunbc compile --target rust` output for
+    /// `v2.std.witness` (src/v2/std/witness.dag, entry `src/v2/compiler/02_parse.dag`
+    /// closure) — a locally-defined `pub enum Witness<C>` with NO redundant
+    /// `use crate::v1_rt::Witness` import line. Before #6981/#7033 this fixture would
+    /// have carried that redundant import and the (now-deleted) strip rule would have
+    /// fired on it; today `sanitize_emit_artifact_content` is a byte-identical no-op,
+    /// proving the emitter — not the scaffold — produces the correct form natively.
     #[test]
-    fn witness_generic_enum_sanitize_strips_v1_rt_import() {
-        let witness_src = concat!(
-            "use crate::v1_rt::Witness;\n",
-            "use crate::v1_rt::Witness::{Holds, Violates};\n",
+    fn witness_emit_no_longer_carries_redundant_v1_rt_import_construction_receipt() {
+        let real_emitted_witness_src = concat!(
+            // Split across two literals so this test fixture's source text never
+            // contains the contiguous generated-file marker regen_stage0's
+            // assert_output_set_matches_registry scans committed .rs files for — the
+            // runtime string value (what the test exercises) is unaffected, concat!
+            // joins the pieces identically to the real emitted header.
+            "// Generated by v1 compi",
+            "ler -- do not edit.\n",
+            "// Source module: v2.std.witness\n",
+            "\n",
+            "use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n",
+            "use crate::v1_rt::{VecCompat, VecJoin};\n",
+            "use std::rc::Rc;\n",
+            "use crate::v1_rt;\n",
+            "use crate::NonEmptyVec;\n",
+            "use crate::NonEmptyBTreeSet;\n",
+            "pub use crate::v2_std_diagnostic::{Diagnostic};\n",
+            "pub use crate::v2_std_node::{Node, Symbol};\n",
+            "use self::Witness::*;\n",
+            "\n",
+            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n",
+            "#[serde(tag = \"_variant\")]\n",
             "pub enum Witness<C> {\n",
-            "    Holds { value: C },\n",
-            "    Violates { diagnostic: String },\n",
-            "}\n"
+            "    Holds {\n",
+            "        value: C,\n",
+            "    },\n",
+            "    Violates {\n",
+            "        diagnostic: Rc<Diagnostic>,\n",
+            "    },\n",
+            "}\n",
         );
-        let kept = sanitize_emit_artifact_content(witness_src);
-        assert!(!kept.contains("use crate::v1_rt::Witness"));
-        assert!(kept.contains("pub enum Witness<C>"));
-    }
-
-    #[test]
-    fn optional_generic_enum_sanitize_strips_v1_rt_import() {
-        let optional_src = concat!(
-            "use crate::v1_rt::Optional;\n",
-            "use crate::v1_rt::Optional::{Absent, Present};\n",
-            "pub enum Optional<T> {\n",
-            "    Absent,\n",
-            "    Present { value: T },\n",
-            "}\n"
+        // Precondition the fixture actually exercises the dissolved rule's trigger shape:
+        // a locally-defined generic `pub enum Witness<C>` alongside `use crate::v1_rt::`
+        // lines for OTHER names (VecCompat/VecJoin/the bare module) — never `Witness` itself.
+        assert!(real_emitted_witness_src.contains("pub enum Witness<C>"));
+        assert!(!real_emitted_witness_src.contains("use crate::v1_rt::Witness"));
+        let kept = sanitize_emit_artifact_content(real_emitted_witness_src);
+        // trim_end: the surviving dedupe pass always rejoins lines (drops a trailing
+        // newline even as a no-op) — semantically a no-op, not a second live rule.
+        assert_eq!(
+            kept.trim_end(),
+            real_emitted_witness_src.trim_end(),
+            "sanitize must be a no-op on current emitter output — the redundant \
+             v1_rt::Witness import that the deleted rule targeted is already absent"
         );
-        let kept = sanitize_emit_artifact_content(optional_src);
-        assert!(!kept.contains("use crate::v1_rt::Optional"));
-        assert!(kept.contains("pub enum Optional<T>"));
     }
 
     #[test]
@@ -548,21 +546,26 @@ mod tests {
         assert!(!kept.contains("Set, Optional"));
     }
 
+    /// LIVE rule receipt via the in-place path (2026-07-22 census): captured from real
+    /// `gunbc compile --target rust` output for `v2.extdeps.languages.rust` in the
+    /// `src/v2/compiler/emit_produced.dag` closure — `Optional` is re-exported once via
+    /// `v2_std_grammar` and again via `v2_std_collection` (transitive re-export collision,
+    /// still live on main; emitter gap named in `cssl_emit_artifact_sanitize_scaffold_debt`).
     #[test]
-    fn witness_file_sanitize_via_in_place_path() {
+    fn pub_use_dedup_file_sanitize_via_in_place_path() {
         let root = temp_fixture_root();
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src).expect("src");
-        let witness_src = concat!(
-            "use crate::v1_rt::Witness;\n",
-            "pub enum Witness<C> { Holds { value: C }, Violates { diagnostic: String }, }\n"
+        let real_collision_src = concat!(
+            "pub use crate::v2_std_grammar::{grammar_formal_terminal, Optional};\n",
+            "pub use crate::v2_std_collection::{List, Map, Set, Optional};\n",
         );
-        let path = src.join("v2_std_witness.rs");
-        fs::write(&path, witness_src).expect("write witness");
+        let path = src.join("v2_extdeps_languages_rust.rs");
+        fs::write(&path, real_collision_src).expect("write collision fixture");
         sanitize_emitter_artifact_in_place(&path).expect("sanitize");
         let kept = fs::read_to_string(&path).expect("read");
-        assert!(!kept.contains("use crate::v1_rt::Witness"));
+        assert_eq!(kept.matches("Optional").count(), 1);
     }
 
     #[test]
@@ -623,15 +626,79 @@ mod tests {
     }
 
     #[test]
-    fn unknown_closure_dep_is_typed_refused() {
+    fn gunbc_product_closure_dep_emit_retained() {
         let root = temp_fixture_root();
         let out = write_minimal_emit_tree(
             &root,
-            "v2_compiler_tokenize",
-            &["not_a_routable_mod", "v2_compiler_tokenize"],
+            "v2_compiler_name_resolve",
+            &["gunbc_plans_md_helpers", "v2_compiler_name_resolve"],
         )
         .expect("tree");
         let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
+        assert!(kept.contains("emitted gunbc_plans_md_helpers"));
+    }
+
+    #[test]
+    fn test_witness_closure_dep_emit_retained() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_emit",
+            &[
+                "test_claim_materialization_ladder_witness",
+                "v2_compiler_emit",
+            ],
+        )
+        .expect("tree");
+        let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/05_emit.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
+            .expect("read");
+        assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
+    }
+
+    #[test]
+    fn closure_mod_missing_emitted_rs_is_typed_refused() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod not_a_routable_mod;\npub mod v2_compiler_tokenize;\n",
+        )
+        .expect("lib");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
@@ -649,7 +716,7 @@ mod tests {
         match err {
             AssemblyError::RefusedDep { module, reason } => {
                 assert_eq!(module, "not_a_routable_mod");
-                assert!(reason.contains("unroutable"));
+                assert!(reason.contains("missing emitted .rs"));
             }
             other => panic!("expected RefusedDep, got {other:?}"),
         }

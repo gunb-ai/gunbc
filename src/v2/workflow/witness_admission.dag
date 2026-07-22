@@ -2,6 +2,8 @@ module v2.workflow.witness_admission
 
 import gunbc.ci_layer_roots {
   witness_exclusion_substrings,
+  whole_tree_strict_resolve_exclusion_substrings,
+  whole_tree_resolve_exclusion_substrings,
   bin_witness_wet_entries,
   known_red_probe_entries,
   witness_admission_offline_exclusion_substrings,
@@ -10,7 +12,8 @@ import gunbc.ci_layer_roots {
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import std.realization_schedule {
   ScheduleWitnessEntry,
-  schedule_witness_entry_eq
+  schedule_witness_entry_eq,
+  string_list_eq
 }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
@@ -175,4 +178,62 @@ fn witness_admission_manifest_covers_row(entry: String, function: String) -> Boo
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
+}
+
+fn exclusion_substring_aligns_with_authority(sub: String, authority: List<String>) -> Bool {
+  any(
+    xs: authority,
+    predicate: fn(row) {
+      string_contains(s: row, pattern: sub)
+    }
+  )
+}
+
+fn witness_admission_offline_exclusion_rows_align_with_discovery_holds() -> Bool {
+  !any(
+    xs: witness_admission_offline_exclusion_substrings,
+    predicate: fn(sub) {
+      !exclusion_substring_aligns_with_authority(
+        sub: sub,
+        authority: witness_exclusion_substrings
+      )
+    }
+  )
+}
+
+fn witness_admission_fixture_exclusion_rows_align_with_discovery_holds() -> Bool {
+  !any(
+    xs: witness_admission_fixture_exclusion_substrings,
+    predicate: fn(sub) {
+      !exclusion_substring_aligns_with_authority(
+        sub: sub,
+        authority: witness_exclusion_substrings
+      )
+    }
+  )
+}
+
+fn witness_admission_offline_fixture_exclusion_rows_disjoint_holds() -> Bool {
+  !any(
+    xs: witness_admission_offline_exclusion_substrings,
+    predicate: fn(offline) {
+      any(
+        xs: witness_admission_fixture_exclusion_substrings,
+        predicate: fn(fixture) {
+          string_contains(s: offline, pattern: fixture)
+            || string_contains(s: fixture, pattern: offline)
+        }
+      )
+    }
+  )
+}
+
+fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {
+  string_list_eq(
+    left: whole_tree_resolve_exclusion_substrings(),
+    right: concat(
+      witness_exclusion_substrings,
+      whole_tree_strict_resolve_exclusion_substrings
+    )
+  )
 }

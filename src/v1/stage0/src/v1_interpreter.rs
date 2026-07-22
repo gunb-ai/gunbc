@@ -8560,13 +8560,16 @@ fn eval_builtin_inner(
                 .unwrap_or_default();
             let mut param_bindings = HashMap::new();
             param_bindings.insert("package".to_string(), Value::Str(package));
-            param_bindings.insert("bin".to_string(), Value::Str(bin));
+            param_bindings.insert("bin".to_string(), Value::Str(bin.clone()));
             param_bindings.insert(
                 "args".to_string(),
                 list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
             );
             if !unit.is_empty() {
                 param_bindings.insert("unit".to_string(), Value::Str(unit));
+            }
+            if !bin.is_empty() {
+                param_bindings.insert("property".to_string(), Value::Str(bin));
             }
             let argv =
                 materialize_shell_argv_for_operation(path, service, operation, param_bindings)
