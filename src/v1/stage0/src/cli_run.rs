@@ -1910,19 +1910,12 @@ fn call_compile_clean_bool_list_fn(
     let roots = default_source_roots();
     let (graph, indices) = resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
         .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))?;
-    let ctx = make_eval_context(
-        &graph,
-        indices,
-        v1_interpreter::ExecutionMode::Hermetic,
-    );
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let values: Vec<v1_interpreter::Value> = paths
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
-    let args = [(
-        Some(arg_name.to_string()),
-        list_value_from_vec(values),
-    )];
+    let args = [(Some(arg_name.to_string()), list_value_from_vec(values))];
     match v1_interpreter::run_in_context_with_args(&ctx, fn_name, &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
         Ok(other) => Err(format!(
@@ -1941,7 +1934,9 @@ fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bo
     ) {
         Ok(b) => b,
         Err(msg) => {
-            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            eprintln!(
+                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
+            );
             false
         }
     }
@@ -1955,7 +1950,9 @@ fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> bool 
     ) {
         Ok(b) => b,
         Err(msg) => {
-            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            eprintln!(
+                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
+            );
             false
         }
     }
@@ -1970,7 +1967,9 @@ fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -
     ) {
         Ok(b) => b,
         Err(msg) => {
-            eprintln!("compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline");
+            eprintln!(
+                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
+            );
             true
         }
     }
@@ -10878,9 +10877,8 @@ fn discover_floor_corpus_rows_from_dag_producer(
         let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) =
-        resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let source_root_values: Vec<v1_interpreter::Value> = source_roots
         .iter()
@@ -10990,9 +10988,7 @@ struct FloorLensImportGraph {
     lens_with_justification: std::collections::BTreeSet<String>,
 }
 
-fn build_floor_lens_import_graph(
-    source_roots: &[String],
-) -> Result<FloorLensImportGraph, String> {
+fn build_floor_lens_import_graph(source_roots: &[String]) -> Result<FloorLensImportGraph, String> {
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
@@ -11176,10 +11172,8 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     match build_floor_lens_import_graph(&roots) {
         Ok(graph) => {
             match discover_floor_corpus_rows_from_dag_producer(&roots, &scan_dirs, &excludes) {
-                Ok(rows) => {
-                    inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len()
-                        as i64
-                }
+                Ok(rows) => inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path)
+                    .len() as i64,
                 Err(_) => -1,
             }
         }
@@ -11214,10 +11208,9 @@ fn discover_floor_corpus_rows_inner(
             exclude_substrings,
             discovery_scope_dirs,
         )?;
-        let dag_fp = discover_floor_corpus_rows_roster_fingerprint(&apply_discovery_scope_dirs_filter(
-            rows.clone(),
-            discovery_scope_dirs,
-        ));
+        let dag_fp = discover_floor_corpus_rows_roster_fingerprint(
+            &apply_discovery_scope_dirs_filter(rows.clone(), discovery_scope_dirs),
+        );
         let legacy_fp = discover_floor_corpus_rows_roster_fingerprint(&legacy);
         if dag_fp != legacy_fp {
             panic!(
