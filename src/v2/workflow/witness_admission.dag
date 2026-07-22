@@ -9,7 +9,7 @@ import gunbc.ci_layer_roots {
   witness_admission_offline_exclusion_substrings,
   witness_admission_fixture_exclusion_substrings
 }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import std.realization_schedule {
   ScheduleWitnessEntry,
   schedule_witness_entry_eq,
@@ -65,6 +65,12 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
 fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessConsumerCadence {
   if schedule_contains_entry(
     xs: falsifier_self_host_wet_entries(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierSelfHostWet
+  } else if schedule_contains_entry(
+    xs: falsifier_native_cache_cold_roster(),
     entry: entry,
     function: function
   ) {
