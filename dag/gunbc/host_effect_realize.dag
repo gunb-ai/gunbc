@@ -337,14 +337,12 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SudoNopasswdExecuteProbe { probe: _ } =>
                   IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-<<<<<<< HEAD
                 HostIdentityShortHostnameRead =>
                   IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SystemdUnitMemoryMaxRead { unit: _ } =>
                   IncompatibleCell { reason: "host_effect: SystemdUnitMemoryMaxRead is in-band (shell/systemctl show) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SystemdUnitMemoryPropertiesRead { unit: _ } =>
                   IncompatibleCell { reason: "host_effect: SystemdUnitMemoryPropertiesRead is in-band (shell/systemctl show) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-=======
                 LiveDeployApply { spec: _ } =>
                   IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 LiveDeployRetract { spec: _ } =>
@@ -356,7 +354,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 DeployAccessPreflight {} =>
                   IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
               }
->>>>>>> origin/main
               }
           }
       }
