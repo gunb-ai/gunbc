@@ -1,5 +1,12 @@
 module extdeps.cpu.amd
 
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
+  }
+}
+
 data amd_ryzen_product_page_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
