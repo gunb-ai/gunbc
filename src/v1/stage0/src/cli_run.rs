@@ -21365,6 +21365,44 @@ mod reference_edge_producer_tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// Repro for main-red false edges: prelude bare names in import-less std files must not
+    /// surface cross-layer dependency edges (layering-imports gate §5).
+    #[test]
+    fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
+        use super::layer_import_facts;
+
+        let std_roots = vec![
+            "src/v2/std".to_string(),
+            "dag/std".to_string(),
+        ];
+        let extdeps_roots = vec![
+            "src/v2/extdeps".to_string(),
+            "dag/extdeps".to_string(),
+        ];
+        let facts = layer_import_facts(&std_roots, &extdeps_roots);
+        let violations: Vec<_> = facts
+            .iter()
+            .filter(|f| {
+                f.layer == "LayerPrefixStd"
+                    && (f.import_module.starts_with("extdeps.")
+                        || f.import_module.starts_with("v2.compiler"))
+            })
+            .collect();
+        if !violations.is_empty() {
+            for v in &violations {
+                eprintln!(
+                    "FALSE EDGE: {} -> {} (layer={})",
+                    v.path, v.import_module, v.layer
+                );
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "prelude bare names must not produce false std->extdeps/compiler edges (got {})",
+            violations.len()
+        );
+    }
 }
 
 #[cfg(test)]
