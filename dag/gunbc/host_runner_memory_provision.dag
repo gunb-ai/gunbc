@@ -23,13 +23,21 @@ import gunbc.host_effect {
   host_effect_converge_loop_evidence,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.host_converge_realize { interpret_converge_knob, KnobUnimplemented }
 import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 import std.realization_reconcile { Converged, NotConverged }
 
-data host_runner_memory_provision_scope_disposition: Disposition = Terminal {
-  reason: "srv3 runner memory caps via host-standup converge (operator mandate 2026-07-21): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs derived from gunbc.runner_slot_allocation single authority, applied as a ConvergePlan host-effect ensure on the assimilation spine (P1:runner-deploy-slot), routed through host_effect_apply_gated — never hand systemctl or raw drop-ins. Values are never fresh literals; per-unit caps derive from gunbc_runner_slot_desired() and runner_instance_glob(host). Read-back is mandatory: applied-without-read-back refuses (per_slot_memory_cap_verdict_from_unit_read). FreshStandup apply mode for srv3 is host_converge.gunbc_apply_mode_for_host, not a separate cap row. Live host mutation requires deploy access; absent access yields a typed refusal naming the host."
+data host_runner_memory_provision_scope_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge_realize",
+    decl_name: "interpret_converge_knob",
+    field: WholeDeclaration,
+  },
 }
+
+data host_runner_memory_provision_scope_note: String = "Path (b) modeled ConvergePlan ensure on assimilation spine (P1:runner-deploy-slot): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs from gunbc.runner_slot_allocation, shaped as host_effect_apply_gated → ConvergePlan — never hand systemctl. LIVE APPLY refuses at host_converge_realize PerSlotMemoryCap KnobUnimplemented until interpreter lands (plan-emit EMIT CLAIMS NOTHING + verify-only read-back is the operator close). Read-back verdict helper (per_slot_memory_cap_verdict_from_unit_read) is mandatory on the verify path; apply-path read-back is dissolve-on with the realize scaffold."
 
 data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -77,6 +85,23 @@ fn runner_memory_host_converge(host: HostIdentity) -> HostConverge? {
 
 fn runner_memory_cap_readback_verdict(read: RunnerUnitMemoryLiveRead, knob: ConvergeKnob) -> ConvergeVerdict? {
   per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
+}
+
+fn runner_memory_knob_apply_frontier_is_unimplemented(knob: ConvergeKnob) -> Bool {
+  match interpret_converge_knob(knob: knob) {
+    KnobUnimplemented { target_kind: kind, knob_name: _, reason: _ } => kind == "PerSlotMemoryCap"
+  }
+}
+
+fn host_runner_memory_provision_scope_binds_realize_frontier() -> Bool {
+  match host_runner_memory_provision_scope_disposition {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_converge_realize" && n == "interpret_converge_knob"
+    Terminal { reason: _ } => false
+  }
 }
 
 fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {

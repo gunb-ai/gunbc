@@ -344,7 +344,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P1:runner-deploy-slot",
     modeling: "modeled",
-    authority_or_interim: "gunbc.runner_slot_allocation.gunbc_runner_slot_desired + gunbc.host_runner_memory_provision.provision_runner_memory_caps (MemoryMax/MemoryHigh via ConvergePlan host-effect ensure + read-back) + gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
+    authority_or_interim: "gunbc.runner_slot_allocation.gunbc_runner_slot_desired + gunbc.host_runner_memory_provision.provision_runner_memory_caps (MemoryMax/MemoryHigh modeled ConvergePlan; live apply on PerSlotMemoryCap realize frontier — path (b) plan-emit + verify-only) + gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
   },
   GapLedgerRow {
     phase_label: "P1b:build-cache-provision",

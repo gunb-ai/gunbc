@@ -29,6 +29,8 @@ data runner_memory_cap_plan_record_knobs: SerializationKnobs = {
 
 data runner_memory_cap_plan_emit_disclaimer: String = "RUNNER-MEMORY-CAP APPLY SHEET — EMIT CLAIMS NOTHING: typed projection of fleet_converge_policy memory-cap knobs (per_slot_memory_max_bytes, per_slot_memory_high_bytes, per_slot_memory_swap_max_bytes) for operator hand-apply only. Modeled-but-not-applied until a separate verify-only receipt reads Converged on the runner instance glob. This emission does not invoke host_effect_apply, systemctl, or any host mutation."
 
+data memory_cap_plan_row_kind_guard_note: String = "memory_cap_plan_row_is_per_slot_memory_cap is a structural ConvergeTarget coproduct guard for plan-emit projection only — PerSlotMemoryCap rows serialize; any other arm emits an UNSOUND line (fail-closed, not silent skip). Dissolve-on: host_converge_realize PerSlotMemoryCap interpreter retires the hand-apply sheet."
+
 fn memory_cap_plan_row_is_per_slot_memory_cap(knob: ConvergeKnob) -> Bool {
   match knob.target {
     PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
