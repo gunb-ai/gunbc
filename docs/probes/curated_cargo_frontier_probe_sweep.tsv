@@ -1,2 +1,5 @@
 # classifier_stamp: rule1-first-error-dup-harness-unknown-unresolved-v2
 module	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/02_parse.dag	74 files emitted, 55 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`
+src/v2/compiler/03_ingest.dag	143 files emitted, 255 diagnostics	refuse	error: expected one of `(`, `.`, `::`, `=>`, `?`, `if`, `|`, or an operator, found `{`	UNKNOWN_emit_shape	UNKNOWN-error:_expected_one_of_`(`,_`.`,_`::`,_`=>`,_`?`,_`if`,_`|`,_or_an_operator,_fou
+src/v2/compiler/06_translate.dag	59 files emitted, 8 diagnostics	refuse	error[E0433]: cannot find type `UriScheme` in this scope	namespace_resolution	CONFIRMED-namespace
