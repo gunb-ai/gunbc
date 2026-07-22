@@ -6,7 +6,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import product.placement_supply { HostIdentity }
-import extdeps.os.systemd { systemd_memory_max_property, systemd_memory_current_property, parse_systemd_memory_limit_show, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
+import extdeps.os.systemd {
+  systemd_memory_max_property,
+  MemoryMax,
+  MemoryCurrent,
+  parse_systemd_memory_limit_show,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  MemoryLimitAbsent,
+}
+import gunbc.systemctl_show_read { systemctl_show_property_read_local }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count }
@@ -32,7 +41,6 @@ import gunbc.runner_unit_live_read {
   runner_unit_usage_exceeds_bytes,
 }
 import gunbc.fleet_show_effective_read {
-  fleet_runner_unit_property_read_script,
   per_slot_memory_cap_verdict_from_unit_read,
 }
 
@@ -135,8 +143,8 @@ fn host_converge_slice1_probed_at() -> NonEmptyStr? {
   }
 }
 
-fn host_converge_slice1_memory_max_read_script(unit: NonEmptyStr) -> String {
-  fleet_runner_unit_property_read_script(unit: unit, property: systemd_memory_max_property)
+fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
+  systemctl_show_property_read_local(unit: unit, property: MemoryMax)
 }
 
 fn host_converge_slice1_memory_max_set_script(unit: NonEmptyStr, bytes_value: String) -> String {
@@ -144,16 +152,6 @@ fn host_converge_slice1_memory_max_set_script(unit: NonEmptyStr, bytes_value: St
     concat(concat("systemctl set-property \"", unit, "\" MemoryMax="), bytes_value),
     " 2>&1"
   )
-}
-
-fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_memory_max_read_script(unit: unit)))
-  if result.success {
-    let raw = trim(result.stdout)
-    if raw == "" { none } else { Present { value: raw } }
-  } else {
-    none
-  }
 }
 
 fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
@@ -237,14 +235,7 @@ type HostConvergeSlice1UsageGuardOutcome
 data host_converge_slice1_usage_guard_placeholder_probed_at: NonEmptyStr = "host_converge_slice1_usage_guard"
 
 fn host_converge_slice1_read_memory_current_raw(unit: NonEmptyStr) -> String? {
-  let script = fleet_runner_unit_property_read_script(unit: unit, property: systemd_memory_current_property)
-  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
-  if result.success {
-    let raw = trim(result.stdout)
-    if raw == "" { none } else { Present { value: raw } }
-  } else {
-    none
-  }
+  systemctl_show_property_read_local(unit: unit, property: MemoryCurrent)
 }
 
 fn host_converge_slice1_usage_guard(unit: NonEmptyStr, target_bytes_value: String) -> HostConvergeSlice1UsageGuardOutcome {
@@ -312,6 +303,18 @@ fn host_converge_slice1_enumerate_units_script(instance_glob: String) -> String 
   )
 }
 
+fn host_converge_slice1_enumerate_unit_line_trimmed(line: String) -> String {
+  trim(line)
+}
+
+fn host_converge_slice1_enumerate_unit_line_nonempty(line: String) -> Bool {
+  host_converge_slice1_enumerate_unit_line_trimmed(line: line) != ""
+}
+
+fn host_converge_slice1_enumerate_unit_line_as_unit(line: String) -> NonEmptyStr {
+  host_converge_slice1_enumerate_unit_line_trimmed(line: line) as NonEmptyStr
+}
+
 fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
   let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_enumerate_units_script(instance_glob: instance_glob)))
   if result.success {
@@ -319,8 +322,8 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
     if trimmed == "" {
       Present { value: [] }
     } else {
-      let lines = filter(split(s: trimmed, delimiter: "\n"), l => trim(l) != "")
-      Present { value: map(lines, l => trim(l) as NonEmptyStr) }
+      let lines = filter(split(s: trimmed, delimiter: "\n"), host_converge_slice1_enumerate_unit_line_nonempty)
+      Present { value: map(lines, host_converge_slice1_enumerate_unit_line_as_unit) }
     }
   } else {
     none

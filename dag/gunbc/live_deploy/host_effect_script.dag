@@ -33,8 +33,6 @@ import gunbc.host_effect {
   LiveDeployDigestReadback,
   DeployAccessPreflight,
   HostIdentityShortHostnameRead,
-  SystemdUnitMemoryMaxRead,
-  SystemdUnitMemoryPropertiesRead,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.live_deploy.emit {
@@ -102,7 +100,5 @@ fn live_deploy_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3BootOnceReadBackSleep => Absent
     Srv3ReceiptEmit { lines: _ } => Absent
     HostIdentityShortHostnameRead => Absent
-    SystemdUnitMemoryMaxRead { unit: _ } => Absent
-    SystemdUnitMemoryPropertiesRead { unit: _ } => Absent
   }
 }
