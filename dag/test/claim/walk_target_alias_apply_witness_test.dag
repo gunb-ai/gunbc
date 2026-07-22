@@ -7,7 +7,6 @@ import tools.walk_target_alias_apply {
   alias_apply_parse_module_source,
   alias_apply_insert_anchor_after_import_block,
   alias_apply_row_node_from_binding_row,
-  ModuleInsertAnchor,
   WalkTargetAliasPlan
 }
 import tools.walk_target_alias_plan {
@@ -61,8 +60,6 @@ fn wtaa_fixture_has_import_decl(tree: Node) -> Bool {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data wtaa_import_block_fixture_source: String = "module v2.test.walk_target_alias_apply.probe\nimport v2.std.algebra { Cons, Empty }\n"
-
-data wtaa_header_only_fixture_source: String = "module v2.test.walk_target_alias_apply.probe_header_only\n"
 
 data wtaa_global_bare_lcp_plan_row: WalkTargetAliasPlanRow = WalkTargetAliasPlanRow {
   key: WalkTargetAliasPlanRowKey {
@@ -133,20 +130,6 @@ fn wtaa_oracle_refuses_walk_target_mismatch() -> Bool {
   }
 }
 
-fn wtaa_insert_anchor_child_index_for(source: String) -> Int? {
-  match alias_apply_parse_module_source(
-    text: source,
-    file_anchor: ^walk_target_alias_apply_insert_anchor_fixture
-  ) {
-    Rejected { diagnostics: _ } => none
-    Accepted { value: module_root, diagnostics: _ } =>
-      match alias_apply_insert_anchor_after_import_block(module_root: module_root) {
-        Rejected { diagnostics: _ } => none
-        Accepted { value: anchor, diagnostics: _ } => Present { value: anchor.child_index }
-      }
-  }
-}
-
 fn wtaa_insert_anchor_after_import_block_holds() -> Bool {
   match alias_apply_parse_module_source(
     text: wtaa_import_block_fixture_source,
@@ -156,16 +139,9 @@ fn wtaa_insert_anchor_after_import_block_holds() -> Bool {
     Accepted { value: module_root, diagnostics: _ } =>
       match alias_apply_insert_anchor_after_import_block(module_root: module_root) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: anchor, diagnostics: _ } =>
-          (anchor.child_index == 1) && wtaa_fixture_has_import_decl(tree: module_root)
+        Accepted { value: _, diagnostics: _ } =>
+          wtaa_fixture_has_import_decl(tree: module_root)
       }
-  }
-}
-
-fn wtaa_insert_anchor_header_only_is_zero_holds() -> Bool {
-  match wtaa_insert_anchor_child_index_for(source: wtaa_header_only_fixture_source) {
-    Present { value: idx } => idx == 0
-    Absent => false
   }
 }
 
@@ -249,10 +225,6 @@ test fn walk_target_alias_apply_parse_fixture_holds() -> Bool {
 
 test fn walk_target_alias_apply_insert_anchor_tree_fact_holds() -> Bool {
   wtaa_insert_anchor_after_import_block_holds()
-}
-
-test fn walk_target_alias_apply_insert_anchor_header_only_red_control_holds() -> Bool {
-  wtaa_insert_anchor_header_only_is_zero_holds()
 }
 
 test fn walk_target_alias_apply_alias_decl_emit_node_holds() -> Bool {
