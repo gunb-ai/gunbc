@@ -40,6 +40,7 @@ import gunbc.live_deploy.operations {
   systemctl_restart_command,
   systemctl_disable_now_command,
 }
+import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
   Do, If, Run,
@@ -211,6 +212,17 @@ fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> P
   ))
 }
 
+data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
+
+fn tree_sync_restart_step_with_diagnosis() -> PipelineStep {
+  deploy_raw(command: join([
+    systemctl_restart_command(unit: gunbc_tree_sync_unit_name, privileged: true),
+    " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
+    live_deploy_unit_status_tail_command(unit: gunbc_tree_sync_unit_name),
+    " >&2; exit 1; }",
+  ], ""))
+}
+
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   let port = deployment_plan_listen_port(spec: spec)
   If {
@@ -263,7 +275,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
       apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
       deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" ", gunbc_tree_sync_unit_path as String)),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: gunbc_tree_sync_unit_name, privileged: true)),
+      tree_sync_restart_step_with_diagnosis(),
     ]
     ServeBinary => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc/bin"),
