@@ -117,8 +117,28 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
   )
 }
 
+fn floor_discovery_line_has_wire_contract_decl(line: String) -> Bool {
+  let trimmed = trim(line)
+  if starts_with(s: trimmed, prefix: "data ") {
+    string_contains(s: trimmed, pattern: ": CoproductWireContract")
+      || string_contains(s: trimmed, pattern: ": VariantEncoding")
+  } else {
+    false
+  }
+}
+
 fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
-  string_contains(s: content, pattern: ": CoproductWireContract") || string_contains(s: content, pattern: ": VariantEncoding")
+  fold_list(
+    xs: split(s: content, delimiter: "\n"),
+    empty: false,
+    cons: fn(found, line) {
+      if found {
+        true
+      } else {
+        floor_discovery_line_has_wire_contract_decl(line: line)
+      }
+    }
+  )
 }
 
 fn floor_discovery_entry_reads_live_tree_default(content: String) -> LiveTreeDisposition {
@@ -265,14 +285,19 @@ fn floor_discovery_process_dag_file(
 fn floor_discovery_walk_dir(
   state: FloorDiscoveryWalkState,
   dir_path: String,
-  exclude_substrings: List<String>
+  exclude_substrings: List<String>,
+  list_failure_is_fatal: Bool
 ) -> FloorDiscoveryWalkState {
   let listed = Filesystem.List(path: dir_path)
   if !listed.success {
-    FloorDiscoveryWalkState {
-      rows: state.rows,
-      walk_failures: state.walk_failures + 1,
-      sidecar_violations: state.sidecar_violations
+    if list_failure_is_fatal {
+      FloorDiscoveryWalkState {
+        rows: state.rows,
+        walk_failures: state.walk_failures + 1,
+        sidecar_violations: state.sidecar_violations
+      }
+    } else {
+      state
     }
   } else if listed.entries == "" {
     state
@@ -295,7 +320,8 @@ fn floor_discovery_walk_dir(
             floor_discovery_walk_dir(
               state: acc,
               dir_path: child,
-              exclude_substrings: exclude_substrings
+              exclude_substrings: exclude_substrings,
+              list_failure_is_fatal: false
             )
           }
         }
@@ -391,7 +417,8 @@ fn discover_floor_corpus_rows_from_host_facts(
           floor_discovery_walk_dir(
             state: acc,
             dir_path: root,
-            exclude_substrings: exclude_substrings
+            exclude_substrings: exclude_substrings,
+            list_failure_is_fatal: true
           )
         }
       ),
