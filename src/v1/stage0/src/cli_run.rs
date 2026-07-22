@@ -18741,7 +18741,7 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
-    let roots = witness_layer_roots();
+    let roots = default_source_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
     let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
     let modules_resolved = sources.len();
