@@ -6,6 +6,7 @@ import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 
 type RunnerSlotLabels {
   github_labels: List<String>
@@ -112,13 +113,17 @@ data gunbc_runner_slot_allocation_live_cap_dissolve_on: Disposition = Scaffold {
   }
 }
 
+data gunbc_floor_armed_budget_doomed_exit_137_outcome: FloorOutcome = FloorFailed {
+  class: Structural { reason: "Process completed with exit code 137." }
+}
+
 type FloorArmedBudgetDoomedWitness
   = FloorArmedBudgetDoomedMeasured {
       run_id: String,
       runner_unit: String,
       armed_budget: ByteSize,
       budget_source: String,
-      floor_outcome: String,
+      floor_outcome: FloorOutcome,
     }
   | FloorArmedBudgetDoomedUnmeasured
 
@@ -128,7 +133,7 @@ type FloorArmedBudgetSuccessClassWitness
       runner_unit: String,
       armed_budget: ByteSize,
       floor_peak_post: ByteSize,
-      floor_outcome: String,
+      floor_outcome: FloorOutcome,
     }
   | FloorArmedBudgetSuccessClassUnmeasured
 
@@ -138,14 +143,14 @@ data gunbc_floor_armed_budget_doomed_witness_receipts: List<FloorArmedBudgetDoom
     runner_unit: "srv3-05",
     armed_budget: byte_size(6987137024),
     budget_source: "/proc/meminfo MemAvailable",
-    floor_outcome: "failure",
+    floor_outcome: gunbc_floor_armed_budget_doomed_exit_137_outcome,
   },
   FloorArmedBudgetDoomedMeasured {
     run_id: "29845210061",
     runner_unit: "srv3-02",
     armed_budget: byte_size(5971566592),
     budget_source: "/proc/meminfo MemAvailable",
-    floor_outcome: "failure",
+    floor_outcome: gunbc_floor_armed_budget_doomed_exit_137_outcome,
   },
 ]
 
@@ -154,7 +159,7 @@ data gunbc_floor_armed_budget_success_class_receipt: FloorArmedBudgetSuccessClas
   runner_unit: "srv1-05",
   armed_budget: byte_size(16106127360),
   floor_peak_post: byte_size(16108544000),
-  floor_outcome: "success",
+  floor_outcome: NoFailure,
 }
 
 data gunbc_floor_minimum_viable_armed_budget: ByteSize = byte_size(12884901888)
@@ -196,8 +201,33 @@ fn witness_floor_minimum_viable_below_success_class() -> Bool {
   }
 }
 
+fn witness_floor_armed_budget_doomed_outcomes_are_failures() -> Bool {
+  all(
+    gunbc_floor_armed_budget_doomed_witness_receipts,
+    r =>
+      match r {
+        FloorArmedBudgetDoomedMeasured { run_id: _, runner_unit: _, armed_budget: _, budget_source: _, floor_outcome: o } =>
+          floor_outcome_blocks_merge(o: o)
+        FloorArmedBudgetDoomedUnmeasured => false
+      }
+  )
+}
+
+fn witness_floor_armed_budget_success_outcome_is_no_failure() -> Bool {
+  match gunbc_floor_armed_budget_success_class_receipt {
+    FloorArmedBudgetSuccessClassMeasured { run_id: _, runner_unit: _, armed_budget: _, floor_peak_post: _, floor_outcome: o } =>
+      match o {
+        NoFailure => true
+        FloorFailed { class: _ } => false
+      }
+    FloorArmedBudgetSuccessClassUnmeasured => false
+  }
+}
+
 fn gunbc_floor_minimum_viable_armed_budget_wall_holds() -> Bool {
   witness_floor_minimum_viable_above_doomed_receipts()
     && witness_floor_minimum_viable_below_success_class()
+    && witness_floor_armed_budget_doomed_outcomes_are_failures()
+    && witness_floor_armed_budget_success_outcome_is_no_failure()
     && byte_size_count(b: gunbc_floor_minimum_viable_armed_budget) == byte_size_count(b: byte_size(12884901888))
 }

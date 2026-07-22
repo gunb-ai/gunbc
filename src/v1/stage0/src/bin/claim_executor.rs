@@ -1786,11 +1786,18 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-fn plan_schedules_floor_walk(plan_function: &str) -> bool {
-    matches!(
-        plan_function,
-        "gunbc_ci_floor_batches" | "gunbc_ci_plan_artifact_batches" | "gunbc_falsifier_batches"
-    )
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `v2.workflow.ci_floor_plan.gunbc_floor_arm_time_budget_refusal_plan_functions`):
+/// plan functions whose schedule is a floor walk and therefore subject to arm-time
+/// `FloorBudgetBelowMinimumFootprint` refusal in claim_executor.
+const FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS: &[&str] = &[
+    "gunbc_ci_floor_batches",
+    "gunbc_ci_plan_artifact_batches",
+    "gunbc_falsifier_batches",
+];
+
+fn plan_requires_floor_arm_time_budget_refusal(plan_function: &str) -> bool {
+    FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS.contains(&plan_function)
 }
 
 fn run_perturb_check(
@@ -2155,7 +2162,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             .map(|n| n.get())
             .unwrap_or(1),
     ));
-    if plan_schedules_floor_walk(&plan_function) {
+    if plan_requires_floor_arm_time_budget_refusal(&plan_function) {
         if let Some(msg) = floor_budget_below_minimum_footprint(governor.budget_bytes()) {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
