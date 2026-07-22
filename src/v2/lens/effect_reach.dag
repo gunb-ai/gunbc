@@ -59,8 +59,6 @@ import v2.std.text { String }
 
 data effect_reach_law: String = "Effect-reach census (module-identity-storage-binding Phase 0): proven host-effect closure = call-reachable fn bodies from the witness entry over fn-arrow DependencyView facts, marking every string literal or data-init path literal that flows into a declared host-effect sink callee. Unknown path resolution fail-closed → HostEffectReach with UnknownPath empty string (still derived host-reading). Known-miss frontier: constructed paths (concat of literals that fail pure-path shape) and paths outside src/|dag/+.dag/no-spaces evade path census entirely → row keeps declared/default ReadsLiveTree disposition (miss ≤ baseline); falsely-declared rows and constructed deps close with Phase 1 typed SourceRef. Dissolves when typed SourceRef at host boundaries is ENFORCED and the bare-string file-dependency class is MIGRATED — not when the type is merely declared (task 5 flagship is per-row opt-in; 115 rows remain)."
 
-data effect_reach_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

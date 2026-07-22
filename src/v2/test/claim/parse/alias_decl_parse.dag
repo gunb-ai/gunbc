@@ -3,14 +3,24 @@ module v2.test.parse.alias_decl_parse
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.node { Node }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.std.symbol_index {
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
+  empty_symbol_index,
+  symbol_index_lexical_lookup,
+  symbol_index_lookup
+}
 import v2.extdeps.languages.dag {
   alias_binding_row_from_decl_node,
   dag_language_model,
-  parse_production_emitted_identity_optional
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
 }
 
 data alias_decl_parse_source: String = "module v2.test.parse.alias_decl_probe\n\nalias NodeAlias = v2.std.node.Node\n"
@@ -88,5 +98,47 @@ fn alias_decl_keyword_reserved_in_binding_position_red_control_holds() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
+}
+
+data alias_decl_fill_parse_source: String = "module v2.test.parse.alias_decl_fill_probe\n\ntype AliasTargetType {}\n\nalias AliasBinding = v2.test.parse.alias_decl_fill_probe.AliasTargetType\n"
+
+fn alias_decl_fill_parse_tree() -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(
+      text: alias_decl_fill_parse_source,
+      file: ^alias_decl_fill_probe,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      parse(tokens: token_stream, grammar: lm.grammar)
+    }
+  )
+}
+
+fn alias_decl_fill_lexical_lookup_holds() -> Bool {
+  match alias_decl_fill_parse_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: module_qn, diagnostics: _ } =>
+          let idx = symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
+          let target_path = qualified_name_snoc(qn: module_qn, segment: ^AliasTargetType)
+          match symbol_index_lexical_lookup(
+            index: idx,
+            position: module_qn,
+            name: ^AliasBinding
+          ) {
+            LexicalHit { node: hit, path: _ } =>
+              match symbol_index_lookup(index: idx, qualified_path: target_path) {
+                Present { value: target } => hit == target
+                Absent => false
+              }
+            LexicalAmbiguous { candidates: _ } => false
+            LexicalUnbound => false
+          }
+      }
   }
 }

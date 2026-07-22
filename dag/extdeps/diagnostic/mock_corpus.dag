@@ -15,6 +15,13 @@ data diagnostic_ssh_session_mock_case_exec_script: PublishedMockCase = Published
   case_id: 0
 }
 
+data diagnostic_ssh_session_mock_case_exec_argv: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.ExecArgv",
+  service: "ssh.Session",
+  operation: "ExecArgv",
+  case_id: 0
+}
+
 data diagnostic_ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
   operation_key: "ssh.Session.Reachability",
   service: "ssh.Session",
@@ -88,6 +95,7 @@ data diagnostic_ipmi_tool_mock_case_sel_list: PublishedMockCase = PublishedMockC
 data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
   diagnostic_ssh_session_mock_case_exec,
   diagnostic_ssh_session_mock_case_exec_script,
+  diagnostic_ssh_session_mock_case_exec_argv,
   diagnostic_ssh_session_mock_case_reachability,
   redfish_http_mock_case_get_system,
   redfish_http_mock_case_get_system_with_netrc,

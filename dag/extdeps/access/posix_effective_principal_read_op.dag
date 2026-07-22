@@ -1,0 +1,41 @@
+module extdeps.access.posix_effective_principal_read_op
+
+import std.types { String, Int, Bool, List }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
+  }
+}
+
+data posix_effective_principal_read_op_note: String = "Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice)."
+
+fn posix_effective_principal_read_argv() -> List<String> {
+  ["whoami"]
+}
+
+service access.PosixEffectivePrincipal {
+  operation Read {
+    input { read: EffectivePosixPrincipalRead }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+
+    transport shell { argv: ["whoami"] }
+    exit {
+      0 => Unit
+      nonzero => String "whoami failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "ghrunner", stderr: "" } "hermetic access.PosixEffectivePrincipal.Read"
+    }
+  }
+}

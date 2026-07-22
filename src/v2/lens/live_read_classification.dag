@@ -3,8 +3,6 @@ module v2.lens.live_read_classification
 
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
-data live_read_classification_plan_doc_provenance: String = "bind: docs/plans/live-read-witness-classification-design.md"
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

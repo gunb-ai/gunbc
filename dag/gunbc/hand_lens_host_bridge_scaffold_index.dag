@@ -13,7 +13,7 @@ data transport_script_position_host_bridge_dissolution_trigger: Disposition = Sc
 data extdeps_external_authority_host_bridge_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.lens.extdeps_external_authority",
+    module_path: "v2.lens.mandatory_tag.corpus_scan",
     decl_name: "ExtdepsExternalAuthorityModuleFacts",
     field: WholeDeclaration
   }

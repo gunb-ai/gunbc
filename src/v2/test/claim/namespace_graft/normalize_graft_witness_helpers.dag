@@ -15,7 +15,7 @@ import v2.std.node {
   TypeNode,
   well_formed
 }
-import v2.std.namespace_graft {
+import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_is_metadata_edge,
   namespace_graft_is_module_shell,
