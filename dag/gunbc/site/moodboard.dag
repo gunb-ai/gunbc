@@ -17,15 +17,31 @@ import gunbc.site.tokens {
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
   FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
 }
-import gunbc.site.interaction {
-  BehaviorRow, moodboard_elements, moodboard_behaviors,
+import gunbc.design.interaction {
+  BehaviorRow, InteractiveElement,
+  Approach, Enter, Receipt, Reveal, Brighten,
+  StarElement, HashElement, SwatchElement, element_id_eq,
   coverage_gaps, verb_key, response_key,
 }
+import gunbc.design.material { TimingToken, respond_fast, reveal_deliberate }
 import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
 
 data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
+
+data moodboard_elements: List<InteractiveElement> = [
+  InteractiveElement { element: StarElement, verbs: [Approach] },
+  InteractiveElement { element: HashElement, verbs: [Approach] },
+  InteractiveElement { element: SwatchElement, verbs: [Approach] },
+]
+
+data moodboard_behaviors: List<BehaviorRow> = [
+  BehaviorRow { element: StarElement, verb: Approach, response: Brighten, timing: respond_fast },
+  BehaviorRow { element: StarElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
+]
 
 fn txt(s: String) -> MarkupNode { TextNode { text: s } }
 
@@ -101,16 +117,16 @@ type RealizedBehavior
 fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
-  if e == "star" && r == "brighten" {
+  if element_id_eq(a: e, b: StarElement) && r == "brighten" {
     RealizedRules { rules: star_brighten_rules(timing: row.timing) }
-  } else if e == "star" && r == "reveal" {
+  } else if element_id_eq(a: e, b: StarElement) && r == "reveal" {
     RealizedRules { rules: star_legend_reveal_rules(timing: row.timing) }
-  } else if e == "hash" && r == "reveal" {
+  } else if element_id_eq(a: e, b: HashElement) && r == "reveal" {
     RealizedRules { rules: hash_reveal_rules(timing: row.timing) }
-  } else if e == "swatch" && r == "brighten" {
+  } else if element_id_eq(a: e, b: SwatchElement) && r == "brighten" {
     RealizedRules { rules: swatch_brighten_rules(timing: row.timing) }
   } else {
-    UnrealizedBehavior { element: e, verb: verb_key(v: row.verb), response: r }
+    UnrealizedBehavior { element: element_id_key(id: e), verb: verb_key(v: row.verb), response: r }
   }
 }
 
