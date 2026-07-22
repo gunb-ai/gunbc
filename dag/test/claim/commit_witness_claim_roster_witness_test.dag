@@ -1,7 +1,7 @@
 module test.claim.commit_witness_claim_roster_witness
 
 import v2.workflow.commit_witness_claim_roster {
-  commit_witness_claim_roster_holds,
+  commit_witness_claim_roster_holds as roster_schedule_holds,
   commit_witness_claim_roster_live_unresolvable_count
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -16,7 +16,7 @@ data synthetic_stale_fn: String = "this_witness_function_does_not_exist"
 data commit_witness_claim_roster_note: String = "PR-time detector (operator brief 2026-07-22, class 3): every explicit CommitWitnessClaim row on the GithubActionsCiJob surface must resolve its entry and name every check_fn — the #7060 class (stale roster row after fn delete) surfaced as no-main-function-found on 15 main runs until #7079. Detection-only: typed located counted COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL per bad row; never auto-delete enrollments. Dissolve-on: enrollment derived from discovery (module-identity Phase-0 admission invariant). MUST declare ReadsLiveTree — reads commit_workflow.dag roster + resolves every entry closure."
 
 fn witness_commit_witness_claim_roster_live_holds() -> Bool {
-  commit_witness_claim_roster_holds()
+  roster_schedule_holds()
     && commit_witness_claim_roster_live_unresolvable_count() == 0
 }
 
