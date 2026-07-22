@@ -157,21 +157,21 @@ RULES: list[tuple[str, str]] = [
 ]
 
 FEATURE_V2_AUTHORITY: dict[str, str] = {
-    "RealizationMaterializationScheduling": "std.realization_schedule · gunbc.ci_floor_plan · gunbc.floor_materialization",
-    "NamespaceResolutionSymbolIndex": "v2.lens.module_graph · v2.compiler.resolve · namespace-resolution-design",
-    "AffectedSetSelection": "v2.lens.affected_set · v2.workflow.affected_set_floor_runner · tools.dag_compile_clean_scope",
-    "TypedModuleCacheComputationIdentity": "std.cache_interface · std.materialize · extdeps.realization.resolved_graph",
-    "SerializationOneGrammar": "dag/extdeps/languages · wire transport rows · emission_ingestion_inverse",
-    "WorkflowHostEffect": "gunbc.host_effect · shell-intent-emit-realization-design",
-    "WitnessDiscoveryExecution": "gunbc.ci_layer_roots · gunbc.ci_spec · v2.std.verification",
-    "CompileCleanGate": "tools.dag_compile_clean_scope · dag_compile_clean_transport",
-    "RegenSelfHost": "regen_stage0 · self_host/frontier · module-identity-storage-binding",
-    "LensHostBridge": "v2.lens.* projections · hand_lens_host_bridge_scaffold_watchdog",
-    "ModuleIdentityStorage": "v2.compiler.source_authority · module-identity-storage-binding-design",
+    "RealizationMaterializationScheduling": "std.realization_schedule / gunbc.ci_floor_plan / gunbc.floor_materialization",
+    "NamespaceResolutionSymbolIndex": "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design",
+    "AffectedSetSelection": "v2.lens.affected_set / v2.workflow.affected_set_floor_runner / tools.dag_compile_clean_scope",
+    "TypedModuleCacheComputationIdentity": "std.cache_interface / std.materialize / extdeps.realization.resolved_graph",
+    "SerializationOneGrammar": "dag/extdeps/languages / wire transport rows / emission_ingestion_inverse",
+    "WorkflowHostEffect": "gunbc.host_effect / shell-intent-emit-realization-design",
+    "WitnessDiscoveryExecution": "gunbc.ci_layer_roots / gunbc.ci_spec / v2.std.verification",
+    "CompileCleanGate": "tools.dag_compile_clean_scope / dag_compile_clean_transport",
+    "RegenSelfHost": "regen_stage0 / self_host/frontier / module-identity-storage-binding",
+    "LensHostBridge": "v2.lens.* projections / hand_lens_host_bridge_scaffold_watchdog",
+    "ModuleIdentityStorage": "v2.compiler.source_authority / module-identity-storage-binding-design",
     "HostPhysics": "terminal bootstrap kernel (physics-bound until host-effect realize)",
-    "PhaseProfileInstrumentation": "realization-measurement-loop Phase 0 · gunbc.ci_render",
-    "TestReceipt": "dissolves with its subject feature's v2 witness",
-    "Unclassified": "ESCALATE — assign before Chunk F dissolution",
+    "PhaseProfileInstrumentation": "realization-measurement-loop Phase 0 / gunbc.ci_render",
+    "TestReceipt": "dissolves with its subject feature v2 witness",
+    "Unclassified": "ESCALATE - assign before Chunk F dissolution",
 }
 
 
@@ -241,8 +241,9 @@ def extract_functions(lines: list[str]) -> list[dict]:
 
 def dag_symbol(name: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    if s and s[0].isdigit():
-        s = f"_{s}"
+    s = re.sub(r"_+", "_", s).strip("_")
+    if not s or not s[0].isalpha():
+        s = f"sym_{s}"
     return s
 
 
@@ -254,19 +255,19 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
 
     law = (
         "cli_run.rs hollowing ledger (operator-directed, session quick-moth-273): "
-        "every module-scope and #[test] function in src/v1/stage0/src/cli_run.rs "
+        "every module-scope fn and test-fn in src/v1/stage0/src/cli_run.rs "
         "mapped to its v2 dissolution feature. "
         f"Current receipt: {len(rows)} rows ({prod} production, {test} test/receipt), "
         f"{uncl} unclassified. "
         "Regenerate: scripts/generate_cli_run_hollowing_ledger.py. "
-        "Dissolve-on: seed-shrink Chunk F — cli_run.rs HAND → workflow host_effect_apply() "
+        "Dissolve-on: seed-shrink Chunk F - cli_run.rs HAND -> workflow host_effect_apply() "
         "+ generated surface (cli-run-reconcile-defork.md)."
     )
 
     lines = [
         "module gunbc.cli_run_hollowing_ledger",
         "",
-        "import std.types { Bool, Int, List, String }",
+        "import std.types { Int, List, String }",
         "import v2.std.algebra { filter, length }",
         "import v2.std.node { Symbol }",
         "",
@@ -298,8 +299,6 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         "  id: Symbol,",
         "  fn_name: String,",
         "  source_line: Int,",
-        "  is_pub: Bool,",
-        "  is_test: Bool,",
         "  disposition: CliRunHollowDisposition",
         "}",
         "",
@@ -334,15 +333,13 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
 
     lines.append("data cli_run_hollowing_ledger_rows: List<CliRunHollowLedgerRow> = [")
     for row in rows:
-        sym = dag_symbol(f"{row['line']}_{row['name']}")
+        sym = dag_symbol(f"line_{row['line']}_{row['name']}")
         disp = disposition_for(row)
         lines.append(
             f"  CliRunHollowLedgerRow {{"
             f"\n    id: ^{sym},"
             f"\n    fn_name: \"{row['name']}\","
             f"\n    source_line: {row['line']},"
-            f"\n    is_pub: {'true' if row['pub'] else 'false'},"
-            f"\n    is_test: {'true' if row['test'] else 'false'},"
             f"\n    disposition: {disp}"
             f"\n  }},"
         )
@@ -360,8 +357,8 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
             "    xs: cli_run_hollowing_ledger_rows,",
             "    predicate: fn(row) {",
             "      match row.disposition {",
-            "        HollowTarget { feature: Unclassified, v2_authority: _ } => true",
-            "        _ => false",
+            "        HollowTarget { feature: Unclassified, v2_authority: _ } => True",
+            "        _ => False",
             "      }",
             "    }",
             "  ))",
@@ -370,14 +367,24 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
             "fn cli_run_hollowing_production_row_count() -> Int {",
             "  length(xs: filter(",
             "    xs: cli_run_hollowing_ledger_rows,",
-            "    predicate: fn(row) { row.is_test == false }",
+            "    predicate: fn(row) {",
+            "      match row.disposition {",
+            "        TestReceiptRow { subject_feature: _ } => False",
+            "        _ => True",
+            "      }",
+            "    }",
             "  ))",
             "}",
             "",
             "fn cli_run_hollowing_test_row_count() -> Int {",
             "  length(xs: filter(",
             "    xs: cli_run_hollowing_ledger_rows,",
-            "    predicate: fn(row) { row.is_test == true }",
+            "    predicate: fn(row) {",
+            "      match row.disposition {",
+            "        TestReceiptRow { subject_feature: _ } => True",
+            "        _ => False",
+            "      }",
+            "    }",
             "  ))",
             "}",
             "",
