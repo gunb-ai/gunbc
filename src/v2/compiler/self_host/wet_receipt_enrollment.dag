@@ -69,40 +69,44 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): only legs whose assertions are COLD-VALID — agreement legs (emit->build->run->equals-oracle, no compile_skipped assertion), the native_cold legs (compile_skipped=false, which the control preserves), and the family-crate member-change cold-rebuild leg (evict+rebuild, cold-compatible). The full family aggregates must NOT run here: their cold_then_warm / one-build-members-warm legs assert warm-ness the control deliberately destroys (probe receipt 2026-07-21: cold_control=true forces compile_skipped=false on the second call, correctly failing that leg). Complement + meet_join agreement legs migrated to family grain (witness_family_build_grain_ruling) — their cold coverage is the family_crate leg. The warm nightly falsifier batch keeps the full aggregates."
+data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): the 9 standalone emit_host_<family>_equals_eval_test.dag agreement witnesses — emit->build->run->equals-oracle with no compile_skipped assertion, so every leg is COLD-VALID under the control. The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named."
 
 data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
-    f: "emit_on_demand_add_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    f: "emit_host_add_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
-    f: "emit_on_demand_field_access_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    f: "emit_host_field_access_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
-    f: "emit_on_demand_match_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    f: "emit_host_complement_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
-    f: "emit_on_demand_loop_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    f: "emit_host_match_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
-    f: "emit_on_demand_fold_closure_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    f: "emit_host_loop_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
-    f: "family_crate_member_change_cold_rebuild_holds"
+    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    f: "emit_host_fold_closure_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
-    f: "emit_on_demand_variant_construct_native_cold_holds"
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    f: "emit_host_meet_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
-    f: "emit_on_demand_classical_not_agreement_holds"
+    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    f: "emit_host_variant_construct_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    f: "emit_host_classical_not_ingested_equals_eval_holds"
   )
 ]
 

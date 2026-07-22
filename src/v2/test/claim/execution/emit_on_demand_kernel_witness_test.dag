@@ -29,8 +29,9 @@ import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
+  emit_host_no_run_args,
   run_emit_host_cached,
-  run_test_claim_emit_vs_eval,
+  run_test_claim_from_source_emit_vs_eval_cached,
 }
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -61,7 +62,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_kernel_note: String = "Witness-realization kernel ACCEPT witnesses (plan P3) for the emit_host_add family — the serial kernel's first customer. Pure: store Share qualification, realize_pack scheduling refusal, interpreter surviving roles bounded, closure_digest key sensitivity. Wet: (a) emit_host_add_equals_eval agreement via run_test_claim_emit_vs_eval; (b) native cold-then-warm with compile_skipped on the second run_emit_host_cached call; (c) changed inferred_tree_digest -> new key -> cold rebuild (cache-impurity MISS); (d) wrong-oracle RED control. test_id subdirs isolate sibling witnesses only; workspace path suffix is emit_on_demand_key(inferred_tree_digest(tree), ...), not test_id."
+data emit_on_demand_kernel_note: String = "Witness-realization kernel ACCEPT witnesses (plan P3) for the emit_host_add family — the serial kernel's first customer, consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate is built ONCE per corpus pass. The single wet receipt is emit_on_demand_kernel_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (compile_skipped octet receipts), the eval-anchored agreement (run_test_claim_from_source_emit_vs_eval_cached, oracle = eval, primitive-five subject) and the wrong-oracle RED (primitive-six subject -> semantic mismatch) run WARM on the same build, then the changed-tree alt key colds in the SAME root (cache-impurity MISS discriminator). Formerly ~7 crate builds per pass (per-test eviction roots + 2 uncached agreement runs); now 2. Pure receipts unchanged. Workspace path suffix is emit_on_demand_key(inferred_tree_digest(tree), ...), not test_id."
 
 data kernel_cache_root: String = emit_on_demand_family_cache_root(family: "kernel")
 data kernel_emitter: String = "v2.compiler.emit"
@@ -222,13 +223,6 @@ fn kernel_cache_root_for(test_id: String) -> String {
   concat(kernel_cache_root, "/", test_id)
 }
 
-fn kernel_evict_and_workspace(test_id: String) -> String {
-  let key = kernel_native_key()
-  let root = kernel_cache_root_for(test_id: test_id)
-  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
-  native_cache_workspace_root(cache_root: root, key: key)
-}
-
 fn kernel_cached_run_checks_for_tree(
   workspace: String,
   tree: InferredTree,
@@ -244,14 +238,6 @@ fn kernel_cached_run_checks_for_tree(
       )
     Rejected { diagnostics: _ } => false
   }
-}
-
-fn kernel_cached_run_checks(workspace: String, expect_compile_skipped: Bool) -> Bool {
-  kernel_cached_run_checks_for_tree(
-    workspace: workspace,
-    tree: emit_eval_subject_tree(),
-    expect_compile_skipped: expect_compile_skipped
-  )
 }
 
 fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: InferredTree) -> Bool {
@@ -273,10 +259,27 @@ fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: InferredTree) 
   }
 }
 
-fn kernel_cached_cold_then_warm(workspace: String) -> Bool {
-  kernel_cached_cold_then_warm_for_tree(
-    workspace: workspace,
-    tree: emit_eval_subject_tree()
+fn kernel_cached_agreement_pass(workspace: String) -> Bool {
+  emit_eval_verdict_is_pass(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_five),
+      source_outcome: emit(tree: emit_eval_subject_tree(), target: rust_target_model_staging()),
+      target: rust_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
+  )
+}
+
+fn kernel_cached_wrong_oracle_mismatch(workspace: String) -> Bool {
+  emit_eval_verdict_is_semantic_mismatch(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_six),
+      source_outcome: emit(tree: emit_eval_subject_tree(), target: rust_target_model_staging()),
+      target: rust_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
   )
 }
 
@@ -286,8 +289,8 @@ test fn emit_on_demand_closure_keys_differ_for_distinct_trees_holds() -> Bool {
   key_primary != key_alt
 }
 
-test fn emit_on_demand_native_content_change_cold_rebuild_holds() -> Bool {
-  let shared_parent = kernel_cache_root_for(test_id: "content_change_miss")
+test fn emit_on_demand_kernel_native_one_build_holds() -> Bool {
+  let shared_parent = kernel_cache_root_for(test_id: "native_one_build")
   let tree_primary = emit_eval_subject_tree()
   let tree_alt = kernel_alt_subject_tree()
   let key_primary = kernel_native_key_for(tree: tree_primary)
@@ -316,6 +319,8 @@ test fn emit_on_demand_native_content_change_cold_rebuild_holds() -> Bool {
       key: key_alt
     )
     warmed
+      && kernel_cached_agreement_pass(workspace: workspace_primary)
+      && kernel_cached_wrong_oracle_mismatch(workspace: workspace_primary)
       && kernel_cached_run_checks_for_tree(
         workspace: workspace_alt,
         tree: tree_alt,
@@ -324,50 +329,12 @@ test fn emit_on_demand_native_content_change_cold_rebuild_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_add_agreement_holds() -> Bool {
-  emit_eval_verdict_is_pass(
-    run: run_test_claim_emit_vs_eval(
-      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_five),
-      target: rust_target_model_staging()
-    )
-  )
-}
-
-test fn emit_on_demand_add_wrong_oracle_refuses_holds() -> Bool {
-  emit_eval_verdict_is_semantic_mismatch(
-    run: run_test_claim_emit_vs_eval(
-      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_six),
-      target: rust_target_model_staging()
-    )
-  )
-}
-
-test fn emit_on_demand_native_cold_holds() -> Bool {
-  let workspace = kernel_evict_and_workspace(test_id: "native_cold")
-  kernel_cached_run_checks(workspace: workspace, expect_compile_skipped: false)
-}
-
-test fn emit_on_demand_native_warm_holds() -> Bool {
-  let workspace = kernel_evict_and_workspace(test_id: "native_warm")
-  kernel_cached_cold_then_warm(workspace: workspace)
-}
-
-test fn emit_on_demand_native_cold_then_warm_holds() -> Bool {
-  let workspace = kernel_evict_and_workspace(test_id: "native_cold_then_warm")
-  kernel_cached_cold_then_warm(workspace: workspace)
-}
-
 test fn emit_on_demand_kernel_witnesses() -> Bool {
   emit_on_demand_grain_keys_differ_holds()
     && emit_on_demand_materialize_recompute_on_miss_holds()
     && emit_on_demand_interpreter_roles_bounded_holds()
     && emit_on_demand_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_add_agreement_holds()
-    && emit_on_demand_add_wrong_oracle_refuses_holds()
-    && emit_on_demand_native_content_change_cold_rebuild_holds()
-    && emit_on_demand_native_cold_holds()
-    && emit_on_demand_native_warm_holds()
-    && emit_on_demand_native_cold_then_warm_holds()
+    && emit_on_demand_kernel_native_one_build_holds()
     && emit_on_demand_materialize_share_on_hit_holds()
 }
