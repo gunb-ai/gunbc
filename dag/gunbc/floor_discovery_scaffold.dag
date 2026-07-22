@@ -1,0 +1,20 @@
+module gunbc.floor_discovery_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "discover_floor_corpus_rows_inner",
+    field: WholeDeclaration
+  }
+}
+
+data floor_discovery_dissolve_trigger: String = "🟡 dissolve-on: discover_floor_corpus_rows_inner HAND-Rust roster walk; DISSOLVES WHEN floor_discovery_producer.dag dual-run equivalence is green-by-execution on the live corpus and discover_floor_corpus_rows_inner_rust_legacy is deleted."
+
+data floor_discovery_equivalence_test_dual_run: String = "floor_discovery_dag_rust_dual_run_equivalence_on_live_corpus"
+
+data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"

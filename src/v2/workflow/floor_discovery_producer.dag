@@ -113,6 +113,70 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
   )
 }
 
+fn floor_discovery_line_starts_wire_contract_decl(line: String) -> Bool {
+  let trimmed = line
+  starts_with(s: trimmed, prefix: "data ")
+}
+
+fn floor_discovery_wire_contract_decl_name_from_line(line: String) -> String {
+  let rest =
+    if starts_with(s: line, prefix: "data ") {
+      substring(s: line, start: 5, end: string_length(s: line))
+    } else {
+      ""
+    }
+  let name =
+    fold(
+      split(s: rest, delimiter: " "),
+      init: "",
+      f: fn(acc, token) {
+        if acc != "" {
+          acc
+        } else if token == "" {
+          ""
+        } else {
+          token
+        }
+      }
+    )
+  if name == "" {
+    ""
+  } else {
+    let after_name =
+      substring(
+        s: rest,
+        start: string_length(s: name),
+        end: string_length(s: rest)
+      )
+    if string_contains(s: after_name, pattern: ": CoproductWireContract")
+      || string_contains(s: after_name, pattern: ": VariantEncoding")
+    {
+      name
+    } else {
+      ""
+    }
+  }
+}
+
+fn floor_discovery_scan_wire_contract_decl_names(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      if floor_discovery_line_starts_wire_contract_decl(line: line) {
+        let name = floor_discovery_wire_contract_decl_name_from_line(line: line)
+        if name == "" {
+          acc
+        } else {
+          concat(acc, [name])
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
 fn floor_discovery_entry_reads_live_tree_default(content: String) -> LiveTreeDisposition {
   if string_contains(s: content, pattern: "SubstrateInputsOnly") {
     SubstrateInputsOnly
@@ -221,7 +285,19 @@ fn floor_discovery_process_dag_file(
       } else {
         state
       }
-    with_test_rows
+    let wire_names = floor_discovery_scan_wire_contract_decl_names(content: content)
+    if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
+      with_test_rows
+    } else if length(xs: wire_names) > 0 {
+      floor_discovery_collect_sidecar_violation(
+        state: with_test_rows,
+        entry_path: repo_path,
+        kind: WireContractDecl,
+        required_suffix: floor_wire_contract_sidecar_suffix
+      )
+    } else {
+      with_test_rows
+    }
   }
 }
 

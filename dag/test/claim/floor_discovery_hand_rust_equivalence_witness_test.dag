@@ -1,0 +1,38 @@
+module test.claim.floor_discovery_hand_rust_equivalence_witness
+
+import gunbc.floor_discovery_scaffold {
+  floor_discovery_hand_rust_scaffold,
+  floor_discovery_dissolve_trigger,
+  floor_discovery_equivalence_test_dual_run,
+  floor_discovery_producer_entry,
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data floor_discovery_hand_rust_equivalence_note: String = "Pins the HAND-RUST discover_floor_corpus_rows roster walk (src/v1/stage0/src/cli_run.rs) against v2.workflow.floor_discovery_producer on the live corpus — parallel-representation drift guard until dual-run equivalence is green and discover_floor_corpus_rows_inner_rust_legacy is deleted. The .dag side records the producer entry + dissolve trigger; the Rust side is proven by cli_run.rs floor_discovery_dag_equivalence_tests (GUNBC_FLOOR_DISCOVERY_DUAL_RUN=1 byte-compares roster fingerprints)."
+
+test fn floor_discovery_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match floor_discovery_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
+  string_contains(s: floor_discovery_dissolve_trigger, pattern: "floor_discovery_producer")
+    && string_contains(s: floor_discovery_dissolve_trigger, pattern: "dual-run")
+}
+
+test fn floor_discovery_producer_entry_is_canonical() -> Bool {
+  floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
+}
+
+test fn floor_discovery_equivalence_rust_test_named() -> Bool {
+  string_contains(
+    s: floor_discovery_equivalence_test_dual_run,
+    pattern: "floor_discovery_dag_rust_dual_run_equivalence_on_live_corpus"
+  )
+}

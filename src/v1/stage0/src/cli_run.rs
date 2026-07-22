@@ -1902,33 +1902,17 @@ const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 const FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY: &str =
     "src/v2/workflow/floor_compile_clean_predicates.dag";
 
-type FloorCompileCleanPredicatesGraph = (
-    Rc<v1_compiler_compile::ResolvedGraph>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-);
-
-fn floor_compile_clean_predicates_graph(
-) -> Result<&'static FloorCompileCleanPredicatesGraph, String> {
-    static GRAPH: OnceLock<Result<FloorCompileCleanPredicatesGraph, String>> = OnceLock::new();
-    match GRAPH.get_or_init(|| {
-        let roots = default_source_roots();
-        resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
-            .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))
-    }) {
-        Ok(g) => Ok(g),
-        Err(e) => Err(e.clone()),
-    }
-}
-
 fn call_compile_clean_bool_list_fn(
     fn_name: &str,
     arg_name: &str,
     paths: &[String],
 ) -> Result<bool, String> {
-    let (graph, indices) = floor_compile_clean_predicates_graph()?;
+    let roots = default_source_roots();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
+        .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))?;
     let ctx = make_eval_context(
-        graph,
-        indices.clone(),
+        &graph,
+        indices,
         v1_interpreter::ExecutionMode::Hermetic,
     );
     let values: Vec<v1_interpreter::Value> = paths
@@ -10652,29 +10636,330 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
 }
 
 pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
-    let mut violations: Vec<String> = Vec::new();
+    let mut dag_paths: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
         for path in dag_files {
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|name| name.contains("__"))
-            {
-                violations.push(path.to_string_lossy().into_owned());
-            }
+            dag_paths.push(path.to_string_lossy().into_owned());
         }
     }
-    if violations.is_empty() {
+    if dag_paths.is_empty() {
         return Ok(());
     }
-    violations.sort();
-    Err(format!(
-        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
-         offending file(s): {}",
-        violations.join(", ")
-    ))
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let path_values: Vec<v1_interpreter::Value> = dag_paths
+        .iter()
+        .map(|p| v1_interpreter::Value::Str(p.clone()))
+        .collect();
+    let args = [(
+        Some("dag_paths".to_string()),
+        list_value_from_vec(path_values),
+    )];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "floor_filename_hygiene_refusal_for_paths",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
+    match &result {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
+            match ctx.field(fields, "value") {
+                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
+                _ => Err(
+                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
+                        .to_string(),
+                ),
+            }
+        }
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
+        other => Err(format!(
+            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+fn owned_data_decl_record_to_value(
+    rec: &OwnedDataDeclRecord,
+    ctx: &v1_interpreter::InterpContext,
+) -> v1_interpreter::Value {
+    use std::rc::Rc;
+    use v1_interpreter::{sorted_fields, Value};
+    let initializer = match &rec.initializer {
+        OwnedDataDeclInitializer::BoolWitnessClaim {
+            witness_entry,
+            witness_function,
+        } => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("witness_entry"), Value::Str(witness_entry.clone())),
+                (
+                    ctx.sym("witness_function"),
+                    Value::Str(witness_function.clone()),
+                ),
+            ])),
+        },
+        OwnedDataDeclInitializer::NodeCorpus => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedNodeCorpusInit"),
+            fields: Rc::new(vec![]),
+        },
+        OwnedDataDeclInitializer::Other { resolved } => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedOtherInit"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("resolved"),
+                Value::Record {
+                    type_name: ctx.sym("ResolvedDeclRef"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("module"), Value::Str(resolved.module.clone())),
+                        (ctx.sym("name"), Value::Str(resolved.name.clone())),
+                    ])),
+                },
+            )])),
+        },
+    };
+    Value::Record {
+        type_name: ctx.sym("OwnedDataDeclRecord"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("entry"), Value::Str(rec.entry.clone())),
+            (ctx.sym("module"), Value::Str(rec.module.clone())),
+            (ctx.sym("decl_name"), Value::Str(rec.decl_name.clone())),
+            (ctx.sym("initializer"), initializer),
+        ])),
+    }
+}
+
+fn parse_reads_live_tree_disposition(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<bool, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "LiveTreeDisposition") => {
+            if ctx.sym_eq(*variant_name, "ReadsLiveTree") {
+                Ok(true)
+            } else if ctx.sym_eq(*variant_name, "SubstrateInputsOnly") {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "unknown LiveTreeDisposition variant `{}`",
+                    ctx.resolve(*variant_name)
+                ))
+            }
+        }
+        other => Err(format!(
+            "expected LiveTreeDisposition, got `{}`",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn discovery_row_from_floor_discovery_row_value(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<DiscoveryRow, String> {
+    use v1_interpreter::Value;
+    let Value::Record { fields, .. } = val else {
+        return Err(format!(
+            "expected FloorDiscoveryRow record, got `{}`",
+            ctx.format_value(val)
+        ));
+    };
+    let label = match ctx.field(fields, "label") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `label`".to_string()),
+    };
+    let entry = match ctx.field(fields, "entry") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `entry`".to_string()),
+    };
+    let function = match ctx.field(fields, "function") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `function`".to_string()),
+    };
+    let reads_live_tree = match ctx.field(fields, "reads_live_tree") {
+        Some(v) => parse_reads_live_tree_disposition(ctx, v)?,
+        None => return Err("FloorDiscoveryRow missing `reads_live_tree`".to_string()),
+    };
+    Ok(DiscoveryRow {
+        label,
+        entry,
+        function,
+        reads_live_tree,
+    })
+}
+
+fn parse_floor_discovery_producer_result(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<Vec<DiscoveryRow>, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "FloorDiscoveryProducerResult")
+            && ctx.sym_eq(*variant_name, "FloorDiscoveryAccepted") =>
+        {
+            let rows_val = ctx
+                .field(fields, "rows")
+                .ok_or_else(|| "FloorDiscoveryAccepted missing `rows`".to_string())?;
+            match rows_val {
+                Value::List(items) => {
+                    let mut out = Vec::with_capacity(items.len());
+                    for item in items.iter() {
+                        out.push(discovery_row_from_floor_discovery_row_value(ctx, item)?);
+                    }
+                    out.sort_by(|a, b| {
+                        a.entry
+                            .cmp(&b.entry)
+                            .then_with(|| a.function.cmp(&b.function))
+                    });
+                    Ok(out)
+                }
+                other => Err(format!(
+                    "FloorDiscoveryAccepted.rows not a List: `{}`",
+                    ctx.format_value(other)
+                )),
+            }
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "FloorDiscoveryProducerResult")
+            && ctx.sym_eq(*variant_name, "FloorDiscoveryRefused") =>
+        {
+            let reason = match ctx.field(fields, "reason") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => "floor discovery refused (no reason)".to_string(),
+            };
+            Err(reason)
+        }
+        other => Err(format!(
+            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn discover_floor_corpus_rows_from_dag_producer(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let excludes: Vec<String> = exclude_substrings.to_vec();
+    let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
+    for scan_dir in scan_dirs {
+        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        owned_data_records.extend(discovery.records);
+    }
+    let (graph, indices) =
+        resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let source_root_values: Vec<v1_interpreter::Value> = source_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let scan_dir_values: Vec<v1_interpreter::Value> = scan_dirs
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let owned_values: Vec<v1_interpreter::Value> = owned_data_records
+        .iter()
+        .map(|rec| owned_data_decl_record_to_value(rec, &ctx))
+        .collect();
+    let args = [
+        (
+            Some("source_roots".to_string()),
+            list_value_from_vec(source_root_values),
+        ),
+        (
+            Some("scan_dirs".to_string()),
+            list_value_from_vec(scan_dir_values),
+        ),
+        (
+            Some("exclude_substrings".to_string()),
+            list_value_from_vec(exclude_values),
+        ),
+        (
+            Some("owned_data_records".to_string()),
+            list_value_from_vec(owned_values),
+        ),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "discover_floor_corpus_rows_from_host_facts",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
+    parse_floor_discovery_producer_result(&ctx, &result)
+}
+
+fn discover_floor_corpus_rows_roster_fingerprint(rows: &[DiscoveryRow]) -> String {
+    let mut lines: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}",
+                r.entry,
+                r.function,
+                r.label,
+                if r.reads_live_tree {
+                    "ReadsLiveTree"
+                } else {
+                    "SubstrateInputsOnly"
+                }
+            )
+        })
+        .collect();
+    lines.sort();
+    lines.join("\n")
+}
+
+fn apply_discovery_scope_dirs_filter(
+    mut rows: Vec<DiscoveryRow>,
+    discovery_scope_dirs: &[String],
+) -> Vec<DiscoveryRow> {
+    if discovery_scope_dirs.is_empty() {
+        return rows;
+    }
+    rows.retain(|row| {
+        discovery_scope_dirs
+            .iter()
+            .any(|d| row.entry.contains(d.as_str()))
+    });
+    rows
 }
 
 pub fn discover_floor_corpus_rows(
@@ -10699,19 +10984,62 @@ pub fn discover_floor_corpus_rows_scoped(
     )
 }
 
-struct FloorLensHygieneGraph {
-    rows: Vec<DiscoveryRow>,
+struct FloorLensImportGraph {
     path_imports: std::collections::HashMap<String, Vec<String>>,
     module_to_path: std::collections::HashMap<String, String>,
     lens_with_justification: std::collections::BTreeSet<String>,
 }
 
-fn build_floor_lens_hygiene_graph(
+fn build_floor_lens_import_graph(
+    source_roots: &[String],
+) -> Result<FloorLensImportGraph, String> {
+    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut lens_with_justification: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            let rel = repo_relative_dag_path(&entry);
+            if let Some(m) = extract_module_path(&content) {
+                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
+                    lens_with_justification.insert(m.clone());
+                }
+                module_to_path.insert(m, rel.clone());
+            }
+            path_imports.insert(rel, extract_import_paths(&content));
+        }
+    }
+    for edge in reference_edges_as_import_facts(
+        &reference_resolution_facts(source_roots, source_roots, &[]),
+        true,
+    ) {
+        let importer = repo_relative_dag_path(&edge.path);
+        let entry = path_imports.entry(importer).or_default();
+        if !entry.contains(&edge.import_module) {
+            entry.push(edge.import_module);
+        }
+    }
+    Ok(FloorLensImportGraph {
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    })
+}
+
+fn discover_floor_corpus_rows_inner_rust_legacy(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
-) -> Result<FloorLensHygieneGraph, String> {
+) -> Result<Vec<DiscoveryRow>, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -10758,12 +11086,6 @@ fn build_floor_lens_hygiene_graph(
 
     let mut sidecar_violations: Vec<Vec<String>> =
         SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
-    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    let mut module_to_path: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut lens_with_justification: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
@@ -10772,14 +11094,6 @@ fn build_floor_lens_hygiene_graph(
             let entry = path.to_string_lossy().into_owned();
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
-            let rel = repo_relative_dag_path(&entry);
-            if let Some(m) = extract_module_path(&content) {
-                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
-                    lens_with_justification.insert(m.clone());
-                }
-                module_to_path.insert(m, rel.clone());
-            }
-            path_imports.insert(rel, extract_import_paths(&content));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
             }
@@ -10840,36 +11154,13 @@ fn build_floor_lens_hygiene_graph(
             ));
         }
     }
-    // Reference-derived reach edges (namespace terminal step), unioned onto the import edges above so
-    // a stripped file (no import edges) still reaches its lenses. STRICT set only (Qualified +
-    // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
-    // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
-    // strings never fabricate a reach. Dedup keeps the BFS set honest.
-    // Long-lane discovery exclusions (`test/claim/long/`) must not suppress reference edges here:
-    // exclusion only removes a witness from per-PR enrollment; stripped long/ witnesses still wire
-    // lens reachability for this hygiene pass (the inert_lens_hygiene witness lives under long/).
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &[]),
-        true,
-    ) {
-        let importer = repo_relative_dag_path(&edge.path);
-        let entry = path_imports.entry(importer).or_default();
-        if !entry.contains(&edge.import_module) {
-            entry.push(edge.import_module);
-        }
-    }
 
     rows.sort_by(|a, b| {
         a.entry
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
-    Ok(FloorLensHygieneGraph {
-        rows,
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    })
+    Ok(rows)
 }
 
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
@@ -10879,14 +11170,18 @@ fn default_floor_lens_hygiene_excludes() -> Vec<String> {
 /// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
 /// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
 pub fn inert_lens_unreached_module_count() -> i64 {
-    match build_floor_lens_hygiene_graph(
-        &default_source_roots(),
-        &witness_discovery_scan_dirs(),
-        &default_floor_lens_hygiene_excludes(),
-        &[],
-    ) {
+    let roots = default_source_roots();
+    let scan_dirs = witness_discovery_scan_dirs();
+    let excludes = default_floor_lens_hygiene_excludes();
+    match build_floor_lens_import_graph(&roots) {
         Ok(graph) => {
-            inert_lens_modules(&graph.rows, &graph.path_imports, &graph.module_to_path).len() as i64
+            match discover_floor_corpus_rows_from_dag_producer(&roots, &scan_dirs, &excludes) {
+                Ok(rows) => {
+                    inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len()
+                        as i64
+                }
+                Err(_) => -1,
+            }
         }
         Err(_) => -1,
     }
@@ -10894,12 +11189,7 @@ pub fn inert_lens_unreached_module_count() -> i64 {
 
 /// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
 pub fn inert_lens_top_level_module_count() -> i64 {
-    match build_floor_lens_hygiene_graph(
-        &default_source_roots(),
-        &witness_discovery_scan_dirs(),
-        &default_floor_lens_hygiene_excludes(),
-        &[],
-    ) {
+    match build_floor_lens_import_graph(&default_source_roots()) {
         Ok(graph) => graph
             .module_to_path
             .keys()
@@ -10915,18 +11205,34 @@ fn discover_floor_corpus_rows_inner(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    let graph = build_floor_lens_hygiene_graph(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )?;
-    let FloorLensHygieneGraph {
-        mut rows,
+    let mut rows =
+        discover_floor_corpus_rows_from_dag_producer(source_roots, scan_dirs, exclude_substrings)?;
+    if std::env::var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN").as_deref() == Ok("1") {
+        let legacy = discover_floor_corpus_rows_inner_rust_legacy(
+            source_roots,
+            scan_dirs,
+            exclude_substrings,
+            discovery_scope_dirs,
+        )?;
+        let dag_fp = discover_floor_corpus_rows_roster_fingerprint(&apply_discovery_scope_dirs_filter(
+            rows.clone(),
+            discovery_scope_dirs,
+        ));
+        let legacy_fp = discover_floor_corpus_rows_roster_fingerprint(&legacy);
+        if dag_fp != legacy_fp {
+            panic!(
+                "floor discovery dual-run roster mismatch (GUNBC_FLOOR_DISCOVERY_DUAL_RUN=1):\n\
+                 === dag (after scope filter) ===\n{dag_fp}\n\
+                 === legacy rust ===\n{legacy_fp}"
+            );
+        }
+    }
+    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
+    let FloorLensImportGraph {
         path_imports,
         module_to_path,
         lens_with_justification,
-    } = graph;
+    } = build_floor_lens_import_graph(source_roots)?;
     let facts = build_module_graph_facts_live(source_roots);
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
@@ -17382,6 +17688,43 @@ mod source_root_ingest_manifest_tests {
             out.contains("import v2.std.cross_tree.import_model"),
             "manifest referencing V2Tree/DagTree must import them or witnesses hit \
              `undefined variable`; got:\n{out}"
+        );
+    }
+}
+
+/// Pins HAND-RUST `discover_floor_corpus_rows_inner` against
+/// `floor_discovery_producer.dag`. Witness:
+/// `dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag`.
+#[cfg(test)]
+mod floor_discovery_dag_equivalence_tests {
+    use super::{
+        default_source_roots, discover_floor_corpus_rows, witness_discovery_scan_dirs,
+        witness_exclusion_substrings,
+    };
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    #[test]
+    fn floor_discovery_dag_rust_dual_run_equivalence_on_live_corpus() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        std::env::set_var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN", "1");
+        let roots = default_source_roots();
+        let scan_dirs = witness_discovery_scan_dirs();
+        let excludes = witness_exclusion_substrings();
+        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
+        std::env::remove_var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN");
+        assert!(
+            result.is_ok(),
+            "floor discovery dual-run must succeed on live corpus: {}",
+            result.err().unwrap_or_default()
         );
     }
 }
