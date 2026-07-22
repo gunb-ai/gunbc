@@ -18,7 +18,7 @@ import gunbc.ci_gate {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
+import v2.std.algebra { filter, length, list_map, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
@@ -47,9 +47,10 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
-  runnable_selection_applied
+  runnable_selection_applied,
+  runnable_step_label
 }
-import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor }
+import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
   ExecutorBatch
@@ -293,6 +294,17 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
   }
+}
+
+fn cheap_floor_gate_step_labels() -> List<String> {
+  list_map(
+    xs: gunbc_ci_cheap_floor_gate_membership,
+    f: fn(g) { runnable_step_label(r: gate_runnable(g: g)) }
+  )
+}
+
+fn floor_batch_has_any_cheap_gate(batch: List<Runnable>) -> Bool {
+  schedule_lens_batch_has_any_cheap_gate(batch: batch, cheap_gate_labels: cheap_floor_gate_step_labels())
 }
 
 fn corpus_source_roots() -> List<String> {
@@ -885,7 +897,8 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
-    compile_gate_fn: ci_floor_compile_gate_fn
+    compile_gate_fn: ci_floor_compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
   ) {
     Holds => true
     Violation { diagnostic: _ } => false
