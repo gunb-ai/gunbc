@@ -185,6 +185,8 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ))
 }
 
+data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (2026-07-22, journal receipt on srv1: three deploys failed rsync exit 23 on ONE file — objects/pack/pack-25d0810548020708d75d5510c2107766baaf86d2.keep, a git fetch-time marker written 0600 by ghrunner, unreadable to the User= principal; and /opt/gunbc/gunbc/.git/config was found carrying a live actions extraheader auth token from an earlier blanket sync — a credential leak). The belt needs exactly four things for `git worktree add` resolving origin/main: HEAD (repo validity), objects/ (minus *.keep / tmp_pack_* fetch transients, which are 0600 runner-private and never needed), packed-refs, and refs/. Everything else — config (CREDENTIALS), config.worktree, index, hooks, logs — never syncs, so both failure classes are unwritable by construction: no runner-private 0600 file can red the sync, and no credential can reach the service tree (DESIGN 5 construction over validation; the blacklist alternative re-reds on the next unknown transient). Still additive (no --delete): target-local worktree registrations, session refs, and their objects must survive redeploys (apply_tree_split_sync_note). Filter order is load-bearing: the two pack-transient excludes precede the /objects/*** include (first match wins), and the terminal --exclude=* is the whitelist wall."
+
 fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
   let user = spec.service.service_user
   doc_concat(parts: [
@@ -200,7 +202,7 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
       "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
     ], "")),
     doc_line_of(text: join([
-      "ExecStart=/usr/bin/rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
+      "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
     ], "")),
   ])
 }

@@ -174,7 +174,9 @@ fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
     && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/")
-    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/")
+    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/")
+    && !string_contains(s: unit, pattern: "rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\"")
+    && !string_contains(s: unit, pattern: "--include=/config")
     && !string_contains(s: unit, pattern: "rsync -a")
     && string_contains(s: apply, pattern: unit)
 }
