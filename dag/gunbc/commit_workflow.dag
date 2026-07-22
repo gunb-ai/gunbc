@@ -22,7 +22,6 @@ data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_w
 
 type LocalTidyCheck
   = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
-  | LocalTidyGateCheck { gate: GeneratedArtifactDriftGate }
   | LocalTidyCargoFmtCheck
 
 type CommitWorkflowSurface
@@ -48,6 +47,10 @@ type CommitWorkflowRealizationBinding {
   surface: CommitWorkflowSurface
   handler: CommitWorkflowRealizationKind
   artifact: GeneratedArtifact
+}
+
+data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Terminal {
+  reason: "GeneratedArtifactDriftGate's GitPrePushHook enrollment REMOVED 2026-07-22 (fleet incident: this gate broke pushes fleet-wide — measured ~61min/2,176 witnesses on a rebased force-push touching measure.dag, since committed_generated_artifacts() regeneration walks the whole generated-artifact corpus, not an affected-set slice). Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): GeneratedArtifactDriftGate stays enrolled on GithubActionsCiJob, which the required `ci` job runs via src/v2/workflow/ci_floor_plan.dag gunbc_ci_floor_batches (dag/gunbc/ci_spec.dag ci_gate list, RunnableSingleClaim on generated_artifact_drift_gate_passes); that same floor run is what stamps the merge-admission receipt tools.merge_admission_gate.dag reads at merge time, so drift is still a hard merge-time wall — pre-push was a redundant SECOND full-corpus run of the same unscoped check (DESIGN §2: duplicated work, not added safety), not the only place it was enforced. This mirrors the fmt precedent recorded in commit_gate_rust_suite_removed_disposition below: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, so it was never a sound enforcement AUTHORITY — only fast local feedback. The pre-push hook keeps the cheap guards (uncommitted-tree check, doc-reachability witness on the ReadsLiveTree entry, cargo fmt --all --check) and gunbc_ci_witness_corpus_only_batches' declared affected-set-scoped test gate (see its own note: deliberately narrowed to the hermetic discovery corpus, not this whole-corpus regen sweep). No skip env var was added — the heavy arm is gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches)."
 }
 
 data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
