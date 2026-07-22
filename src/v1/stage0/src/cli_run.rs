@@ -7168,6 +7168,69 @@ pub fn install_output_policy(source_roots: &[String]) {
         decision("shell_trace"),
         decision("instrumentation"),
     ]);
+
+    install_effect_stream_policy(&ctx, verbose, quiet);
+}
+
+/// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
+/// authority module `install_output_policy` already resolved, and install the four
+/// (expected × observed) corners plus the subject-line guard literal. Like its
+/// sibling, this transports evaluated verdicts only — the divergence rule and the
+/// neutralization guard stay the .dag authority's. Best-effort: on any failure the
+/// funnel keeps its documented fallback table (behaviour-preserving at the
+/// migration default).
+fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bool, quiet: bool) {
+    use v1_interpreter::{InstalledEffectStreamPolicy, StreamDisposition, Value};
+    let policy = match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "resolve_shell_trace_stream_policy",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &policy else {
+        return;
+    };
+    let disposition = |name: &str| -> Option<StreamDisposition> {
+        match ctx.field(fields, name) {
+            Some(Value::Variant { variant_name, .. }) => {
+                if ctx.sym_eq(*variant_name, "SurfaceContent") {
+                    Some(StreamDisposition::SurfaceContent)
+                } else if ctx.sym_eq(*variant_name, "SummarizeCounts") {
+                    Some(StreamDisposition::SummarizeCounts)
+                } else if ctx.sym_eq(*variant_name, "StreamSuppressed") {
+                    Some(StreamDisposition::StreamSuppressed)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    // Fail-closed on a partial read: an unrecognised arm or a missing field would
+    // otherwise be silently defaulted, which is the fabricated-plausible-output the
+    // funnel exists to avoid. Leave the policy uninstalled instead — the documented
+    // fallback table is honest about being a fallback.
+    let (Some(ess), Some(esf), Some(efs), Some(eff)) = (
+        disposition("expect_success_observed_success"),
+        disposition("expect_success_observed_failure"),
+        disposition("expect_failure_observed_success"),
+        disposition("expect_failure_observed_failure"),
+    ) else {
+        return;
+    };
+    let Some(Value::Str(guard)) = ctx.field(fields, "subject_line_guard") else {
+        return;
+    };
+    v1_interpreter::set_effect_stream_policy(InstalledEffectStreamPolicy {
+        dispositions: [ess, esf, efs, eff],
+        subject_line_guard: guard.to_string(),
+    });
 }
 
 /// Evaluate `extdeps.render.surface.resolve_group_syntax(github_actions)` from the
