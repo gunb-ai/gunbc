@@ -107,7 +107,8 @@ import v1.compiler.infer_emit_info {
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
   emit_info_with_fn_type_context,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
-  variant_belongs_to_enum, variant_summary_key
+  variant_belongs_to_enum, variant_summary_key,
+  collect_type_node_import_surface_names
 }
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
@@ -2050,6 +2051,21 @@ fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -
   concat(self_name, concat(list_fields, opt_fields))
 }
 
+fn collect_item_type_surface_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let from_ann = match item.type_annotation {
+    Present { value: t } => collect_type_node_import_surface_names(n: t, source_indices: source_indices)
+    Absent => []
+  }
+  let from_params = item.params |> flat_map(p =>
+    collect_type_node_import_surface_names(n: param_node_type_expr(n: p), source_indices: source_indices)
+  )
+  let from_inferred = match item.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
+    _ => []
+  }
+  concat(from_ann, concat(from_params, from_inferred))
+}
+
 fn imported_names_in_use_line(line: String) -> List<String> {
   if contains(line, "use ") == false {
     []
@@ -2063,12 +2079,13 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): TYPE unlisted names (arm 1) run ONLY for import-free modules — the namespace-resolution case the post-PR-6848 regression is about. VALUE refs (arm 2) run for import-bearing modules ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics) must synthesize the missing fn-value use-line without re-deriving type imports that emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the value walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen. This is where UnlistedImportUse already fires exactly for types on import-free modules; fn-value closure extends the same derivation to partial-import FaithfulFreeMonoid modules."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
-    let candidates = unique_strings(items: concat(unlisted_type_names, value_names))
+    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_type_surface_names(item: item, source_indices: source_indices)))
+    let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
     let already = already_imported_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let unlisted = candidates |> flat_map(name =>
       if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
@@ -2171,7 +2188,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   } else if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) {
     reference_derived_use_lines(
       items: typed_module.items,
-      unlisted_type_names: [],
+      unlisted_type_names: unlisted_type_names,
       this_module_name: authored_name(env: scope.type_env, node: m),
       registry: registry,
       emit_info: emit_info,
