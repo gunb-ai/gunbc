@@ -186,7 +186,7 @@ fn exclusion_substring_aligns_with_authority(sub: String, authority: List<String
   any(
     xs: authority,
     predicate: fn(row) {
-      string_contains(s: sub, pattern: row) || string_contains(s: row, pattern: sub)
+      string_contains(s: row, pattern: sub)
     }
   )
 }

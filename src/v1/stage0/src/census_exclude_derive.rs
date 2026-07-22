@@ -189,6 +189,13 @@ fn exclusion_substrings_with_derived(derived_module_paths: &BTreeSet<String>) ->
     exclude
 }
 
+fn module_path_excluded_by_substrings(module_path: &str, exclude_substrings: &[String]) -> bool {
+    let norm = normalize_repo_path(module_path);
+    exclude_substrings
+        .iter()
+        .any(|sub| norm.contains(sub.as_str()))
+}
+
 /// Fixed-point derivation: pattern authority ∪ module-path closure of strict-resolve
 /// failures plus transitive-importer closure each round.
 pub fn derive_census_exclude_closure(
@@ -316,13 +323,22 @@ pub fn refuse_silent_live_importer_loss(
 
 fn verify_live_pipeline_exclusions(receipt: &DerivedExcludeClosure) -> Result<(), String> {
     let live = live_pipeline_module_paths();
-    let live_set: BTreeSet<String> = live.iter().map(|p| normalize_repo_path(p)).collect();
-    let active: BTreeSet<String> = live_set
+    let pattern_only = super::whole_tree_resolve_exclusion_substrings();
+    let full_exclude = exclusion_substrings_with_derived(&receipt.module_paths);
+
+    let before: BTreeSet<String> = live
         .iter()
-        .filter(|p| !receipt.module_paths.contains(*p))
-        .cloned()
+        .map(|p| normalize_repo_path(p))
+        .filter(|p| !module_path_excluded_by_substrings(p, &pattern_only))
         .collect();
-    refuse_silent_live_importer_loss(&live_set, &active, receipt, &live)
+
+    let after: BTreeSet<String> = live
+        .iter()
+        .map(|p| normalize_repo_path(p))
+        .filter(|p| !module_path_excluded_by_substrings(p, &full_exclude))
+        .collect();
+
+    refuse_silent_live_importer_loss(&before, &after, receipt, &live)
 }
 
 pub fn workspace_root_from_manifest_dir(manifest_dir: &Path) -> PathBuf {
@@ -360,6 +376,44 @@ mod tests {
             diff.only_left.is_empty(),
             "seeds must be subset of oracle; only in seeds: {:?}",
             diff.only_left
+        );
+    }
+
+    #[test]
+    fn refuse_silent_live_importer_loss_refuses_unreceipted_drop() {
+        let mut before = BTreeSet::new();
+        before.insert("src/v2/compiler/04_infer.dag".to_string());
+        let after = BTreeSet::new();
+        let receipt = DerivedExcludeClosure {
+            memo_content_hash: String::new(),
+            module_paths: BTreeSet::new(),
+            live_importers_excluded: vec![],
+            convergence_rounds: 1,
+        };
+        let live = vec!["src/v2/compiler/04_infer.dag".to_string()];
+        assert!(
+            refuse_silent_live_importer_loss(&before, &after, &receipt, &live).is_err(),
+            "live pipeline module lost without receipt must refuse"
+        );
+    }
+
+    #[test]
+    fn refuse_silent_live_importer_loss_holds_when_receipted() {
+        let mut before = BTreeSet::new();
+        before.insert("src/v2/compiler/04_infer.dag".to_string());
+        let after = BTreeSet::new();
+        let mut module_paths = BTreeSet::new();
+        module_paths.insert("src/v2/compiler/04_infer.dag".to_string());
+        let receipt = DerivedExcludeClosure {
+            memo_content_hash: String::new(),
+            module_paths,
+            live_importers_excluded: vec![],
+            convergence_rounds: 1,
+        };
+        let live = vec!["src/v2/compiler/04_infer.dag".to_string()];
+        assert!(
+            refuse_silent_live_importer_loss(&before, &after, &receipt, &live).is_ok(),
+            "receipted exclusion must not trip silent-loss guard"
         );
     }
 
