@@ -104,6 +104,9 @@ fn normalize_repo_path(path: &str) -> String {
     path.replace('\\', "/")
 }
 
+/// Interim host scaffold: extract failing module paths from strict-resolve's
+/// human-readable `Err(String)` surface. Stuck-round refusal is fail-closed if
+/// formatting drifts. Dissolves with the module header (structured failure facts).
 fn parse_strict_resolve_failure_paths(err: &str) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
     for line in err.lines() {

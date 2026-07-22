@@ -1398,9 +1398,18 @@ pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
     census_exclude_derive::whole_tree_probe_exclusion_substrings()
 }
 
-/// Live compile-clean shard entry paths for census exclusion silent-loss checks.
+/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
+/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
 pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
-    compile_clean_shard_entry_paths_fast()
+    let pool_roots = default_source_roots();
+    let facts = build_module_graph_facts_live(&pool_roots);
+    let mut paths = BTreeSet::new();
+    for entry in compile_clean_shard_entry_paths_fast() {
+        for path in import_closure_live_paths_with_facts(&entry, &facts) {
+            paths.insert(path);
+        }
+    }
+    paths.into_iter().collect()
 }
 
 /// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
