@@ -117,6 +117,28 @@ an optional `expected: Node?` — present in checking positions (annotation, scr
 type), absent in synthesis positions; when present *and* the structural candidate set is >1, it
 filters to variants/members of `expected` before declaring `Ambiguous`.
 
+**RE-ADJUDICATED — SUPERSEDED BY §13 (operator ruling, 2026-07-22).** The (X)/(Y) menu above
+presupposed the `global_bare` pool tier: bare `Success` only ever "has 6 structural matches" if
+the whole pool is a candidate set. §13 deletes that tier — a bare name's candidates are the
+binders on its **ancestor chain**, never the pool — so the pool-filter reading of (Y) is *dead,
+not chosen against*. Operator (2026-07-22): similar instances across the repo are **not**
+associated by shared literal name — *"there has to be some kind of logical connection"*; a bare
+name with zero chain binders is `Unresolved` ("what are you referring to?"), never `Ambiguous`
+among pool homonyms. What survives of (Y) is one residue, **demoted to sugar** (§6 amendment):
+in a typed position whose container type is **syntactically local** (a written annotation — an
+annotated scrutinee, `let x: T`, a field/return type), a bare member name desugars to
+`T.<name>` — a grammar-level rewrite, decidable without inference, loud on any edit to the
+local annotation. Flow-typed positions (the container arrives by inference from another
+declaration) get **no sugar** and must qualify or alias: that is exactly where desugaring would
+become type-directed elaboration, and where the silent-rebind hole lives (editing `f`'s return
+type would silently re-target `match f() { Success => .. }` — the §13 edit-stability invariant
+forbids it). The sugar boundary and the safety boundary coincide — which is *why* the residue
+is sugar, not semantics. Implementation consequence updated: the sugar is a **pre-resolve
+desugar pass** (bare member name + syntactically-local container annotation → `T.<name>` before
+`resolve` runs); `expected: Node?` is **deleted from the resolver contract** — `resolve` takes
+`(name, position)` only, and no expected-type consultation exists in the core resolver (one
+authority; the §6 mechanics bullet states the same).
+
 ## 5. The collision census (empirical grounding, 2026-07-06)
 
 Declared-name census over 942 `.dag` files (`dag/**` + `src/v1/**`), leaf name × declared
@@ -226,8 +248,12 @@ to all names:
 
 - **Binding edge, not scan.** A constructor's owner still rides its binding (§1c rule 1);
   under namespace-only the "binding" is just the resolved node's parent edge in the tree.
-- **No expected-type picker** (§1c rule 5) — (Y)'s expected-type *filter* is distinct (§4).
-- **Patterns via scrutinee** (§1c rule 4) is the pattern-position instance of (Y).
+- **No expected-type picker** (§1c rule 5) — and per the §4 re-adjudication (2026-07-22) the
+  expected-type *filter* is dead with the pool tier; no expected-type consultation survives in
+  the core resolver.
+- **Patterns via scrutinee** (§1c rule 4) is **demoted to sugar** (§4 re-adjudication): valid
+  only when the scrutinee's container type is syntactically local (a written annotation), where
+  it is a grammar-level desugar to `T.<name>`; a flow-typed scrutinee's arms qualify or alias.
 - **Collision at env construction** (§1c rule 3) becomes the general `Ambiguous` outcome.
 
 ## 7. What dissolves (all Rule-1 dual-representations)
@@ -265,8 +291,10 @@ O(M²) `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly 
 - **`SymbolIndex` = the containment tree materialized** (qualified path → Node, one authority —
   §3: the frontend builds it from nesting, it is not a separate index with its own reach rules).
   Shared. Not mine to re-build; I consume it.
-- **`resolve(name, position)` = the semantics over it** (nearest-enclosing-subtree search +
-  (Y) expected-type filter + `Ambiguous`/`Unresolved`). Mine.
+- **`resolve(name, position)` = the semantics over it** (unique-on-chain lookup, §13 +
+  `Ambiguous`/`Unresolved`; no expected-type consultation — the (Y) filter formerly named here
+  died in the §4 re-adjudication (2026-07-22), and its locally-annotated residue is a
+  pre-resolve desugar pass, never a resolver input). Mine.
 - **The one genuine difference is a policy value, not a conflict.** type-env-single-authority
   keeps the *import list as the visibility gate* ("a module's import list says which qualified
   names are visible" — its §3). Namespace-only **deletes** that gate and resolves by structural
@@ -368,9 +396,22 @@ built — the census closure above is the mechanism that actually shipped, and t
 known residue (the reference producer over-collects; the closure is a second
 authority beside the compile-clean import closure) is tracked as the
 reference-derived dependency-edge lane, the same lane that dissolves this bridge.
+→ [layering-imports gate repoint scoping](layering-imports-reference-repoint-design.md) (CI `LayeringImportsGate` fact producer; Phase 1 lands before import strip reaches `std`/`extdeps` scan roots).
 **Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
 above — delete import grammar; container.member references become the sole
 dependency authority).
+**AMENDED 2026-07-22 (execution-diagnosed, merry-heron-629):** the closure's adequacy is
+**pool-membership coincidence** — a stripped file's bare names resolve iff the target module
+happens to be in the shared pool via *some unrelated unstripped import in the closure*; there
+is no per-file binding mechanism, so already-stripped files (batch-1's ~74) are green only by
+ambient coverage that any later unrelated strip can erode. **All further stripping is blocked
+corpus-wide** until a closure-independent binding mechanism (substantively: namespace-only
+resolution reaching the typecheck env — the §8 flip) or a provable-coverage construction check
+lands; additionally a strip wave must be closed under the imports-from relation (or PR-4 land
+first) — partial strips sever re-export chains at hub files. Mechanism receipts, controlled
+experiments, and the consolidated wave rule:
+[import-strip witness-discovery cascade diagnosis](import-strip-witness-discovery-cascade-diagnosis.md)
+§12–13 (PR #7061).
 
 ## 9. Open / to-verify
 
@@ -438,6 +479,50 @@ the desugar is exactly-one (header × explicit-brace composition defined; ambigu
 machinery the salvage stabilized — it lands as the FIRST follow-up PR on top of the merged
 #6848, not inside it. Step 2 follows once step 1's dissolves (metadata edge, prefix keys) are
 receipted.
+
+**Step-1 landed vs receipted — post-#6968 capture (2026-07-22, from stern-newt-142's closeout
+consult; this subsection is the durable authority for what was previously only in lane-plan
+session messages).** #6968 merged the graft carrier + normalize/`validate_module_roots` ingress
++ a partial C5 dissolve (symbol_index_fill metadata branch and the name_resolve
+export-admission header filter removed; graft-aware QN reader sweep), witnessed green
+(zero-metadata graft output, graft shape, marker strip, normalize long-lane). **The step-1
+receipt bar is NOT yet met**: the bar is both bolt-ons *dissolved into ordinary containment
+fill*, not merely dead-in-corpus behind the graft. Open dissolves, in stern-newt's leverage
+order:
+
+1. **QN-reader collapse ("C6" second half)** — `qualified_name_from_module_node_graft_aware`
+   is an interim dual-arm reader (`Scaffold → SingleAuthority`); dissolve = route grafted roots
+   through the nesting-position spine walk inside `v2.extdeps.languages.dag`
+   `qualified_name_from_module_node`, break the `std ↔ extdeps` import cycle (lift spine
+   helpers to std OR split pre-graft ingress to a parse-only boundary), delete the wrapper +
+   `namespace_graft_pre_graft_module_qn`. **Independent of the strip lane / pool-membership
+   blocker** (confirmed: touches only namespace_graft + the extdeps QN fn; no PR-5b, no
+   ci_layer_roots, no census machinery).
+2. **"C6" first half — v1 seed regen** after the wrapper deletion. Previously scoped ONLY in
+   the dashboard C1–C7 lane sequence (sunny-wolf green-light; "C6 regen + interim wrapper
+   dissolution remain on plan under nimble-owl shepherding"); #6968 merged WITHOUT it. This
+   paragraph is its capture.
+3. **"C7" — completion receipts**: wet `source_root_ingest_gate_passes` + real-ingest RED
+   controls green = the wrapper-collapse completion signal (named in the carrier trigger).
+4. **Metadata-edge chain cleanup**: `dag_surface_module_header_metadata_edge` predicate + the
+   `03_resolve` `under_module_root` preserve OR-chain
+   (`dag_resolve_preserve_module_metadata_subtree`, `namespace_graft_parse_projection_edge`)
+   still live as pre-graft/ModuleShell backstops; `body_lowering_fold` still calls the
+   preserve fn at 3 sites (gated on body-lowering consuming grafted trees).
+5. **SymbolIndex prefix-key dissolution**: `symbol_index_fill_module_root` still seeds the
+   path from the `module_qn` string (`qualified_name_snoc` bolt-on);
+   `symbol_index_containment_disposition` is `Scaffold` → `symbol_index_fill_containment_node`
+   — the containment walk exists but pure nesting-position keys are not yet the authority.
+6. **Review-41316 follow-ups (non-blocking)**: `try_admitted_export_binding` admission-entry
+   construction hardening (refuse non-grafted admission); the
+   `ends_with(.., "_node_projection")` suffix heuristic → declared grammar-projection rows.
+
+**Post-C5 interim census protocol** (durable pointer): the 83-row exclude set is pinned
+git-visible at `docs/probes/census_extra_excludes.txt` + `docs/probes/
+still-hawk-row-coordination.txt` — ephemeral CLI application only, **never** baked into
+`ci_layer_roots`; fierce-heron oracle = `derived(tip) == recovered-83`. Coordination note:
+stern-owl-401's §13 containment-walk binding (#6979) was sequenced to coordinate after C5 on
+the same files — clear to proceed since #6968 merged.
 
 ## 11. Terminology: "module" → "namespace" (operator-ruled, 2026-07-19)
 
@@ -664,11 +749,14 @@ unique-on-chain everywhere — this **structurally dissolves** the prelude-shape
 class (#6936, 739) rather than special-casing it, pending still-hawk's confirmation of the (c)
 subclass.
 
-**Flagged, NOT ruled — the (Y) expected-type filter (§4).** Type-directed disambiguation (an
-expected type filtering a variant set to one) sits *adjacent* to the rejected fallback class: it,
-too, lets context pick among candidates. It is **not** covered by this ruling and needs a separate
-operator ruling before it survives into the flip — §4's "filters, never picks" claim must be
-re-adjudicated against this invariant.
+**RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The
+re-adjudication this paragraph asked for is done: the pool-filter reading of (Y) dies with the
+`global_bare` tier (there is never a pool candidate set to filter), and the surviving residue —
+bare member names in typed positions — is **sugar gated on a syntactically-local container
+annotation**, never type-directed elaboration from flow-typed positions. The sugar boundary
+coincides with this section's edit-stability invariant, so nothing of the rejected fallback
+class survives into the flip. See §4's re-adjudication note for the full statement and the §6
+mechanics amendment for patterns-via-scrutinee's demotion.
 
 **Sequencing.** §10 step-1 (header-as-sugar → containment graft) is in flight (stern-newt-142,
 #6968); slice-2's per-class counts gate the §5 backstop widening; import→alias transmutation lands

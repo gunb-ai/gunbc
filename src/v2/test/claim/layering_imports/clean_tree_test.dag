@@ -1,14 +1,3 @@
 module v2.test.layering_imports.clean_tree
 
-
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-data layering_std_roots: List<String> = ["src/v2/std", "dag/std"]
-data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dag/extdeps"]
-
-test fn clean_tree_no_wrong_direction_imports_holds() -> Bool {
-  layering_imports_clean_holds(facts: layer_import_facts_live(
-    std_roots: layering_std_roots,
-    extdeps_roots: layering_extdeps_roots
-  ))
-}
+data clean_tree_fast_lane_note: String = "Full-corpus layering_imports clean-tree receipt moved to long/layering_imports_clean_tree_test.dag — layer_import_facts_live over dag/std + src/v2/std + extdeps roots exceeds the per-PR 5s fast-lane eval budget once the transitional producer unions reference_resolution_facts (gunbc_ci_fast_lane_rule_note). Per-PR fast-lane coverage: five scanner perturb receipts (import-syntax fixtures), reference_only_compiler_fixture (import-less qualified ref), lens_unit synthetic predicate receipts. Floor gate enrollment unchanged via dag/tools/layering_imports_transport.dag."

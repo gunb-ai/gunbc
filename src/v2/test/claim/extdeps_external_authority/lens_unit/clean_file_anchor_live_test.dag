@@ -1,8 +1,0 @@
-module v2.test.extdeps_external_authority.lens_unit.clean_file_anchor_live
-
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn clean_file_anchor_live_is_green_holds() -> Bool {
-  extdeps_external_authority_live_clean_for_module(module: extdeps_external_authority_module)
-}

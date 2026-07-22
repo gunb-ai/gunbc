@@ -2773,7 +2773,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_sequence(
@@ -5832,11 +5832,27 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<Al
         }
       }
     Absent =>
-      outcome_rejected(Diagnostic {
-        reason: ^alias_binding_row_not_alias_decl,
-        at: node_locus(node: decl),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+      match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
+        Accepted { value: _, diagnostics: _ } =>
+          match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: binding, diagnostics: bd } =>
+              match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
+                Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                Accepted { value: target, diagnostics: td } =>
+                  Accepted {
+                    value: AliasBindingRow { binding: binding, target: target },
+                    diagnostics: diagnostics_merge(outer: bd, inner: td)
+                  }
+              }
+          }
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(Diagnostic {
+            reason: ^alias_binding_row_not_alias_decl,
+            at: node_locus(node: decl),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
   }
 }
 

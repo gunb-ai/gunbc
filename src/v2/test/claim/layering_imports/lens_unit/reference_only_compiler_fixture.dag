@@ -1,0 +1,13 @@
+module v2.test.layering_imports.lens_unit.reference_only_compiler_fixture
+
+
+data reference_only_compiler_std_roots: List<String> = [
+  "src/v2/test/fixture/layering_scan/ref_only_compiler/std"
+]
+
+fn detects_reference_only_compiler_import_holds() -> Bool {
+  layering_imports_violation_count(facts: layer_import_facts_live(
+    std_roots: reference_only_compiler_std_roots,
+    extdeps_roots: []
+  )) == 1
+}

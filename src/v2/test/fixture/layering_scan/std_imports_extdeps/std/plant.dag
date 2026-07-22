@@ -1,2 +1,2 @@
-module v2.test.fixture.layering_scan.std_imports_extdeps_plant
+module v2.std.fixture.layering_scan.std_imports_extdeps_plant
 import extdeps.shell
