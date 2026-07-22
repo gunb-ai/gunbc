@@ -1,0 +1,18 @@
+module v2.test.claim.witness_exclusion_reconciliation_test
+
+import v2.workflow.witness_admission {
+  witness_admission_offline_exclusion_rows_align_with_discovery_holds,
+  witness_admission_fixture_exclusion_rows_align_with_discovery_holds,
+  witness_admission_offline_fixture_exclusion_rows_disjoint_holds,
+  witness_whole_tree_resolve_exclusion_concat_authority_holds
+}
+import v2.std.logic { Bool }
+
+data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots exclusion single-authority (witness_exclusion_single_authority_reconciliation_note): offline/fixture admission rows align with discovery exclusions; offline ∩ fixture = ∅; whole-tree probe policy is exactly concat(discovery, strict-resolve). RED if a parallel list drifts."
+
+test fn witness_exclusion_single_authority_reconciliation_holds() -> Bool {
+  witness_admission_offline_exclusion_rows_align_with_discovery_holds()
+    && witness_admission_fixture_exclusion_rows_align_with_discovery_holds()
+    && witness_admission_offline_fixture_exclusion_rows_disjoint_holds()
+    && witness_whole_tree_resolve_exclusion_concat_authority_holds()
+}

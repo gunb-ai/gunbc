@@ -200,11 +200,35 @@ fn witness_runner_slot_enforcement_committed_is_fail_closed() -> Bool {
   }
 }
 
-fn witness_transport_scripts_are_read_only_systemctl() -> Bool {
-  string_contains(s: fleet_runner_slice_memory_max_read_script(unit: "system-actions-runner.slice"), pattern: "systemctl show")
-    && string_contains(s: fleet_runner_unit_property_read_script(unit: "actions-runner@srv1-01.service", property: systemd_memory_max_property), pattern: "systemctl show")
+fn witness_show_property_local_read_holds() -> Bool {
+  match systemctl_show_property_read_local(
+    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    property: MemoryMax,
+  ) {
+    Present { value: v } => v == "8589934592"
+    Absent => false
+  }
+}
+
+fn witness_transport_reads_use_show_property_authority() -> Bool {
+  systemctl_show_property_operation_argv_matches_transport(
+    unit: "system-actions-runner.slice" as NonEmptyStr,
+    property: MemoryMax,
+  )
+    && witness_show_property_local_read_holds()
     && string_contains(s: fleet_runner_width_count_read_script(instance_glob: "actions-runner@srv1-*.service"), pattern: "list-units")
-    && !string_contains(s: fleet_runner_slice_memory_max_read_script(unit: "system-actions-runner.slice"), pattern: "set-property")
+}
+
+fn witness_show_property_injection_metachar_refused() -> Bool {
+  match typed_argv_shell_safe_refusal_argv(
+    argv: systemctl_show_property_operation_argv(
+      unit: "foo\"; rm -rf /" as NonEmptyStr,
+      property: MemoryMax,
+    )
+  ) {
+    Present { value: why } => string_contains(s: why, pattern: "allowlist")
+    Absent => false
+  }
 }
 
 test fn fleet_show_effective_read_v0_knobs_ground() -> Bool {
@@ -227,5 +251,6 @@ test fn fleet_show_effective_read_v0_knobs_ground() -> Bool {
     && witness_srv2_grounded_receipt_lists_every_fixture_runner_unit()
     && witness_committed_show_reads_are_fail_closed_absent()
     && witness_runner_slot_enforcement_committed_is_fail_closed()
-    && witness_transport_scripts_are_read_only_systemctl()
+    && witness_transport_reads_use_show_property_authority()
+    && witness_show_property_injection_metachar_refused()
 }

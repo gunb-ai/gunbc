@@ -1,10 +1,17 @@
 module v2.test.lens_doc_reachability.doc_reachability_test
 
+import gunbc.doc_graph_roots { doc_graph_roots_all }
+import v2.lens.doc_reachability {
+  doc_graph_orphan_clean_holds,
+  doc_graph_dangling_clean_holds,
+  doc_graph_universe_nonempty_holds,
+  doc_graph_clean_holds,
+}
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
-  return doc_graph_orphan_clean_holds()
+  return doc_graph_orphan_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 test fn doc_graph_has_no_dangling_links() -> Bool {
@@ -13,4 +20,8 @@ test fn doc_graph_has_no_dangling_links() -> Bool {
 
 test fn doc_graph_universe_is_nonempty() -> Bool {
   return doc_graph_universe_nonempty_holds()
+}
+
+test fn doc_graph_is_clean() -> Bool {
+  return doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
 }

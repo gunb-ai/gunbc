@@ -17,14 +17,18 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import std.execution_mode {
   ExecutionMode,
-  Hermetic,
-  execution_mode_is_wet_dispatch
+  Hermetic
 }
 import v2.extdeps.runtimes.effect_io_host_grant {
   effect_io_host_write_admissible,
   effect_io_host_envelope,
+  effect_io_host_locator_position,
 }
-import std.effect_grant { Admitted, EffectOutsideGrant, Envelope }
+import std.effect_grant {
+  Admitted, EffectOutsideGrant, Envelope,
+  Read, RealTransport, Replay,
+  CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
+}
 import v2.std.collection { Absent, List, Map }
 import v2.std.diagnostic {
   Accepted,
@@ -70,7 +74,7 @@ type EffectIoHostHandlerBundle {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
   mode: ExecutionMode
-  write_envelope: Envelope
+  envelope: Envelope
   fixture: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
@@ -80,14 +84,24 @@ type V4EffectIoHostRuntime {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
   mode: ExecutionMode
-  write_envelope: Envelope
+  envelope: Envelope
   fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
 
+data effect_io_host_read_dispatch_note: String = "P-C per-grant binding (docs/plans/effect-namespace-grants.md line 62): read dispatch selects real-transport vs replay by the COVERING Read grant's HandlerBinding (covering_grant), NOT by re-reading the per-process ExecutionMode. Mode is consumed exactly once, at envelope construction (effect_io_host_envelope), where it picks the wet (RealTransport) or hermetic (Replay) preset; from there the envelope's grants are the sole authority (§3). An uncovered read is a located refusal (NoCoveringGrant -> effect_io_host_read_outside_grant), fail-closed. FRONTIER (operator-approved 2026-07-22): the Replay grant carries a fixture_store String identity, but the replay handler still resolves the concrete store from the passed EffectIoFixtureStore object rather than from that String -- the per-grant store-string resolution is the declared follow-on."
+
 fn effect_io_host_write_outside_grant_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^effect_io_host_write_outside_grant,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn effect_io_host_read_outside_grant_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_host_read_outside_grant,
     at: node_locus(node: effect_io_pure_operation_node()),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -149,23 +163,33 @@ fn effect_io_host_storage_write(
 fn effect_io_host_dispatch_read(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  mode: ExecutionMode,
+  read_envelope: Envelope,
   fixture: EffectIoFixtureStore,
   request: EffectRequest
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
-      if execution_mode_is_wet_dispatch(mode: mode) {
-        match host_ctx {
-          HostFileContext { context: ctx } =>
-            effect_io_host_file_read(ctx: ctx, locator: locator)
-          HostHttpContext { context: ctx } =>
-            effect_io_host_http_read(ctx: ctx, locator: locator)
-          HostStorageContext { context: ctx } =>
-            effect_io_host_storage_read(ctx: ctx, locator: locator)
-        }
-      } else {
-        effect_io_pure_store_lookup(store: fixture, locator: locator)
+      match covering_grant(
+        env: read_envelope,
+        verb: Read,
+        target: effect_io_host_locator_position(backend: backend, locator: locator)
+      ) {
+        CoveredBy { grant: g } =>
+          match g.binding {
+            RealTransport =>
+              match host_ctx {
+                HostFileContext { context: ctx } =>
+                  effect_io_host_file_read(ctx: ctx, locator: locator)
+                HostHttpContext { context: ctx } =>
+                  effect_io_host_http_read(ctx: ctx, locator: locator)
+                HostStorageContext { context: ctx } =>
+                  effect_io_host_storage_read(ctx: ctx, locator: locator)
+              }
+            Replay { fixture_store: s } =>
+              effect_io_pure_store_lookup(store: fixture, locator: locator)
+          }
+        NoCoveringGrant { verb: v, target: t, frame: f } =>
+          outcome_rejected(d: effect_io_host_read_outside_grant_diagnostic())
       }
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
@@ -210,12 +234,12 @@ fn effect_io_host_handler_binding(
   mode: ExecutionMode,
   fixture: EffectIoFixtureStore
 ) -> EffectIoHostHandlerBundle {
-  let write_envelope = effect_io_host_envelope(mode: mode, backend: backend)
+  let envelope = effect_io_host_envelope(mode: mode, backend: backend)
   EffectIoHostHandlerBundle {
     declared_backend: backend,
     backend_context: host_ctx,
     mode: mode,
-    write_envelope: write_envelope,
+    envelope: envelope,
     fixture: fixture,
     handlers: EffectHandlerBinding {
       read_resource: EffectHandler {
@@ -223,7 +247,7 @@ fn effect_io_host_handler_binding(
           effect_io_host_dispatch_read(
             backend: backend,
             host_ctx: host_ctx,
-            mode: mode,
+            read_envelope: envelope,
             fixture: fixture,
             request: request
           )
@@ -234,7 +258,7 @@ fn effect_io_host_handler_binding(
           effect_io_host_dispatch_write(
             backend: backend,
             host_ctx: host_ctx,
-            write_envelope: write_envelope,
+            write_envelope: envelope,
             request: request
           )
         }
@@ -302,7 +326,7 @@ fn effect_io_host_runtime(
     declared_backend: bundle.declared_backend,
     backend_context: bundle.backend_context,
     mode: bundle.mode,
-    write_envelope: bundle.write_envelope,
+    envelope: bundle.envelope,
     fixture_store: bundle.fixture,
     handlers: bundle.handlers
   }

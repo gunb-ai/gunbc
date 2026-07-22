@@ -318,6 +318,7 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
+data plan_artifact_plan_function: String = "gunbc_ci_plan_artifact_batches"
 data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
 
 

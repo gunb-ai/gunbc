@@ -433,3 +433,126 @@ test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
     _ => false
   }
 }
+
+data si_alias_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_alias"
+)
+
+data si_alias_target_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^AliasTargetType } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_alias_decl,
+        target: dag_grammar_atom(id: ^dag_surface_alias_decl)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_binding,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: binding } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_target,
+        target: si_qn_spine(segments: target_qn)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^grammar_production_identity_node_projection,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_surface_alias_decl } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      dag_named_edge(
+        name: ^grammar_production_captured_node_projection,
+        target: si_alias_decl_node(binding: binding, target_qn: target_qn)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data si_alias_target_qn: FreeMonoid<Symbol> = qualified_name_snoc(
+  qn: si_alias_module_qn,
+  segment: ^AliasTargetType
+)
+
+data si_alias_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_alias_module_qn),
+  exports: [
+    Edge {
+      label: Named { name: ^AliasTargetType },
+      target: si_alias_target_node
+    },
+    Edge {
+      label: Named { name: ^dag_surface_top_level_item },
+      target: si_alias_decl_wrapped(
+        binding: ^AliasBinding,
+        target_qn: si_alias_target_qn
+      )
+    }
+  ]
+)
+
+data si_alias_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_alias_module_root_node
+)
+
+test fn symbol_index_alias_binding_lexical_lookup_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_alias_index,
+    position: si_alias_module_qn,
+    name: ^AliasBinding
+  ) {
+    LexicalHit { node: hit, path: _ } => hit == si_alias_target_node
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
+  let orphan_target_qn = qualified_name_from_dotted_string(
+    dotted: "v2.test.symbol_index_alias.MissingTarget"
+  )
+  let root = si_module_root(
+    qn_spine: si_qn_spine(segments: si_alias_module_qn),
+    exports: [
+      Edge {
+        label: Named { name: ^dag_surface_top_level_item },
+        target: si_alias_decl_wrapped(
+          binding: ^OrphanAlias,
+          target_qn: orphan_target_qn
+        )
+      }
+    ]
+  )
+  let idx = symbol_index_fill_module_root(index: empty_symbol_index(), root: root)
+  match symbol_index_lexical_lookup(
+    index: idx,
+    position: si_alias_module_qn,
+    name: ^OrphanAlias
+  ) {
+    LexicalUnbound => true
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+  }
+}

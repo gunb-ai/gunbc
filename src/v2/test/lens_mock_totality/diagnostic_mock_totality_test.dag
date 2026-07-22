@@ -14,6 +14,8 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
   } else if case.operation_key == "ssh.Session.ExecScript" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_script })
+  } else if case.operation_key == "ssh.Session.ExecArgv" {
+    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_argv })
   } else if case.operation_key == "ssh.Session.Reachability" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
   } else if case.operation_key == "redfish.Http.GetSystem" {
