@@ -5,6 +5,7 @@ import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.language_model { LanguageModel }
 import v2.lens.mandatory_tag { mandatory_tag_findings }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
@@ -38,9 +39,8 @@ fn corpus_scan_add(a: CorpusScan, b: CorpusScan) -> CorpusScan {
   }
 }
 
-fn scan_dag_file(path: String) -> CorpusScan {
+fn scan_dag_file(path: String, lm: LanguageModel) -> CorpusScan {
   let text = filesystem_read(path: path).content
-  let lm = dag_language_model()
   match tokenize(text: text, file: ^mandatory_tag_corpus_file, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
       CorpusScan { module_count: 1, finding_count: 0, stage_reject_count: 1, walk_failure_count: 0 }
@@ -59,7 +59,7 @@ fn scan_dag_file(path: String) -> CorpusScan {
   }
 }
 
-fn walk_extdeps_dir(path: String) -> CorpusScan {
+fn walk_extdeps_dir(path: String, lm: LanguageModel) -> CorpusScan {
   let l = Filesystem.List(path: path)
   if l.success {
     if l.entries == "" {
@@ -68,9 +68,9 @@ fn walk_extdeps_dir(path: String) -> CorpusScan {
       fold(split(l.entries, separator: "\n"), init: corpus_scan_zero(), f: fn(acc, name) {
         let child = concat(path, "/", name)
         if name.ends_with(suffix: ".dag") {
-          corpus_scan_add(a: acc, b: scan_dag_file(path: child))
+          corpus_scan_add(a: acc, b: scan_dag_file(path: child, lm: lm))
         } else {
-          corpus_scan_add(a: acc, b: walk_extdeps_dir(path: child))
+          corpus_scan_add(a: acc, b: walk_extdeps_dir(path: child, lm: lm))
         }
       })
     }
@@ -80,14 +80,38 @@ fn walk_extdeps_dir(path: String) -> CorpusScan {
 }
 
 test fn mandatory_tag_extdeps_corpus_wall_holds() -> Bool {
-  let scan = walk_extdeps_dir(path: "dag/extdeps")
+  let scan = walk_extdeps_dir(path: "dag/extdeps", lm: dag_language_model())
   scan.finding_count == 0
     && scan.stage_reject_count == 0
     && scan.walk_failure_count == 0
     && scan.module_count > 150
 }
 
+test fn mandatory_tag_corpus_subdir_color_wall_holds() -> Bool {
+  let scan = walk_extdeps_dir(path: "dag/extdeps/color", lm: dag_language_model())
+  scan.finding_count == 0
+    && scan.stage_reject_count == 0
+    && scan.walk_failure_count == 0
+    && scan.module_count == 3
+}
+
+fn tokenize_only_scan(path: String, lm: LanguageModel) -> Int {
+  let text = filesystem_read(path: path).content
+  match tokenize(text: text, file: ^mandatory_tag_corpus_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: _, diagnostics: _ } => 1
+  }
+}
+
+test fn mandatory_tag_probe_tokenize_only_color() -> Bool {
+  let lm = dag_language_model()
+  let a = tokenize_only_scan(path: "dag/extdeps/color/srgb.dag", lm: lm)
+  let b = tokenize_only_scan(path: "dag/extdeps/color/okabe_ito.dag", lm: lm)
+  let c = tokenize_only_scan(path: "dag/extdeps/color/solarized.dag", lm: lm)
+  a + b + c == 3
+}
+
 test fn mandatory_tag_corpus_walker_refuses_missing_root() -> Bool {
-  let scan = walk_extdeps_dir(path: "dag/extdeps_nonexistent_probe_root")
+  let scan = walk_extdeps_dir(path: "dag/extdeps_nonexistent_probe_root", lm: dag_language_model())
   scan.walk_failure_count == 1 && scan.module_count == 0
 }
