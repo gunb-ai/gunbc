@@ -680,6 +680,15 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn walk_target_alias_apply_corpus_write_refused_until_alias_parse() {
+        let err = super::walk_target_alias_apply_live(&[], &[], true).unwrap_err();
+        assert!(
+            err.contains("#6979"),
+            "expected corpus write gate to cite #6979, got: {err}"
+        );
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
