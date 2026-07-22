@@ -415,6 +415,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           authored(id: "ts-loop-buildretry", done: false, content: "the release-build step's EAGAIN retry ladder (jobs=1, then drop RUSTC_WRAPPER) keeps builds green while masking the sccache/host deficit — the srvN build-cache provisioning lane owns the root fix (DESIGN open thread; STEP 2 fallback removal is operator-sequenced after T4)."),
           authored(id: "ts-loop-stale-roster", done: true, content: "#7060 moved a witness to the long lane but left its explicit roster row enrolled → every main run red for ~3 hours (no-main-function-found) → hotfix #7079; enrollment-vs-definition living in two places is the same single-authority class the unconsumed-component row names."),
           authored(id: "ts-loop-deploy", done: false, content: "deploy-to-srv1 folded into the ci run for CD → srv1 host state now reds main daily independent of code health — the deploy-tail row above is the acute half; the CD-transport §2 node is the root."),
+          authored(id: "ts-loop-selfheal", done: false, content: "**structural exit — a red class is now typed by remedy KIND (ci-chores lane, operator-directed 2026-07-22).** `gunbc.ci_remedy` splits every floor gate into a `RemedyDerivation` variant carrying a channel+command (the remedy is a pure projection of the tree — the pipeline may re-run it and commit a chore) vs a `RemedyJudgment` variant carrying a located-debt pointer (fail-closed default — the pipeline only detects earlier and refuses louder, never fixes). Derivation is grounded, not hand-listed: the `GeneratedArtifactRegen` channel heals exactly `committed_generated_artifacts()` (the registry the drift gate guards; command source_roots = `witness_layer_roots`), walled by `ci_remedy_witness_test` with two RED controls (a corrupted derivation command reds; a judgment gate made chore-able reds). P0 (byte-idempotent regen) measured ALREADY-SATISFIED on the clean tree — `main_wet` yields zero diff, twice — and the executable fixed-point leg landed in `generated_artifact_drift_test` (reads the real committed bytes, RED control perturbs them). LANDED: classification + P0 witness. Gated on operator sign-off: the chore consumer's live wiring (a pipeline identity pushing heal commits to main — branch-protection/credential provisioning). The judgment-class reds (layering-style producer bugs #7080, roster staleness #7079) stay the fail-fast + PR-time-detector lanes' job, not this one."),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "ts-loop-prepush"), parent: nid(s: "ts-loop-pattern") },
@@ -424,6 +425,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           RoadmapEdge { child: nid(s: "ts-loop-buildretry"), parent: nid(s: "ts-loop-pattern") },
           RoadmapEdge { child: nid(s: "ts-loop-deploy"), parent: nid(s: "ts-loop-pattern") },
           RoadmapEdge { child: nid(s: "ts-loop-stale-roster"), parent: nid(s: "ts-loop-pattern") },
+          RoadmapEdge { child: nid(s: "ts-loop-selfheal"), parent: nid(s: "ts-loop-pattern") },
         ],
       ),
       section_group(
