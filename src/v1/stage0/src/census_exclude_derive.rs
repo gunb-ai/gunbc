@@ -146,9 +146,7 @@ fn memo_hash_for_paths(paths: &BTreeSet<String>) -> String {
     crate::v1_rt::bytes_identity_hash(joined.as_bytes())
 }
 
-fn exclusion_substrings_with_derived(
-    derived_module_paths: &BTreeSet<String>,
-) -> Vec<String> {
+fn exclusion_substrings_with_derived(derived_module_paths: &BTreeSet<String>) -> Vec<String> {
     let mut exclude = super::whole_tree_resolve_exclusion_substrings();
     exclude.extend(derived_module_paths.iter().cloned());
     exclude
@@ -172,8 +170,8 @@ pub fn derive_census_exclude_closure(
     let facts = super::build_module_graph_facts_live(&pool_roots);
     let reverse_adjacency = build_reverse_importer_adjacency(&facts.adjacency);
 
-    let mut derived_module_paths = load_module_path_list(PINNED_ORACLE_SEEDS_REL, workspace_root)
-        .unwrap_or_default();
+    let mut derived_module_paths =
+        load_module_path_list(PINNED_ORACLE_SEEDS_REL, workspace_root).unwrap_or_default();
     let mut live_importers_excluded = Vec::new();
     let mut round = 0u32;
 
@@ -186,11 +184,7 @@ pub fn derive_census_exclude_closure(
         }
 
         let exclude = exclusion_substrings_with_derived(&derived_module_paths);
-        match super::whole_tree_resolved_ctx(
-            source_roots,
-            &exclude,
-            ExecutionMode::Wet,
-        ) {
+        match super::whole_tree_resolved_ctx(source_roots, &exclude, ExecutionMode::Wet) {
             Ok(_) => {
                 return Ok(DerivedExcludeClosure {
                     memo_content_hash: memo_hash_for_paths(&derived_module_paths),
