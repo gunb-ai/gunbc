@@ -1,0 +1,87 @@
+module gunbc.ci_remedy
+
+import gunbc.ci_gate {
+  Gate,
+  EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate,
+  DagCompileCleanGate, GeneratedArtifactDriftGate, SourceRootIngestGate,
+  RegenVerifyGate, SelfHostReadsRealBytesGate, SelfHostStalenessGate
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifacts, artifact_path }
+
+data ci_remedy_authority_note: String = "CI red-class remedy classification (ci-chores lane, operator-directed 2026-07-22). Splits the week's red classes by KIND: a DERIVATION remedy is a command whose output is a pure function of the tree — the pipeline may run it and commit the result (a chore commit); a JUDGMENT remedy needs a human decision and the pipeline's only job is to detect earlier and refuse louder, never to fix. FAIL-CLOSED DEFAULT (DESIGN §3): a gate is RemedyJudgment unless its remedy is provably a projection of an EXISTING authority. Today two channels qualify, each grounded, NOT hand-listed: (1) GeneratedArtifactRegen heals exactly committed_generated_artifacts() — the generated_artifact registry IS the authority (a drift red on a registered artifact is chore-able by construction of the registry), and the command's source_roots ARE witness_layer_roots; (2) SeedRegen heals the emitted stage0 seed via the RegenVerifyGate transport (spine_regen_recipe authority). Everything else (producer bugs like LayeringImportsGate, ingest/compile gates) is judgment by default. INFRA HONESTY (operator, 2026-07-22): the substrate cannot yet INTROSPECT a gate's body to prove it reads the registry, so the gate→channel arms below are a minimal typed table, not a derived-from-gate-body fact; the anti-fork wall is ci_remedy_witness_test's proof that the GeneratedArtifactRegen channel heals exactly the registry the drift gate guards, plus the judgment-default RED control. DISSOLUTION TRIGGER: when gate-subject introspection lands (module-identity Phase-0 admission invariant / a gate carries its checked-subject as a typed field), the gate→channel arm derives from that subject and this table collapses to a fold."
+
+type RemedyChannel
+  = GeneratedArtifactRegen
+  | SeedRegen
+
+type RemedyCommand {
+  source_roots: List<String>
+  entry: String
+  function: String
+}
+
+type Remedy
+  = RemedyDerivation { channel: RemedyChannel, command: RemedyCommand }
+  | RemedyJudgment { located_debt: String }
+
+data generated_artifact_gate_entry: String = "dag/tools/generated_artifact_gate.dag"
+
+fn generated_artifact_regen_command() -> RemedyCommand {
+  RemedyCommand {
+    source_roots: witness_layer_roots,
+    entry: generated_artifact_gate_entry,
+    function: "main_wet"
+  }
+}
+
+data seed_regen_command_note: String = "SeedRegen's command is the regen_stage0 --verify transport (gunbc.proactive_verification_ledger.spine_regen_recipe), NOT a gunbc-run projection — it is a Rust bin transport, so the RemedyCommand fields below carry its plan entry/function for uniformity; the pipeline consumer for SeedRegen dispatches the transport, and its live wiring is gated separately on the regen byte-idempotence confirmation (ci-chores P0 follow-on)."
+
+fn seed_regen_command() -> RemedyCommand {
+  RemedyCommand {
+    source_roots: witness_layer_roots,
+    entry: "src/v2/workflow/ci_floor_plan.dag",
+    function: "regen_stage0"
+  }
+}
+
+fn gate_remedy(g: Gate) -> Remedy {
+  match g {
+    GeneratedArtifactDriftGate =>
+      RemedyDerivation { channel: GeneratedArtifactRegen, command: generated_artifact_regen_command() }
+    RegenVerifyGate =>
+      RemedyDerivation { channel: SeedRegen, command: seed_regen_command() }
+    EmitHostGate =>
+      RemedyJudgment { located_debt: "EmitHostGate: emitter/host behavior — root-cause the producer, never a chore commit" }
+    LayeringImportsGate =>
+      RemedyJudgment { located_debt: "LayeringImportsGate: layer_import_facts producer logic (see #7080) — judgment, no derivation heals it" }
+    ExtdepsExternalAuthorityGate =>
+      RemedyJudgment { located_debt: "ExtdepsExternalAuthorityGate: a missing/incorrect external-authority anchor — author the citation, judgment" }
+    DagCompileCleanGate =>
+      RemedyJudgment { located_debt: "DagCompileCleanGate: a resolve/compile break — fix the source, judgment" }
+    SourceRootIngestGate =>
+      RemedyJudgment { located_debt: "SourceRootIngestGate: an ingest failure — fix the source, judgment" }
+    SelfHostReadsRealBytesGate =>
+      RemedyJudgment { located_debt: "SelfHostReadsRealBytesGate: self-host comparison logic — judgment" }
+    SelfHostStalenessGate =>
+      RemedyJudgment { located_debt: "SelfHostStalenessGate: emitted-seed staleness vs a compiler change — judgment (the fix is a conscious cutover, not a blind regen)" }
+  }
+}
+
+fn remedy_is_derivation(r: Remedy) -> Bool {
+  match r {
+    RemedyDerivation { channel: _, command: _ } => true
+    RemedyJudgment { located_debt: _ } => false
+  }
+}
+
+fn gate_is_chore_able(g: Gate) -> Bool {
+  remedy_is_derivation(r: gate_remedy(g: g))
+}
+
+fn remedy_channel_eq(a: RemedyChannel, b: RemedyChannel) -> Bool {
+  match a {
+    GeneratedArtifactRegen => match b { GeneratedArtifactRegen => true  _ => false }
+    SeedRegen => match b { SeedRegen => true  _ => false }
+  }
+}
