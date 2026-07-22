@@ -248,6 +248,33 @@ only to Class A would still be un-derived-from-execution risk for any wave
 touching `determinism.dag`-shaped hub files. The zero-arity fn/data-by-value
 claim from the original (refuted) diagnosis also remains untested.
 
+## 7.5 Class B discrimination (B1 vs B2) — B1 refuted by grep, lead redirected to B2
+
+`Determinism`/`Deterministic`/`NonDeterministic` are declared exactly **once**
+in the corpus (`dag/std/determinism.dag:4`, verified by
+`grep -rn '^type Determinism\b'`) — an earlier hypothesis that they exist as a
+homonym pair (a std copy and a `src/v2/lens/determinism.dag` copy, silently
+mis-picked by `global_bare`'s nearest-ancestor LCP arm) is **refuted**:
+`src/v2/lens/determinism.dag` declares no local copy, and every use inside
+that file of these four names is fully **qualified** (`std.determinism.X`),
+never bare — so no bare-name lookup on these four names occurs at all, and the
+LCP-homonym mechanism has nothing to fire on here.
+
+The trace redirects the lead instead to `DeclarationRef` (`std.decl_ref`,
+imported alongside on the same stripped line, referenced **bare** in
+type-annotation/field-type position — `DeterminismRoot { source: DeclarationRef }`
+— and as a constructor in `map_keys_leak_source`). `DeclarationRef` also has
+exactly one declaration site (no homonym), yet it never appears in
+`GUNBC_BARE_PULL_TRACE`'s output at all — not attempted, not refused, silently
+absent. This is consistent with type-annotation/field-type references
+resolving through the typecheck/infer env path rather than
+`extend_with_bare_reference_closure`'s loader-side pull loop, so that path
+never triggers a module pull for `DeclarationRef` and the ungrounded field type
+cascades into the `NonDeterministic { source: ... }` construction site as a
+generic type-error rather than a loud refusal — not yet traced to a specific
+line in the infer/typecheck code, so this remains a lead, not a confirmed
+mechanism.
+
 ## 8. Next step
 
 (a) root-cause Class B by execution (trace where `Determinism`/`Deterministic`
