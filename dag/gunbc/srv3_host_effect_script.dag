@@ -20,6 +20,11 @@ import gunbc.host_effect {
   ShellCommand,
   RedfishAction,
   ConvergePlan,
+  LiveDeployApply,
+  LiveDeployRetract,
+  LiveDeployEnsureDependency,
+  LiveDeployDigestReadback,
+  DeployAccessPreflight,
 }
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
 import gunbc.srv3_os_install_diagnostic {
@@ -135,5 +140,10 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
     ReadEffectivePosixPrincipal { read: _ } => Absent
     SudoNopasswdExecuteProbe { probe: _ } => Absent
+    LiveDeployApply { spec: _ } => Absent
+    LiveDeployRetract { spec: _ } => Absent
+    LiveDeployEnsureDependency { dep: _ } => Absent
+    LiveDeployDigestReadback { port: _ } => Absent
+    DeployAccessPreflight {} => Absent
   }
 }

@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
@@ -601,6 +601,29 @@ fn falsifier_known_red_probe_batch_enrolled() -> Bool {
   length(xs: known_red_probe_entries) > 0
 }
 
+data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches."
+
+fn falsifier_silent_pick_gate_batch_enrolled() -> Bool {
+  length(xs: falsifier_silent_pick_gate_entries) > 0
+}
+
+fn gunbc_falsifier_silent_pick_gate_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_silent_pick_gate_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
 fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -635,28 +658,31 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
   }
 }
 
-fn gunbc_falsifier_batches() -> List<List<Runnable>> {
-  let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
-  let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
-  if wet_enrolled && probe_enrolled {
-    [
-      [gunbc_falsifier_predict_only_batch()],
-      [gunbc_falsifier_self_host_wet_batch()],
-      [gunbc_falsifier_known_red_probe_batch()]
-    ]
-  } else if wet_enrolled {
-    [
-      [gunbc_falsifier_predict_only_batch()],
-      [gunbc_falsifier_self_host_wet_batch()]
-    ]
-  } else if probe_enrolled {
-    [
-      [gunbc_falsifier_predict_only_batch()],
-      [gunbc_falsifier_known_red_probe_batch()]
-    ]
+fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: Runnable) -> List<List<Runnable>> {
+  if enrolled {
+    list_snoc_item(xs: acc, item: [batch])
   } else {
-    [[gunbc_falsifier_predict_only_batch()]]
+    acc
   }
+}
+
+fn gunbc_falsifier_batches() -> List<List<Runnable>> {
+  let base = [[gunbc_falsifier_predict_only_batch()]]
+  let with_wet = falsifier_batches_append_if_enrolled(
+    acc: base,
+    enrolled: falsifier_self_host_wet_batch_enrolled(),
+    batch: gunbc_falsifier_self_host_wet_batch()
+  )
+  let with_probe = falsifier_batches_append_if_enrolled(
+    acc: with_wet,
+    enrolled: falsifier_known_red_probe_batch_enrolled(),
+    batch: gunbc_falsifier_known_red_probe_batch()
+  )
+  falsifier_batches_append_if_enrolled(
+    acc: with_probe,
+    enrolled: falsifier_silent_pick_gate_batch_enrolled(),
+    batch: gunbc_falsifier_silent_pick_gate_batch()
+  )
 }
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {

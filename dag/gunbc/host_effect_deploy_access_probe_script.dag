@@ -10,6 +10,7 @@ import extdeps.access.posix_effective_principal {
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   sudo_nopasswd_execute_probe_note,
+  sudo_nopasswd_grant_list_probe_note,
 }
 
 data host_effect_deploy_access_probe_script_dissolution_trigger: String = "🟡 dissolve-on: host_effect_deploy_access_probe_script — concat-built bash bodies for ReadEffectivePosixPrincipal and SudoNopasswdExecuteProbe realize-layer transport (Wave B shell→dag reference); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes these probes through typed argv invocations / grammar-emitted nodes and the script builders retire without concat-built transport strings."
@@ -37,4 +38,9 @@ fn host_effect_sudo_nopasswd_execute_probe_script(probe: SudoNopasswdExecuteProb
     concat(concat("sudo -n ", probe.command_path as String), " "),
     probe.check_argv as String
   )
+}
+
+fn host_effect_sudo_nopasswd_grant_list_probe_script(command_path: NonEmptyStr) -> String {
+  let _authority = sudo_nopasswd_grant_list_probe_note
+  concat("sudo -n -l ", command_path as String)
 }
