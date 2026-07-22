@@ -502,6 +502,10 @@ fn run_test_claim_emit_vs_eval_verdict(
   }
 }
 
+fn emit_host_no_run_args() -> List<String> {
+  []
+}
+
 fn run_test_claim_emit_vs_eval_verdict_from_run(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
