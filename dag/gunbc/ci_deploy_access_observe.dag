@@ -2,7 +2,17 @@ module gunbc.ci_deploy_access_observe
 
 import std.types { NonEmptyStr, Bool, List }
 import std.access { AccessDecision, decision_meet }
-import gunbc.host_effect { HostEffect, ShellCommand, ReadEffectivePosixPrincipal, SudoNopasswdExecuteProbe }
+import gunbc.host_effect {
+  HostEffect,
+  ShellCommand,
+  ReadEffectivePosixPrincipal,
+  SudoNopasswdExecuteProbe,
+  LiveDeployApply,
+  LiveDeployRetract,
+  LiveDeployEnsureDependency,
+  LiveDeployDigestReadback,
+  DeployAccessPreflight,
+}
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import v2.std.orchestration { FailFast }
 import v2.std.algebra { list_snoc_item, fold_list }
@@ -79,6 +89,11 @@ fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
     Srv3NbdProxyServe { intent: _, lease_key: _ } => false
     Srv3BootOnceReadBackSleep => false
     Srv3ReceiptEmit { lines: _ } => false
+    LiveDeployApply { spec: _ } => false
+    LiveDeployRetract { spec: _ } => false
+    LiveDeployEnsureDependency { dep: _ } => false
+    LiveDeployDigestReadback { port: _ } => false
+    DeployAccessPreflight {} => false
   }
 }
 

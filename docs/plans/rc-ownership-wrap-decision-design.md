@@ -143,3 +143,7 @@ Discriminating RED (both directions):
 ## Open question (escalate if implementation stalls)
 
 **Arc migration** (`floor_materialization.dag` P2 note): cross-process `ResolvedGraph` sharing wants `Arc`, not `Rc`. The wrap-decision predicate is layer-agnostic (`ReferenceLayerRc` is a modeled enum, not hardcoded `Rc` in translate). If Arc lands, only `rust.dag` token rows and `ReferenceLayer` inhabitants change — the predicate shape is stable.
+
+## Probe receipts
+
+- [Emitter residual site map (post-#6981)](../probes/emitter_residual_site_map_2026-07-21.md) — crisp-fox-839 E0425/E0255 class breakdown from emitted deep-module histograms (MAP ONLY; owner quiet-bee #6924).
