@@ -34,3 +34,15 @@ fn run_scanner_perturb_receipts() -> Bool {
     ]
   )
 }
+
+fn run_reference_only_perturb_receipt() -> Bool {
+  run_gunbc_claims(
+    source_roots: witness_layer_roots,
+    claims: [
+      ClaimRun {
+        entry: "src/v2/test/claim/layering_imports/lens_unit/reference_only_compiler_fixture.dag",
+        function: "detects_reference_only_compiler_import_holds"
+      }
+    ]
+  )
+}

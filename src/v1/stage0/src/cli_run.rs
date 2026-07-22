@@ -17235,6 +17235,32 @@ pub struct LayerImportFactRaw {
 
 const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
+const LAYER_COMPILER: &str = "LayerPrefixCompiler";
+const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
+
+/// Rust mirror of `v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name`.
+fn layer_prefix_from_dotted_module(module: &str) -> &'static str {
+    let parts: Vec<&str> = module.split('.').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return LAYER_STD;
+    }
+    match parts[0] {
+        "v2" => match parts.get(1) {
+            None => LAYER_STD,
+            Some(&"std") => LAYER_STD,
+            Some(&"extdeps") => LAYER_EXTDEPS,
+            Some(&"compiler") => LAYER_COMPILER,
+            Some(&"workflow") => LAYER_WORKFLOW,
+            Some(&"lens") | Some(&"test") => LAYER_COMPILER,
+            Some(_) => LAYER_COMPILER,
+        },
+        "extdeps" => LAYER_EXTDEPS,
+        "std" => LAYER_STD,
+        "compiler" | "lens" | "test" => LAYER_COMPILER,
+        "workflow" | "gunbc" | "tools" => LAYER_WORKFLOW,
+        _ => LAYER_STD,
+    }
+}
 
 fn rel_path_for_layer_import(path: &Path) -> String {
     if path.is_relative() {
@@ -17247,10 +17273,33 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
     pool_roots.iter().map(|r| anchor_source_root(r)).collect()
 }
 
-fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
+fn collect_layer_import_scoped_paths(roots: &[String]) -> HashSet<String> {
+    let mut scoped = HashSet::new();
+    for root in roots {
+        let Some(abs_root) = try_anchor_source_root(root) else {
+            continue;
+        };
+        let root_path = Path::new(&abs_root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        for file in dag_files {
+            scoped.insert(rel_path_for_layer_import(&file));
+        }
+    }
+    scoped
+}
+
+fn project_layer_import_syntax_facts(
+    root: &str,
+    out: &mut Vec<LayerImportFactRaw>,
+    seen: &mut HashSet<(String, String)>,
+) {
     let Some(abs_root) = try_anchor_source_root(root) else {
         eprintln!(
-            "[layer-import] declared root {root} absent on disk (layer={layer}) — skipped, no facts projected"
+            "[layer-import] declared root {root} absent on disk — skipped, no import-syntax facts projected"
         );
         return;
     };
@@ -17266,27 +17315,73 @@ fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<Laye
             Ok(c) => c,
             Err(_) => continue,
         };
+        if extract_import_paths(&content).is_empty() {
+            continue;
+        }
         let rel = rel_path_for_layer_import(&file);
+        let importer = extract_module_path(&content).unwrap_or_default();
+        let layer = layer_prefix_from_dotted_module(&importer);
         for import_module in extract_import_paths(&content) {
-            out.push(LayerImportFactRaw {
-                layer,
-                path: rel.clone(),
-                import_module,
-            });
+            if seen.insert((rel.clone(), import_module.clone())) {
+                out.push(LayerImportFactRaw {
+                    layer,
+                    path: rel.clone(),
+                    import_module,
+                });
+            }
         }
     }
 }
 
+/// Layer-scoped dependency edges for `v2.lens.layering_imports` and sibling consumers.
+///
+/// Transitional producer (namespace terminal step, docs/plans/layering-imports-reference-repoint-design.md §3.1):
+/// import-syntax facts for import-bearing files, plus `reference_edges_as_import_facts(..., strict=true)`
+/// for import-less files in the scan roots. Import-syntax wins on `(path, target_module)` collision.
 pub fn layer_import_facts(
     std_roots: &[String],
     extdeps_roots: &[String],
 ) -> Vec<LayerImportFactRaw> {
     let mut out = Vec::new();
+    let mut seen: HashSet<(String, String)> = HashSet::new();
     for root in std_roots {
-        project_layer_import_root(root, LAYER_STD, &mut out);
+        project_layer_import_syntax_facts(root, &mut out, &mut seen);
     }
     for root in extdeps_roots {
-        project_layer_import_root(root, LAYER_EXTDEPS, &mut out);
+        project_layer_import_syntax_facts(root, &mut out, &mut seen);
+    }
+
+    let importer_roots: Vec<String> = std_roots
+        .iter()
+        .chain(extdeps_roots.iter())
+        .cloned()
+        .collect();
+    // Qualified references (e.g. `v2.compiler.tokenize`) resolve against the full witness-layer
+    // module census, not the std/extdeps scan roots alone — same pool/importer split as
+    // `build_module_graph_facts_live` selection adjacency.
+    let pool_roots = witness_layer_roots();
+    let scoped_paths = collect_layer_import_scoped_paths(&importer_roots);
+    for edge in reference_edges_as_import_facts(
+        &reference_resolution_facts(&pool_roots, &importer_roots, &[]),
+        true,
+    ) {
+        let rel = edge.path.replace('\\', "/");
+        if !scoped_paths.contains(&rel) {
+            continue;
+        }
+        if !seen.insert((rel.clone(), edge.import_module.clone())) {
+            continue;
+        }
+        let importer = std::fs::read_to_string(workspace_root().join(&rel))
+            .ok()
+            .and_then(|content| extract_module_path(&content))
+            .unwrap_or_default();
+        let layer = layer_prefix_from_dotted_module(&importer);
+        out.push(LayerImportFactRaw {
+            layer,
+            path: rel,
+            import_module: edge.import_module,
+        });
     }
     out
 }
@@ -20596,6 +20691,40 @@ mod reference_edge_producer_tests {
                 .iter()
                 .any(|(path, target)| path.contains("refless.dag") && target == "test.decl"),
             ".dag dependency_resolution_facts_live must find the reference-only edge after builtin registration"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Discriminating witness for layering-imports reference repoint (Phase 1,
+    /// docs/plans/layering-imports-reference-repoint-design.md §4.5): an import-less
+    /// std-layer file with a qualified `v2.compiler.*` reference must surface a layering violation.
+    #[test]
+    fn layer_import_facts_reference_only_violation_control() {
+        use super::{extract_import_paths, layer_import_facts};
+
+        let root = fixture_root("layering_ref_only");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "plant.dag",
+            "module v2.std.ref_only_plant\n\nfn leak_probe() -> Bool {\n  v2.compiler.tokenize.eq(a: \"a\", b: \"b\")\n}\n",
+        );
+
+        let std_roots = vec![root.to_string_lossy().into_owned()];
+        let content = std::fs::read_to_string(root.join("plant.dag")).expect("read plant");
+        assert!(
+            extract_import_paths(&content).is_empty(),
+            "fixture must be import-less — otherwise this test is not discriminating"
+        );
+        let facts = layer_import_facts(&std_roots, &[]);
+        assert!(
+            facts.iter().any(|f| {
+                f.path.contains("plant.dag")
+                    && f.import_module.starts_with("v2.compiler")
+                    && f.layer == "LayerPrefixStd"
+            }),
+            "layer_import_facts must emit a reference-derived compiler edge for import-less std file"
         );
 
         let _ = std::fs::remove_dir_all(&root);

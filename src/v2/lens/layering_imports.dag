@@ -1,5 +1,8 @@
 module v2.lens.layering_imports
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 
 type LayerImportFact {
   layer: LayerPrefix
@@ -86,6 +89,15 @@ fn layer_import_facts_live(
   layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
 }
 
+data layer_import_facts_live_producer_note: String = "Transitional host producer (layering-imports-reference-repoint-design.md §3.1): import-syntax rows for import-bearing files in the scan roots, plus reference_edges_as_import_facts(strict=true) for import-less files. Terminal step deletes the import-syntax arm when import grammar is removed."
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: WallNow {
+    mechanism: SingleAuthority,
+    authority: DeclarationRef {
+      module_path: "v2.lens.layering_imports",
+      decl_name: "layer_import_facts_live",
+      field: WholeDeclaration
+    }
+  }
 }
