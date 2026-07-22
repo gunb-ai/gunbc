@@ -14,7 +14,7 @@ import gunbc.ci_remedy {
   remedy_channel_eq, generated_artifact_regen_command, generated_artifact_gate_entry
 }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifacts, artifact_path }
+import gunbc.generated_artifact { committed_generated_artifacts }
 
 data ci_remedy_witness_note: String = "Anti-fork wall for the remedy classification (DESIGN §3). The gate→channel table in gunbc.ci_remedy is a minimal hand-mapping (gate-body introspection is not yet infra); these witnesses are the construction wall around it. witness_derivation_heals_registry proves the GeneratedArtifactRegen command IS the registry projector — its source_roots are witness_layer_roots and its entry is the generated-artifact gate, the exact projector of committed_generated_artifacts() the drift gate folds over — so the derivation cannot silently point at a set other than the one the gate guards. witness_judgment_is_default is the fail-closed RED control: every producer-logic / ingest / compile gate classifies RemedyJudgment, and specifically LayeringImportsGate (a real producer bug, #7080, that NO chore commit may write) must NOT be chore-able. If someone adds a chore-able arm without grounding it, these reds."
 
