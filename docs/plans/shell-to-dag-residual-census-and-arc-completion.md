@@ -234,12 +234,42 @@ These are correct as shell (a GHA runner / cron / git / pre-runtime host only un
 
 `live_deploy/emit.dag:448,452` `expected_*_script` (drift-gate oracles), `*_test.dag` fixtures. These are test expectations, not runtime construction; they follow their subject's dissolution.
 
-### Scope in flight (2026-07-22)
+### Wind-down PR ledger — snapshot @ 2026-07-22 (calm-ferret-849 subtree)
 
-- **sleek-crab-621** (dispatched): 4.A1/4.A2 in-mission rows — `fleet_show_effective_read` (`ShowProperty` + `SystemdUnitProperty` enum), `host_converge_slice1` systemctl reads/sets, the new `extdeps.os.hostname` model for the hostname rows, and the `ssh.Session.ExecArgv` conversions in `host_effect_realize`. Staged, exemplar-first, classify-before-edit.
-- **keen-deer-531 / C5 #6946**: owns 4.A3 (access probes) — blocked on a `cli_run.rs` conflict.
-- **DEFERRED** (operator set aside): all 4.A5 srv* rows, and 4.A4 multi-op decompositions pending a routing call (`authorize_shell_emission`).
-- **Phase-3 wall (4.F)**: the durable fix — until it lands, this census is the tracking authority; after, the lens reds any new site by construction.
+The state of every PR in this arc, so nothing is missed if work pauses here. **A task's real state is its branch/PR** (ROADMAP.md rule); this is that ledger.
+
+**Landed (merged to main):**
+
+| PR | owner (session) | what | note |
+| --- | --- | --- | --- |
+| #6946 | keen-deer-531 *(archived)* | **Wave C5** — typed-argv exec machinery + access-probe dissolution (4.A3) + `ssh.Session.ExecArgv` | **the foundation.** `ExecArgv` is now the shared authority every SshShell dissolution splices through. Genuine. |
+| #7007 | valiant-deer-438 *(archived)* | fleet-converge bootstrap emitter dissolution + byte-oracle vs `.github/fleet-converge.sh` | genuine (emit path, §5.C) |
+| #7004 | nimble-carp-340 *(archived)* | live_deploy/apply "Phase-2" | **⚠ RELOCATION, not dissolution** — moved the concats to `live_deploy/host_effect_script.dag`; the raw shell string still exists (4.A4). **Not truly done.** |
+| #7006 | zesty-crane-129 *(archived)* | fleet_show/host_identity "Phase-2" | **⚠ RELOCATION** — `fleet_show` is now properly dissolved by #7064 (supersedes this); `host_identity` still needs real dissolution (4.A2). **Not truly done.** |
+
+**Open (in review):**
+
+| PR | owner | what | next action |
+| --- | --- | --- | --- |
+| **#7065** | **calm-ferret-849 (me)** | **THIS doc** — §4 census + §5 Method of Action (the tracking authority) | 2 REQUEST_CHANGES fixed (wrong-tree #41399, multiline-pattern #41467); re-review pending, then merge |
+| **#7064** | sleek-crab-621 | **PROPER `fleet_show` + `host_converge_slice1` dissolution — THE EXEMPLAR** (call the op directly; verified genuine, not relocated) | reconcile onto merged C5 (drop #7064's duplicate `ExecArgv`), re-review, merge |
+
+**Closed / deprioritized (srv\* cluster — operator wound down 2026-07-22):**
+
+- Sessions wise-crab-547 + crisp-deer-871 + still-ant-534 + sharp-heron-884 closed. PRs #7019, #7025, #7044 closed; #7020, #7026, #7011 merged before closure.
+- **Their relocations remain on main** (4.A5 srv\* rows: `srv3_*`, `host_build_cache_provision`, `host_hygiene_*`) — real debt, **deferred by operator, NOT done.**
+
+**Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
+
+- **§5.A** — the ~4 remaining new ops: `extdeps.os.hostname` (Read/Set), `systemd.Systemctl.ListUnits`, `systemd.Systemctl.Status`, `extdeps.os.id`. (`ssh.Session.ExecArgv` already landed via C5.)
+- **§5.B** — ~40 call-the-op migrations (mechanical once the exemplar #7064 lands).
+- **§5.E** — the **`TransportScript` construction wall** — the keystone that makes relocation a type error and "exhaustive" true by construction. **Awaiting operator decision: wall-first vs migrate-now.**
+
+**⚠ Do-not-miss for wind-down:**
+
+1. **#7004 and #7006 merged as "progress" but are relocations** — the concats were moved, not deleted, so those sites (live_deploy/apply, host_identity) are **not actually bash-free.** #7064 fixes `fleet_show`; the rest still need the proper dissolution.
+2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
+3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (4 ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
 
 ### Dissolution trigger for §4
 
@@ -271,7 +301,7 @@ That is the entire new-modeling surface. (A sixth, optional: a typed stdout/rece
 | --- | --- | --- |
 | `host_converge_slice1` · `_memory_max_read_script` | `systemctl show --property=MemoryMax --value` | `systemd.Systemctl.ShowProperty` · `extdeps/os/systemctl.dag` |
 | `host_converge_slice1` · `_memory_max_set_script` | `systemctl set-property … MemoryMax=` | `systemd.Systemctl.SetProperty` · `extdeps/os/systemctl.dag` |
-| `host_converge_slice1` · `date`, `host_identity_adopt` · `date` | `date -Iseconds` | `Clock.Now` · `extdeps/clock/clock.dag` |
+| `host_converge_slice1` · `date`, `host_identity_adopt` · `date` | `date -Iseconds` (local ISO w/ offset) | `Clock.Now` · `extdeps/clock/clock.dag` — **⚠ semantics differ**: `Clock.Now` is wired to `date -u +%Y-%m-%dT%H:%M:%SZ` (UTC `…Z`), not local `-Iseconds`. Migrate by adopting UTC-`Z` (canonical for receipts) — a deliberate reconciliation, NOT a silent drop-in; if a site truly needs local offset, add a `Clock.NowLocal` variant rather than fork `date` (review 41476) |
 | `fleet_show_effective_read` · `SystemdUnitMemory*Read`, `fleet_runner_unit_property_read_script` | `systemctl show --property` | `systemd.Systemctl.ShowProperty` · `extdeps/os/systemctl.dag` |
 | `host_effect_realize` · ssh `test -x <path>` | `test -x` | `shell.Find.IsExecutable` · `extdeps/shell/shell.dag` (spliced via `ssh.Session.ExecArgv`) |
 | `host_effect_realize` · ssh `command -v <tool>` (×2) | `command -v` | `shell.Which.Check` · `extdeps/shell/*` (via `ExecArgv`) |
@@ -330,4 +360,4 @@ Every §5.A/§5.B row can be **faked by joining argv back into a string** and fe
 
 ## Dissolution trigger
 
-Delete this doc when P4 lands (the `ConvergePlan` effect + `EmitArtifactThenThinRun` transport minted and consumed by fleet_converge), the census rows fold into `provisioning-window-executor-capability-design.md`'s table, and `program.dag` deletes — at which point the arc is complete and this scoping is redundant.
+**P4 has LANDED** (#6572/#6585/#6598 — the `ConvergePlan` effect + `EmitArtifactThenThinRun` transport minted and consumed by fleet_converge; see §2), so the original "delete when P4 lands" criterion is met. The doc's remaining life is the same one §4/§5 name: it dissolves when the **`host_language_transport_script` lens goes live** (§4.F/§5.E) and `program.dag` deletes — i.e. when relocation is unwritable by construction and the per-instance census/plan is redundant. One criterion, consistent across the doc (this reconciles the two triggers per review 41476).
