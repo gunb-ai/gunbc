@@ -19,6 +19,7 @@ import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
+  UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
@@ -184,7 +185,7 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   match r {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
-        && string_contains(s: why, pattern: "waited_s=30")
+        && string_contains(s: why, pattern: "waited_s=120")
         && string_contains(s: why, pattern: "health probe never succeeded")
         && !string_contains(s: why, pattern: "converged")
     Converged { evidence: _, applied: _ } => false
@@ -201,9 +202,11 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
     last_probe: "connection refused",
+    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
+    && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
 test fn live_deploy_readiness_witnesses() -> Bool {

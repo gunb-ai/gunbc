@@ -1,0 +1,119 @@
+module gunbc.design.principles
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data register_principles_note: String = "The base layer of the gunb.ai site stack (docs/plans/gunb-ai-site-subsumption-design.md sections 4k/4l). Each principle is a signed register law. enforced_by points at the carrier whose CONSTRUCTION enforces it — the principle is data; the wall is the type or refusing constructor it names. A principle with no carrier is a review vibe, which is exactly what this layer exists to eliminate."
+
+type PrincipleId
+  = QuietSurface
+  | ResponsiveDepth
+  | DerivedTruth
+  | ChromaByArea
+  | GlareEnvelope
+  | ThemeCoherence
+  | UniversalReframe
+  | StillUntilTouched
+
+type RegisterPrinciple {
+  id: PrincipleId
+  law: String
+  enforced_by: DeclarationRef
+}
+
+data register_thesis: String = "Quiet at arm's length; responsive up close; every response true."
+
+fn principle_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
+data register_principles: List<RegisterPrinciple> = [
+  RegisterPrinciple {
+    id: QuietSurface,
+    law: "D0/D1 stays quiet: one centered column, matte fields, no ambient ornament.",
+    enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "paint"),
+  },
+  RegisterPrinciple {
+    id: ResponsiveDepth,
+    law: "Intricacy is behavioral: depth lives in feedback coverage, not ornament.",
+    enforced_by: principle_ref(module_path: "gunbc.design.interaction", decl_name: "coverage_gaps"),
+  },
+  RegisterPrinciple {
+    id: DerivedTruth,
+    law: "Every intricate thing shown or answered derives from a real repo fact.",
+    enforced_by: principle_ref(module_path: "gunbc.site.constellation", decl_name: "layer_stars"),
+  },
+  RegisterPrinciple {
+    id: ChromaByArea,
+    law: "Saturation is admissible only at point/hairline area; fields stay near-neutral.",
+    enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "chroma_admissible"),
+  },
+  RegisterPrinciple {
+    id: GlareEnvelope,
+    law: "A material may be bright or chromatic, never both — the gamer register is inadmissible by row.",
+    enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "quiet_envelope"),
+  },
+  RegisterPrinciple {
+    id: ThemeCoherence,
+    law: "A theme is a total role-to-material assignment at the role's area class; every color routes through a role — one model, night and day projections.",
+    enforced_by: principle_ref(module_path: "gunbc.design.theme", decl_name: "theme_gaps"),
+  },
+  RegisterPrinciple {
+    id: UniversalReframe,
+    law: "A theme flip reframes the whole surface on one clock: themed properties cross-fade for free by derivation; an unthemed color is a counted census row, never a silent opt-out.",
+    enforced_by: principle_ref(module_path: "gunbc.design.theme_transition", decl_name: "unthemed_color_decls"),
+  },
+  RegisterPrinciple {
+    id: StillUntilTouched,
+    law: "Still until touched; always answers when touched. No ambient motion, ever.",
+    enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "BuildRule"),
+  },
+]
+
+fn principle_id_key(id: PrincipleId) -> String {
+  match id {
+    QuietSurface => "quiet-surface"
+    ResponsiveDepth => "responsive-depth"
+    DerivedTruth => "derived-truth"
+    ChromaByArea => "chroma-by-area"
+    GlareEnvelope => "glare-envelope"
+    ThemeCoherence => "theme-coherence"
+    UniversalReframe => "universal-reframe"
+    StillUntilTouched => "still-until-touched"
+  }
+}
+
+fn principles_all_carried(principles: List<RegisterPrinciple>) -> Bool {
+  all(principles, p =>
+    p.law.length() > 0
+      && p.enforced_by.module_path.length() > 0
+      && p.enforced_by.decl_name.length() > 0)
+}
+
+fn principle_keys(principles: List<RegisterPrinciple>) -> List<String> {
+  map(principles, p => principle_id_key(id: p.id))
+}
+
+fn contains_key(keys: List<String>, key: String) -> Bool {
+  fold(keys, init: false, f: (acc, k) => acc || k == key)
+}
+
+type DistinctAcc {
+  seen: List<String>
+  ok: Bool
+}
+
+fn principle_keys_distinct(principles: List<RegisterPrinciple>) -> Bool {
+  let result = fold(principle_keys(principles: principles),
+    init: DistinctAcc { seen: [], ok: true },
+    f: (acc, k) =>
+      if contains_key(keys: acc.seen, key: k) {
+        DistinctAcc { seen: acc.seen, ok: false }
+      } else {
+        DistinctAcc { seen: concat(acc.seen, [k]), ok: acc.ok }
+      })
+  result.ok
+}

@@ -32,6 +32,7 @@ import gunbc.host_effect {
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
+  HostIdentityShortHostnameRead,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.live_deploy.emit {
@@ -98,5 +99,6 @@ fn live_deploy_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent
     Srv3BootOnceReadBackSleep => Absent
     Srv3ReceiptEmit { lines: _ } => Absent
+    HostIdentityShortHostnameRead => Absent
   }
 }

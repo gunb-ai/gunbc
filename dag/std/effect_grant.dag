@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 
-data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. MODEL ONLY, no behavior change: nothing dispatches through admit_effect yet (P-B wires the first enforcement seam). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS DEFERRED (see derived_projections_deferred_note). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
+data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect now GATES real dispatch at the landed P-B enforcement seams (the emit-host build transport, the effect-io host write, the artifact-store scratch store, and the cli_run repo gate). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C; see derived_projections_landed_note). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
 type Verb = Read | Write | Execute
 
@@ -116,21 +116,34 @@ fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
   verb_eq(a: grant.verb, b: verb) && position_under(target: target, root: grant.root)
 }
 
-fn admit_effect_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> EffectAdmission {
+type CoveringGrant
+  = CoveredBy { grant: Grant }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+
+data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
+
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
   if grants.count() == 0 {
-    EffectOutsideGrant { verb: verb, target: target, frame: frame }
+    NoCoveringGrant { verb: verb, target: target, frame: frame }
   } else {
     let g = grants.first()
     if grant_covers(grant: g, verb: verb, target: target) {
-      Admitted { via_root: grant_root(g: g) }
+      CoveredBy { grant: g }
     } else {
-      admit_effect_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
+      covering_grant_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
     }
   }
 }
 
+fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> CoveringGrant {
+  covering_grant_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
+}
+
 fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> EffectAdmission {
-  admit_effect_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
+  match covering_grant(env: env, verb: verb, target: target) {
+    CoveredBy { grant: g } => Admitted { via_root: grant_root(g: g) }
+    NoCoveringGrant { verb: v, target: t, frame: f } => EffectOutsideGrant { verb: v, target: t, frame: f }
+  }
 }
 
 fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
@@ -157,4 +170,4 @@ fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
   all_child_grants_bounded(child_grants: child.grants, parent_grants: parent.grants)
 }
 
-data derived_projections_deferred_note: String = "DEFERRED to P-C (stub-the-unconsumed, operator steer 2026-07-17): the derived projections replayable / isolated / live_tree_intersects are NOT modeled here because they read a REGION classification (substrate-closure vs repo-tree vs frame-scratch subtree) that this slice does not yet carry -- replayable = every Read grant content-addressed or Replay-bound; isolated = every Write grant root a frame-owned scratch subtree; live_tree_intersects = any Read grant root intersects the repo tree. Modeling a region marker now, with no consumer, would be speculative; P-C adds it with the enforcement seam that consumes it. Hermetic/Wet/Record envelope PRESETS likewise land as named envelopes then. dissolve-on = P-C region model + first envelope-derived consumer."
+data derived_projections_landed_note: String = "LANDED in P-C (was DEFERRED here per operator steer 2026-07-17; trigger fired): the derived projections replayable / isolated / live_tree_intersects are modeled in std.effect_axes as pure folds over this Envelope -- the EffectRegion (substrate-closure / repo-tree / frame-scratch / unclassified) is DERIVED from a grant root via canonical region roots + position_under (the same containment relation admit_effect walks), not a stamped marker. The Hermetic / Wet / Record envelope PRESETS and the first envelope-derived consumer (derive_live_tree_disposition) live in v2.std.execution_envelope. This note is the cross-reference, not a second authority; std.effect_axes is where the projections live."

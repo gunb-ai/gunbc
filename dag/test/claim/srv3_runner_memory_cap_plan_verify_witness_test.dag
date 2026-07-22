@@ -1,0 +1,117 @@
+module test.claim.srv3_runner_memory_cap_plan_verify_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn srv3_memory_cap_converged_read() -> RunnerUnitMemoryLiveRead {
+  let desired = gunbc_runner_slot_desired()
+  runner_unit_live_read_typed(
+    row: RunnerUnitLiveReadRow {
+      unit: "actions-runner@srv3-01.service",
+      memory_max_raw: to_string(byte_size_count(b: desired.memory_max)),
+      memory_swap_max_raw: to_string(byte_size_count(b: desired.memory_swap_max)),
+      memory_high_raw: to_string(byte_size_count(b: desired.memory_high)),
+      memory_current_raw: "",
+      probed_at: "2026-07-21",
+    }
+  )
+}
+
+fn srv3_memory_cap_drifted_read() -> RunnerUnitMemoryLiveRead {
+  runner_unit_live_read_typed(
+    row: RunnerUnitLiveReadRow {
+      unit: "actions-runner@srv3-01.service",
+      memory_max_raw: "infinity",
+      memory_swap_max_raw: "0",
+      memory_high_raw: "infinity",
+      memory_current_raw: "",
+      probed_at: "2026-07-21",
+    }
+  )
+}
+
+fn witness_plan_emit_claims_nothing_on_face() -> Bool {
+  runner_memory_cap_plan_emit_claims_nothing(host: operator_host_srv3)
+}
+
+fn witness_plan_emit_includes_three_memory_cap_knobs() -> Bool {
+  let sheet = expected_runner_memory_cap_apply_sheet(host: operator_host_srv3)
+  string_contains(s: sheet, pattern: "per_slot_memory_max_bytes")
+    && string_contains(s: sheet, pattern: "per_slot_memory_high_bytes")
+    && string_contains(s: sheet, pattern: "per_slot_memory_swap_max_bytes")
+    && string_contains(s: sheet, pattern: gunbc_runner_per_slot_dropin_path)
+    && string_contains(s: sheet, pattern: gunbc_runner_per_slot_high_dropin_path)
+    && string_contains(s: sheet, pattern: gunbc_runner_per_slot_swap_dropin_path)
+}
+
+fn witness_plan_emit_grounds_byte_values_on_authority() -> Bool {
+  let sheet = expected_runner_memory_cap_apply_sheet(host: operator_host_srv3)
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_high)))
+    && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_swap_max)))
+}
+
+fn witness_verify_receipt_converged_when_live_matches_policy() -> Bool {
+  match runner_memory_cap_verify_receipt_from_read(
+    host: operator_host_srv3,
+    read: srv3_memory_cap_converged_read(),
+  ) {
+    Present { value: receipt } =>
+      runner_memory_cap_verify_receipt_converged(receipt: receipt)
+        && receipt.tally.converged == 3
+        && receipt.tally.drifted == 0
+        && receipt.tally.absent == 0
+    Absent => false
+  }
+}
+
+fn witness_verify_receipt_counts_drifted_red_control() -> Bool {
+  match runner_memory_cap_verify_receipt_from_read(
+    host: operator_host_srv3,
+    read: srv3_memory_cap_drifted_read(),
+  ) {
+    Present { value: receipt } =>
+      !runner_memory_cap_verify_receipt_converged(receipt: receipt)
+        && receipt.tally.drifted == 3
+        && receipt.tally.converged == 0
+    Absent => false
+  }
+}
+
+fn witness_converge_cli_verify_routes_srv3() -> Bool {
+  converge_cli_routes_to_memory_cap_verify(host: "srv3")
+}
+
+fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
+  match runner_memory_cap_verify_receipt_from_read(
+    host: operator_host_srv3,
+    read: srv3_memory_cap_converged_read(),
+  ) {
+    Present { value: receipt } =>
+      let cli_receipt = converge_cli_receipt_from_memory_cap_verify(
+        host: "srv3",
+        result: RunnerMemoryCapVerifyObserved { receipt: receipt },
+      )
+      converge_cli_receipt_line(r: cli_receipt) == "converge-receipt host=srv3 applied=3 drifted=0 verdict=converged"
+    Absent => false
+  }
+}
+
+fn witness_verify_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
+  match host_runner_memory_cap_verify_transport_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
+  witness_plan_emit_claims_nothing_on_face()
+    && witness_plan_emit_includes_three_memory_cap_knobs()
+    && witness_plan_emit_grounds_byte_values_on_authority()
+    && witness_verify_receipt_converged_when_live_matches_policy()
+    && witness_verify_receipt_counts_drifted_red_control()
+    && witness_converge_cli_verify_routes_srv3()
+    && witness_converge_cli_verify_output_projects_receipt()
+    && witness_verify_transport_script_scaffold_carries_dissolution_trigger()
+}

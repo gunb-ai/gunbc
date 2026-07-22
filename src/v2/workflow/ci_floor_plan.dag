@@ -6,8 +6,11 @@ import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_en
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
-  ci_spec_with_discovery_scan_dirs
+  ci_spec_with_discovery_scan_dirs,
+  floor_plan_function,
+  plan_artifact_plan_function,
 }
+import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.ci_gate {
   Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -225,8 +228,6 @@ fn gate_runnable(g: Gate) -> Runnable {
 fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
-
-data witness_realization_plan_doc_provenance: String = "bind: docs/plans/witness-realization-plan.md — the staged path off the execution crutch (P0 field wall, P1 ObservePeakResidentAtSubject + space seq=max/par=add, P2 content-addressed artifact store, P4 realize packing min(width, budget/measured_peak)); its P4 is the adaptive-width note's own dissolve-on made concrete (graph-derived per-node demand from MeasuredBy receipts demotes the governor to a safety net). The plan links its companion audit (v2-memory-control-audit.md — space unobservable; eviction write-only; F10 v1-deletion ordering). Hand-authored staging bind per the doc-reachability wall (gunbc#6654 restored its never-skip tooth; that wall caught these very docs as orphans pre-merge, gunbc#6663); dissolves into a registered gunbc.plan.Plan row when P1 lands."
 
 data gunbc_ci_adaptive_width_note: String = "Adaptive width (operator ruling 2026-07-12, superseding the pinned-cap regime): the plan no longer authors spawn widths or per-shard byte predictions — the retired machinery was gunbc_ci_corpus_discovery_spawn_width_cap (pinned 1 after the run 28999086030 width=2 OOM), the per-plan *_plan_spawn_width fns the executor evaluated by name, and the gunbc.ci_floor_measurement width folds over hand-edited peak samples (pins freezing derivations: stale samples predated the enrollment flip, and the base-overhead re-measure chased its own tail — the July OOM/wedge regime). The executor now governs concurrency at run time: v1_compiler::memory_governor admits workers AIMD-style against the slot's OWN declared budget (memory.high else memory.max else MemAvailable else MemTotal — MemAvailable precedes MemTotal on uncapped hosts because the kernel's availability estimate excludes the co-tenant baseline that let run 29180195694 reach physical RAM; GUNBC_MEMORY_BUDGET_BYTES to override). Admission is paced (at most one worker whose front-loaded index-build cost has not yet landed), predictive (the run measures its first worker's share over the pool baseline and admits only while current + share fits under high-water), and ceilinged at half the budget — the maturation reserve: the 2026-07-12 run series proved admitted demand matures minutes after admission at ~7x its digest-time footprint, so reactive arms alone always observe it too late and half the pipe stays reserved for in-flight growth. The creep-episode edge (memory.current high-water, PSI some avg10, swap growth) halves the window AND holds admissions — early congestion is TCP's ECN, not a stop-and-hope — while hard events halve it again (memory.events high/oom_kill deltas) and memory.current crossing the declared budget itself collapses the window to one (the reachable loss signal on uncapped hosts, where memory.events never fires); the width-1 progress floor still guarantees forward motion. The window re-grows additively on calm completions. Every hold/back-off is typed, counted, and surfaced in the [governor] receipt line (DESIGN §5: loud bounded degradation, never an absorbing widen). Dissolve-on: graph-derived per-node demand (CostAccount.space measured, the realization-measurement lane) replaces the reactive estimator and the governor demotes to a safety net."
 
@@ -892,3 +893,38 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
   })
 }
 
+data gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed: List<String> = [
+  floor_plan_function,
+  plan_artifact_plan_function,
+  falsifier_plan_function,
+]
+
+data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> = gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
+
+fn gunbc_floor_arm_time_budget_refusal_plan_function_roster() -> List<String> {
+  gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
+}
+
+fn gunbc_floor_arm_time_budget_refusal_applies(plan_function: String) -> Bool {
+  any(gunbc_floor_arm_time_budget_refusal_plan_functions, f => f == plan_function)
+}
+
+fn witness_string_lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
+  (length(xs: a) == length(xs: b))
+    && all(a, item => any(b, x => x == item))
+    && all(b, item => any(a, x => x == item))
+}
+
+fn witness_floor_arm_time_budget_refusal_plan_roster_authority() -> Bool {
+  (length(xs: gunbc_floor_arm_time_budget_refusal_plan_functions) == 3)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: floor_plan_function)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: plan_artifact_plan_function)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: falsifier_plan_function)
+}
+
+fn witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed() -> Bool {
+  witness_string_lists_have_same_members(
+    a: gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed,
+    b: gunbc_floor_arm_time_budget_refusal_plan_function_roster()
+  )
+}

@@ -119,6 +119,245 @@ When Track 1's emitters route through the v2 bash rows and Track 2's runtime-pre
 
 **Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)** — **P4 is LANDED** (#6572/#6585/#6598; FLAGs 2a(i)/2b/2c signed/discharged 2026-07-14, see §2). The critical path is now P5/P6 (mechanical on the landed interface) and the operator sign of roadmap `6-shell-slice2`; P1/P2 (emitter side) run independently. **Dispatch note (2026-07-20):** do not re-dispatch workers onto P4/slice 2 from the old ~275-line framing — that staleness produced two misdispatches onto finished work.
 
+## 4. Exhaustive instance census @ `78f43c38` — the tracked punch-list (calm-ferret-849, 2026-07-22)
+
+§1–§3 record *direction* at #6507; this section is the **complete, current, per-instance list** so every single shell-string-construction site is tracked to closure. Grounded against `origin/main` @ `78f43c38`.
+
+**Why now:** a "migration" wave (#7004, #7006, and the closed srv* cluster) counted **relocations** as progress — it moved `ShellCommand{script: concat(...)}` out of the intent file into a new `*_script.dag` file and realized a typed variant by *calling that concat and stuffing the raw string back into `ShellOnHost{script}`*. Net raw-shell-string construction: unchanged; new §3 coproduct-nickname debt added. This census exists so no site is counted done until the concat is **gone**, not homed elsewhere.
+
+> **Anchoring (addresses review 41399 / DESIGN §6):** rows below are keyed on **file + symbol name** (variant, fn), NOT line numbers — a line-numbered prose ledger drifts from the tree within a commit (it did: the first draft was mis-grounded on a divergent worktree that still had the pre-#7006 `ShellCommand{script}` sites; on `origin/main` those are already the nickname variants). Symbol anchors are stable across line moves. This section is grounded at `origin/main` @ `78f43c38`; it is an interim tracker that dissolves into the enforcement lens (§4.F), which is the drift-proof authority.
+
+### 4.0 Completeness method (proves this is exhaustive, not sampled)
+
+Every way a shell string is constructed or carried, over `dag/**` (excluding `*_test.dag`). **The search must be multiline-aware** — construction is frequently `ShellCommand {` on one line and `script:` on the next, which a single-line regex misses (this gap hid the `readiness.dag` sites in the first draft — review 41467). Use a slurped/multiline match (e.g. `perl -0777 -ne '/ShellCommand\s*\{\s*script:/'`), not `grep` line-at-a-time.
+
+| # | pattern (multiline) | what it finds |
+| --- | --- | --- |
+| P1 | `ShellCommand\s*\{\s*script:` | `HostEffect.ShellCommand{script}` construction — **2 live sites on main** (`live_deploy/readiness.dag`, see §4.B); the rest became nickname variants. Residue = the `host_effect_plan.dag` `{script: ""}` placeholder + the `host_effect.dag` type def. (Match-arms `ShellCommand { script: s\|_ } =>` in `host_effect_realize`/`fleet_converge_cli`/`ci_deploy_access_observe` are destructuring, not construction.) |
+| P1b | `effect: <Variant>` for the shell-backed `HostEffect` variants | the nickname-variant construction sites that *replaced* P1 (the real §4.A rows) |
+| P2 | `BootstrapFragment *{` | bootstrap-script carrier (0 live construction sites today) |
+| P3 | `command:` in `Run{}` / `Do{run:}` | `std.orchestration.Run.command` string |
+| P4 | `shell.Exec.Run` / `.Check` / `shell_exec_via_bash` | meta-exec bottom-transport calls |
+| P5 | `fn … -> String` builders — in `*_script.dag` **and inline** (e.g. `fleet_show_effective_read.dag`'s `fleet_runner_unit_property_read_script`/`fleet_runner_width_count_read_script`, `host_converge_slice1.dag`'s `…_memory_max_read_script`/`…_memory_max_set_script`/`…_enumerate_units_script`) — plus any `concat("systemctl …"/"…")` inline | the concat/relocation script builders, wherever they live (not only the `*_script.dag` glob) |
+| P6 | `transport_script_from_body` | the (porous) `TransportScript` brand boundary — 26 sites |
+| P7 | `serialize_bash`/`ShellProgram`/`RawLine`/`ShellStmt` | bash-AST emit vocab (emit-internal) |
+| P8 | `ssh.Session.Exec(` (non-`ExecArgv`) | ssh command-string transport |
+
+The classes below partition every hit. **Class letters = the ACTION**, not the file.
+
+### 4.A — RELOCATION REGRESSION + systemctl-read cluster (dissolve properly)
+
+Keyed on the **construction site (variant/fn name)** and the modeled op it *should* call. Done = the concat gone (deleted, not moved) and, where the variant is a nickname, the variant gone too.
+
+| construction site (file · variant/fn) | builder(s) — `*_script.dag` and/or inline | should call | sub-class |
+| --- | --- | --- | --- |
+| `fleet_show_effective_read.dag` · `SystemdUnitMemoryPropertiesRead`, `SystemdUnitMemoryMaxRead` | `fleet_show_effective_read_script.dag` relocated fns **+ inline** `fleet_runner_unit_property_read_script`, `fleet_runner_width_count_read_script` (`systemctl show`/`list-units`) | `extdeps.os.systemctl.ShowProperty` (exists) + a `list-units` op | **A1** modeled |
+| `host_converge_slice1.dag` (via `shell.Exec.Run`) | inline `…_memory_max_read_script`, `…_memory_max_set_script` (`systemctl set-property` concat), `…_enumerate_units_script` (`systemctl list-units` concat) | `systemctl.ShowProperty` / `SetProperty` / new `list-units` op | **A1** modeled |
+| `host_identity_observation.dag` · `HostIdentityShortHostnameRead` | `host_identity_observation_script.dag` · `host_identity_short_hostname_script` | **new** `extdeps.os.hostname` read | **A2** model-first |
+| `host_effect.dag` · `SetHostnameCas` (realized via `host_effect_hostname_script.dag`) | `host_effect_set_hostname_cas_script` | **new** hostnamectl set op | **A2** model-first |
+| `host_effect.dag` · `ReadEffectivePosixPrincipal`, `SudoNopasswdExecuteProbe` | `host_effect_deploy_access_probe_script.dag` (whoami / `sudo -n` / `sudo -n -l`) | `access.PosixEffectivePrincipal`, `sudo.NopasswdExecuteProbe` (exist) | **A3** OWNED BY C5 #6946 — do not touch |
+| `live_deploy/` effect variants | `live_deploy/host_effect_script.dag` (`…apply`/`…retract`/`…ensure_dependency`/`…digest_readback`) | decompose (multi-op) | **A4** decompose |
+| `host_effect_realize.dag` · `ProvisionBuildCache` | `host_build_cache_provision_script.dag` (6 `build_cache_*_body`) | decompose | **A5** srv* deprioritized |
+| hygiene reaper/liveness | `host_hygiene_reaper_script.dag` (4 `…_body`), `host_hygiene_liveness_script.dag` | decompose | **A5** srv* deprioritized |
+| `srv3_host_effect_apply.dag` · `Srv3*` variants, `srv3_install_diagnostic_checklist.dag` · `Srv3InstallDiagnosticObserve`, `nbd_proxy_virtual_media_install.dag` · `Srv3NbdProxyServe` | `srv3_host_effect_script.dag` (5 fns), `srv3_install_diagnostic_observe_script.dag` (5 fns) | typed observe/receipt effects | **A5** srv* deprioritized |
+
+### 4.B — DIRECT `ShellCommand{script}` still constructed in intent
+
+The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):
+
+| site (file · construction) | builder (file · fn) | runs on | dissolve to |
+| --- | --- | --- | --- |
+| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_healthz_probe_script_for_port(port) }` | `readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` (curl localhost `/healthz`; already uses the typed `curl_bounded_localhost_get_argv_prefix`) | srv1 LocalShell via `host_effect_apply_gated` | `http.Client.Get` · `extdeps/http/client.dag` (or the typed curl argv end-to-end) — see §4.C / §5.B |
+| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_unit_diagnosis_command(unit) }` | `intent.dag` · `live_deploy_unit_diagnosis_command` (`systemctl status --no-pager --full <unit> \| tail`) | srv1 LocalShell | a `systemd.Systemctl.Status` op (§5.A add) — **and the `\| tail` + defensive `exit 0` is a §5 absorbing fallback** (intent.dag's own comment admits it masks systemctl's nonzero); the typed op models exit-3-for-dead-unit instead |
+
+Residue only (not construction to migrate):
+
+| site (file · symbol) | what | action |
+| --- | --- | --- |
+| `host_effect_plan.dag` · `ShellCommand { script: "" }` | empty placeholder | delete with the type |
+| `host_effect.dag` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal |
+
+*(The first draft mis-grounded on a divergent worktree — `fleet_show`/`host_identity` corrected to 4.A per review 41399 — and then under-scoped P1 to single-line, missing these `readiness.dag` sites per review 41467. Both fixed.)*
+
+### 4.C — RUNTIME-PRESENT `shell.Exec.Run` with a string/`_script` body (dissolve to typed op)
+
+| site (file · fn) | body | should call | class |
+| --- | --- | --- | --- |
+| `host_converge_slice1.dag` · `…_memory_max_read/set/enumerate_units_script` | `systemctl show`/`set-property`/`list-units` | `systemctl.ShowProperty`/`SetProperty` + new `list-units` op | A1 (same cluster as 4.A) |
+| `host_converge_slice1.dag`, `host_identity_adopt.dag` | `"date -Iseconds"` | typed clock/date op (DFS `extdeps` time) | A2 |
+| `ci_deploy_target_host.dag` | `"hostname -s 2>/dev/null \|\| hostname"` | new `extdeps.os.hostname` (the `\|\| hostname` fallback becomes modeled, §5) | A2 |
+| `host_identity_assimilation.dag`, `host_identity_adopt.dag`, `srv3_install_diagnostic_checklist.dag` | `"echo <receipt>"` | typed receipt emit (a stdout write, not shell) | A4 |
+| `host_effect_realize.dag` · `shell_exec_via_bash` dispatch | realization-core script dispatch | the `LocalShell`/`SshShell` typed-argv edge (C5) | A4 realization core — confirm before edit |
+| `dag/tools/{host_prelude,gunbc_ci,emit_host_gate,merge_admission_stamp}`, `gunbc/tools/review.dag` | witness/CI transports invoked from `claim_executor` | typed `WitnessBin.Run`/argv (host_prelude precedent) | A4 |
+
+### 4.D — `ssh.Session.Exec` command-string (vs typed `ExecArgv`)
+
+All in `host_effect_realize.dag`, via `ssh_session_exec(command:)` / `ssh_session_exec_script(script:)`:
+
+| construction | verb | should call | class |
+| --- | --- | --- | --- |
+| `ssh_session_exec(command: cmd)` | arbitrary command | `ssh.Session.ExecArgv` (C5) | A1 |
+| `ssh_session_exec(command: concat("test -x ", path))` | file-exists probe | `ssh.Session.ExecArgv` | A1 |
+| `ssh_session_exec(command: concat("command -v ", tool))` (×2) | tool-presence probe | `ssh.Session.ExecArgv` | A1 |
+| `ssh_session_exec(command: "id -u")`, `"id -g"` | uid/gid read | `ssh.Session.ExecArgv` (an `id` op) | A1 |
+| `ssh_session_exec_script(script:)` | script-over-ssh | typed-argv splice or decompose | A4 |
+| `extdeps.diagnostic.ssh.dag` · `ssh.Session.Exec(command:)` | the transport itself | keep as the ONE command-string transport, or fold into `ExecArgv` | transport-decision — escalate |
+
+### 4.E — FOREIGN-EXECUTOR / BOOTSTRAP emit (LEGIT shell — route through `emit(intent,Bash)`, stays shell but bounded)
+
+These are correct as shell (a GHA runner / cron / git / pre-runtime host only understands shell text). Target = emitted through the v2 bash rows, a **roster not a growth surface** — NOT dissolved to a typed op.
+
+| site | executor | class |
+| --- | --- | --- |
+| `ci_spec.dag` `ci_floor_build_verify/ci_release_bins_pack/…unpack_verify/ci_regen_floor_skip_shortcut` + retry `command:` | GitHub Actions | E-emit |
+| `ci_materialization.dag:217,246` gate scripts | GitHub Actions | E-emit |
+| `merge_admission_produce.dag:192,199,261,320` stamp/gate scripts | GitHub Actions | E-emit |
+| `fleet_converge_emit.dag` `fresh_standup_bootstrap_script` + the fresh-standup `Run{command: concat(...)}` rows (`:112,120,133,136,140,147,153,161,171`) | pre-runtime bootstrap | E-emit (byte-oracle vs `.github/fleet-converge.sh`) |
+| `roadmap_static_site.dag:76,80,144,209` body fns | srv1 dashboard (belt B — being replaced by `gunbc serve`) | E-emit / dissolves with belt B |
+| `fleet_posix_accounts.dag` `probe_command: "id <user>"` (×4) | account-existence probe | A2 (an `id` argv op) or E if roster — DFS |
+| `assimilate/bmc_token_federation.dag:65` `gcp_token_smoke_script` | GCP token smoke | DFS — likely A (typed gcp op exists) |
+
+### 4.F — bottom transport & brand (Phase-3 WALL — the construction guard)
+
+| surface | status | action |
+| --- | --- | --- |
+| `transport_script_from_body(body: String)` — 26 sites | the **porous** `TransportScript` brand: `shell.Exec.Run` already takes `TransportScript` (`extdeps/shell/exec.dag:53`) but the constructor accepts any `String` | Phase-3: brand `TransportScript` so it is produced ONLY by `emit(intent,Bash)`/`serialize_bash` — a hand-concat becomes a type error (§5 construction wall) |
+| `shell_exec_via_bash` (`shell_bash_runner.dag:32`) | heredoc runner scaffold | dissolves when no caller passes a raw script |
+| `host_language_transport_script` lens | **inert** (`fail_closed_lockdown.dag`) — no gate reds a bare-string `shell.Exec.Run` | activate once the brand lands |
+| meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) |
+
+### 4.G — bash-AST emit vocab (emit-internal — NOT fraud, already confined)
+
+`serialize_bash`/`ShellProgram`/`RawLine`/`ShellStmt`/`bash_command_fold` in 11 files (the v2 emitter itself + the two ubuntu-media files + `nbd_proxy_serve` + `build_step`(+transport) + design/roadmap prose). Confined by `realization_vocabulary_containment` (LANDED #6854). No dissolution action — this is the replacement machinery. Tracked only so it isn't mistaken for a construction site.
+
+### 4.H — oracle / test retainers (NOT live construction — skip)
+
+`live_deploy/emit.dag:448,452` `expected_*_script` (drift-gate oracles), `*_test.dag` fixtures. These are test expectations, not runtime construction; they follow their subject's dissolution.
+
+### Wind-down PR ledger — snapshot @ 2026-07-22 (calm-ferret-849 subtree)
+
+The state of every PR in this arc, so nothing is missed if work pauses here. **A task's real state is its branch/PR** (ROADMAP.md rule); this is that ledger.
+
+**Landed (merged to main):**
+
+| PR | owner (session) | what | note |
+| --- | --- | --- | --- |
+| #6946 | keen-deer-531 *(archived)* | **Wave C5** — typed-argv exec machinery + access-probe dissolution (4.A3) + `ssh.Session.ExecArgv` | **the foundation.** `ExecArgv` is now the shared authority every SshShell dissolution splices through. Genuine. |
+| #7007 | valiant-deer-438 *(archived)* | fleet-converge bootstrap emitter dissolution + byte-oracle vs `.github/fleet-converge.sh` | genuine (emit path, §5.C) |
+| #7004 | nimble-carp-340 *(archived)* | live_deploy/apply "Phase-2" | **⚠ RELOCATION, not dissolution** — moved the concats to `live_deploy/host_effect_script.dag`; the raw shell string still exists (4.A4). **Not truly done.** |
+| #7006 | zesty-crane-129 *(archived)* | fleet_show/host_identity "Phase-2" | **⚠ RELOCATION** — `fleet_show` is now properly dissolved by #7064 (supersedes this); `host_identity` still needs real dissolution (4.A2). **Not truly done.** |
+
+**Open (in review):**
+
+| PR | owner | what | next action |
+| --- | --- | --- | --- |
+| **#7065** | **calm-ferret-849 (me)** | **THIS doc** — §4 census + §5 Method of Action (the tracking authority) | 2 REQUEST_CHANGES fixed (wrong-tree #41399, multiline-pattern #41467); re-review pending, then merge |
+| **#7064** | sleek-crab-621 | **PROPER `fleet_show` + `host_converge_slice1` dissolution — THE EXEMPLAR** (call the op directly; verified genuine, not relocated) | reconcile onto merged C5 (drop #7064's duplicate `ExecArgv`), re-review, merge |
+
+**Closed / deprioritized (srv\* cluster — operator wound down 2026-07-22):**
+
+- Sessions wise-crab-547 + crisp-deer-871 + still-ant-534 + sharp-heron-884 closed. PRs #7019, #7025, #7044 closed; #7020, #7026, #7011 merged before closure.
+- **Their relocations remain on main** (4.A5 srv\* rows: `srv3_*`, `host_build_cache_provision`, `host_hygiene_*`) — real debt, **deferred by operator, NOT done.**
+
+**Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
+
+- **§5.A** — the ~4 remaining new ops: `extdeps.os.hostname` (Read/Set), `systemd.Systemctl.ListUnits`, `systemd.Systemctl.Status`, `extdeps.os.id`. (`ssh.Session.ExecArgv` already landed via C5.)
+- **§5.B** — ~40 call-the-op migrations (mechanical once the exemplar #7064 lands).
+- **§5.E** — the **`TransportScript` construction wall** — the keystone that makes relocation a type error and "exhaustive" true by construction. **Awaiting operator decision: wall-first vs migrate-now.**
+
+**⚠ Do-not-miss for wind-down:**
+
+1. **#7004 and #7006 merged as "progress" but are relocations** — the concats were moved, not deleted, so those sites (live_deploy/apply, host_identity) are **not actually bash-free.** #7064 fixes `fleet_show`; the rest still need the proper dissolution.
+2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
+3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (4 ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
+
+### Dissolution trigger for §4
+
+This punch-list folds into the **`host_language_transport_script` lens going live** (4.F): once a compile gate reds any raw-string `shell.Exec.Run` / hand-built transport, new instances are unwritable by construction (§5) and a prose punch-list is redundant. Until then, every row here is discharged by *deletion of the concat*, verified green-by-execution + an injection-RED — never by relocation.
+
+---
+
+## 5. Method of Action — the bounded path to bash-free user space (calm-ferret-849, 2026-07-22)
+
+**End state:** no user-space `.dag` constructs a shell string. Every "this `.dag` wants to call a bash script" instance resolves to exactly one of four paths below. The `realization_vocabulary_containment` lens (#6854, LIVE) already forbids bash-AST vocab (`ShellProgram`/`ShellStmt`/`serialize_bash`) in user space — the remaining hole is the `shell.Exec.Run(script: TransportScript)` / `ShellOnHost{script: String}` sink (§5.E), which is what makes relocation possible.
+
+**The headline (verified by op inventory @ `78f43c38`):** the arc needs only **~4 new typed ops**. Almost every site calls an op that already exists.
+
+### 5.A — the FINITE new-op list (the ONLY new modeling the whole arc needs)
+
+| new op | home file | covers verb | consumers |
+| --- | --- | --- | --- |
+| `extdeps.os.hostname` · `Read` + `Set` | **new** `dag/extdeps/os/hostname.dag` | `hostname -s`, `hostnamectl set-hostname` | `host_identity_observation` (`HostIdentityShortHostnameRead`), `ci_deploy_target_host`, `host_effect_hostname` (`SetHostnameCas`) |
+| `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (`_enumerate_units_script`), `fleet_show_effective_read` (`fleet_runner_width_count_read_script`) |
+| `extdeps.os.id` · `Read` (uid/gid/user) | **new** `dag/extdeps/os/id.dag` | `id -u`, `id -g`, `id <user>` | `host_effect_realize` (ssh probes), `fleet_posix_accounts` (`probe_command`) |
+| `ssh.Session.ExecArgv` | **add to** `dag/extdeps/diagnostic/ssh.dag` | typed argv over ssh (`ssh host -- argv`) | `host_effect_realize` ssh probes — **IN FLIGHT, C5 #6946** |
+| `systemd.Systemctl.Status` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl status --no-pager --full <unit>` (models exit-3-for-dead-unit — retires the `\| tail`+`exit 0` absorbing fallback) | `live_deploy/readiness.dag` unit diagnosis |
+
+That is the entire new-modeling surface. (A sixth, optional: a typed stdout/receipt emit for the two `echo <receipt>` sites, or reuse `Filesystem.Write`.) The healthz probe needs **no** new op — `http.Client.Get` already exists.
+
+### 5.B — CALL AN EXISTING OP (receipt: the op is already modeled on main)
+
+| site (file · symbol) | current shell | call this op — receipt (file · service.Op) |
+| --- | --- | --- |
+| `host_converge_slice1` · `_memory_max_read_script` | `systemctl show --property=MemoryMax --value` | `systemd.Systemctl.ShowProperty` · `extdeps/os/systemctl.dag` |
+| `host_converge_slice1` · `_memory_max_set_script` | `systemctl set-property … MemoryMax=` | `systemd.Systemctl.SetProperty` · `extdeps/os/systemctl.dag` |
+| `host_converge_slice1` · `date`, `host_identity_adopt` · `date` | `date -Iseconds` (local ISO w/ offset) | `Clock.Now` · `extdeps/clock/clock.dag` — **⚠ semantics differ**: `Clock.Now` is wired to `date -u +%Y-%m-%dT%H:%M:%SZ` (UTC `…Z`), not local `-Iseconds`. Migrate by adopting UTC-`Z` (canonical for receipts) — a deliberate reconciliation, NOT a silent drop-in; if a site truly needs local offset, add a `Clock.NowLocal` variant rather than fork `date` (review 41476) |
+| `fleet_show_effective_read` · `SystemdUnitMemory*Read`, `fleet_runner_unit_property_read_script` | `systemctl show --property` | `systemd.Systemctl.ShowProperty` · `extdeps/os/systemctl.dag` |
+| `host_effect_realize` · ssh `test -x <path>` | `test -x` | `shell.Find.IsExecutable` · `extdeps/shell/shell.dag` (spliced via `ssh.Session.ExecArgv`) |
+| `host_effect_realize` · ssh `command -v <tool>` (×2) | `command -v` | `shell.Which.Check` · `extdeps/shell/*` (via `ExecArgv`) |
+| `tools/review` · `design`, `algebra_ref` | `git fetch` + `git show origin:FILE` | `git.Core.FetchNoTags` + `git.Core.Show` · `extdeps/git/git.dag` (`|| echo '(not found)'` → typed error→Absent) |
+| `merge_admission_stamp` · `mkdir -p` | `mkdir -p` | `Filesystem` / `shell.Find.Dir` · `extdeps/filesystem/filesystem_io.dag` |
+| `dag/tools` · `host_prelude`/`gunbc_ci`/`emit_host_gate` witness+build transports | witness/build run | `gunbc.WitnessBin.Run` · `extdeps/gunbc/gunbc.dag`; `cargo.Build.*` · `extdeps/rust/cargo_build.dag` (`host_prelude` already has the typed precedent) |
+| `live_deploy/readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` | `curl` localhost `/healthz` | `http.Client.Get` · `extdeps/http/client.dag` (already exists) |
+| `host_identity_assimilation`/`adopt` · `echo <receipt>` | `echo <msg>` | typed receipt/stdout emit (`Filesystem.Write` or a print op) — not a shell need |
+
+Each row's `2>/dev/null || true` / `|| echo` fallback becomes a **modeled outcome** (`nonzero => …` mapped to `Absent`), never re-appended (§5 absorbing-fallback rule).
+
+### 5.C — EMIT via the bash backend (foreign executors ONLY — bounded roster, legitimately stays shell)
+
+Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` + `src/v2/workflow/bash*` (confined by the containment lens). These sites emit *through* it because the executor's input contract IS shell text:
+
+| site (file · symbol) | executor | path |
+| --- | --- | --- |
+| `ci_spec` · `ci_floor_build_verify_script`/`ci_release_bins_pack_script`/`…unpack_verify_script`/`ci_regen_floor_skip_shortcut_script` | GitHub Actions `run:` | `emit(intent, Bash)` via the bash backend |
+| `ci_materialization` · `ci_floor_materialization_receipt_gate_script`/`…resolve_receipt_gate_script` | GitHub Actions | same |
+| `merge_admission_produce` · 4 `ci_*_script` | GitHub Actions | same |
+| `fleet_converge_emit` · `fresh_standup_bootstrap_script`/`_arm_golden` | pre-runtime bootstrap | emit, byte-oracle vs `.github/fleet-converge.sh` (largely done #6572/#6585) |
+| cron entry lines, `local_tidy_spec` pre-push hook | cron / git | emit, **permanent** roster (the honest residue) |
+
+`roadmap_static_site` · `roadmap_site_*_body` is HTML/JSON content emit (not shell) for the srv1 dashboard — dissolves with belt B (`gunbc serve`), tracked there, not here.
+
+### 5.D — DEFERRED (each with its own trigger)
+
+| bucket | sites | trigger to un-defer |
+| --- | --- | --- |
+| C5 access probes | `host_effect_deploy_access_probe_script` | C5 #6946 merges |
+| srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* |
+| nbd backgrounding | `host_effect_nbd_proxy_serve` `RawLine` (`&`/trap/`$!`) | typed systemd transient-unit effect + `Filesystem.Read` token + typed argv (dissolution trigger already in-file; operator ruled no trap/&/$! vocab) |
+
+### 5.E — THE ENABLER THAT MUST COME FIRST (close the string sink, or every row above can be faked)
+
+Every §5.A/§5.B row can be **faked by joining argv back into a string** and feeding `shell.Exec.Run(script)` / `ShellOnHost{script}` — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). As long as that sink is reachable from intent, relocation is the path of least resistance and a brief alone won't stop it. So the wall is **not cleanup-after** — it's the enabler:
+
+- Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)`/`serialize_bash` (today `transport_script_from_body(body: String)` accepts any string — the porous boundary).
+- Make `ShellOnHost{script}` / the runtime-present realization edge take **typed argv (`List<String>`), not `String`** — a hand-join becomes a type error.
+- Activate the `host_language_transport_script` lens (inert today, `fail_closed_lockdown.dag`).
+
+### Sequence
+
+1. **§5.A** — add the ~4 ops (each cited, typed `exit`, typed-argv transport). Small, finite.
+2. **§5.E** — brand `TransportScript` + typed-argv realization edge → §5.B becomes the *only* writable path.
+3. **§5.B** — migrate by construction (call the op), green-by-execution + injection-RED, deleting each concat.
+4. **§5.C** — route foreign-executor sites through the bash backend (bounded roster).
+5. **§5.D** — un-defer per trigger.
+
+### Receipts
+
+- **Op inventory verified present @ `78f43c38`** (Pass 1 enumeration of every `service`/`operation` under `dag/extdeps/`): `systemd.Systemctl` (8 ops incl. `ShowProperty`/`SetProperty`/`IsActive`), `Clock.Now`, `shell.Which.Check`, `shell.Find.*` (incl. `IsExecutable`/`Dir`), `git.Core.*` (incl. `Show`/`FetchNoTags`), `Filesystem.{Write,Read,Delete,List}`, `apt.PackageManager.Install`, `sleep.Delay.Seconds`, `gunbc.WitnessBin.Run`, `cargo.Build.*`, `sha256sum`/`jq`/`sed`/`grep`/`xorriso`.
+- **New ops verified ABSENT @ `78f43c38`**: no `hostname`/`hostnamectl` op, no `id`/`getent` op, no `systemctl list-units` op; `ssh.Session.ExecArgv` absent on main (in flight in C5 #6946).
+
+---
+
 ## Dissolution trigger
 
-Delete this doc when P4 lands (the `ConvergePlan` effect + `EmitArtifactThenThinRun` transport minted and consumed by fleet_converge), the census rows fold into `provisioning-window-executor-capability-design.md`'s table, and `program.dag` deletes — at which point the arc is complete and this scoping is redundant.
+**P4 has LANDED** (#6572/#6585/#6598 — the `ConvergePlan` effect + `EmitArtifactThenThinRun` transport minted and consumed by fleet_converge; see §2), so the original "delete when P4 lands" criterion is met. The doc's remaining life is the same one §4/§5 name: it dissolves when the **`host_language_transport_script` lens goes live** (§4.F/§5.E) and `program.dag` deletes — i.e. when relocation is unwritable by construction and the per-instance census/plan is redundant. One criterion, consistent across the doc (this reconciles the two triggers per review 41476).

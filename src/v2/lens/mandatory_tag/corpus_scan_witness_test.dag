@@ -1,0 +1,34 @@
+module v2.lens.mandatory_tag.corpus_scan_witness_test
+
+import v2.lens.mandatory_tag.corpus_scan {
+  corpus_anchor_facts,
+  corpus_live_clean_tree_holds,
+  corpus_live_roster_module_count,
+  extdeps_color_srgb_module,
+  extdeps_fixture_file_anchor_module,
+  extdeps_fixture_missing_anchor_module
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data corpus_scan_witness_note: String = "Corpus-cadence witnesses for the retained host anchor projection (v2.lens.mandatory_tag.corpus_scan). The GREEN half proves the live tree holds the wall (zero violations) and that enumeration actually sees the corpus (roster count floor - an accidentally-empty walk reds rather than passing vacuously). The RED half red-controls the projection itself against planted fixtures, in both failure directions: the missing-anchor plant must project absent (a projection that fabricated presence would green a hole - the fail-open direction), and the File-scheme plant must project its non-external scheme identity faithfully (the direction the old bogus/file-anchor lens_unit tests covered). Fixture modules are excluded from the live roster by the extdeps.fixture. prefix rule, so the plants never red the corpus gate while staying readable by explicit qualified name."
+
+test fn corpus_live_clean_tree_wall_holds() -> Bool {
+  corpus_live_clean_tree_holds() && corpus_live_roster_module_count() > 150
+}
+
+test fn corpus_projection_missing_plant_reads_absent() -> Bool {
+  corpus_anchor_facts(module: extdeps_fixture_missing_anchor_module).anchor_kind == "absent"
+}
+
+test fn corpus_projection_file_plant_reads_non_external_scheme() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_fixture_file_anchor_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "File"
+}
+
+test fn corpus_projection_real_anchor_reads_https() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_color_srgb_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "Https"
+}

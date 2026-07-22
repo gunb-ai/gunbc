@@ -33,9 +33,8 @@ jobs:
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
-          GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi
-          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
-          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -117,46 +116,12 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Isolate toolchain dirs
-        run: |
-          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
-          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
-          GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi
-          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
-          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
-          if sccache --show-stats >/dev/null 2>&1; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-            echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
-          fi
-      - name: Setup Rust
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           components: rustfmt
           cache: false
           rustflags: ''
-        env:
-          HOME: ${{ runner.temp }}
-      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
-          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
-          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
-          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Cache Cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ${{ runner.temp }}/cargo/registry/index/
-            ${{ runner.temp }}/cargo/registry/cache/
-            ${{ runner.temp }}/cargo/git/db/
-            target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -269,46 +234,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Isolate toolchain dirs
-        run: |
-          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
-          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
-          GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi
-          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
-          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
-          if sccache --show-stats >/dev/null 2>&1; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-            echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
-          fi
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-          rustflags: ''
-        env:
-          HOME: ${{ runner.temp }}
-      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
-          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
-          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
-          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Cache Cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ${{ runner.temp }}/cargo/registry/index/
-            ${{ runner.temp }}/cargo/registry/cache/
-            ${{ runner.temp }}/cargo/git/db/
-            target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:

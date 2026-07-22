@@ -38,7 +38,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_is_deferred_lower_at_normalize
 }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.std.namespace_graft {
+import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_is_graft_candidate
 }

@@ -15,7 +15,7 @@ use v1_compiler::cli_run::{
     format_resolution_divergence_census, resolution_divergence_census_live,
     resolution_divergence_census_live_closure_scoped, resolution_divergence_census_source_roots,
     resolution_divergence_fn_parent_first_hit_subset_refusal,
-    resolution_divergence_silent_pick_refusal, whole_tree_resolve_exclusion_substrings,
+    resolution_divergence_silent_pick_refusal, whole_tree_probe_exclusion_substrings,
 };
 
 fn workspace_root() -> PathBuf {
@@ -39,7 +39,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let ws = workspace_root();
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude = whole_tree_resolve_exclusion_substrings();
+    let mut exclude = whole_tree_probe_exclusion_substrings();
     let mut closure_scoped = false;
 
     let mut i = 1;

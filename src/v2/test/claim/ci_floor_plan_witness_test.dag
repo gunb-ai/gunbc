@@ -22,6 +22,9 @@ import v2.workflow.ci_floor_plan {
   witness_floor_discovery_flip_serializes_gates_after_corpus,
   witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
   witness_regen_spec_carries_no_witness_corpus,
+  gunbc_floor_arm_time_budget_refusal_applies,
+  witness_floor_arm_time_budget_refusal_plan_roster_authority,
+  witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed,
   gunbc_falsifier_self_host_wet_receipt_wall_budget_ms,
   gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
   gunbc_ci_fast_lane_eval_budget_ms,
@@ -444,6 +447,8 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && falsifier_plan_structure_holds()
     && falsifier_self_host_wet_budget_declared_holds()
     && witness_hermetic_floor_posture_declared()
+    && witness_floor_arm_time_budget_refusal_plan_roster_authority()
+    && witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

@@ -5,7 +5,7 @@ import std.disposition { SingleAuthority }
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
-import v2.std.namespace_graft { qualified_name_from_module_node_graft_aware }
+import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
 import v2.std.collection {
   Absent,
   List,
