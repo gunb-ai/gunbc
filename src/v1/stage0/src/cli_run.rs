@@ -19503,7 +19503,9 @@ pub fn apply_walk_target_alias_decl_to_source(
     target_qualified_path: &str,
 ) -> Result<String, String> {
     if module_source_has_alias_decl(content, binding) {
-        return Err(format!("alias decl for binding '{binding}' already present"));
+        return Err(format!(
+            "alias decl for binding '{binding}' already present"
+        ));
     }
     let insert_line = walk_target_alias_apply_insert_line(content)?;
     let alias_line = format_walk_target_alias_decl(binding, target_qualified_path);
@@ -19653,7 +19655,10 @@ pub fn walk_target_alias_apply_plan(
             }
             match apply_walk_target_alias_decl_to_source(&current, &binding, &target) {
                 Ok(next) => {
-                    pending.push((binding.clone(), format_walk_target_alias_decl(&binding, &target)));
+                    pending.push((
+                        binding.clone(),
+                        format_walk_target_alias_decl(&binding, &target),
+                    ));
                     current = next;
                 }
                 Err(reason) => {
@@ -20439,10 +20444,7 @@ fn use_ambig(x: AmbigType) -> Int {
         let apply_report = walk_target_alias_apply_live(&roots, &[], false).expect("apply live");
         assert!(apply_report.binding_identity_oracle_passed);
         assert!(
-            apply_report
-                .edits
-                .iter()
-                .any(|e| e.binding == "AmbigType"),
+            apply_report.edits.iter().any(|e| e.binding == "AmbigType"),
             "dry-run apply report must list planned edits, got {:?}",
             apply_report.edits
         );
