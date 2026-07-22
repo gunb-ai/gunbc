@@ -837,11 +837,7 @@ data gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed: Lis
 data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> = gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
 
 fn gunbc_floor_arm_time_budget_refusal_plan_function_roster() -> List<String> {
-  [
-    floor_plan_function,
-    plan_artifact_plan_function,
-    falsifier_plan_function,
-  ]
+  gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
 }
 
 fn gunbc_floor_arm_time_budget_refusal_applies(plan_function: String) -> Bool {
