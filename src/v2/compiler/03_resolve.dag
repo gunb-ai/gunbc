@@ -12,7 +12,6 @@ import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
-import v2.std.namespace_graft { namespace_graft_parse_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection {
@@ -657,20 +656,30 @@ fn resolve_node(
   }
 }
 
+fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
+  if dag_surface_module_header_metadata_edge(name: name) {
+    true
+  } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
+    true
+  } else if name == ^grammar_production_identity_node_projection {
+    true
+  } else {
+    false
+  }
+}
+
 fn resolve_child_edge(
   ctx: ResolveContext,
   e: Edge
 ) -> Outcome<Edge> {
   match e.label {
     Named { name: sym } =>
-      if ctx.under_module_root && (
-        dag_surface_module_header_metadata_edge(name: sym)
-          || dag_resolve_preserve_module_metadata_subtree(node: e.target)
-          || namespace_graft_parse_projection_edge(name: sym)
-      ) {
+      if ctx.under_module_root
+        && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
         Accepted { value: e, diagnostics: None }
       } else {
-        let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(name: sym) {
+        let child_ctx = if ctx.under_module_root
+          && !dag_surface_module_header_metadata_edge(name: sym) {
           resolve_ctx_snoc_position(ctx: ctx, segment: sym)
         } else {
           ctx

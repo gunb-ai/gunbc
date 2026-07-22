@@ -1,0 +1,207 @@
+module gunbc.host_runner_memory_cap_verify
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
+import product.placement_supply { HostIdentity }
+import gunbc.host_converge {
+  ConvergeKnob,
+  ConvergeVerdict,
+  VerdictConverged,
+  Drifted,
+  Absent,
+  converge_verdict,
+}
+import gunbc.host_runner_memory_provision {
+  runner_memory_host_converge,
+  runner_memory_knobs_from,
+  runner_memory_cap_readback_verdict,
+}
+import gunbc.fleet_show_effective_read {
+  fleet_runner_unit_memory_props_read_script,
+  runner_unit_memory_live_read_from_stdout,
+}
+import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
+
+data runner_memory_cap_verify_probe_unit_assumption: String = "Path (b) verify read-back samples one representative unit (actions-runner@<host>-01.service; precedent: host_converge_slice1_probe_unit) while apply knobs target runner_instance_glob actions-runner@<host>-*.service (5 slots/host per gunbc.runner_slot_allocation). ASSUMPTION glob-uniform: systemd drop-ins apply the same MemoryMax/MemoryHigh/MemorySwapMax to every slot instance, so the knob tally receipt from -01 is the host-level verdict. Drift confined to -02..-05 alone is invisible until multi-unit fold lands (dissolve-on trigger for path (b) verify close)."
+
+data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Shell realization is scaffold-marked medium-as-string (host_runner_memory_cap_verify_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; probed_at uses slice-local date -Iseconds. Interim shell.Exec.Run is also rostered on meta_exec_confinement_exception_roster (precedent: host_converge_slice1) until typed host_effect_apply read transport lands. One-unit proxy read (slot -01) under glob-uniform assumption — see runner_memory_cap_verify_probe_unit_assumption."
+}
+
+data host_runner_memory_cap_verify_transport_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+type RunnerMemoryCapVerifyTally {
+  converged: Int
+  drifted: Int
+  absent: Int
+}
+
+type RunnerMemoryCapVerifyReceipt {
+  host: HostIdentity
+  tally: RunnerMemoryCapVerifyTally
+  knob_count: Int
+  verdict: ConvergeVerdict
+}
+
+fn runner_memory_cap_probe_unit(host: HostIdentity) -> NonEmptyStr {
+  concat(concat("actions-runner@", host), "-01.service") as NonEmptyStr
+}
+
+fn runner_memory_cap_verify_tally_knob(
+  acc: RunnerMemoryCapVerifyTally,
+  read: RunnerUnitMemoryLiveRead,
+  knob: ConvergeKnob,
+) -> RunnerMemoryCapVerifyTally {
+  match runner_memory_cap_readback_verdict(read: read, knob: knob) {
+    Present { value: VerdictConverged } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged + 1,
+        drifted: acc.drifted,
+        absent: acc.absent,
+      }
+    Present { value: Drifted } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted + 1,
+        absent: acc.absent,
+      }
+    Present { value: Absent } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted,
+        absent: acc.absent + 1,
+      }
+    Absent =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted,
+        absent: acc.absent + 1,
+      }
+  }
+}
+
+fn runner_memory_cap_verify_tally_from_read(
+  host: HostIdentity,
+  read: RunnerUnitMemoryLiveRead,
+) -> RunnerMemoryCapVerifyTally? {
+  match runner_memory_host_converge(host: host) {
+    Present { value: hc } =>
+      Present {
+        value: fold(
+          runner_memory_knobs_from(host: hc),
+          init: RunnerMemoryCapVerifyTally { converged: 0, drifted: 0, absent: 0 },
+          f: fn(acc, knob) { runner_memory_cap_verify_tally_knob(acc: acc, read: read, knob: knob) }
+        ),
+      }
+    Absent => none
+  }
+}
+
+fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally, knob_count: Int) -> ConvergeVerdict {
+  if tally.drifted > 0 {
+    Drifted
+  } else { if tally.absent > 0 {
+    Absent
+  } else { if tally.converged == knob_count && knob_count > 0 {
+    VerdictConverged
+  } else {
+    Absent
+  } } }
+}
+
+fn runner_memory_cap_verify_receipt_from_read(
+  host: HostIdentity,
+  read: RunnerUnitMemoryLiveRead,
+) -> RunnerMemoryCapVerifyReceipt? {
+  match runner_memory_host_converge(host: host) {
+    Present { value: hc } =>
+      match runner_memory_cap_verify_tally_from_read(host: host, read: read) {
+        Present { value: tally } =>
+          let knob_count = runner_memory_knobs_from(host: hc).length()
+          Present {
+            value: RunnerMemoryCapVerifyReceipt {
+              host: host,
+              tally: tally,
+              knob_count: knob_count,
+              verdict: runner_memory_cap_verify_verdict_from_tally(tally: tally, knob_count: knob_count),
+            },
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn runner_memory_cap_verify_probed_at() -> NonEmptyStr? {
+  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
+  if result.success {
+    let line = trim(result.stdout)
+    if line == "" { none } else { Present { value: line as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? {
+  let unit = runner_memory_cap_probe_unit(host: host)
+  match runner_memory_cap_verify_probed_at() {
+    Present { value: probed_at } =>
+      let result = shell.Exec.Run(
+        script: transport_script_from_body(body: fleet_runner_unit_memory_props_read_script(unit: unit))
+      )
+      if result.success {
+        runner_unit_memory_live_read_from_stdout(unit: unit, stdout: result.stdout, probed_at: probed_at)
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+type RunnerMemoryCapVerifyRunResult
+  = RunnerMemoryCapVerifyObserved { receipt: RunnerMemoryCapVerifyReceipt }
+  | RunnerMemoryCapVerifyRefused { host: HostIdentity, reason: String }
+
+fn runner_memory_cap_verify_run(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      match runner_memory_cap_live_read(host: host) {
+        Present { value: read } =>
+          match runner_memory_cap_verify_receipt_from_read(host: host, read: read) {
+            Present { value: receipt } => RunnerMemoryCapVerifyObserved { receipt: receipt }
+            Absent =>
+              RunnerMemoryCapVerifyRefused {
+                host: host,
+                reason: "host_runner_memory_cap_verify: read-back tally refused after live read; fail-closed",
+              }
+          }
+        Absent =>
+          RunnerMemoryCapVerifyRefused {
+            host: host,
+            reason: "host_runner_memory_cap_verify: live systemctl read absent; fail-closed (verify-only, no apply)",
+          }
+      }
+    Absent =>
+      RunnerMemoryCapVerifyRefused {
+        host: host,
+        reason: concat(
+          "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
+          host as String
+        ),
+      }
+  }
+}
+
+fn runner_memory_cap_verify_receipt_converged(receipt: RunnerMemoryCapVerifyReceipt) -> Bool {
+  receipt.verdict == VerdictConverged
+}

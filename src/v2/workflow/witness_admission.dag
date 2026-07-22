@@ -33,8 +33,6 @@ import v2.std.witness_admission {
   UnexecutedDeferredWitness
 }
 
-data witness_admission_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
-
 fn schedule_row_matches(
   w: ScheduleWitnessEntry,
   entry: String,

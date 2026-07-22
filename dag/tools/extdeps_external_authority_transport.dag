@@ -3,29 +3,12 @@ module tools.extdeps_external_authority_transport
 import std.logic { Bool }
 import tools.host_prelude { ClaimRun, run_gunbc_claims }
 
+data transport_note: String = "Witness transport for the extdeps external-authority gate, rewired 2026-07-22 onto the mandatory-tag dissolution: the verdict authority is v2.lens.mandatory_tag (compile-gate fold, red/green-controlled at the v2 parse grain in v2.lens.mandatory_tag.gate_witness_test, discovery-enrolled); this transport runs the CORPUS-cadence rows - the retained host anchor projection (v2.lens.mandatory_tag.corpus_scan, a declared shrunken scaffold whose dissolution trigger is witness realization of the parse-grain corpus witness) plus the uri modeling witnesses. The old per-module lens_unit rows retired with v2.lens.extdeps_external_authority; their grain is covered by the gate witnesses."
+
 data uri_witness_entry: String = "dag/test/claim/uri_witness_test.dag"
 data uri_witness_fn: String = "uri_witnesses"
 
-data live_corpus_entry: String = "src/v2/test/claim/long/live_anchored_modules_clean_test.dag"
-data live_corpus_fn: String = "corpus_live_clean_tree_holds"
-
-data anchor_drop_red_entry: String = "src/v2/test/claim/extdeps_external_authority/corpus/live_clean_tree_anchor_drop_red_test.dag"
-data anchor_drop_red_fn: String = "corpus_live_clean_tree_anchor_drop_red_holds"
-
-data clean_file_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/clean_file_anchor_live_test.dag"
-data clean_file_fn: String = "clean_file_anchor_live_is_green_holds"
-
-data clean_https_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/clean_https_anchor_live_test.dag"
-data clean_https_fn: String = "clean_https_anchor_live_is_green_holds"
-
-data missing_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/missing_anchor_red_test.dag"
-data missing_red_fn: String = "missing_anchor_fixture_is_red_holds"
-
-data bogus_scheme_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/bogus_scheme_red_test.dag"
-data bogus_scheme_red_fn: String = "bogus_scheme_fixture_is_red_holds"
-
-data file_anchor_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/file_anchor_red_test.dag"
-data file_anchor_red_fn: String = "file_anchor_fixture_is_red_holds"
+data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness_test.dag"
 
 data extdeps_external_authority_source_roots: List<String> = ["dag", "src/v2"]
 
@@ -40,14 +23,7 @@ fn run_extdeps_external_authority_live_corpus_witness() -> Bool {
   run_gunbc_claims(
     source_roots: extdeps_external_authority_source_roots,
     claims: [
-      ClaimRun { entry: live_corpus_entry, function: live_corpus_fn },
-      ClaimRun { entry: anchor_drop_red_entry, function: anchor_drop_red_fn },
-      ClaimRun { entry: clean_file_entry, function: clean_file_fn },
-      ClaimRun { entry: clean_https_entry, function: clean_https_fn },
-      ClaimRun {
-        entry: "src/v2/test/claim/long/derived_machinery_exempt_live_test.dag",
-        function: "derived_machinery_exempt_modules_are_live_clean_holds"
-      }
+      ClaimRun { entry: corpus_scan_entry, function: "corpus_live_clean_tree_wall_holds" }
     ]
   )
 }
@@ -56,9 +32,9 @@ fn run_extdeps_external_authority_lens_unit_red() -> Bool {
   run_gunbc_claims(
     source_roots: extdeps_external_authority_source_roots,
     claims: [
-      ClaimRun { entry: missing_red_entry, function: missing_red_fn },
-      ClaimRun { entry: bogus_scheme_red_entry, function: bogus_scheme_red_fn },
-      ClaimRun { entry: file_anchor_red_entry, function: file_anchor_red_fn }
+      ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_missing_plant_reads_absent" },
+      ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_file_plant_reads_non_external_scheme" },
+      ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" }
     ]
   )
 }

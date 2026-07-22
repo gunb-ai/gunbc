@@ -1,0 +1,235 @@
+module gunbc.econ.knowable_wedge
+
+import extdeps.pricing.github_actions { GithubActionsRunnerPriceRow }
+import extdeps.pricing.hetzner_dedicated {
+  HetznerDedicatedServerPriceRow,
+  hetzner_dedicated_server_threads,
+  hetzner_dedicated_setup_fee_micros,
+}
+import std.currency { Eur, Usd }
+import std.measure {
+  AmortizationMonths,
+  BasisPoint,
+  HardwareThreadCount,
+  MoneyPerMinute,
+  MoneyPerMonth,
+  amortization_months_count,
+  basis_point_count,
+  basis_point_unity_count,
+  billing_month_as_hour_count,
+  hardware_thread_count_value,
+  minutes_per_hour,
+  money_amount_micro,
+  money_per_minute_micros,
+  money_per_month_micros,
+}
+import std.nat { Nat }
+
+data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
+
+data wedge_hardware_thread_count_note: String = "Per-thread cost allocation divides by HardwareThreadCount on both sides — umbrella_row.vcpus (GithubActionsRunnerPriceRow) and hetzner_dedicated_server_threads (CpuFacts catalog threads). The carrier grounds SMT-sibling counting; no parallel Bool assertion."
+
+data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator are explicitly declared WedgeAssumptions inputs (refuses ExchangeRateUnknown on zero denominator), not cited extdeps facts. dissolve-on: extdeps.forex authority + MoneyRate<From,To> carrier when a second FX consumer appears."
+
+type WedgeAssumptions {
+  runner_utilization_bp: BasisPoint
+  amortization_months: AmortizationMonths
+  eur_to_usd_numerator: Nat
+  eur_to_usd_denominator: Nat
+}
+
+type WedgeAssumptionsInput
+  = WedgeAssumptionsDeclared { assumptions: WedgeAssumptions }
+  | WedgeAssumptionsUnknown
+
+type KnowableWedgeRefusalCause
+  = AssumptionsUnknown
+  | UtilizationUnknown
+  | AmortizationUnknown
+  | ExchangeRateUnknown
+  | ServerThreadCountUnknown
+  | RunnerThreadCountUnknown
+  | UmbrellaCurrencyMismatch
+  | FloorCurrencyMismatch
+  | FloorExceedsUmbrella
+
+type RunnerCostFloorResult
+  = RunnerCostFloorDerived { floor: MoneyPerMinute }
+  | RunnerCostFloorRefused { cause: KnowableWedgeRefusalCause }
+
+type KnowableWedgeDerived {
+  umbrella_per_minute: MoneyPerMinute
+  cost_floor_per_minute: MoneyPerMinute
+  wedge_per_minute: MoneyPerMinute
+}
+
+type KnowableWedgeResult
+  = KnowableWedgeComputed { wedge: KnowableWedgeDerived }
+  | KnowableWedgeRefused { cause: KnowableWedgeRefusalCause }
+
+fn minutes_per_billing_month() -> Nat {
+  billing_month_as_hour_count() * minutes_per_hour()
+}
+
+fn money_per_minute_from_money_per_month(monthly: MoneyPerMonth) -> MoneyPerMinute {
+  MoneyPerMinute {
+    amount: money_amount_micro(count: money_per_month_micros(q: monthly) / minutes_per_billing_month()),
+    currency: monthly.currency,
+  }
+}
+
+fn convert_money_per_minute_eur_to_usd(
+  eur: MoneyPerMinute,
+  numerator: Nat,
+  denominator: Nat,
+) -> MoneyPerMinute? {
+  if denominator <= 0 {
+    none
+  } else {
+    match eur.currency {
+      Eur =>
+        Present {
+          value: MoneyPerMinute {
+            amount: money_amount_micro(count: (money_per_minute_micros(q: eur) * numerator) / denominator),
+            currency: Usd,
+          }
+        }
+      _ => none
+    }
+  }
+}
+
+fn subtract_money_per_minute_usd(umbrella: MoneyPerMinute, floor: MoneyPerMinute) -> MoneyPerMinute? {
+  let umbrella_micros = money_per_minute_micros(q: umbrella)
+  let floor_micros = money_per_minute_micros(q: floor)
+  if umbrella_micros < floor_micros {
+    none
+  } else {
+    Present {
+      value: MoneyPerMinute {
+        amount: money_amount_micro(count: umbrella_micros - floor_micros),
+        currency: Usd,
+      }
+    }
+  }
+}
+
+fn derive_monthly_eur_with_amortization(
+  row: HetznerDedicatedServerPriceRow,
+  amortization_months: AmortizationMonths,
+) -> MoneyPerMonth? {
+  let months = amortization_months_count(m: amortization_months)
+  if months <= 0 {
+    none
+  } else {
+    let monthly = money_per_month_micros(q: row.monthly)
+    let setup = hetzner_dedicated_setup_fee_micros(row: row)
+    Present {
+      value: MoneyPerMonth {
+        amount: money_amount_micro(count: monthly + (setup / months)),
+        currency: Eur,
+      }
+    }
+  }
+}
+
+fn derive_runner_cost_floor_per_minute_usd(
+  row: HetznerDedicatedServerPriceRow,
+  runner_vcpus: HardwareThreadCount,
+  assumptions: WedgeAssumptions,
+) -> RunnerCostFloorResult {
+  if basis_point_count(bp: assumptions.runner_utilization_bp) <= 0 {
+    RunnerCostFloorRefused { cause: UtilizationUnknown }
+  } else if amortization_months_count(m: assumptions.amortization_months) <= 0 {
+    RunnerCostFloorRefused { cause: AmortizationUnknown }
+  } else if assumptions.eur_to_usd_denominator <= 0 {
+    RunnerCostFloorRefused { cause: ExchangeRateUnknown }
+  } else {
+    let server_vcpus = hetzner_dedicated_server_threads(row: row)
+    let server_count = hardware_thread_count_value(t: server_vcpus)
+    let runner_count = hardware_thread_count_value(t: runner_vcpus)
+    if server_count <= 0 {
+      RunnerCostFloorRefused { cause: ServerThreadCountUnknown }
+    } else if runner_count <= 0 {
+      RunnerCostFloorRefused { cause: RunnerThreadCountUnknown }
+    } else {
+      match derive_monthly_eur_with_amortization(
+        row: row,
+        amortization_months: assumptions.amortization_months,
+      ) {
+        Present { value: monthly_eur } => {
+          let per_minute_server_eur = money_per_minute_from_money_per_month(monthly: monthly_eur)
+          let per_minute_runner_eur = MoneyPerMinute {
+            amount: money_amount_micro(
+              count: (money_per_minute_micros(q: per_minute_server_eur) * runner_count) / server_count
+            ),
+            currency: Eur,
+          }
+          let utilized_runner_eur = MoneyPerMinute {
+            amount: money_amount_micro(
+              count: (money_per_minute_micros(q: per_minute_runner_eur) * basis_point_unity_count()) / basis_point_count(bp: assumptions.runner_utilization_bp)
+            ),
+            currency: Eur,
+          }
+          match convert_money_per_minute_eur_to_usd(
+            eur: utilized_runner_eur,
+            numerator: assumptions.eur_to_usd_numerator,
+            denominator: assumptions.eur_to_usd_denominator,
+          ) {
+            Present { value: floor_usd } =>
+              RunnerCostFloorDerived { floor: floor_usd }
+            _ => RunnerCostFloorRefused { cause: ExchangeRateUnknown }
+          }
+        }
+        _ => RunnerCostFloorRefused { cause: AmortizationUnknown }
+      }
+    }
+  }
+}
+
+fn derive_github_hetzner_ci_minute_wedge(
+  umbrella_row: GithubActionsRunnerPriceRow,
+  floor_row: HetznerDedicatedServerPriceRow,
+  assumptions_input: WedgeAssumptionsInput,
+) -> KnowableWedgeResult {
+  match assumptions_input {
+    WedgeAssumptionsUnknown => KnowableWedgeRefused { cause: AssumptionsUnknown }
+    WedgeAssumptionsDeclared { assumptions: assumptions } => {
+      match umbrella_row.per_minute.currency {
+        Usd => {
+          match floor_row.monthly.currency {
+            Eur => {
+              match derive_runner_cost_floor_per_minute_usd(
+                row: floor_row,
+                runner_vcpus: umbrella_row.vcpus,
+                assumptions: assumptions,
+              ) {
+                RunnerCostFloorDerived { floor: floor_usd } => {
+                  match subtract_money_per_minute_usd(
+                    umbrella: umbrella_row.per_minute,
+                    floor: floor_usd,
+                  ) {
+                    Present { value: wedge_usd } =>
+                      KnowableWedgeComputed {
+                        wedge: KnowableWedgeDerived {
+                          umbrella_per_minute: umbrella_row.per_minute,
+                          cost_floor_per_minute: floor_usd,
+                          wedge_per_minute: wedge_usd,
+                        }
+                      }
+                    _ =>
+                      KnowableWedgeRefused { cause: FloorExceedsUmbrella }
+                  }
+                }
+                RunnerCostFloorRefused { cause: cause } =>
+                  KnowableWedgeRefused { cause: cause }
+              }
+            }
+            Usd => KnowableWedgeRefused { cause: FloorCurrencyMismatch }
+          }
+        }
+        Eur => KnowableWedgeRefused { cause: UmbrellaCurrencyMismatch }
+      }
+    }
+  }
+}

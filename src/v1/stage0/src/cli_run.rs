@@ -7188,6 +7188,69 @@ pub fn install_output_policy(source_roots: &[String]) {
         decision("shell_trace"),
         decision("instrumentation"),
     ]);
+
+    install_effect_stream_policy(&ctx, verbose, quiet);
+}
+
+/// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
+/// authority module `install_output_policy` already resolved, and install the four
+/// (expected × observed) corners plus the subject-line guard literal. Like its
+/// sibling, this transports evaluated verdicts only — the divergence rule and the
+/// neutralization guard stay the .dag authority's. Best-effort: on any failure the
+/// funnel keeps its documented fallback table (behaviour-preserving at the
+/// migration default).
+fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bool, quiet: bool) {
+    use v1_interpreter::{InstalledEffectStreamPolicy, StreamDisposition, Value};
+    let policy = match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "resolve_shell_trace_stream_policy",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &policy else {
+        return;
+    };
+    let disposition = |name: &str| -> Option<StreamDisposition> {
+        match ctx.field(fields, name) {
+            Some(Value::Variant { variant_name, .. }) => {
+                if ctx.sym_eq(*variant_name, "SurfaceContent") {
+                    Some(StreamDisposition::SurfaceContent)
+                } else if ctx.sym_eq(*variant_name, "SummarizeCounts") {
+                    Some(StreamDisposition::SummarizeCounts)
+                } else if ctx.sym_eq(*variant_name, "StreamSuppressed") {
+                    Some(StreamDisposition::StreamSuppressed)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    // Fail-closed on a partial read: an unrecognised arm or a missing field would
+    // otherwise be silently defaulted, which is the fabricated-plausible-output the
+    // funnel exists to avoid. Leave the policy uninstalled instead — the documented
+    // fallback table is honest about being a fallback.
+    let (Some(ess), Some(esf), Some(efs), Some(eff)) = (
+        disposition("expect_success_observed_success"),
+        disposition("expect_success_observed_failure"),
+        disposition("expect_failure_observed_success"),
+        disposition("expect_failure_observed_failure"),
+    ) else {
+        return;
+    };
+    let Some(Value::Str(guard)) = ctx.field(fields, "subject_line_guard") else {
+        return;
+    };
+    v1_interpreter::set_effect_stream_policy(InstalledEffectStreamPolicy {
+        dispositions: [ess, esf, efs, eff],
+        subject_line_guard: guard.to_string(),
+    });
 }
 
 /// Evaluate `extdeps.render.surface.resolve_group_syntax(github_actions)` from the
@@ -10827,7 +10890,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if line.starts_with("diff --git ") {
+            // Section boundary: a file only becomes attributable after its own
+            // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
+            // never re-arms current_file — without this reset its `@@ -1,N +0,0`
+            // hunk attributed to the PRECEDING file at new-side line 1, tripping
+            // the module-line fail-closed refusal for any modified file that
+            // sorts immediately before a whole-file deletion (found live:
+            // lens_module_gate.dag + the deleted extdeps_external_authority.dag).
+            // Departed paths are carried by the name-status observation, never
+            // by hunk attribution.
+            current_file = None;
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -10863,6 +10937,18 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
     let mut new_line: i64 = 0;
     let mut in_hunk = false;
     for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            // Section boundary: only a `+++ b/` header re-arms current_file. A
+            // deleted file's header is `+++ /dev/null`, so without this reset
+            // its `@@ -1,N +0,0` hunk attributed every removed row to the
+            // PRECEDING file at new-side line 1 (zero-width anchor 0 → 0+1),
+            // tripping the module-line fail-closed refusal whenever a modified
+            // file sorts immediately before a whole-file deletion. Departed
+            // paths are carried by the name-status observation, not hunks.
+            current_file = None;
+            in_hunk = false;
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
             in_hunk = false;
@@ -13864,6 +13950,57 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     }
 
     #[test]
+    fn parse_unified_diff_deleted_file_hunk_never_attributes_to_preceding_file() {
+        // RED CONTROL for the deleted-file leak: a whole-file deletion's header is
+        // `+++ /dev/null`, which never re-arms current_file. Before the `diff --git `
+        // section reset, its `@@ -1,N +0,0 @@` hunk attributed to the PRECEDING
+        // modified file at new-side line 1 (zero-width anchor 0 → 0+1 = 1), tripping
+        // the module-line fail-closed refusal ("diff before first declaration") for
+        // any modified file that sorts immediately before a whole-file deletion.
+        let diff = "\
+diff --git a/src/v2/lens/enforcement/lens_module_gate.dag b/src/v2/lens/enforcement/lens_module_gate.dag
+--- a/src/v2/lens/enforcement/lens_module_gate.dag
++++ b/src/v2/lens/enforcement/lens_module_gate.dag
+@@ -9 +9 @@
+-old_import_row
++new_import_row
+diff --git a/src/v2/lens/extdeps_external_authority.dag b/src/v2/lens/extdeps_external_authority.dag
+deleted file mode 100644
+--- a/src/v2/lens/extdeps_external_authority.dag
++++ /dev/null
+@@ -1,3 +0,0 @@
+-module v2.lens.extdeps_external_authority
+-
+-data deleted_row: Int = 1
+";
+        let kept = "src/v2/lens/enforcement/lens_module_gate.dag";
+
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        assert_eq!(
+            changed.get(kept),
+            Some(&HashSet::from([9])),
+            "deleted-file hunk must not leak into the preceding file's changed set"
+        );
+        assert_eq!(
+            changed.len(),
+            1,
+            "the deleted file attributes nowhere: {changed:?}"
+        );
+
+        let ranges = parse_unified_diff_line_ranges(diff);
+        assert_eq!(
+            ranges.get(kept),
+            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            "deleted-file hunk must not extend the preceding file's ranges"
+        );
+        assert_eq!(
+            ranges.len(),
+            1,
+            "the deleted file attributes nowhere: {ranges:?}"
+        );
+    }
+
+    #[test]
     fn parse_unified_diff_added_paths_detects_new_files() {
         let diff = "\
 diff --git a/dag/tools/new_transport.dag b/dag/tools/new_transport.dag
@@ -15984,6 +16121,42 @@ mod node_frontier_plumbing_controls {
             edits.touched_entry_files.iter().any(|f| f == emit_rel),
             "import preamble + fn body must touch the entry file"
         );
+    }
+
+    #[test]
+    fn deletion_hunk_after_modified_file_does_not_false_fire_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let modified = "dag/gunbc/ci_workflow.dag";
+        let deleted = "dag/gunbc/host_effect_deploy_access_probe_script.dag";
+        let diff = format!(
+            "diff --git a/{modified} b/{modified}\n\
+             --- a/{modified}\n\
+             +++ b/{modified}\n\
+             @@ -135,6 +135,12 @@ fn ci_prelude_steps() -> List<Step> {{\n\
+              ]\n\
+              }}\n\
+             \n\
+             +data note: String = \"new\"\n\
+             +\n\
+             +fn new_steps() -> List<Step> {{\n\
+             +  [ci_checkout_step()]\n\
+             +}}\n\
+             \n\
+             diff --git a/{deleted} b/{deleted}\n\
+             deleted file mode 100644\n\
+             --- a/{deleted}\n\
+             +++ /dev/null\n\
+             @@ -1,3 +0,0 @@\n\
+             -module gunbc.host_effect_deploy_access_probe_script\n\
+             -\n\
+             -fn gone() -> Bool {{ true }}\n"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("deletion hunk must not leak onto prior modified file: {e}")
+        });
     }
 
     #[test]
@@ -22390,39 +22563,6 @@ fn normalize_doc_path(path: &Path) -> String {
     parts.join("/")
 }
 
-fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for root in witness_layer_roots() {
-        let mut dag_files = Vec::new();
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut dag_files);
-        for path in dag_files {
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for target in bind_md_refs(&content) {
-                out.insert(target);
-            }
-        }
-    }
-    out
-}
-
-fn bind_md_refs(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for (idx, _) in content.match_indices("bind:") {
-        let rest = content[idx + "bind:".len()..].trim_start();
-        let token: String = rest
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
-            .collect();
-        if token.ends_with(".md") {
-            out.push(normalize_doc_path(Path::new(&token)));
-        }
-    }
-    out
-}
-
 fn doc_reachable_set(
     roots: &BTreeSet<String>,
     edges: &HashMap<String, Vec<String>>,
@@ -22450,11 +22590,17 @@ struct DocGraphReport {
     doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
+    admitted_extra_roots: usize,
 }
 
-fn build_doc_graph_report() -> DocGraphReport {
+// `extra_roots` are the dag-derived roots (gunbc.doc_graph_roots.doc_graph_roots_all: registered
+// PlanArtifacts derive theirs, hand-authored docs declare typed HandAuthoredDocBind rows), passed
+// through the doc_graph_* builtins so the root set is a walked substrate fact — the former `bind:`
+// text-scan over .dag content is deleted. Admission is counted (admitted_extra_roots), so a root
+// naming no doc in the universe is observable — the witness pins admitted == passed, never a
+// silent drop.
+fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     let universe = doc_universe();
-    let bind_refs = dag_comment_bind_doc_refs();
 
     let mut roots: BTreeSet<String> = BTreeSet::new();
     for r in DOC_PLAN_ROOTS {
@@ -22463,9 +22609,12 @@ fn build_doc_graph_report() -> DocGraphReport {
     if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
         roots.insert(DOC_RUNBOOK_ROOT.to_string());
     }
-    for b in &bind_refs {
-        if universe.contains(b) {
-            roots.insert(b.clone());
+    let mut admitted_extra_roots = 0usize;
+    for r in extra_roots {
+        let norm = normalize_doc_path(Path::new(r));
+        if universe.contains(&norm) {
+            admitted_extra_roots += 1;
+            roots.insert(norm);
         }
     }
 
@@ -22516,24 +22665,39 @@ fn build_doc_graph_report() -> DocGraphReport {
         doc_count: universe.len(),
         orphans,
         dangling,
+        admitted_extra_roots,
     }
 }
 
-fn doc_graph_report() -> &'static DocGraphReport {
-    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
-    REPORT.get_or_init(build_doc_graph_report)
+// Memo keyed on the declared input (the extra-roots list) — cache-impurity discipline: a
+// roots-blind OnceLock would serve the first caller's report to every later root set.
+fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
+    static CACHE: OnceLock<std::sync::Mutex<HashMap<Vec<String>, std::sync::Arc<DocGraphReport>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    if let Some(r) = guard.get(extra_roots) {
+        return r.clone();
+    }
+    let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    guard.insert(extra_roots.to_vec(), report.clone());
+    report
 }
 
-pub fn doc_graph_orphan_count() -> i64 {
-    doc_graph_report().orphans.len() as i64
+pub fn doc_graph_orphan_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).orphans.len() as i64
+}
+
+pub fn doc_graph_admitted_root_count(extra_roots: Vec<String>) -> i64 {
+    doc_graph_report(&extra_roots).admitted_extra_roots as i64
 }
 
 pub fn doc_graph_dangling_link_count() -> i64 {
-    doc_graph_report().dangling.len() as i64
+    doc_graph_report(&[]).dangling.len() as i64
 }
 
 pub fn doc_graph_doc_count() -> i64 {
-    doc_graph_report().doc_count as i64
+    doc_graph_report(&[]).doc_count as i64
 }
 
 // Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
@@ -24430,19 +24594,26 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 }
 
-// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_external_authority (Concern B).
-// Dissolution: when Node-tree anchor projection supersedes module parse (dissolve-on marker in
-// extdeps_external_authority.dag construction_justification), replace this block with a
-// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern B lane.
+// SCAFFOLD (shrunken corpus-consumer core) — host-speed anchor projection for the
+// mandatory-tag extdeps region (v2.lens.mandatory_tag, corpus grain). The VERDICT
+// authority is the modeled lens: v2.lens.mandatory_tag's fold, enrolled in
+// always_required_root_lenses and red/green-controlled at the v2 parse grain
+// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
+// interpreted v2 pipeline prices a whole-corpus witness out of every cadence
+// (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
+// ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// Dissolution: witness realization (docs/plans/witness-realization-plan.md) runs
+// that parse-grain corpus witness at native speed, then this block and its three
+// builtins (facts_for_qualified_name, live_clean_tree_holds,
+// live_roster_module_count) delete. The shadow-mask and backfill sub-machineries
+// dissolved 2026-07-22 onto their grounds: module-path collisions refuse loudly at
+// index build (one module, one authority), and the backfill queue drained to empty.
 
 pub struct ExtdepsExternalAuthorityModuleFacts {
     pub anchor_kind: String,
     pub scheme_identity: String,
     pub locator: String,
-    pub is_backfill_pending: bool,
-    pub is_machinery_exempt: bool,
-    pub is_clean_tree_roster_excluded: bool,
-    pub anchor_shadow_masked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24517,35 +24688,8 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     read_external_authority_anchor_from_items(&items, &source_indices)
 }
 
-fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
-{
-    use std::collections::HashSet;
-    use std::sync::OnceLock;
-    static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
-    PATHS.get_or_init(|| {
-        let path = workspace_root().join("dag/extdeps/external_authority_backfill_pending.txt");
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
-        content
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(str::to_string)
-            .collect()
-    })
-}
-
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
     &["extdeps.uri", "extdeps.external_authority"]
-}
-
-fn external_authority_clean_tree_roster_exclusion_paths() -> &'static [&'static str] {
-    &[
-        "extdeps.fixture.external_authority_bogus_scheme",
-        "extdeps.fixture.external_authority_missing",
-        "extdeps.fixture.external_authority_clean_https_no_anchor",
-        "extdeps.fixture.external_authority_file_anchor",
-    ]
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
@@ -24559,109 +24703,12 @@ pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
     paths
 }
 
-pub fn extdeps_derived_extdeps_modules_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let items: Vec<_> = extdeps_derived_extdeps_module_paths()
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-pub fn extdeps_external_authority_backfill_pending_entries_value(
-    ctx: &crate::v1_interpreter::InterpContext,
-) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::list_value;
-    let mut paths: Vec<String> = external_authority_backfill_pending_module_paths()
-        .iter()
-        .cloned()
-        .collect();
-    paths.sort();
-    let items: Vec<_> = paths
-        .iter()
-        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
-        .collect();
-    list_value(items)
-}
-
-fn external_authority_is_backfill_pending_for_module_path(module_path: &str) -> bool {
-    external_authority_backfill_pending_module_paths().contains(module_path)
-}
-
 fn external_authority_is_machinery_exempt_for_module_path(module_path: &str) -> bool {
     external_authority_machinery_exempt_module_paths().contains(&module_path)
 }
 
 fn external_authority_is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
-    if module_path.starts_with("extdeps.fixture.") {
-        return true;
-    }
-    if module_path.ends_with(".mock_corpus") {
-        return true;
-    }
-    external_authority_clean_tree_roster_exclusion_paths().contains(&module_path)
-}
-
-fn external_authority_anchor_present_in_any_source_root(module_path: &str) -> bool {
-    let ws = workspace_root();
-    for root in default_source_roots() {
-        let root_path = std::path::PathBuf::from(&root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files = Vec::new();
-        collect_dag_files_tolerant(&root_path, &mut files);
-        for file in files {
-            let Ok(content) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let declares = content.lines().find_map(|l| {
-                l.trim()
-                    .strip_prefix("module ")
-                    .map(|m| m.trim().to_string())
-            });
-            if declares.as_deref() != Some(module_path) {
-                continue;
-            }
-            let rel = file
-                .strip_prefix(&ws)
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
-            let (items, source_indices) = parse_extdeps_module_items(&rel);
-            if matches!(
-                read_external_authority_anchor_from_items(&items, &source_indices),
-                ExternalAuthorityAnchorProjection::Present { .. }
-            ) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn external_authority_shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
-    module_path
-        .strip_prefix("test.fixture.")
-        .map(|leaf| format!("extdeps.fixture.{leaf}"))
-}
-
-fn external_authority_anchor_shadow_masked_for_module_path(module_path: &str) -> bool {
-    match project_external_authority_anchor(module_path) {
-        ExternalAuthorityAnchorProjection::Present { .. } => false,
-        ExternalAuthorityAnchorProjection::Absent => {
-            if external_authority_anchor_present_in_any_source_root(module_path) {
-                return true;
-            }
-            if let Some(extdeps_path) =
-                external_authority_shadow_plant_paired_extdeps_module_path(module_path)
-            {
-                return external_authority_anchor_present_in_any_source_root(&extdeps_path);
-            }
-            false
-        }
-    }
+    module_path.starts_with("extdeps.fixture.") || module_path.ends_with(".mock_corpus")
 }
 
 pub fn extdeps_external_authority_module_facts(
@@ -24681,23 +24728,16 @@ pub fn extdeps_external_authority_module_facts(
         anchor_kind,
         scheme_identity,
         locator,
-        is_backfill_pending: external_authority_is_backfill_pending_for_module_path(module_path),
-        is_machinery_exempt: external_authority_is_machinery_exempt_for_module_path(module_path),
-        is_clean_tree_roster_excluded:
-            external_authority_is_clean_tree_roster_excluded_for_module_path(module_path),
-        anchor_shadow_masked: external_authority_anchor_shadow_masked_for_module_path(module_path),
     }
 }
 
 fn external_authority_live_violation_module_paths() -> Vec<String> {
-    let backfill = external_authority_backfill_pending_module_paths();
     let mut violations = Vec::new();
     for path in extdeps_derived_extdeps_module_paths() {
         if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
             continue;
         }
-        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path)
-        {
+        if external_authority_is_machinery_exempt_for_module_path(&path) {
             continue;
         }
         match project_external_authority_anchor(&path) {
@@ -24722,20 +24762,6 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
-}
-
-pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
-    for path in extdeps_derived_extdeps_module_paths() {
-        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path)
-            || external_authority_is_machinery_exempt_for_module_path(&path)
-        {
-            continue;
-        }
-        if external_authority_anchor_shadow_masked_for_module_path(&path) {
-            return false;
-        }
-    }
-    true
 }
 
 #[cfg(test)]
@@ -24821,13 +24847,6 @@ mod doc_reachability_tests {
             1,
             "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
         );
-    }
-
-    #[test]
-    fn bind_md_refs_basic() {
-        let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
-        let t = bind_md_refs(c);
-        assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
     }
 }
 

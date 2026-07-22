@@ -11,6 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_effective_principal_read_note: String = "Read the effective POSIX user name (whoami utility semantics). Interface shape only — bash transport whoami(1) lives in gunbc.host_effect_deploy_access_probe_script at the realization edge."
+data posix_effective_principal_read_note: String = "Read the effective POSIX user name (whoami utility semantics). Interface shape only — typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge."
 
 type EffectivePosixPrincipalRead {}

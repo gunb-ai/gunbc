@@ -1,9 +1,0 @@
-module extdeps.fixture.external_authority_clean_https
-
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "yaml.org/spec/1.2.2/"
-  }
-}

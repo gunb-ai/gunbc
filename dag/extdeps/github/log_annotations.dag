@@ -41,6 +41,14 @@ data annotation_set_output_prefix: String = "::set-output name="
 data annotation_add_mask_prefix: String = "::add-mask::"
 data annotation_stop_commands_prefix: String = "::stop-commands::"
 
+data subject_text_neutralization_note: String = "GitHub reads a LOG LINE as a workflow command when the line begins with '::' — the same syntax the annotation prefixes above are built from. So any text this repo relays from a SUBJECT process (a child's captured stdout/stderr) can mint annotations in the parent run that no gunbc code authored: a red-control child whose stderr legitimately carries '::error::build verification: ...' annotates the parent as failing while the control PASSED. Neutralization is unconditional, not gated on a GitHub-target probe: a guard line-prefix is inert and readable on a plain terminal, so making it unconditional leaves no target-detection branch that could be wrong (DESIGN 5 — construction over validation). The guard is a PREFIX, not an escape of '::', because only the line-initial position is command-bearing; prefixing therefore neutralizes every command in the cited table at once, including ones GitHub adds later, without editing the subject's bytes."
+
+data subject_text_line_guard: String = "| "
+
+fn neutralize_workflow_commands(text: String) -> String {
+  concat(subject_text_line_guard, replace(text, "\n", concat("\n", subject_text_line_guard)))
+}
+
 fn shell_single_quote(s: String) -> String {
 
   concat("'", replace(s, "'", "'\\''"), "'")
