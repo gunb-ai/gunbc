@@ -26,15 +26,15 @@ import v2.std.text { String }
 type ScheduleLensViolation
   = EmptySchedule
   | CheapGatesMissingFromFirstBatch
-  | CompileGateNotFirst { expected: String }
+  | CompileGateInFirstBatch { expected: String }
   | CompileGateNotSecond { expected: String }
   | CorpusBeforeCompile
   | SingleBatchOnly
 
 data schedule_lens_module: String = "v2.lens.schedule_lens"
 
-fn schedule_lens_compile_gate_not_first_reason(expected: String) -> Symbol {
-  symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_not_first:" + expected)
+fn schedule_lens_compile_gate_in_first_batch_reason(expected: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_in_first_batch:" + expected)
 }
 
 fn schedule_lens_compile_gate_not_second_reason(expected: String) -> Symbol {
@@ -62,9 +62,9 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
         module_file: module_file,
         correction: Unavailable { reason: CorrectionNotModeled }
       )
-    CompileGateNotFirst { expected: expected } =>
+    CompileGateInFirstBatch { expected: expected } =>
       textual_whole_file_diagnostic(
-        reason: schedule_lens_compile_gate_not_first_reason(expected: expected),
+        reason: schedule_lens_compile_gate_in_first_batch_reason(expected: expected),
         module_file: module_file,
         correction: Unavailable { reason: CorrectionNotModeled }
       )
@@ -103,7 +103,7 @@ fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan<Runnable>, compile_g
     if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
       Violation {
         diagnostic: schedule_lens_violation_diagnostic(
-          kind: CompileGateNotFirst { expected: compile_gate_fn }
+          kind: CompileGateInFirstBatch { expected: compile_gate_fn }
         )
       }
     } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {

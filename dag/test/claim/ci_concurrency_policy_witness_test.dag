@@ -25,7 +25,7 @@ fn ci_concurrency_event_scoped_stop_policy_holds() -> Bool {
             Present { value: c } =>
               match c {
                 CancelInProgressExpression { expression: e } =>
-                  e == "github.event_name != 'merge_group'"
+                  e == "${{ github.event_name != 'merge_group' }}"
                 _ => false
               }
             _ => false
@@ -39,6 +39,7 @@ fn ci_concurrency_event_scoped_stop_policy_holds() -> Bool {
 fn ci_concurrency_stop_policy_discriminates_merge_group() -> Bool {
   ci_concurrency_cancel_in_progress_if != "true"
     && ci_concurrency_cancel_in_progress_if != "false"
+    && ci_concurrency_cancel_in_progress_if != "github.event_name != 'merge_group'"
 }
 
 test fn ci_concurrency_policy_witness_holds() -> Bool {
