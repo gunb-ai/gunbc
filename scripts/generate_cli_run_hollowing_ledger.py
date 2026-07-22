@@ -156,6 +156,44 @@ RULES: list[tuple[str, str]] = [
     (r"_for_test$|_len_for_test$", "TestReceiptLane"),
 ]
 
+# Test-fn rules run after section override; tighter than production RULES.
+TEST_RULES: list[tuple[str, str]] = [
+    (
+        r"relative_arg|absolute_arg|path_predicate|git_toplevel|outside_git|"
+        r"grant_equivalence|subdirectory_matches",
+        "HostPhysics",
+    ),
+    (r"truncate_histogram|histogram_label", "PhaseProfileInstrumentation"),
+    (r"closure_is_imports", "NamespaceResolutionSymbolIndex"),
+    (
+        r"source_identity|source_term|import_interface|body_only_edit|green_corpus|"
+        r"agrees_|typecheck|unresolved_import",
+        "TypedModuleCacheComputationIdentity",
+    ),
+    (r"arrow_lambda|pattern_value|bound_not_referenced", "NamespaceResolutionSymbolIndex"),
+    (
+        r"diamond_schedules|antichain|deadlock|within_level|cycle_residue|"
+        r"chain_is_one_node",
+        "RealizationMaterializationScheduling",
+    ),
+    (r"budget|over_budget|under_budget|wall_budget", "WitnessDiscoveryExecution"),
+    (
+        r"live_tree|witness_|floor_fast|scoped_plan|selection|fail_closed|"
+        r"edited_test_fn|departed|docs_only|non_dag_only|lying_substrate|"
+        r"node_precise|deletion_only|rename_destination|import_preamble|mixed_dag|"
+        r"manifest_scalar|embedded_dag|source_root_token|receipt_reports|"
+        r"manifest_imports|top_level_lens|justification|dangling_authority|"
+        r"floor_corpus_every|construction_wall|green_entry_file|deletion_shaped_diff",
+        "AffectedSetSelection",
+    ),
+    (
+        r"reader_follows|strip_blanks|brace_delta|git_module_resolves|markdown_link|"
+        r"dangling_detection|bind_md|reachable_set|is_test_dag|detector_red|"
+        r"scan_detects",
+        "LensHostBridge",
+    ),
+]
+
 FEATURE_V2_AUTHORITY: dict[str, str] = {
     "RealizationMaterializationScheduling": "std.realization_schedule / gunbc.ci_floor_plan / gunbc.floor_materialization",
     "NamespaceResolutionSymbolIndex": "v2.lens.module_graph / v2.compiler.resolve / namespace-resolution-design",
@@ -184,7 +222,10 @@ def section_feature(lineno: int) -> str | None:
 
 def categorize(name: str, lineno: int, is_test: bool) -> str:
     if is_test:
-        for pat, cat in RULES:
+        sec = section_feature(lineno)
+        if sec:
+            return sec
+        for pat, cat in TEST_RULES + RULES:
             if re.search(pat, name):
                 return cat
         return "TestReceiptLane"
@@ -265,7 +306,8 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
         "module gunbc.cli_run_hollowing_ledger",
         "",
         "import std.types { Int, List, String }",
-        "import v2.std.algebra { length }",
+        "import v2.std.algebra { fold_list, length }",
+        "import v2.std.logic { Bool }",
         "import v2.std.node { Symbol }",
         "",
         "type CliRunHollowFeature",
@@ -312,8 +354,7 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
     def disposition_for(row: dict) -> str:
         feat = row["feature"]
         if row["test"]:
-            subj = feat if feat != "TestReceiptLane" else "Unclassified"
-            return f"TestReceiptRow {{ subject_feature: {feature_to_ctor(subj)} }}"
+            return f"TestReceiptRow {{ subject_feature: {feature_to_ctor(feat)} }}"
         if feat == "HostPhysics":
             return 'PinnedHostPhysics { reason: "terminal bootstrap physics until host_effect realize" }'
         auth = FEATURE_V2_AUTHORITY.get(feat, "UNASSIGNED")
@@ -342,16 +383,63 @@ def render_dag(rows: list[dict], source_loc: int) -> str:
 
     lines.extend(
         [
+            "fn ledger_row_effective_feature(row: CliRunHollowLedgerRow) -> CliRunHollowFeature {",
+            "  match row.disposition {",
+            "    HollowTarget { feature: f, v2_authority: _ } => f",
+            "    PinnedHostPhysics { reason: _ } => HostPhysics",
+            "    TestReceiptRow { subject_feature: f } => f",
+            "  }",
+            "}",
+            "",
+            "fn ledger_row_is_test_receipt(row: CliRunHollowLedgerRow) -> Bool {",
+            "  match row.disposition {",
+            "    TestReceiptRow { subject_feature: _ } => true",
+            "    _ => false",
+            "  }",
+            "}",
+            "",
+            "fn cli_run_hollowing_production_row_count() -> Int {",
+            "  fold_list(",
+            "    xs: cli_run_hollowing_ledger_rows,",
+            "    empty: 0,",
+            "    cons: fn(acc, row) {",
+            "      if ledger_row_is_test_receipt(row: row) { acc } else { acc + 1 }",
+            "    }",
+            "  )",
+            "}",
+            "",
+            "fn cli_run_hollowing_test_row_count() -> Int {",
+            "  fold_list(",
+            "    xs: cli_run_hollowing_ledger_rows,",
+            "    empty: 0,",
+            "    cons: fn(acc, row) {",
+            "      if ledger_row_is_test_receipt(row: row) { acc + 1 } else { acc }",
+            "    }",
+            "  )",
+            "}",
+            "",
+            "fn cli_run_hollowing_unclassified_row_count() -> Int {",
+            "  fold_list(",
+            "    xs: cli_run_hollowing_ledger_rows,",
+            "    empty: 0,",
+            "    cons: fn(acc, row) {",
+            "      if ledger_row_effective_feature(row: row) == Unclassified { acc + 1 } else { acc }",
+            "    }",
+            "  )",
+            "}",
+            "",
             "fn cli_run_hollowing_ledger_row_count() -> Int {",
             "  cli_run_hollowing_ledger_rows |> length",
             "}",
             "",
             "fn cli_run_hollowing_ledger_enumeration_holds() -> Bool {",
             "  cli_run_hollowing_ledger_row_count() == cli_run_hollowing_row_count_baseline",
+            "    && cli_run_hollowing_production_row_count() == cli_run_hollowing_production_row_baseline",
+            "    && cli_run_hollowing_test_row_count() == cli_run_hollowing_test_row_baseline",
             "}",
             "",
             "fn cli_run_hollowing_no_unclassified_holds() -> Bool {",
-            "  cli_run_hollowing_unclassified_baseline == 0",
+            "  cli_run_hollowing_unclassified_row_count() == 0",
             "}",
             "",
         ]
