@@ -18902,9 +18902,7 @@ pub fn resolution_divergence_fn_parent_first_hit_subset_violations(
         .silent_pick_fn_parent_first_hit_rows
         .iter()
         .filter(|row| !resolution_divergence_module_path_roster_excluded(&row.env_module_path))
-        .filter(|row| {
-            !ambig_keys.contains(&(row.env_module_path.clone(), row.name.clone()))
-        })
+        .filter(|row| !ambig_keys.contains(&(row.env_module_path.clone(), row.name.clone())))
         .map(|row| FnParentFirstHitSubsetViolation {
             module: row.env_module_path.clone(),
             name: row.name.clone(),
@@ -19914,8 +19912,8 @@ fn use_pool_dup(x: PoolDup) -> Int {
     /// same (module, name) site. `v2.test.*` modules are roster-excluded.
     #[test]
     fn resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus() {
-        let census =
-            super::resolution_divergence_census_live_closure_scoped().expect("closure-scoped census");
+        let census = super::resolution_divergence_census_live_closure_scoped()
+            .expect("closure-scoped census");
         let violations =
             super::resolution_divergence_fn_parent_first_hit_subset_violations(&census);
         assert!(
