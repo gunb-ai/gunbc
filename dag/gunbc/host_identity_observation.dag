@@ -1,17 +1,6 @@
 module gunbc.host_identity_observation
 
 
-data host_identity_short_hostname_script: String = "hostname -s 2>/dev/null || hostname"
-
-data host_identity_short_hostname_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
 type HostIdentityObservationRow {
   short_hostname_raw: String
   probed_at: NonEmptyStr
@@ -63,7 +52,7 @@ fn host_identity_observation_apply(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: target,
-    effect: ShellCommand { script: host_identity_short_hostname_script },
+    effect: HostIdentityShortHostnameRead,
     evidence: host_effect_read_evidence,
     transport: transport,
   )
