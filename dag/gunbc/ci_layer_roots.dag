@@ -16,6 +16,7 @@ fn compile_clean_source_roots() -> List<String> {
 data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual", "src/v2/test/claim/emit"]
 
 data witness_exclusion_substrings: List<String> = [
+  "claim/long/mandatory_tag_extdeps_corpus",
   "impossible_bug",
   "artifact_store_fs_witness_test.dag",
   "emit_source_store_test.dag",

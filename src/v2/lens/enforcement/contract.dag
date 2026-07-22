@@ -17,7 +17,7 @@ import v2.lens.registry {
   lens_registry_v0_doc_reachability,
   lens_registry_v0_duplicate_computation,
   lens_registry_v0_effect_reach,
-  lens_registry_v0_extdeps_external_authority,
+  lens_registry_v0_mandatory_tag,
   lens_registry_v0_extdeps_shape_transport_policy,
   lens_registry_v0_fact_cardinality,
   lens_registry_v0_fact_density,
@@ -205,13 +205,13 @@ data lens_contract_effect_reach: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
-data lens_contract_extdeps_external_authority: LensContract = {
-  entry: lens_registry_v0_extdeps_external_authority,
+data lens_contract_mandatory_tag: LensContract = {
+  entry: lens_registry_v0_mandatory_tag,
   mode: AuditOnly,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: ConstructionJustification { class: WallNow }
 }
 
 data lens_contract_extdeps_shape_transport_policy: LensContract = {
@@ -515,7 +515,7 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_doc_reachability,
   lens_contract_duplicate_computation,
   lens_contract_effect_reach,
-  lens_contract_extdeps_external_authority,
+  lens_contract_mandatory_tag,
   lens_contract_extdeps_shape_transport_policy,
   lens_contract_fact_cardinality,
   lens_contract_fact_density,
@@ -562,7 +562,7 @@ data lens_contracts_pending_fn_body_reflection: List<LensIdV0> = [
   DispositionRedundancy,
   DocReachability,
   DuplicateComputation,
-  ExtdepsExternalAuthority,
+  MandatoryTag,
   ExtdepsShapeTransportPolicy,
   FactCardinality,
   FactDensity,

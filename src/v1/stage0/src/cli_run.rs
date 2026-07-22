@@ -24212,7 +24212,6 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .count() as i64
 }
 
-
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;

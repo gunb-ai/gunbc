@@ -17,7 +17,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data corpus_witness_note: String = "The corpus grain of the mandatory-tag wall: walk dag/extdeps/** with the modeled Filesystem.List/filesystem_read operations, ingest each module through the v2 grammar (tokenize -> parse_module), and run the SAME mandatory_tag_findings fold the compile gate runs - one authority, two consumption grains. This witness replaces the deleted cli_run.rs host text-scan (extdeps_external_authority_module_facts and its six interpreter builtins): enumeration is derived from the live tree, parsing is the v2 grammar (the Node-tree projection the scaffold's dissolution trigger named), and the verdict fold is the lens itself. Fail-closed accounting: a file that fails tokenize/parse counts as a stage refusal (never skipped), a directory walk failure counts as a walk refusal, and the module-count floor (> 150, the old roster_module_count parity bar) makes an accidentally-empty walk red rather than vacuously green. The per-file RED discrimination (misnamed anchor, non-external scheme, wrong type) is witnessed at the shared-fold grain in v2.lens.mandatory_tag.gate_witness_test - the corpus walker's own refusal arms are red-controlled here via the nonexistent-root probe."
+data corpus_witness_note: String = "The corpus grain of the mandatory-tag wall, fully modeled: walk dag/extdeps/** with the modeled Filesystem.List/filesystem_read operations, ingest each module through the v2 grammar (tokenize -> parse_module), and run the SAME mandatory_tag_findings fold the compile gate runs - one authority, two consumption grains, zero host parsing. OFFLINE (operator-precedent: accumulator_copy roster_gate) - excluded from CI discovery by the claim/long/mandatory_tag_extdeps_corpus row in gunbc.ci_layer_roots witness_exclusion_substrings, because the interpreted v2 pipeline prices the full walk out of every CI lane (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize, ~330 modules = hours). Until witness realization executes this witness at native speed, the CI-cadence corpus consumer is the retained host projection (v2.lens.mandatory_tag.corpus_scan) - this file is that scaffold's dissolution target, kept live for subset runs. Recipe: claim_batch --source-root src/v2 --source-root dag --entry src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag --function mandatory_tag_corpus_subdir_color_wall_holds --claim-run --wet (subset, ~2min) or --function mandatory_tag_extdeps_corpus_wall_holds (full, hours). Fail-closed accounting: a file that fails tokenize/parse counts as a stage refusal (never skipped), a directory walk failure counts as a walk refusal, and the module-count floor (> 150, the old roster_module_count parity bar) makes an accidentally-empty walk red rather than vacuously green. The per-file RED discrimination (misnamed anchor, non-external scheme, wrong type) is witnessed at the shared-fold grain in v2.lens.mandatory_tag.gate_witness_test - the corpus walker's own refusal arms are red-controlled here via the nonexistent-root probe."
 
 type CorpusScan {
   module_count: Int
@@ -93,22 +93,6 @@ test fn mandatory_tag_corpus_subdir_color_wall_holds() -> Bool {
     && scan.stage_reject_count == 0
     && scan.walk_failure_count == 0
     && scan.module_count == 3
-}
-
-fn tokenize_only_scan(path: String, lm: LanguageModel) -> Int {
-  let text = filesystem_read(path: path).content
-  match tokenize(text: text, file: ^mandatory_tag_corpus_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: _, diagnostics: _ } => 1
-  }
-}
-
-test fn mandatory_tag_probe_tokenize_only_color() -> Bool {
-  let lm = dag_language_model()
-  let a = tokenize_only_scan(path: "dag/extdeps/color/srgb.dag", lm: lm)
-  let b = tokenize_only_scan(path: "dag/extdeps/color/okabe_ito.dag", lm: lm)
-  let c = tokenize_only_scan(path: "dag/extdeps/color/solarized.dag", lm: lm)
-  a + b + c == 3
 }
 
 test fn mandatory_tag_corpus_walker_refuses_missing_root() -> Bool {
