@@ -1,7 +1,7 @@
 # Floor time +20min regression — diagnosis (bisected to #6848 namespace walks)
 
-**Status:** diagnosis complete; axis 2b (reconcile deferral) on `main` (#6998); entry-closure memo in this PR (#6999).
-Resolver semantics unchanged — perf-only caching/call-order.
+**Status:** LANDED (#6998 axis 2b + #6999 entry-closure memo, merge `dc2aa25684`); post-merge
+validation read §5 below. Resolver semantics unchanged — perf-only caching/call-order.
 
 **One-line verdict:** #6848's name-derived loader (`extend_sources_to_both_closure_fixpoint`
 + unconditional `pool_qualified_fill` before typed-cache short-circuit) added **~140ms per
@@ -56,24 +56,25 @@ Resolve-before-frontend grew **~4× median** in shared-index discovery workers.
 
 The +20min is **not** typed-cache memo collapse or materialization waste growth.
 
-### 1.4 Governor receipt — cap-saturated on capped hosts (srv1-04, run 29850515721)
+### 1.4 Governor receipt — cap-saturated on capped hosts (16 GB `memory.high`)
 
-Post-#6848 floor on cgroup-capped runners now runs **at** the memory ceiling, not merely
-near it. Run `29850515721` (PR #6999, merge of `origin/main` at `b339226`) on srv1-04:
+Post-#6848 floor on cgroup-capped runners runs **at** the memory ceiling, not merely near it.
+Representative runs (2026-07-21, `hard_backoffs=1 forced_serial=1` on every capped-host
+floor observed today):
 
-| field | value |
-|---|---|
-| `budget` | 16,106,127,360 bytes (cgroup `memory.high`) |
-| `peak_current` | 16,100,560,896 bytes (**99.97% of budget**) |
-| `hard_backoffs` | 1 |
-| `forced_serial` | 1 |
-| `creep_backoffs` | 1 |
-| `max_width_reached` | 1 |
+| run | host | budget | peak_current | peak RSS | batch-2 | batch-4 |
+|---|---|---:|---:|---:|---:|---:|
+| `29850515721` | srv1-04 | 16.1 GB | 16.10 GB (99.97%) | 13.4 GB | 591s | 1133s |
+| `29855080611` | srv3-05 | 16.1 GB | 15.71 GB (97.5%) | 13.6 GB | 510s | 1125s |
+| `29860090806` | srv1-02 | 16.1 GB | 15.08 GB (93.6%) | 13.6 GB | 573s | 1346s |
+
+Contrast POST-regression `29819122813` on srv3-07: budget **96 GB** (`MemAvailable`),
+peak 12.5 GB, **no** backoffs — same post-#6848 walk class, different host envelope.
 
 Interpretation: #6956+#6972 brought peaks down from the 32 GB class, but the post-#6848
-resolve walk keeps the floor **cap-saturated** even on 16 GB hosts — throttle cost on the
-time axis, and one bad allocation from exit-137. Pairs with §1.1–1.3 as a memory-beside-time
-receipt for this bisect lane (not a separate fix target in #6999).
+resolve walk keeps capped hosts **cap-saturated** — throttle cost on the time axis and one
+bad allocation from exit-137. Pairs with §1.1–§1.3 and §5.2 as the memory-beside-time
+residual (not addressed by #6998/#6999).
 
 ### 1.5 Advisory diagnostic volume (typecheck overhead signal)
 
@@ -106,7 +107,7 @@ entry** (closure census still built even when all modules hit cache).
 
 ---
 
-## 3. Fix (this PR — perf only, no binding change)
+## 3. Fix (LANDED #6998 + #6999 — perf only, no binding change)
 
 1. **Entry-closure memo** on `MultiEntryIndex`: cache `load_sources_for_entry_with_pool`
    results keyed by normalized entry path. Witnesses sharing an entry file reuse one closure
@@ -139,6 +140,55 @@ rg -o 'compile\.frontend\.begin t_ms=\d+' /tmp/post.log | sed 's/.*=//' | sort -
 # materialization
 rg 'floor materialization:' /tmp/post.log
 ```
+
+---
+
+## 5. Post-landing validation read (merge `dc2aa25684`, 2026-07-21)
+
+Compared batch walls using the §4 harness (`claim_executor: batch 2` → `PASS [batch 2]
+discovery-corpus`; `claim_executor: batch 4` → last `PASS [batch 4]` gate). POST-FIX arm
+uses run `29855080611` (`a475d2e8e0`, identical floor-time code to merge `dc2aa25684`);
+post-merge main run `29860557952` was still in progress at write time.
+
+### 5.1 Measured deltas (run ids)
+
+| arm | run | host class | batch-2 | batch-4 | Δ₂ vs PRE | Δ₄ vs PRE |
+|---|---|---:|---:|---:|---:|---:|
+| PRE (ec22e8f) | `29763408563` | capped | **202s** | **342s** | — | — |
+| PRE (07-19) | `29701881403` | capped | 226s | 165s | — | — |
+| POST (#6848) | `29819122813` | 96 GB | **503s** | **1111s** | +301s | +769s |
+| POST-FIX (#6998+#6999) | `29855080611` | 16 GB capped | **510s** | **1125s** | +308s | +783s |
+| POST-FIX vs POST | — | — | **+7s (+1%)** | **+14s (+1%)** | — | — |
+
+Total regression vs PRE ec22e8f: **+301s batch-2 + +769s batch-4 ≈ +18 min** (POST).
+After #6998+#6999 on a comparable capped host: **~0% batch-wall recovery** (+7s/+14s,
+within run-to-run noise).
+
+### 5.2 Verdict — recovery vs residual
+
+**Recovered (mechanism-level, not batch-wall-visible):**
+
+- **Axis 2b (#6998):** `pool_qualified_fill` deferred past `try_reconcile_all_cache_hits` —
+  removes whole-pool census on all-cache-hit reconciles. Oracle: `reconcile_defer_hot_hit_matches_cold_oracle`.
+  Batch impact limited: discovery witnesses are predominantly cold typed-cache misses.
+- **Entry-closure memo (#6999):** eliminates duplicate `extend_sources_to_both_closure_fixpoint`
+  when the same entry is loaded twice in one worker (discovery → resolve on same path).
+  Oracle: `entry_closure_sources_memo_reuses_name_derived_walk`. Batch-2 impact limited:
+  discovery loads each entry file once per worker process — memo hit rate near zero on the
+  ~2100-witness corpus path.
+
+**Residual (dominant, ~18 min still owed vs PRE ec22e8f):**
+
+| mechanism | est. batch cost | notes |
+|---|---:|---|
+| #6848 bare-reference fixpoint (once per entry) | ~5 min batch-2 | ~140ms/witness × ~2100; unchanged by memo |
+| #6848 qualified-fill on reconcile miss | ~13 min batch-4 | deferral skips only all-hit path |
+| Cap-saturation throttle (16 GB hosts) | unpriced additive | §1.4: `hard_backoffs=1 forced_serial=1`, peak 14–16 GB at budget |
+| `UnlistedImportUse` advisory generation | typecheck overhead | §1.5: ~5k extra rows/run |
+
+**Next scoped dispatch (not this lane):** attack the once-per-entry bare-reference fixpoint
+(namespace-resolution-design §PR-5b residual) and/or cap-headroom (governor envelope vs walk
+RSS); `rc_map_insert` quadratic (bold-crane-271) and advisory suppression are separate rows.
 
 ---
 
@@ -181,8 +231,9 @@ must show batch-4 wall time drop from the ~18.7min baseline — not yet obtained
 ## 7. Provenance
 
 - Log-diff receipts: bright-seal-219 (this session), by execution on CI logs.
+- Post-landing validation §5: bright-seal-219, runs `29763408563` / `29819122813` / `29855080611` (2026-07-21).
 - Memory-side bisection: eager-pike-178 / #6953 (`c10f4b091`).
-- Parent coordination: sunny-wolf-225 mandate (msg_fdeee8c5).
+- Parent coordination: sunny-wolf-225 mandate (msg_fdeee8c5); lane close validation (msg_1879f052).
 - §6 residual fix: proud-bear-438 (dashboard `adhoc-21c65e1a-2ff`), PR #7030.
 
 Related: [floor-memory-pool-parse-regression-diagnosis.md](floor-memory-pool-parse-regression-diagnosis.md) ·
