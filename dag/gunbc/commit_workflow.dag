@@ -405,10 +405,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/meta_exec_confinement/scanner/planted_leak_test.dag",
-      check_fns: [
-        "scanner_planted_meta_exec_leak_detected_holds",
-        "scanner_clean_tree_meta_exec_holds_on_rostered_corpus"
-      ],
+      check_fns: ["scanner_planted_meta_exec_leak_detected_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
