@@ -5342,25 +5342,21 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
-fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, this_module_name: String) -> String {
-  let leaf = if string_contains(s: name, pattern: ".") {
-    qualified_last_segment(name: name)
-  } else {
-    name
-  }
-  match map_get(registry, leaf) {
-    Present { value: info } =>
-      if info.module_name != this_module_name {
+fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String {
+  if string_contains(s: name, pattern: ".") {
+    let leaf = qualified_last_segment(name: name)
+    match map_get(registry, leaf) {
+      Present { value: info } =>
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
-      } else {
-        emit_ident(name: leaf, target: Rust)
-      }
-    Absent =>
-      emit_ident(name: name, target: Rust)
+      Absent =>
+        emit_ident(name: name, target: Rust)
+    }
+  } else {
+    emit_ident(name: name, target: Rust)
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, this_module_name: String) -> String {
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
@@ -5390,7 +5386,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_value_ref_ident(name: name, registry: registry, this_module_name: this_module_name)
+              let ident = emit_value_ref_ident(name: name, registry: registry)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -5402,7 +5398,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_value_ref_ident(name: name, registry: registry, this_module_name: this_module_name)
+            let ident = emit_value_ref_ident(name: name, registry: registry)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -5444,9 +5440,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Present { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(to_snake(name: n), "()") }
-                else { emit_value_ref_ident(name: n, registry: registry, this_module_name: scope.module_name) }
+                else { emit_value_ref_ident(name: n, registry: registry) }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry, this_module_name: scope.module_name)
+                emit_value_ref_ident(name: n, registry: registry)
             }
         }
       }
@@ -5657,11 +5653,11 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
   }
 }
 
-fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: scope.type_env.source_indices, this_module_name: scope.module_name)
+      let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -5852,7 +5848,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     source_indices: scope.type_env.source_indices,
     wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1),
-    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info),
+    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices),
     emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_call: expr => emit_rust_expr_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_method_call: expr => emit_rust_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
@@ -7000,7 +6996,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, this_module_name: scope.module_name)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
