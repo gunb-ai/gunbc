@@ -1413,6 +1413,54 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
 }
 
 #[test]
+fn both_closure_edge_index_built_once_per_pool() {
+    use v1_compiler::cli_run::{
+        both_closure_bare_edge_rows_for_test, both_closure_edges_initialized_for_test,
+        build_multi_entry_index, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry_a = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let entry_b = crate::helpers::workspace_root()
+        .join("src/v2/lens/vacuity_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    assert!(
+        !both_closure_edges_initialized_for_test(&index),
+        "fresh index must not pre-build closure edges"
+    );
+    resolve_entry_with_index(&index, &entry_a).expect("first entry resolve");
+    assert!(
+        both_closure_edges_initialized_for_test(&index),
+        "first entry load must build the per-pool edge index"
+    );
+    let bare_rows = both_closure_bare_edge_rows_for_test(&index);
+    assert!(
+        bare_rows > 0,
+        "import-stripped pool modules must contribute bare edges"
+    );
+    resolve_entry_with_index(&index, &entry_b).expect("second entry resolve");
+    assert_eq!(
+        both_closure_bare_edge_rows_for_test(&index),
+        bare_rows,
+        "second entry must reuse the same edge index, not rebuild it"
+    );
+}
+
+#[test]
 fn entry_closure_sources_memo_reuses_name_derived_walk() {
     use v1_compiler::cli_run::{
         build_multi_entry_index, entry_closure_sources_len_for_test, resolve_entry_with_index,
