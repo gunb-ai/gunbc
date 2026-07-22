@@ -101,7 +101,7 @@ fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<Pri
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
 }
 
-data deploy_job_principal_unresolved_refusal_note: String = "fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). Propagate DeployAccessOrRefusal or emit poison; srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner."
+data deploy_job_principal_unresolved_refusal_note: String = "fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). live_deploy/emit threads ci_deploy_srv1_access_or_refusal: Absent → deploy_access_job_principal_refused_emit_poison (un-emittable shell); Present → normal pipeline. srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner."
 
 data deploy_job_principal_unresolved_emit_poison_prefix: String = "__GUNBC_DEPLOY_ACCESS_REFUSED__ job_user not in fleet roster — deploy shell is un-emittable"
 

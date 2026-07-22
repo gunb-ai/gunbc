@@ -26,6 +26,11 @@ import gunbc.live_deploy.emit {
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
+import gunbc.ci_deploy_access {
+  DeployAccessJobPrincipalRefusal,
+  deploy_access_job_principal_refused_emit_poison,
+}
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import v2.std.orchestration { Do, Run }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -317,6 +322,22 @@ fn witness_wholesale_refused_poison_carries_marker() -> Bool {
     && string_contains(s: poison, pattern: "APPLY refused-member-count=0")
 }
 
+fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bool {
+  let poison = deploy_access_job_principal_refused_emit_poison(
+    refusal: DeployAccessJobPrincipalRefusal {
+      job_user: "runner" as NonEmptyStr,
+      runner: DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr },
+    }
+  )
+  string_contains(s: poison, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+    && string_contains(s: poison, pattern: "job_user=runner")
+}
+
+fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+}
+
 test fn live_deploy_emit_holds() -> Bool {
   witness_spec_targets_srv1()
     && witness_spec_uses_apt_package_manager()
@@ -345,4 +366,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_emit_shell_dissolution_trigger_is_scaffold()
     && witness_teardown_dependency_arm_refuses_golden_independent()
     && witness_wholesale_refused_poison_carries_marker()
+    && witness_deploy_access_job_principal_refused_poison_golden_independent()
+    && witness_apply_script_access_ready_not_deploy_access_poison()
 }

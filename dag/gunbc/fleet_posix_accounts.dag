@@ -187,10 +187,6 @@ fn fleet_deploy_job_principal(runner: DeployRunnerPrincipal) -> GroundedPosixPri
   fleet_posix_account_from_name(name: runner.job_user)
 }
 
-fn posix_principal_is_root(p: GroundedPosixPrincipal) -> Bool {
-  p.posix.name == fleet_posix_root_user.name
-}
-
 fn grounded_posix_principal_name(p: GroundedPosixPrincipal) -> NonEmptyStr {
   p.posix.name
 }

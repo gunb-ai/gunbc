@@ -51,7 +51,10 @@ import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.ci_deploy_access {
   DeployAccess,
-  ci_deploy_srv1_access,
+  ci_deploy_srv1_access_or_refusal,
+  DeployAccessReady,
+  DeployAccessJobPrincipalRefused,
+  deploy_access_job_principal_refused_emit_poison,
   deploy_access_preflight_pass_message,
 }
 import gunbc.ci_deploy_access_emit { deploy_access_emit_bootstrap_preflight_block }
@@ -409,26 +412,36 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 }
 
 fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
-  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      emit_pipeline_or_poison(
-        p: apply_intent_from_effects(spec: spec, effects: es, access: ci_deploy_srv1_access),
-        refused: live_deploy_apply_emit_refused_poison
-      )
-    ApplyRefused { refusals: rs } =>
-      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessJobPrincipalRefused { refusal: r } =>
+      deploy_access_job_principal_refused_emit_poison(refusal: r)
+    DeployAccessReady { access: access } =>
+      match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+        EffectsReady { effects: es } =>
+          emit_pipeline_or_poison(
+            p: apply_intent_from_effects(spec: spec, effects: es, access: access),
+            refused: live_deploy_apply_emit_refused_poison
+          )
+        ApplyRefused { refusals: rs } =>
+          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
+      }
   }
 }
 
 fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
-  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      emit_pipeline_or_poison(
-        p: retract_intent_from_effects(spec: spec, effects: es, access: ci_deploy_srv1_access),
-        refused: live_deploy_retract_emit_refused_poison
-      )
-    ApplyRefused { refusals: rs } =>
-      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessJobPrincipalRefused { refusal: r } =>
+      deploy_access_job_principal_refused_emit_poison(refusal: r)
+    DeployAccessReady { access: access } =>
+      match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+        EffectsReady { effects: es } =>
+          emit_pipeline_or_poison(
+            p: retract_intent_from_effects(spec: spec, effects: es, access: access),
+            refused: live_deploy_retract_emit_refused_poison
+          )
+        ApplyRefused { refusals: rs } =>
+          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
+      }
   }
 }
 
