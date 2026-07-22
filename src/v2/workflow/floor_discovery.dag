@@ -1,0 +1,69 @@
+module v2.workflow.floor_discovery
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import v2.workflow.floor_naming_hygiene {
+  floor_test_marked_decl_allowed_in_entry,
+  floor_wire_contract_decl_allowed_in_entry,
+  floor_test_sidecar_suffix,
+  floor_wire_contract_sidecar_suffix
+}
+import std.types { String, Bool, List }
+import v2.std.collection { Absent, Optional, Present }
+
+type FloorDiscoveryRow {
+  label: String
+  entry: String
+  function: String
+  reads_live_tree: LiveTreeDisposition
+}
+
+type FloorDiscoverySidecarKind
+  = TestMarkedDecl
+  | WireContractDecl
+
+type FloorDiscoverySidecarViolation {
+  entry_path: String
+  kind: FloorDiscoverySidecarKind
+  required_suffix: String
+}
+
+fn floor_discovery_row_is_live_tree(row: FloorDiscoveryRow) -> Bool {
+  match row.reads_live_tree {
+    ReadsLiveTree => true
+    SubstrateInputsOnly => false
+  }
+}
+
+fn floor_discovery_row_is_selection_eligible(row: FloorDiscoveryRow) -> Bool {
+  !floor_discovery_row_is_live_tree(row: row)
+}
+
+fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
+  if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
+    Absent
+  } else {
+    Present {
+      value: FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: TestMarkedDecl,
+        required_suffix: floor_test_sidecar_suffix
+      }
+    }
+  }
+}
+
+fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
+    Absent
+  } else {
+    Present {
+      value: FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: WireContractDecl,
+        required_suffix: floor_wire_contract_sidecar_suffix
+      }
+    }
+  }
+}
+
+data floor_discovery_producer_note: String = "Discovery producer authority: row shape + sidecar placement decisions for the floor corpus. Host realize discovers owned-data transport rows and test fn names; this module owns the typed verdicts (live-tree eligibility, sidecar suffix rules) that cli_run.rs must not re-implement."

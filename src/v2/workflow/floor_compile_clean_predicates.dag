@@ -1,0 +1,54 @@
+module v2.workflow.floor_compile_clean_predicates
+
+import std.types { String, Bool, List, list_length }
+
+fn compile_clean_touched_path_norm(path: String) -> String {
+  if starts_with(s: path, prefix: "./") {
+    substring(s: path, start: 2, end: string_length(s: path))
+  } else {
+    path
+  }
+}
+
+fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
+  starts_with(
+    s: compile_clean_touched_path_norm(path: path),
+    prefix: "docs/"
+  )
+}
+
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: List<String>) -> Bool {
+  list_length(items: touched_paths) > 0
+    && fold(
+      touched_paths,
+      init: true,
+      f: fn(ok, p) { ok && compile_clean_touched_path_is_docs_only(path: p) }
+    )
+}
+
+fn compile_clean_touched_path_is_dag_source(path: String) -> Bool {
+  ends_with(s: compile_clean_touched_path_norm(path: path), suffix: ".dag")
+}
+
+fn compile_clean_touched_path_selectable(path: String) -> Bool {
+  compile_clean_touched_path_is_docs_only(path: path)
+    || compile_clean_touched_path_is_dag_source(path: path)
+}
+
+fn compile_clean_all_touched_paths_selectable(touched_paths: List<String>) -> Bool {
+  fold(
+    touched_paths,
+    init: true,
+    f: fn(ok, p) { ok && compile_clean_touched_path_selectable(path: p) }
+  )
+}
+
+fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bool {
+  fold(
+    departed_paths,
+    init: false,
+    f: fn(found, p) { found || (compile_clean_touched_path_is_docs_only(path: p) == false) }
+  )
+}
+
+data floor_compile_clean_predicates_note: String = "Lightweight path-grain predicates for the CI floor fast path. tools.dag_compile_clean_scope re-exports the same logic for disposition probes; this module is the resolve target for host floor_fast so compile_clean_shard_entry_paths() is never cold-scanned on the hot path."
