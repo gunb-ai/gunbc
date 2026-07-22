@@ -4096,6 +4096,90 @@ struct BareCandidates {
     bound: BTreeSet<String>,
 }
 
+/// Byte offsets of `(` that open an arrow-lambda param list (`(a, b) => ...`,
+/// no `fn` keyword) and of `{` that open a match/destructuring PATTERN
+/// (`Variant { field: name } => ...`) — both shapes bind every leaf identifier
+/// inside, but the single-pass scanner below only recognizes them once it has
+/// already passed the opening delimiter, so a lookahead pre-pass locates the
+/// delimiters whose matching close is followed by `=>`. Measured: `(acc,
+/// step) =>` (no `fn`) in `extdeps/communication/fidelity_carriers.dag` leaked
+/// bare `step`, and `HeadFound { value: h2 } =>` in
+/// `std/cross_tree/resolution.dag` leaked bare `h2` — both census-unique-bound
+/// to unrelated fn decls (`test.claim.materialization_ladder_witness.step`,
+/// `gunbc.plans.md_helpers.h2`), over-pulling those modules into 13 unrelated
+/// compiler-closure entries. String literals are skipped, matching the main
+/// scan.
+fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>) {
+    let bytes = content.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let matching_close = |open_at: usize, open: u8, close: u8| -> Option<usize> {
+        let mut depth = 0i32;
+        let mut j = open_at;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'"' => {
+                    j += 1;
+                    while j < bytes.len() && bytes[j] != b'"' {
+                        if bytes[j] == b'\\' && j + 1 < bytes.len() {
+                            j += 1;
+                        }
+                        j += 1;
+                    }
+                }
+                b if b == open => depth += 1,
+                b if b == close => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(j);
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        None
+    };
+    let mut lambda_paren_starts = BTreeSet::new();
+    let mut pattern_brace_starts = BTreeSet::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'(' && (i == 0 || !is_ident(bytes[i - 1])) {
+            if let Some(close) = matching_close(i, b'(', b')') {
+                let mut j = close + 1;
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if content.as_bytes()[j..].starts_with(b"=>") {
+                    lambda_paren_starts.insert(i);
+                }
+            }
+        } else if bytes[i] == b'{' {
+            if let Some(close) = matching_close(i, b'{', b'}') {
+                let mut j = close + 1;
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if content.as_bytes()[j..].starts_with(b"=>") {
+                    pattern_brace_starts.insert(i);
+                }
+            }
+        }
+        i += 1;
+    }
+    (lambda_paren_starts, pattern_brace_starts)
+}
+
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
@@ -4106,6 +4190,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         dotted_chains: BTreeSet::new(),
         bound: BTreeSet::new(),
     };
+    let (lambda_paren_starts, pattern_brace_starts) = destructuring_bound_spans(content);
     let mut i = 0usize;
     // Previous identifier token on the same run (whitespace-separated): a name
     // directly after a BINDER keyword is a binding occurrence, not a reference —
@@ -4123,14 +4208,23 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         "service",
         "transport",
     ];
-    // Depth of an open `fn(`-literal parameter list: every ident inside is a
-    // BINDER (untyped lambda params — `fn(acc, edge)` — carry no `:` so the
+    // Depth of an open `fn(`-literal parameter list, OR an arrow-lambda param
+    // list (`(a, b) => ...`, no `fn` — see `destructuring_bound_spans`): every
+    // ident inside is a BINDER (untyped lambda params carry no `:` so the
     // key-position rule never sees them; measured: rust_test.dag's `fn(acc,
     // edge)` param leaked 'edge' into the reference set and pulled the
     // unresolvable ownership_movable test module into an unrelated entry).
     // Typed idents inside (`p: T`, and type names in `fn(A) -> B` annotations)
     // over-bind harmlessly: a suppressed pull fails LOUD at typecheck.
     let mut fn_params_depth: usize = 0;
+    // Depth of an open match/destructuring PATTERN brace (`Variant { field:
+    // name } => ...` — see `destructuring_bound_spans`): a bare leaf identifier
+    // directly after `:` inside is a new local binding, not a reference. A
+    // nested variant tag (`field: OtherType { .. }`, itself followed by `{`)
+    // stays a real reference — the declaring module's runtime construction and
+    // variant-tag identity still need it loaded.
+    let mut pattern_depth: usize = 0;
+    let mut just_saw_colon = false;
     while i < bytes.len() {
         if bytes[i] == b'"' {
             i += 1;
@@ -4142,18 +4236,29 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             }
             i += 1;
             prev_token = None;
+            just_saw_colon = false;
             continue;
         }
         if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
         {
             if bytes[i] == b'(' {
-                if prev_token == Some("fn") {
+                if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
                     fn_params_depth = 1;
                 } else if fn_params_depth > 0 {
                     fn_params_depth += 1;
                 }
             } else if bytes[i] == b')' && fn_params_depth > 0 {
                 fn_params_depth -= 1;
+            } else if bytes[i] == b'{' && (pattern_depth > 0 || pattern_brace_starts.contains(&i))
+            {
+                pattern_depth += 1;
+            } else if bytes[i] == b'}' && pattern_depth > 0 {
+                pattern_depth -= 1;
+            }
+            if bytes[i] == b':' {
+                just_saw_colon = true;
+            } else if !bytes[i].is_ascii_whitespace() {
+                just_saw_colon = false;
             }
             if !bytes[i].is_ascii_whitespace() {
                 prev_token = None;
@@ -4181,9 +4286,12 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             }
             out.dotted_chains.insert(content[start..i].to_string());
             prev_token = None;
+            just_saw_colon = false;
             continue;
         }
         let name = &content[start..i];
+        let was_after_colon = just_saw_colon;
+        just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
         // never a reference to another module's decl.
         if fn_params_depth > 0 {
@@ -4195,6 +4303,23 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
             continue;
+        }
+        // Pattern-value leaf (`Variant { field: name } => ...`): a bare leaf
+        // directly after `:` inside a destructuring pattern brace introduces a
+        // new local binding, never a reference — see `destructuring_bound_spans`.
+        // A nested variant tag (itself followed by `{` or `(`) stays a real
+        // reference.
+        if pattern_depth > 0 && was_after_colon {
+            let mut peek = i;
+            while peek < bytes.len() && (bytes[peek] == b' ' || bytes[peek] == b'\t') {
+                peek += 1;
+            }
+            let is_leaf = !(peek < bytes.len() && (bytes[peek] == b'{' || bytes[peek] == b'('));
+            if is_leaf {
+                out.bound.insert(name.to_string());
+                prev_token = Some(name);
+                continue;
+            }
         }
         // Key position (`repo: value` — field init, named arg, param decl):
         // the name labels a slot; it never references a decl.
