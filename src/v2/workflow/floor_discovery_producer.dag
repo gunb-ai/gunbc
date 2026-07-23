@@ -619,7 +619,14 @@ fn floor_discovery_merge_owned_data_record(
   match rec.initializer {
     OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
       if (entry == "") || (function == "") {
-        state
+        floor_discovery_record_disposition_refusal(
+          state: state,
+          reason: concat(
+            "owned data '",
+            rec.decl_name,
+            "' has malformed BoolWitnessClaim witness (missing entry and/or function)"
+          )
+        )
       } else {
         let read_out = Filesystem.Read(path: entry)
         if !read_out.success {

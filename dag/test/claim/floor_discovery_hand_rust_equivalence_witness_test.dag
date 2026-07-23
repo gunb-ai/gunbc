@@ -208,8 +208,9 @@ test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
     exclude_substrings: [],
     owned_data_records: [fixture_bool_witness_record_empty_transport()]
   ) {
-    FloorDiscoveryAccepted { rows: rows } => length(xs: rows) == 0
-    FloorDiscoveryRefused { reason: _ } => false
+    FloorDiscoveryAccepted { rows: _ } => false
+    FloorDiscoveryRefused { reason: msg } =>
+      string_contains(s: msg, pattern: "malformed BoolWitnessClaim witness")
   }
 }
 
