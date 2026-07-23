@@ -21681,6 +21681,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // from inhabitance (dag/std/algebra, DESIGN §3/§4) or with the cheap-gate membership
     // fold's own dissolution trigger in ci_floor_plan.dag.
     "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
+    "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
     // 2026-07-18 backfill: four sites that landed unrostered on main while the affected-set
     // selection predict-skipped the corpus-read nfr witness for their landing diffs (same
     // masking class as the dated blocks below). Their files predate this PR and this PR does
