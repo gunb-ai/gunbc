@@ -17577,7 +17577,7 @@ mod inert_lens_hygiene_tests {
         let roots = default_source_roots();
         let scan_dirs = witness_discovery_scan_dirs();
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
@@ -17663,7 +17663,7 @@ mod construction_justification_hygiene_tests {
             "src/v2/test/claim/manual".to_string(),
         ];
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
@@ -17805,7 +17805,7 @@ mod sidecar_placement_hygiene_tests {
         )
         .expect("write temp file");
         let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_witness_roster(&[root], &[], &[]);
+        let result = discover_floor_witness_roster(&[root], &[], &[], &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()

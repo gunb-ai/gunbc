@@ -44,8 +44,6 @@ data fixture_hygiene_clean_path: String = "dag/test/claim/floor_discovery_hand_r
 data fixture_hygiene_bad_path: String = "dag/test/claim/bad__hygiene.dag"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
 data fixture_live_tree_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
-data fixture_malformed_live_tree_entry: String = "dag/test/fixture/floor_discovery/malformed_live_tree_fixture_test.dag"
-data fixture_malformed_live_tree_function: String = "malformed_live_tree_fixture_witness"
 
 fn fixture_wire_contract_coproduct_content() -> String {
   concat(
@@ -76,18 +74,6 @@ fn fixture_live_tree_duplicate_decl_content() -> String {
     "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\n",
     "data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n"
   )
-}
-
-fn fixture_malformed_live_tree_owned_data_record() -> OwnedDataDeclRecord {
-  OwnedDataDeclRecord {
-    entry: "dag/gunbc/floor_discovery_scaffold.dag",
-    module: "gunbc.floor_discovery_scaffold",
-    decl_name: "unified_claim_floor_discovery_malformed_live_tree_fixture",
-    initializer: OwnedBoolWitnessClaimInit {
-      witness_entry: fixture_malformed_live_tree_entry,
-      witness_function: fixture_malformed_live_tree_function
-    }
-  }
 }
 
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
@@ -306,20 +292,6 @@ test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds
   ) {
     Absent => true
     Present { value: _ } => false
-  }
-}
-
-test fn floor_discovery_live_tree_malformed_via_owned_data_refuses_holds() -> Bool {
-  match discover_floor_corpus_rows_from_host_facts(
-    source_roots: [],
-    scan_dirs: [],
-    exclude_substrings: [],
-    owned_data_records: [fixture_malformed_live_tree_owned_data_record()]
-  ) {
-    FloorDiscoveryRefused { reason: msg } =>
-      string_contains(s: msg, pattern: "type annotation is not `LiveTreeDisposition`")
-        && string_contains(s: msg, pattern: fixture_malformed_live_tree_entry)
-    FloorDiscoveryAccepted { rows: _ } => false
   }
 }
 

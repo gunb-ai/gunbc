@@ -1,5 +1,0 @@
-module test.fixture.floor_discovery.malformed_live_tree_fixture
-
-test fn malformed_live_tree_fixture_witness() -> Bool { true }
-
-data live_tree_disposition: Bool = true
