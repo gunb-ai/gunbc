@@ -24906,6 +24906,59 @@ mod module_path_index_tests {
     }
 
     #[test]
+    fn exclusion_frontier_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/offline_test.dag\",\n\
+                 classification: OfflineLocalRecipe,\n\
+                 reason: shared_reason,\n\
+                 dissolve_on: \"synthetic trigger\"\n\
+               },\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/bin_test.dag\",\n\
+                 classification: BinWitnessWet,\n\
+                 reason: \"inline reason\",\n\
+                 dissolve_on: shared_trigger\n\
+               }\n\
+             ]\n";
+        let rows = super::witness_exclusion_rows_from_module_source("synthetic.dag", synthetic);
+        assert_eq!(
+            rows.iter().map(|r| r.pattern.as_str()).collect::<Vec<_>>(),
+            vec!["synthetic/offline_test.dag", "synthetic/bin_test.dag"],
+            "the frontier reader must FOLLOW the authority, not a hardcoded copy"
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| r.classification.as_str())
+                .collect::<Vec<_>>(),
+            vec!["OfflineLocalRecipe", "BinWitnessWet"],
+            "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn exclusion_frontier_reader_refuses_unrecognized_classification() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/x_test.dag\",\n\
+                 classification: DiscoverySelection,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::witness_exclusion_rows_from_module_source("synthetic.dag", synthetic)
+        }))
+        .is_err();
+        assert!(
+            refused,
+            "an exclusion row claiming DiscoverySelection must refuse loudly (fail-closed)"
+        );
+    }
+
+    #[test]
     fn reader_follows_synthetic_authority_scan_dirs() {
         let synthetic = "module gunbc.ci_layer_roots\n\n\
              data witness_discovery_scan_dirs: List<String> = [\"scan/a\", \"scan/b\"]\n";
