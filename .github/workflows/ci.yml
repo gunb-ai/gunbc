@@ -148,7 +148,7 @@ jobs:
                 exit 0
             fi
           fi
-          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci"
         timeout-minutes: 15
   ci:
     runs-on: [self-hosted, linux, arm64]
@@ -317,7 +317,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/generated_artifact_gate.dag --function main_wet
         timeout-minutes: 5
-      - name: Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)
+      - name: Commit + push regenerated artifacts to the triggering branch (only when drifted; byte-idempotent fixed point terminates the loop)
         run: |
           git config user.name "gunbc-ci-auto-heal"
           git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
