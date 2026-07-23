@@ -88,6 +88,13 @@ fn resolve_floor_batch_stop_policy(
                 FloorBatchStopPolicy::FullLedger
             }
         }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor batch stop policy returned non-variant {other:?} \
+                 (defaulting to FullLedger, fail-closed)"
+            );
+            FloorBatchStopPolicy::FullLedger
+        }
         Err(msg) => {
             eprintln!(
                 "claim_executor: floor batch stop policy unavailable \
