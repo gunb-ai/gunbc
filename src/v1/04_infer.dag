@@ -6227,7 +6227,7 @@ fn build_module_interface(
 
 fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding? {
   if is_namespace_alias_item(item: item, source_indices: source_indices) {
-    Absent
+    none
   } else {
   let has_structure = item.connective != NoConnective
   if has_structure {

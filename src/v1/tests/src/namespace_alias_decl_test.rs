@@ -31,10 +31,7 @@ fn error_messages(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> 
 #[test]
 fn namespace_alias_resolves_without_direct_import() {
     let result = compile_multi_target(
-        &[
-            ("target.dag", TARGET_LIB),
-            ("consumer.dag", GREEN_CONSUMER),
-        ],
+        &[("target.dag", TARGET_LIB), ("consumer.dag", GREEN_CONSUMER)],
         RenderTarget::Dag,
     );
     let errors = error_messages(&result);

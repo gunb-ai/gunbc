@@ -40,7 +40,6 @@ mod dependency_pool_index_compile_test;
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod direct_import_precedence_over_transitive_leak_test;
-mod namespace_alias_decl_test;
 #[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
@@ -105,6 +104,7 @@ mod measure_periphery_emit_test;
 mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
+mod namespace_alias_decl_test;
 #[cfg(test)]
 mod nested_fold_generic_param_emit_test;
 mod nested_list_alias_emit_test;
