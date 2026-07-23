@@ -49,6 +49,10 @@ fn css_ch(n: Int) -> CssLength {
   CssLength { n: n, unit: Ch }
 }
 
+fn css_percent(n: Int) -> CssLength {
+  CssLength { n: n, unit: Percent }
+}
+
 data css_font_family_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

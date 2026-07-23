@@ -1,0 +1,87 @@
+module test.claim.design_progress_witness
+
+import std.types { Int, String, Bool, List }
+import gunbc.design.progress {
+  Progress, progress_percent, progress_is_complete, progress_count_label,
+  progress_fill_style, progress_bar_markup, progress_track_class, progress_fill_class,
+}
+import extdeps.languages.html { serialize_html_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data design_progress_witness_note: String = "Acceptance for the progress-bar library (gunbc.design.progress): everything visible is a projection of the ratio (filled/total). progress_percent is the SINGLE percent authority (kills tg_gate_percent); progress_fill_style is the SINGLE fill-width authority, a typed CssLength serialized through the D5 grain (kills the hand concat('width: ', to_string(pct), '%')). The pins are byte-exact against what a browser consumes, with RED controls: a wrong percent formula and a mis-serialized width both red. The zero-length rule (css-values-4 section 6.2) surfaces here — a 0% fill renders bare 'width: 0', grounded spec behaviour."
+
+fn witness_percent() -> Bool {
+  progress_percent(p: Progress { filled: 0, total: 0 }) == 0
+    && progress_percent(p: Progress { filled: 3, total: 4 }) == 75
+    && progress_percent(p: Progress { filled: 1, total: 3 }) == 33
+    && progress_percent(p: Progress { filled: 12, total: 12 }) == 100
+    && progress_percent(p: Progress { filled: 14, total: 25 }) == 56
+}
+
+data percent_red_note: String = "RED control: the percent is filled*100/total (multiply BEFORE the integer divide). A naive filled/total*100 collapses to 0 for every proper fraction under integer division; pinning 1/4 == 25 (not 0) reds that transposition. A zero total is 0, never a divide-by-zero."
+
+fn witness_percent_red() -> Bool {
+  progress_percent(p: Progress { filled: 1, total: 4 }) == 25
+    && progress_percent(p: Progress { filled: 1, total: 4 }) != 0
+    && progress_percent(p: Progress { filled: 1, total: 4 }) != 100
+}
+
+data clamp_note: String = "The VISUAL clamps (a bar cannot draw past its track) but the COUNT LABEL stays raw — a filled>total modelling error is invisible in the fill yet loud in the text, so clamping is honest rendering, not fail-open."
+
+fn witness_clamp() -> Bool {
+  progress_percent(p: Progress { filled: 5, total: 3 }) == 100
+    && progress_count_label(p: Progress { filled: 5, total: 3 }) == "5 / 3"
+}
+
+fn witness_fill_style() -> Bool {
+  progress_fill_style(p: Progress { filled: 3, total: 4 }) == "width: 75%"
+    && progress_fill_style(p: Progress { filled: 0, total: 4 }) == "width: 0"
+    && progress_fill_style(p: Progress { filled: 12, total: 12 }) == "width: 100%"
+}
+
+data fill_style_red_note: String = "RED control: the fill style is the D5-grain serialization 'width: 75%' (property-name-typed, space after the colon, percent unit). A missing space, a dropped property, or a stripped unit reds — the browser is the consumer and any of those breaks the bar."
+
+fn witness_fill_style_red() -> Bool {
+  progress_fill_style(p: Progress { filled: 3, total: 4 }) == "width: 75%"
+    && progress_fill_style(p: Progress { filled: 3, total: 4 }) != "width:75%"
+    && progress_fill_style(p: Progress { filled: 3, total: 4 }) != "75%"
+    && progress_fill_style(p: Progress { filled: 3, total: 4 }) != "width: 75"
+}
+
+fn witness_count_label() -> Bool {
+  progress_count_label(p: Progress { filled: 3, total: 4 }) == "3 / 4"
+    && progress_count_label(p: Progress { filled: 0, total: 0 }) == "0 / 0"
+}
+
+fn witness_complete() -> Bool {
+  progress_is_complete(p: Progress { filled: 4, total: 4 })
+    && !progress_is_complete(p: Progress { filled: 3, total: 4 })
+    && !progress_is_complete(p: Progress { filled: 0, total: 0 })
+    && progress_is_complete(p: Progress { filled: 5, total: 3 })
+}
+
+data class_authority_note: String = "The track/fill class names are a single authority consumed by both the markup (here) and the CSS rules (progress_rules) — the same three-consumers-one-vocabulary move dispatch_state_class makes, so the styled groove and the rendered bar cannot disagree."
+
+fn witness_class_authority() -> Bool {
+  progress_track_class == "progress-track"
+    && progress_fill_class == "progress-fill"
+}
+
+fn witness_bar_html() -> Bool {
+  let html = serialize_html_source(node: progress_bar_markup(p: Progress { filled: 3, total: 4 }))
+  html == "<div class=\"progress-track\" role=\"progressbar\" aria-valuenow=\"75\" aria-valuemin=\"0\" aria-valuemax=\"100\"><div class=\"progress-fill\" style=\"width: 75%\"></div></div>"
+}
+
+test fn design_progress_witnesses() -> Bool {
+  witness_percent()
+    && witness_percent_red()
+    && witness_clamp()
+    && witness_fill_style()
+    && witness_fill_style_red()
+    && witness_count_label()
+    && witness_complete()
+    && witness_class_authority()
+    && witness_bar_html()
+}

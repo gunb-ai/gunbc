@@ -1,0 +1,66 @@
+module test.claim.roadmap_progress_witness
+
+import std.types { Int, String, Bool, List }
+import gunbc.design.progress { Progress }
+import gunbc.roadmap_progress { progress_over_nodes, doc_overall_progress, section_progress }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs, authored, superseded, plain }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_progress_witness_note: String = "Acceptance for the DAG progress projection (gunbc.roadmap_progress, ts-wf-progress): progress is derived from the roadmap graph, not authored. Two claims are pinned by execution. (1) SUPERSEDED-EXCLUSION — a synthetic node list with a done row, an open row, a superseded row, and a plain row counts 1/3, NOT 2/4: item_is_done returns true for a SupersededLine, so the node_is_live filter must drop it from BOTH numerator and denominator (cancelled work is not completed work); the RED control pins that it is neither counted done nor toward the total. (2) CONSISTENCY — over the real authority the overall bar equals the SUM of the section bars (same live-node denominator, no double-count), so the headline is never a second, disagreeing number."
+
+fn sample_nodes() -> List<RoadmapNode> {
+  [
+    authored(id: "prog-a", done: true, content: "done row"),
+    authored(id: "prog-b", done: false, content: "open row"),
+    superseded(id: "prog-c", by: "prog-a", content: "cancelled row"),
+    plain(id: "prog-d", content: "plain row"),
+  ]
+}
+
+fn witness_superseded_excluded() -> Bool {
+  let p = progress_over_nodes(nodes: sample_nodes(), merged: [])
+  p.filled == 1 && p.total == 3
+}
+
+data superseded_red_note: String = "RED control: without the node_is_live filter, item_is_done(SupersededLine)==true would inflate the sample to 2 done of 4 total. Pinning filled != 2 && total != 4 reds a dropped exclusion."
+
+fn witness_superseded_not_counted() -> Bool {
+  let p = progress_over_nodes(nodes: sample_nodes(), merged: [])
+  p.filled != 2 && p.total != 4
+}
+
+fn all_sections(doc: RoadmapDocument) -> List<RoadmapSection> {
+  concat(doc.lead_lanes, doc.sections)
+}
+
+fn sum_section_filled(doc: RoadmapDocument, merged: List<Int>) -> Int {
+  fold(all_sections(doc: doc), init: 0, f: (acc, s) => acc + section_progress(s: s, merged: merged).filled)
+}
+
+fn sum_section_total(doc: RoadmapDocument, merged: List<Int>) -> Int {
+  fold(all_sections(doc: doc), init: 0, f: (acc, s) => acc + section_progress(s: s, merged: merged).total)
+}
+
+fn witness_overall_equals_sum_of_sections() -> Bool {
+  let doc = roadmap_authority()
+  let merged = authored_merged_prs()
+  let overall = doc_overall_progress(doc: doc, merged: merged)
+  overall.filled == sum_section_filled(doc: doc, merged: merged)
+    && overall.total == sum_section_total(doc: doc, merged: merged)
+}
+
+fn witness_overall_sane() -> Bool {
+  let overall = doc_overall_progress(doc: roadmap_authority(), merged: authored_merged_prs())
+  overall.total > 0 && overall.filled > 0 && overall.filled <= overall.total
+}
+
+test fn roadmap_progress_witnesses() -> Bool {
+  witness_superseded_excluded()
+    && witness_superseded_not_counted()
+    && witness_overall_equals_sum_of_sections()
+    && witness_overall_sane()
+}

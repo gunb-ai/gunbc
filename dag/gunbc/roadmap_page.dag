@@ -19,6 +19,8 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path }
+import gunbc.design.progress { Progress, progress_count_label, progress_bar_markup }
+import gunbc.roadmap_progress { roadmap_progress_markup }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -88,25 +90,6 @@ fn tg_gate_placed(g: PlanGate) -> Int {
   count(filter(tg_gate_bricks(g: g), m => tg_brick_is_placed(bs: m.brick_state)))
 }
 
-fn tg_gate_percent(placed: Int, total: Int) -> Int {
-  if total == 0 { 0 } else { placed * 100 / total }
-}
-
-fn tg_gate_count_label(placed: Int, total: Int) -> String {
-  concat(to_string(placed), concat(" / ", to_string(total)))
-}
-
-fn tg_bar_fill(pct: Int) -> MarkupNode {
-  ElementNode {
-    tag: "div",
-    attrs: [
-      MarkupAttr { name: "class", value: "bar-fill" },
-      MarkupAttr { name: "style", value: concat("width: ", concat(to_string(pct), "%")) },
-    ],
-    children: [],
-  }
-}
-
 fn tg_brick_li(m: PlanMilestone) -> MarkupNode {
   el_class("li", concat("brick brick-", tg_brick_state_class(bs: m.brick_state)), [
     el_class("span", "brick-state", [ txt(tg_brick_state_label(bs: m.brick_state)) ]),
@@ -120,14 +103,13 @@ fn tg_gate_remaining_ul(g: PlanGate) -> MarkupNode {
 }
 
 fn tg_gate_progress_row(spec: PlanGateSpec) -> MarkupNode {
-  let total = tg_gate_total(g: spec.gate)
-  let placed = tg_gate_placed(g: spec.gate)
+  let p = Progress { filled: tg_gate_placed(g: spec.gate), total: tg_gate_total(g: spec.gate) }
   el_class("section", "gate-row", [
     el_class("div", "gate-head", [
       el_class("span", "gate-name", [ txt(spec.name) ]),
-      el_class("span", "gate-count", [ txt(tg_gate_count_label(placed: placed, total: total)) ]),
+      el_class("span", "gate-count", [ txt(progress_count_label(p: p)) ]),
     ]),
-    el_class("div", "gate-bar", [ tg_bar_fill(pct: tg_gate_percent(placed: placed, total: total)) ]),
+    el_class("div", "gate-bar", [ progress_bar_markup(p: p) ]),
     tg_gate_remaining_ul(g: spec.gate),
   ])
 }
@@ -490,7 +472,10 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
 }
 
 fn roadmap_page_for_authority() -> MarkupNode {
-  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [
+    roadmap_progress_markup(doc: roadmap_authority(), merged: authored_merged_prs()),
+    three_gate_progress_markup(),
+  ])
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
@@ -498,5 +483,8 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> MarkupNode {
-  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [
+    roadmap_progress_markup(doc: roadmap_authority(), merged: authored_merged_prs()),
+    three_gate_progress_markup(),
+  ])
 }

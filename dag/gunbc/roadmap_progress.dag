@@ -1,0 +1,99 @@
+module gunbc.roadmap_progress
+
+import std.types { Int, String, Bool, List }
+import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.design.progress { Progress, progress_bar_markup, progress_count_label }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, section_nodes, doc_all_nodes }
+import gunbc.roadmap_status { RoadmapItem, item_is_done, item_superseded_by }
+
+data roadmap_progress_note: String = "The DAG progress projection (ts-wf-progress) — progress is DERIVED from the roadmap DAG, never authored. Two lenses over the same graph, both rendered through the ONE progress-bar library (gunbc.design.progress), so they cannot fork from each other or from the v1-delete bar: (1) COMPLETION — done/total over the live (non-superseded) rows, as an overall bar plus one bar per section, the overall being exactly the sum of the sections (same denominator, no double-count); a superseded row is EXCLUDED from both numerator and denominator (item_is_done returns true for a SupersededLine, so it must be filtered out first — it is cancelled work, not completed work). (2) DEPENDENCY FRONTIER — the sized dispatchable nodes split into done / ready (deps satisfied) / blocked (deps unmet), read straight off spawn_frontier (the same edge-walk the dispatch belt uses), so 'what can be picked up next' is a projection of the DAG edges, not a hand list. The frontier is a DIFFERENT lens (sized work only) and is labelled as such, never summed with the completion counts. Local pel/psp/pdiv helpers build the layout directly (no el_class — that helper is triple-defined already, the SILENT-PICK residue; not worsened here)."
+
+fn ptxt(s: String) -> MarkupNode { TextNode { text: s } }
+
+fn pdiv(cls: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: "div", attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
+}
+
+fn psp(cls: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: "span", attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
+}
+
+fn psection(cls: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: "section", attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
+}
+
+fn node_is_live(n: RoadmapNode) -> Bool {
+  item_superseded_by(item: n.line) == ""
+}
+
+fn progress_over_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> Progress {
+  let live = filter(nodes, n => node_is_live(n: n))
+  Progress {
+    filled: count(filter(live, n => item_is_done(item: n.line, merged: merged))),
+    total: count(live),
+  }
+}
+
+fn doc_overall_progress(doc: RoadmapDocument, merged: List<Int>) -> Progress {
+  progress_over_nodes(nodes: doc_all_nodes(doc: doc), merged: merged)
+}
+
+fn section_progress(s: RoadmapSection, merged: List<Int>) -> Progress {
+  progress_over_nodes(nodes: section_nodes(s: s), merged: merged)
+}
+
+fn section_has_work(s: RoadmapSection) -> Bool {
+  count(filter(section_nodes(s: s), n => node_is_live(n: n))) > 0
+}
+
+fn rp_head(title: String, p: Progress) -> MarkupNode {
+  pdiv(cls: "rp-head", children: [
+    psp(cls: "rp-title", children: [ ptxt(s: title) ]),
+    psp(cls: "rp-count", children: [ ptxt(s: progress_count_label(p: p)) ]),
+  ])
+}
+
+fn rp_legend_item(cls: String, n: Int, label: String) -> MarkupNode {
+  psp(cls: cls, children: [ ptxt(s: join([to_string(n), " ", label], "")) ])
+}
+
+fn rp_frontier_legend(frontier: SpawnFrontier) -> MarkupNode {
+  pdiv(cls: "rp-legend", children: [
+    rp_legend_item(cls: "rp-done", n: count(frontier.done), label: "dispatchable done"),
+    rp_legend_item(cls: "rp-ready", n: count(frontier.ready), label: "ready"),
+    rp_legend_item(cls: "rp-blocked", n: count(frontier.upcoming), label: "blocked"),
+  ])
+}
+
+fn rp_overall(doc: RoadmapDocument, merged: List<Int>, frontier: SpawnFrontier) -> MarkupNode {
+  let p = doc_overall_progress(doc: doc, merged: merged)
+  psection(cls: "rp-overall", children: [
+    rp_head(title: "Roadmap completion", p: p),
+    progress_bar_markup(p: p),
+    rp_frontier_legend(frontier: frontier),
+  ])
+}
+
+fn rp_section_row(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
+  let p = section_progress(s: s, merged: merged)
+  pdiv(cls: "rp-section", children: [
+    rp_head(title: s.title, p: p),
+    progress_bar_markup(p: p),
+  ])
+}
+
+fn rp_sections(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  let all_secs = concat(doc.lead_lanes, doc.sections)
+  let secs = filter(all_secs, s => section_has_work(s: s))
+  psection(cls: "rp-sections", children: map(secs, s => rp_section_row(s: s, merged: merged)))
+}
+
+fn roadmap_progress_markup(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  psection(cls: "roadmap-progress", children: [
+    rp_overall(doc: doc, merged: merged, frontier: frontier),
+    rp_sections(doc: doc, merged: merged),
+  ])
+}

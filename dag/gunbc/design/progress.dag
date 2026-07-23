@@ -1,0 +1,84 @@
+module gunbc.design.progress
+
+import std.types { Int, String, Bool, List }
+import std.markup { MarkupNode, ElementNode, MarkupAttr }
+import extdeps.languages.css.values { CssLength, css_percent, css_length_wire }
+import extdeps.languages.css.properties { CssPropertyName, Width, Height, BorderRadius, Background, Overflow }
+import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
+import gunbc.design.material { CssDecl, decl, serialize_decls, BuildRule, StaticRule }
+import gunbc.design.theme { ThemeRole, BorderRole, FigureRole, role_decl }
+import gunbc.design.scale { ScaleToken, scale_var, height_bar, radius_5 }
+
+data design_progress_note: String = "The progress-bar widget — a display component of the design register (a sibling of gunbc.design.component's DispatchButton, but a DISPLAY widget, not an interaction-state one: it has no wire-contract states, so it is its own concept, never a mislabelled Component — §3). A progress bar is ONE fact, a ratio (filled / total), and everything visible is DERIVED from it: the percent, the fill length, the count label, the completion flag, and the aria value. Second-consumer discipline is satisfied at birth — the existing v1-delete three-gate bar (gunbc.roadmap_page.three_gate_progress_markup) and the new roadmap DAG progress projection (gunbc.roadmap_progress) both render through THIS one authority, so a bar cannot fork between them (the two hand-rolled sites this dissolves each had their own percent math and their own hand-composed 'width: N%' inline string). The anemia this kills (mirrors D3/D5, 2026-07-23): the fill width was a hand string concat('width: ', concat(to_string(pct), '%')); here it is a typed CssLength (css_percent) serialized through the D5 grain (serialize_decls over decl(prop: Width, ..)), so the ONLY percent authority is progress_percent and the ONLY width authority is progress_fill_style — a misspelled property or a stray unit is unwritable. The percent CLAMPS filled to total for the VISUAL (a bar cannot draw past its track), while the count label shows the RAW filled/total, so a filled>total modelling error still surfaces in the text (honest, not fail-open — the widget renders faithfully; the ratio's correctness is the projection's concern). Track material = BorderRole (the empty groove), fill material = FigureRole (the accent), the same role split the old .gate-bar/.bar-fill carried; track height/radius ride the shared scale tokens (height_bar, radius_5). role='progressbar' + aria-valuenow/min/max make it a real progress bar to assistive tech, the aria value a projection of progress_percent (never a second number)."
+
+type Progress {
+  filled: Int
+  total: Int
+}
+
+fn progress_clamped_filled(p: Progress) -> Int {
+  if p.filled > p.total { p.total } else { p.filled }
+}
+
+fn progress_percent(p: Progress) -> Int {
+  if p.total == 0 { 0 } else { progress_clamped_filled(p: p) * 100 / p.total }
+}
+
+fn progress_is_complete(p: Progress) -> Bool {
+  p.total > 0 && p.filled >= p.total
+}
+
+fn progress_count_label(p: Progress) -> String {
+  join([to_string(p.filled), " / ", to_string(p.total)], "")
+}
+
+fn progress_fill_length(p: Progress) -> CssLength {
+  css_percent(n: progress_percent(p: p))
+}
+
+fn progress_fill_style(p: Progress) -> String {
+  serialize_decls(decls: [decl(prop: Width, value: css_length_wire(l: progress_fill_length(p: p)))])
+}
+
+data progress_track_class: String = "progress-track"
+data progress_fill_class: String = "progress-fill"
+
+fn progress_fill_node(p: Progress) -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [
+      MarkupAttr { name: "class", value: progress_fill_class },
+      MarkupAttr { name: "style", value: progress_fill_style(p: p) },
+    ],
+    children: [],
+  }
+}
+
+fn progress_bar_markup(p: Progress) -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [
+      MarkupAttr { name: "class", value: progress_track_class },
+      MarkupAttr { name: "role", value: "progressbar" },
+      MarkupAttr { name: "aria-valuenow", value: to_string(progress_percent(p: p)) },
+      MarkupAttr { name: "aria-valuemin", value: "0" },
+      MarkupAttr { name: "aria-valuemax", value: "100" },
+    ],
+    children: [ progress_fill_node(p: p) ],
+  }
+}
+
+fn progress_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: progress_track_class }, decls: [
+      decl(prop: Height, value: scale_var(t: height_bar)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_5)),
+      role_decl(prop: Background, r: BorderRole),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: ClassSelector { name: progress_fill_class }, decls: [
+      decl(prop: Height, value: css_length_wire(l: css_percent(n: 100))),
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+  ]
+}
