@@ -1,0 +1,9 @@
+module test.retirement.namespace_unique_on_chain_policy_retained_nonmigratable
+
+
+data namespace_unique_on_chain_policy_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "namespace_unique_on_chain_policy_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "Six discriminating witnesses for the section 8 step 1 namespace-only unique-on-chain resolver gate (name_resolution_policy_set_namespace_only thread-local host behavior). A .dag witness cannot reach the policy toggle, so this v1 seed module must stay .rs until src/v1 is deleted. Dissolves when the v1 seed and its host-level policy gate retire at the terminal collapse."
+  }
+}

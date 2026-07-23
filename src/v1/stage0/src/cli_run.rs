@@ -23430,14 +23430,14 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
 // Second stem source (typed retirement path): a `<stem>_retired.dag` declaration under the
 // corpus records a reviewed, typed retirement (delete-redundant / delete-low-value) for a v1
 // test module whose behavior does NOT migrate to an exact-stem floor `*_test.dag` witness. A
-// retired stem covers the module identically to a floor-witness stem — it excludes the module
-// from the debt roster and authorizes its delete through the delete-guard. The typed disposition
-// and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
-// type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
-// it reads floor witnesses. A file counts only if it actually *constructs* a `TestModuleRetirement`
-// (the `TestModuleRetirement {` constructor form) — an empty stub, or one that merely imports the
-// type without declaring a retirement (`{ TestModuleRetirement }`), cannot silence the guard. The
-// compile-clean gate independently type-checks the constructed value against `test.retirement.model`.
+// retired stem authorizes its delete through the delete-guard and excludes the module from the
+// debt roster. The typed disposition and its justification live in the `.dag` decl
+// (`test.retirement.model`, single authority, type-checked by the compile-clean gate); this
+// guard reads only the filename stem, exactly as it reads floor witnesses. A file counts only
+// if it actually *constructs* a `TestModuleRetirement` (the `TestModuleRetirement {`
+// constructor form) — an empty stub, or one that merely imports the type without declaring a
+// retirement (`{ TestModuleRetirement }`), cannot silence the guard. The compile-clean gate
+// independently type-checks the constructed value against `test.retirement.model`.
 fn test_migration_retired_stems() -> Vec<String> {
     let mut stems: Vec<String> = corpus_dag_files()
         .into_iter()
@@ -23456,9 +23456,33 @@ fn test_migration_retired_stems() -> Vec<String> {
     stems
 }
 
-// The covered set consumed by both the debt roster and the delete-guard: floor-witness stems
-// (migrate path) unioned with retired stems (delete path). One union, two consumers.
-fn test_migration_covered_stems() -> Vec<String> {
+// Third stem source (typed retention path): a `<stem>_retained_nonmigratable.dag` declaration
+// records a v1 seed test that cannot migrate to a floor witness (host-level runtime behavior)
+// and must stay `.rs` until `src/v1` deletes. A retained stem excludes the module from the
+// debt roster ONLY — it never authorizes delete through the delete-guard (that would be a
+// fail-open: a kept test marked delete-authorized). Distinct filename suffix from
+// `_retired.dag` so the two consumers stay split by construction.
+fn test_migration_retained_nonmigratable_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .filter(|(_, content)| content.contains("TestModuleRetirement {"))
+        .filter_map(|(path, _)| {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())?;
+            file_name
+                .strip_suffix("_retained_nonmigratable.dag")
+                .map(|s| s.to_string())
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// Delete-guard authorize set: floor-witness stems (migrate path) unioned with retired stems
+// (delete path). Retained-non-migratable stems are deliberately absent.
+fn test_migration_delete_guard_covered_stems() -> Vec<String> {
     let mut stems = test_migration_debt_floor_stems();
     stems.extend(test_migration_retired_stems());
     stems.sort();
@@ -23466,9 +23490,19 @@ fn test_migration_covered_stems() -> Vec<String> {
     stems
 }
 
+// Debt-roster exclude set: floor witnesses, delete retirements, and retained-non-migratable
+// classifications. Wider than the delete-guard authorize set by design.
+fn test_migration_debt_covered_stems() -> Vec<String> {
+    let mut stems = test_migration_delete_guard_covered_stems();
+    stems.extend(test_migration_retained_nonmigratable_stems());
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_debt_covered_stems();
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
@@ -23645,7 +23679,7 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     if base_rev == head_rev {
         return Ok(Vec::new());
     }
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_delete_guard_covered_stems();
     let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
     let mut violations = Vec::new();
     for path in deleted {
@@ -24296,7 +24330,39 @@ mod test_migration_debt_tests {
             !test_migration_debt_floor_stems().iter().any(|s| s == stem),
             "stem must be covered only via retirement, not a floor witness"
         );
-        assert!(test_migration_covered_stems().iter().any(|s| s == stem));
+        assert!(test_migration_delete_guard_covered_stems().iter().any(|s| s == stem));
+    }
+
+    // Retained-non-migratable: debt-exclude only, never delete-authorize.
+    #[test]
+    fn retained_nonmigratable_stem_excludes_debt_but_not_delete_guard() {
+        let stem = "namespace_unique_on_chain_policy";
+        assert!(
+            test_migration_retained_nonmigratable_stems()
+                .iter()
+                .any(|s| s == stem),
+            "retained-nonmigratable declaration must contribute its stem"
+        );
+        assert!(
+            test_migration_debt_covered_stems().iter().any(|s| s == stem),
+            "retained stem must exclude the module from the debt roster"
+        );
+        assert!(
+            !test_migration_delete_guard_covered_stems()
+                .iter()
+                .any(|s| s == stem),
+            "retained stem must NOT authorize delete through the guard"
+        );
+    }
+
+    #[test]
+    fn retained_nonmigratable_module_is_not_debt() {
+        assert!(
+            !test_migration_debt_module_names()
+                .iter()
+                .any(|m| m == "namespace_unique_on_chain_policy_test.rs"),
+            "a retained-non-migratable module must drop out of the debt roster"
+        );
     }
 
     // The retired module no longer appears in the debt roster (the retirement excluded it).
