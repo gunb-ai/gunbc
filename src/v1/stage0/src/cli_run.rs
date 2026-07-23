@@ -1193,12 +1193,13 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 7] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
     "QuarantineProbeExpectRed",
     "FalsifierSelfHostWet",
+    "FalsifierRehomedBinWet",
     "NoConsumer",
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
@@ -5392,7 +5393,12 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
+    let build_started = std::time::Instant::now();
     let idx = Rc::new(build_multi_entry_index(&roots));
+    discovery_phase_totals::add(
+        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
+        build_started.elapsed(),
+    );
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
@@ -11571,17 +11577,27 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 4] = [
+    let heads: [(&str, &str); 5] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
+        ("RehomedBinWetRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
         while let Some(rel) = content[search_from..].find(head) {
             let occ = search_from + rel;
             search_from = occ + head.len();
+            // Word-boundary guard: `bin_wet(` must not match inside a longer identifier
+            // (`witness_exclusion_row_is_rehomed_bin_wet(row: …)` — the class that panicked
+            // run 30033250697). A head preceded by an identifier char is a different name.
+            if occ > 0 {
+                let prev = content.as_bytes()[occ - 1];
+                if prev.is_ascii_alphanumeric() || prev == b'_' {
+                    continue;
+                }
+            }
             let after = &content[search_from..];
             let window = &after[..after.len().min(WINDOW)];
             let trimmed = window.trim_start();
@@ -11707,7 +11723,8 @@ fn refuse_unexecuted_deferred_witnesses(
         "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
          witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
          admission invariant); each excluded row must be on falsifier_self_host_wet, \
-         bin_witness_wet, known_red_probe, offline, or fixture explicit roster: {}",
+         bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, offline, or fixture \
+         explicit roster: {}",
         orphans.len(),
         lines.join("; ")
     ))
@@ -14432,7 +14449,72 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
     );
 }
 
+/// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
+/// instrumentation): process-wide accumulators for the pump's named phases, drained into
+/// the floor resolve receipt as TYPED ROWS (take_discovery_phase_totals_receipt_rows), so
+/// the 643–1024s discovery wall decomposes in a receipt rather than a log read. The
+/// per-entry resolve and eval serial sums already ride the receipt via ClaimResult
+/// (discovery_corpus_resolve_ms / discovery_corpus_eval_ms); these keys cover the phases
+/// that were previously unattributed. Atomics because worker shards may pump concurrently;
+/// totals are serial-sum semantics like the existing corpus counters.
+mod discovery_phase_totals {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub static PUMP_WALL_MS: AtomicU64 = AtomicU64::new(0);
+    pub static ROSTER_WALK_MS: AtomicU64 = AtomicU64::new(0);
+    pub static DIFF_OBSERVE_MS: AtomicU64 = AtomicU64::new(0);
+    pub static FRONTIER_ATTRIBUTION_MS: AtomicU64 = AtomicU64::new(0);
+    pub static SHARED_INDEX_BUILD_MS: AtomicU64 = AtomicU64::new(0);
+    pub static PRERESOLVE_CALIBRATION_MS: AtomicU64 = AtomicU64::new(0);
+    pub static RUNNER_RESOLVE_MS: AtomicU64 = AtomicU64::new(0);
+
+    pub fn add(counter: &AtomicU64, elapsed: std::time::Duration) {
+        counter.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
+    }
+}
+
+/// Drain the discovery phase totals as receipt rows (one `key=value` line each, trailing
+/// newline included; empty totals still emit rows so the receipt schema is stable).
+pub fn take_discovery_phase_totals_receipt_rows() -> String {
+    use discovery_phase_totals as t;
+    use std::sync::atomic::Ordering;
+    format!(
+        "discovery_pump_wall_ms={}\ndiscovery_roster_walk_ms={}\ndiscovery_diff_observe_ms={}\ndiscovery_frontier_attribution_ms={}\ndiscovery_shared_index_build_ms={}\ndiscovery_preresolve_calibration_ms={}\ndiscovery_runner_resolve_ms={}\n",
+        t::PUMP_WALL_MS.swap(0, Ordering::Relaxed),
+        t::ROSTER_WALK_MS.swap(0, Ordering::Relaxed),
+        t::DIFF_OBSERVE_MS.swap(0, Ordering::Relaxed),
+        t::FRONTIER_ATTRIBUTION_MS.swap(0, Ordering::Relaxed),
+        t::SHARED_INDEX_BUILD_MS.swap(0, Ordering::Relaxed),
+        t::PRERESOLVE_CALIBRATION_MS.swap(0, Ordering::Relaxed),
+        t::RUNNER_RESOLVE_MS.swap(0, Ordering::Relaxed),
+    )
+}
+
 pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    width_policy: DiscoveryWidthPolicy,
+    options: DiscoveryCorpusOptions,
+) -> Result<DiscoverySummary, String> {
+    let pump_started = std::time::Instant::now();
+    let out = run_discovery_corpus_with_options_inner(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        width_policy,
+        options,
+    );
+    discovery_phase_totals::add(
+        &discovery_phase_totals::PUMP_WALL_MS,
+        pump_started.elapsed(),
+    );
+    out
+}
+
+fn run_discovery_corpus_with_options_inner(
     source_roots: &[String],
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
@@ -14444,12 +14526,15 @@ pub fn run_discovery_corpus_with_options(
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_witness_roster(
+            let t = std::time::Instant::now();
+            let walked = discover_floor_witness_roster(
                 source_roots,
                 scan_dirs,
                 &options.exclude_substrings,
                 &options.discovery_scope_dirs,
-            )?
+            );
+            discovery_phase_totals::add(&discovery_phase_totals::ROSTER_WALK_MS, t.elapsed());
+            walked?
         };
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
@@ -14492,6 +14577,7 @@ pub fn run_discovery_corpus_with_options(
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
     // silent run-everything fallback. To run without selection, declare the flag false.
+    let diff_observe_started = std::time::Instant::now();
     let diff_text = if selection_enabled {
         floor_git_diff_range().map_err(|msg| {
             format!(
@@ -14534,6 +14620,10 @@ pub fn run_discovery_corpus_with_options(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
+    discovery_phase_totals::add(
+        &discovery_phase_totals::DIFF_OBSERVE_MS,
+        diff_observe_started.elapsed(),
+    );
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
@@ -14551,6 +14641,7 @@ pub fn run_discovery_corpus_with_options(
     // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
     // import-closure-unaffected entries while folding their module-graph closure into
     // the post-resolve union so this pre-resolve count stays paired with calibration.
+    let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
             &[FLOOR_RUNNER_ENTRY]
@@ -14565,10 +14656,15 @@ pub fn run_discovery_corpus_with_options(
         );
         n
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
+        preresolve_calibration_started.elapsed(),
+    );
     // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
+    let frontier_attribution_started = std::time::Instant::now();
     let (skip_enabled, diff_edits) = if selection_enabled {
         match floor_diff_edits_from_line_ranges(
             &index,
@@ -14589,6 +14685,11 @@ pub fn run_discovery_corpus_with_options(
     } else {
         (false, FloorDiffEdits::default())
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::FRONTIER_ATTRIBUTION_MS,
+        frontier_attribution_started.elapsed(),
+    );
+    let runner_resolve_started = std::time::Instant::now();
     let floor_runner_ctx = if selection_enabled {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
@@ -14608,6 +14709,10 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::RUNNER_RESOLVE_MS,
+        runner_resolve_started.elapsed(),
+    );
     let skip_precompute = if skip_enabled {
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
@@ -26542,6 +26647,43 @@ mod module_path_index_tests {
                 .collect::<Vec<_>>(),
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn head_scan_ignores_longer_identifiers_containing_a_head() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {\n\
+               true\n\
+             }\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.is_empty(),
+            "a head substring inside a longer identifier must not scan as a roster row; got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn rehomed_bin_wet_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type RehomedBinWetRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [\n\
+               RehomedBinWetRow {\n\
+                 entry: \"dag/test/claim/x_test.dag\",\n\
+                 function: \"x_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
+            "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 
