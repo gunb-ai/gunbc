@@ -1,0 +1,110 @@
+module gunbc.runner_host_deploy
+
+import std.types { NonEmptyStr, String, Int, List }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
+
+data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: GitHub Actions runner host provisioning is realized by the ctrl installer at ctrl:scripts/session-dashboard/host/ (deploy-runner-hosts.sh and install-actions-runner.sh) — the single battle-tested rotation point (GitHub App key distribution, jit-runner.sh ephemeral wrapper, actions-runner service template, ghrunner de-priv job user plus rootless docker for public-PR isolation, per-slot cgroup caps). RunnerHostDeploy models the typed INTERFACE (which host, label, runner user, de-priv job user, App-key secret, slot count); the installer is the bound realization HANDLER, one of N transports, NOT re-implemented in .dag. DISSOLVES WHEN host_effect_apply binds RunnerHostDeploy through a transport handler that invokes the cited installer plus per-slot provisioning without a hand-run shell step."
+
+data runner_host_deploy_upstream_installer: NonEmptyStr = "ctrl:scripts/session-dashboard/host/install-actions-runner.sh"
+data runner_host_deploy_upstream_fanout: NonEmptyStr = "ctrl:scripts/session-dashboard/host/deploy-runner-hosts.sh"
+
+type GithubAppRunnerConfig {
+  app_id: NonEmptyStr
+  installation_id: NonEmptyStr
+  org: NonEmptyStr
+  app_pem_secret: SecretRef
+}
+
+data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
+  app_id: "2653532",
+  installation_id: "104134109",
+  org: "gunb-ai",
+  app_pem_secret: SecretRef {
+    project: fleet_secrets_gcp_project,
+    secret: "ci-github-app-private-key",
+    version: "latest",
+    hash_state: HashPending,
+  },
+}
+
+type RunnerHostDeploy {
+  host_label: NonEmptyStr
+  ssh_target: NonEmptyStr
+  runner_user: NonEmptyStr
+  job_user: NonEmptyStr
+  app: GithubAppRunnerConfig
+  runner_count: Int
+}
+
+data srv4_runner_count_disk_cap_note: String = "srv4 caps at 5 runners (not the RAM-derived 10 the placement solver gives it): its NVMe is a Samsung 970 EVO 500GB vs 2TB on srv1-3, and each ephemeral runner keeps a _work tree + caches. Disk, not RAM, is srv4's binding runner-count constraint. dissolve-on: fold a per-host disk-headroom term into runner_deployment_plan so the cap is solver-derived, not a hand-pin here."
+
+data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "srv4",
+  ssh_target: "briansrls@192.168.1.196",
+  runner_user: "briansrls",
+  job_user: "ghrunner",
+  app: gunbc_ci_github_app,
+  runner_count: 5,
+}
+
+data runner_host_prereq_note: String = "Execution-surface prereqs the runner host must satisfy (gunbc.fleet_intent.fleet_intent_execution_surface now declares container_runtime: Docker + toolchains: [sccache], so the surface no longer lies). These two scripts provision that surface on a fresh host BEFORE install-actions-runner.sh: docker_ce (the rootless-docker apt prereq the ctrl installer assumes) then sccache (the pinned binary install-ctrl-sccache.sh assumes on PATH). Each cites its upstream; the shell leaves carry dissolution triggers in their extdeps modules."
+
+fn runner_host_docker_provision_script() -> String {
+  docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
+}
+
+fn runner_host_sccache_provision_script(arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
+  sccache_install_script(rel: sccache_release_0_15_0, arch: arch, digest: sha256_digest(hex: sha256))
+}
+
+fn runner_host_sccache_provision_aarch64() -> String {
+  sccache_install_script(
+    rel: sccache_release_0_15_0,
+    arch: "aarch64",
+    digest: sccache_release_0_15_0.digest_aarch64,
+  )
+}
+
+fn runner_host_installer_command(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
+    argv: [
+      "env",
+      join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
+      join(["CTRL_RUNNER_USER=", deploy.runner_user as String], ""),
+      join(["CTRL_RUNNER_JOB_USER=", deploy.job_user as String], ""),
+      join(["CTRL_RUNNER_APP_PEM_SRC=", pem_src_path as String], ""),
+      "sudo", "-E", "bash", installer_path as String,
+    ],
+  }
+}
+
+fn runner_instance_name(deploy: RunnerHostDeploy, index: Int) -> String {
+  let two = if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
+  join([deploy.host_label as String, "-", two], "")
+}
+
+fn runner_index_seq(n: Int) -> List<Int> {
+  if n <= 0 {
+    []
+  } else {
+    append(runner_index_seq(n: n - 1), items: [n])
+  }
+}
+
+fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
+  map(runner_index_seq(n: deploy.runner_count), i => runner_instance_name(deploy: deploy, index: i))
+}
+
+fn runner_enable_command(deploy: RunnerHostDeploy) -> ArgvCommand {
+  ArgvCommand {
+    argv: append(
+      ["sudo", "systemctl", "enable", "--now"],
+      items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
+    ),
+  }
+}
