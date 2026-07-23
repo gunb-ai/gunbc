@@ -178,3 +178,57 @@ gh run view RUN_ID --log | rg 'claim_executor: batch|PASS \[batch|compile-clean 
 - Related: [floor-time-namespace-walk-regression-diagnosis.md](floor-time-namespace-walk-regression-diagnosis.md),
   [floor-shared-compute-memoization.md](floor-shared-compute-memoization.md),
   [v1-run-stability-throughline.md](v1-run-stability-throughline.md).
+
+---
+
+## 9. Correction appendix (2026-07-23, post-merge): the cold-child class this audit never named
+
+Corroborated-and-corrected by the Pi/srv1 probe session (log re-derivation by execution on the
+same runs, plus counterfactuals on srv1 with PR-head binaries; Pi exaggeration bench). The phase
+walls in §2 and the governor story stand exactly. Two mechanism attributions and one lever were
+wrong:
+
+**The class: cold-index-per-process — the floor shells out to itself.** Every wet gate routes
+through `run_gunbc_claims` (`dag/tools/host_prelude.dag`), whose fold spawns ONE cold
+`gunbc run --claim-run` child per `ClaimRun` — serial, no short-circuit (the fold's
+`acc && result.success` always evaluates the child), each rebuilding the module index and closure
+resolve from scratch. ~26 children/run ≈ 23 of the 48 floor minutes (48%). `resolves_total` is
+blind to them BY DESIGN (executor-only), which is why §2 could not see the class. Third and
+largest instance of the one root: #7030 fixed cold-index-per-THREAD, double-resolve-rewire fixes
+cold-resolve-per-ENTRY, this is cold-index-per-PROCESS.
+
+**Corrected mechanism rows** (same log, re-derived):
+- batch 1 (cheap gates, 10.1m): NOT parallel-gate max — 12 serial children Σ=480s (layering
+  7/290s, extdeps 5/190s, drift 0) + ~2m executor resolve; the wall is the SUM.
+- batch 6 (ingest, 12.1m): the `discover_source_root_ingest` bin costs 0.008s (two fixture
+  reads; sub-second even on the Pi) — the wall was 12 children at 48–73s across 3 sub-gates.
+  §2's "separate bin re-walks tree" is retracted as mechanism (the minutes were real; the story
+  was not).
+- batch 7 (3.3m): 2 children = 100% of the wall.
+
+**Counterfactual receipts (srv1, PR-head binaries):** single cold child 47.2s (CPU-bound);
+all 12 batch-1 claims pooled in ONE process 93.4s vs CI's 480s (warm marginal resolve ≈ 0ms per
+claim); 3 ingest claims pooled 106.5s vs 190.5s. Per-gate pooling displaces ~13–17 min/run.
+The child tax is identical on trivial diffs (verified vs run 29970583893). #7122's post-fix
+residuals corroborate: cheap gates 4.65m vs pooled counterfactual ~1.6m, ingest 5.24m vs ~1.8m —
+the gap IS the remaining child tax.
+
+**Lever 1 (§4 rank 1) is STALE — do not dispatch against it as priced.** Both fixpoint
+dissolution PRs (#7030, #7056) are ancestors of the measured run's commit, yet discovery still
+costs ~971ms/group (5x pre-regression, and the ms/group denominator in §4 was off: the affected
+set skips resolve for 1738/2206 rows). The 643s discovery serial needs re-diagnosis before any
+further spend.
+
+**Fix shape, with the memory coupling stated:** per-gate pooled child NOW (one child, N claims —
+a change in the one `run_gunbc_claims` fn every wet gate inherits; separate process, dies and
+frees). Executor-warm index sharing LATER only with the eviction lane: the executor is already
+pinned at the 16GiB cap, and adding 26 claim closures to its retention is the crawl class of
+2026-07-23 (run 29976854620: 16.3G + 34.4G swap, 37M high_events).
+
+**Pi exaggeration receipts:** a single cold 2-entry resolve >25 minutes on the Pi (~2s warm on
+srv) — the 5x-on-srv class becomes 30–60x, which is how the batch-6 misattribution fell apart on
+contact. Remaining Pi probes (pooled variants, discovery n-scaling, whole-tree resolve) append
+here as they land.
+
+**Process lesson (workflow lane, ts-wf-node-schema):** rank-1 was priced without checking that
+its fix had already merged — receipt freshness applies at the DIAGNOSIS grain, not only dispatch.
