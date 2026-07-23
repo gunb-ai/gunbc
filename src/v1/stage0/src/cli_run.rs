@@ -2178,41 +2178,40 @@ pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
 
 /// CI floor admission label for the docs-only witness-corpus skip arm.
 /// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
-/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed).
+/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed widen).
+/// Predicate-authority failure returns `Err` (typed refusal — never widens to full floor).
 /// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
 /// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
-pub fn documentation_only_floor_skip_label_for_ci() -> String {
+pub fn documentation_only_floor_skip_label_for_ci() -> Result<String, String> {
     if !compile_clean_scoping_active() {
-        return RUN_FULL_FLOOR_LABEL.to_string();
+        return Ok(RUN_FULL_FLOOR_LABEL.to_string());
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
             eprintln!(
                 "documentation-only floor skip: diff observation failed ({msg}) — full floor"
             );
-            RUN_FULL_FLOOR_LABEL.to_string()
+            Ok(RUN_FULL_FLOOR_LABEL.to_string())
         }
         Ok((changed_paths, _departed)) => {
             if changed_paths.is_empty() {
                 eprintln!("documentation-only floor skip: empty diff — full floor");
-                return RUN_FULL_FLOOR_LABEL.to_string();
+                return Ok(RUN_FULL_FLOOR_LABEL.to_string());
             }
             match compile_clean_all_touched_paths_docs_universe(&changed_paths) {
                 Ok(true) => {
                     eprintln!(
                         "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
                     );
-                    DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+                    Ok(DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string())
                 }
                 Ok(false) => {
                     eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
-                    RUN_FULL_FLOOR_LABEL.to_string()
+                    Ok(RUN_FULL_FLOOR_LABEL.to_string())
                 }
                 Err(msg) => {
-                    eprintln!(
-                        "documentation-only floor skip: predicate authority failed ({msg}) — full floor"
-                    );
-                    RUN_FULL_FLOOR_LABEL.to_string()
+                    eprintln!("documentation-only floor skip: predicate authority refused ({msg})");
+                    Err(msg)
                 }
             }
         }
@@ -23999,7 +23998,7 @@ mod witness_layer_roots_compile_clean_tests {
                 "GUNBC_CI_DIFF_NAME_STATUS",
                 "M\\000docs/plans/example.md\\000",
             );
-            let label = documentation_only_floor_skip_label_for_ci();
+            let label = documentation_only_floor_skip_label_for_ci().expect("docs-only label");
             assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
         });
     }
