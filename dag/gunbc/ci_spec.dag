@@ -24,6 +24,7 @@ import gunbc.commit_workflow {
 }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.generated_artifact { committed_generated_artifact_paths }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -452,16 +453,33 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
-data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH step: a GitHub Actions run: foreign-executor context (the shell-intent design's bootstrap/foreign-executor case that renders through bash), so the git commit/push is a hand-authored shell string like the deploy invoke and the release-bins unpack script beside it. It commits and pushes ONLY when git diff --quiet reports a change — i.e. only when main_wet actually healed a drift — so a clean tree is a no-op, and the byte-idempotent fixed point makes the healed commit's own re-run a no-op that terminates the loop. The push authenticates with the job's GITHUB_TOKEN (persisted by actions/checkout) and needs the job-scoped contents:write grant; it is deliberately NOT [skip ci] so the healed commit triggers a normal run whose drift gate re-passes green — the fixed point is verified by execution, not assumed. A concurrent main advance makes the push a non-fast-forward that fails LOUDLY (never a force-push), and the next main run retries."
+data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH step: a GitHub Actions run: foreign-executor context (the shell-intent design's bootstrap/foreign-executor case that renders through bash), so the git commit/push is a hand-authored shell string like the deploy invoke and the release-bins unpack script beside it. COMMIT SCOPE IS ARTIFACT-ONLY BY CONSTRUCTION (review 41703, DESIGN §5 no-silent-widen): staging is `git add` over EXACTLY committed_generated_artifact_paths() (the registry the drift gate guards and the exact set main_wet writes) — never `git add -A`, so an incidental dirty file on the runner (checkout residue, line-ending normalization, leftover state) can never be swept into an unattended push to main. The commit fires ONLY when `git diff --cached --quiet` reports a staged change — i.e. only when main_wet actually healed a registry artifact — so a clean tree is a no-op, and the byte-idempotent fixed point makes the healed commit's own re-run a no-op that terminates the loop. The push authenticates with the job's GITHUB_TOKEN (persisted by actions/checkout) and needs the job-scoped contents:write grant; it is deliberately NOT [skip ci] so the healed commit triggers a normal run whose drift gate re-passes green — the fixed point is verified by execution, not assumed. A concurrent main advance makes the push a non-fast-forward that fails LOUDLY (never a force-push), and the next main run retries."
+
+data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_heal_commit_push_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_heal_commit_push_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — hand-authored git config/add/commit/push shell for the unattended generated-artifact heal, a foreign-executor (GitHub Actions run:) git transport (the same scaffold class as merge_admission_ci_gate_step_scaffold and merge_admission_shell_emit_disposition beside it); DISSOLVES WHEN the shell→intent lane models git commit/push as typed host effects on host_effect_apply (host-effect-orchestration Do-effect migration, ROADMAP shell→intent), at which point the heal's git transport is a realization handler bound to the modeled operation, not emitted bash — the regen half (main_wet) is already modeled, only the git transport awaits (the host_effect Do-effect carrier, not a command string)."
+
+fn ci_heal_git_add_scoped_line() -> String {
+  fold(committed_generated_artifact_paths(), init: "git add", f: fn(acc, p) {
+    concat(acc, concat(" \"", concat(p, "\"")))
+  })
+}
 
 fn ci_heal_shell_lines() -> List<String> {
   [
     "git config user.name \"gunbc-ci-auto-heal\"",
     "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\"",
-    "if git diff --quiet; then",
+    ci_heal_git_add_scoped_line(),
+    "if git diff --cached --quiet; then",
     "  echo \"chore-heal: no generated-artifact drift on this tree; nothing to commit\"",
     "else",
-    "  git add -A",
     "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
     "  git push origin HEAD:main",
     "  echo \"chore-heal: pushed regenerated generated artifacts to main\"",
