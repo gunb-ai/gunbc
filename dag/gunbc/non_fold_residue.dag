@@ -42,6 +42,8 @@ data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying
 
 data nfr_dissolve_wildcard_total: String = "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes"
 
+data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     unit: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
@@ -657,6 +659,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     unit: "src/v2/std/qualified_name.dag::qn_fold_step",
     reason: nfr_reason_mint_era,
     dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
+    reason: nfr_reason_ci_floor_gate_membership,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
+    reason: nfr_reason_ci_floor_gate_membership,
+    dissolve_on: nfr_dissolve_derived_equality
   }
 ]
 
