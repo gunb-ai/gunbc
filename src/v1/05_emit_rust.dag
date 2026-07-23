@@ -228,6 +228,10 @@ fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
 }
 
+fn rust_string_grounded_type_alias_decl_line() -> String {
+  concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+}
+
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
   host_expr
 }
@@ -3851,8 +3855,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+    if item_text == "String" {
+      rust_string_grounded_type_alias_decl_line()
     } else if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
       rust_opaque_kernel_alias_type_decl(name: item_text)
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {

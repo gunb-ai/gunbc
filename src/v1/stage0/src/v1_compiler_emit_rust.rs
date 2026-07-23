@@ -440,6 +440,16 @@ pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
     )
 }
 
+pub fn rust_string_grounded_type_alias_decl_line() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            rust_visibility_prefix(),
+            rust_items().type_alias_keyword.clone(),
+        ),
+        " String = std::string::String;".to_string(),
+    )
+}
+
 pub fn emit_rust_host_to_dag_string_via_seam(
     host_expr: String,
     corpus_repr: RustCorpusRepr,
@@ -9710,16 +9720,8 @@ pub fn emit_typed_item(
             )
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
-                if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-                    && (item_text.clone() == "String".to_string()))
-                {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            rust_visibility_prefix(),
-                            rust_items().type_alias_keyword.clone(),
-                        ),
-                        " String = std::string::String;".to_string(),
-                    )
+                if (item_text.clone() == "String".to_string()) {
+                    rust_string_grounded_type_alias_decl_line()
                 } else {
                     if (((item.params.clone().len() as i64) == 0)
                         && rust_opaque_kernel_alias_type_eligible(item_text.clone()))
