@@ -794,13 +794,24 @@ pub fn type_leaf_name_for_collapse(
     }
 }
 
+pub fn is_machine_width_phantom_token(name: String) -> bool {
+    (((((name.clone() == "Word8".to_string()) || (name.clone() == "Word16".to_string()))
+        || (name.clone() == "Word32".to_string()))
+        || (name.clone() == "Word64".to_string()))
+        || (name.clone() == "Word128".to_string()))
+}
+
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_width_nat_type_literal(n.clone())
+    ((is_width_nat_type_literal(n.clone())
+        || is_machine_width_phantom_token(type_leaf_name_for_collapse(
+            n.clone(),
+            source_indices.clone(),
+        )))
         || is_value_variant_type_arg(
             generic_param_names.clone(),
             variant_to_enum.clone(),
@@ -1631,9 +1642,6 @@ pub fn render_rust_alias_rhs_type(
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
-        }
         match n.type_annotation.clone() {
             Some(_) => {
                 if ((n.connective.clone() == Connective::Conj)
@@ -1698,33 +1706,18 @@ pub fn render_rust_alias_rhs_type(
             {
                 match rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) {
                     Some(host) => host.clone(),
-                    None => {
-                        if is_host_text_carrier_type(
-                            n.clone(),
-                            source_indices.clone(),
-                            corpus_repr.clone(),
-                        ) {
-                            rust_carrier_optional_wrap(
-                                n.clone(),
-                                render_rust_text_carrier(shared_types.clone()),
+                    None => match rust_opaque_kernel_alias_carrier(name.clone()) {
+                        Some(carrier) => carrier.clone(),
+                        None => {
+                            let rendered =
+                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
+                            render_rust_shared_type_if_needed(
+                                name.clone(),
+                                rendered.clone(),
+                                shared_types.clone(),
                             )
-                        } else {
-                            match rust_opaque_kernel_alias_carrier(name.clone()) {
-                                Some(carrier) => carrier.clone(),
-                                None => {
-                                    let rendered = rust_render_type_leaf_name(
-                                        name.clone(),
-                                        variant_to_enum.clone(),
-                                    );
-                                    render_rust_shared_type_if_needed(
-                                        name.clone(),
-                                        rendered.clone(),
-                                        shared_types.clone(),
-                                    )
-                                }
-                            }
                         }
-                    }
+                    },
                 }
             } else {
                 if ((n.connective.clone() == Connective::NoConnective)
