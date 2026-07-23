@@ -112,6 +112,8 @@ data dispatch_client_program_note: String = "The dispatch button's client behavi
 
 data roadmap_dispatch_asset_path: String = "/assets/roadmap-dispatch.js"
 
+data sandbox_asset_path: String = "/assets/sandbox.js"
+
 fn js_b_member(name: String) -> TsExpr {
   ts_member(object: ts_ident(name: "b"), property: name)
 }
@@ -209,7 +211,7 @@ fn dispatch_response_handler_body() -> TsStmt {
   ])
 }
 
-fn dispatch_click_handler_body() -> TsStmt {
+fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "dispatching..."))),
@@ -225,7 +227,7 @@ fn dispatch_click_handler_body() -> TsStmt {
               callee: ts_member(
                 object: ts_call(
                   callee: ts_ident(name: "fetch"),
-                  args: [dispatch_fetch_url_expr(), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                  args: [url_expr, ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
                 ),
                 property: "then",
               ),
@@ -245,27 +247,23 @@ fn dispatch_click_handler_body() -> TsStmt {
   ])
 }
 
-fn dispatch_client_program() -> TsProgram {
+fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
-    header_lines: [
-      "gunbc roadmap dispatch button — emitted from gunbc.roadmap_component.dispatch_client_program",
-      "POSTs to the dispatch route and reads belt B's status contract (ok set derived from",
-      "belt_dispatch_ok_status_labels); served as an external asset, referenced by <script src>",
-    ],
+    header_lines: header,
     statements: [
       ts_expr_stmt(expr: ts_call(
         callee: ts_member(
           object: ts_call(
             callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-            args: [ts_lit_str(value: ".dispatch-btn")],
+            args: [ts_lit_str(value: selector)],
           ),
           property: "forEach",
         ),
         args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: js_b_member(name: "addEventListener"),
-            args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body())],
+            args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body(url_expr: url_expr))],
           )),
         ]))],
       )),
@@ -273,6 +271,57 @@ fn dispatch_client_program() -> TsProgram {
   }
 }
 
+fn dispatch_client_program() -> TsProgram {
+  dispatch_client_program_for(
+    selector: ".dispatch-btn",
+    url_expr: dispatch_fetch_url_expr(),
+    header: [
+      "gunbc roadmap dispatch button — emitted from gunbc.roadmap_component.dispatch_client_program",
+      "POSTs to the dispatch route and reads belt B's status contract (ok set derived from",
+      "belt_dispatch_ok_status_labels); served as an external asset, referenced by <script src>",
+    ],
+  )
+}
+
 fn dispatch_client_js_source() -> String {
   serialize_typescript_program(p: dispatch_client_program())
+}
+
+data sandbox_live_class: String = "sandbox-live-btn"
+
+data sandbox_client_program_note: String = "The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to /sandbox/echo?status=<data-status> instead of the real dispatch route, so every wire arm is pressable and renders identically to the real button, without spawning a session. If the render forked, the sandbox would be a lie; sharing the program makes it a faithful mirror."
+
+fn sandbox_echo_url_expr() -> TsExpr {
+  ts_binop(
+    left: ts_lit_str(value: "/sandbox/echo?status="),
+    op: "+",
+    right: ts_call(
+      callee: ts_ident(name: "encodeURIComponent"),
+      args: [ts_call(callee: js_b_member(name: "getAttribute"), args: [ts_lit_str(value: "data-status")])],
+    ),
+  )
+}
+
+fn sandbox_client_program() -> TsProgram {
+  dispatch_client_program_for(
+    selector: join([".", sandbox_live_class], ""),
+    url_expr: sandbox_echo_url_expr(),
+    header: [
+      "gunbc /sandbox live dispatch instance — emitted from gunbc.roadmap_component.sandbox_client_program",
+      "same render as the real dispatch button, but POSTs to /sandbox/echo?status=<data-status>",
+      "so every wire arm is pressable without dispatching a real session",
+    ],
+  )
+}
+
+fn sandbox_client_js_source() -> String {
+  serialize_typescript_program(p: sandbox_client_program())
+}
+
+fn dispatch_state_display_text(state: ComponentState) -> String {
+  match state.kind {
+    IdleState => "dispatch"
+    RequestedState => "dispatching..."
+    TerminalState { wire_label, ok: _ } => wire_label
+  }
 }

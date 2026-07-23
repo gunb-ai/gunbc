@@ -630,6 +630,12 @@ fn belt_dispatch_all_status_labels() -> List<String> {
   map(belt_dispatch_result_exemplars(), r => belt_dispatch_status_label(r: r))
 }
 
+fn belt_dispatch_result_for_label(wire_label: String) -> BeltDispatchResult? {
+  belt_dispatch_result_exemplars()
+    |> filter(r => belt_dispatch_status_label(r: r) == wire_label)
+    |> first
+}
+
 fn belt_dispatch_label_is_ok(wire_label: String) -> Bool {
   any(belt_dispatch_ok_status_labels, l => l == wire_label)
 }

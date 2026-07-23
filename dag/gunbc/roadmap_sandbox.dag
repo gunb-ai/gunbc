@@ -1,0 +1,208 @@
+module gunbc.roadmap_sandbox
+
+import std.types { Int, String, Bool, List }
+import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.roadmap_page { el, el_class, txt, roadmap_header }
+import gunbc.roadmap_style { roadmap_css }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
+import gunbc.design.theme {
+  ThemeRole, theme_roles, role_key, role_var, role_decl,
+  Theme, night_theme, day_theme, assignment_material,
+  TextRole, TextDimRole,
+}
+import gunbc.design.scale {
+  ScaleToken, spacing_scale, type_scale, font_stack, dimension_scale,
+  scale_var, scale_pair, scale_border,
+  space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_3, border_1, measure_page,
+}
+import gunbc.design.component { ComponentState, component_terminal_states }
+import gunbc.roadmap_component {
+  dispatch_button_component, dispatch_button_terminal_states,
+  dispatch_idle_state, dispatch_requested_state,
+  dispatch_state_class, dispatch_state_display_text,
+  sandbox_live_class, sandbox_asset_path,
+}
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+
+data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the register at every depth plus every component in every state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints inline — the one place a literal color is right, because it is DISPLAYING the role->material authority under two projections simultaneously, which var(--role) cannot do). The component gallery renders dispatch_button_component's states one-for-one; the terminal instances are exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage). The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and renders through the SAME client program the real button uses — so every state is exercisable without dispatching a session, and the sandbox cannot drift from production render."
+
+fn sandbox_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ".sandbox", decls: [
+      decl(prop: "padding", value: scale_pair(a: space_16, b: space_24)),
+      decl(prop: "max-width", value: scale_var(t: measure_page)),
+    ] },
+    StaticRule { selector: ".sandbox section", decls: [
+      decl(prop: "margin-bottom", value: scale_var(t: space_24)),
+    ] },
+    StaticRule { selector: ".swatch-row", decls: [
+      decl(prop: "display", value: "flex"),
+      decl(prop: "align-items", value: "center"),
+      decl(prop: "gap", value: scale_var(t: space_6)),
+      decl(prop: "margin-bottom", value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ".swatch", decls: [
+      decl(prop: "display", value: "inline-block"),
+      decl(prop: "width", value: scale_var(t: space_24)),
+      decl(prop: "height", value: scale_var(t: space_24)),
+      decl(prop: "border-radius", value: scale_var(t: radius_3)),
+      decl(prop: "border", value: scale_border(w: border_1, color_var: "var(--border)")),
+    ] },
+    StaticRule { selector: ".role-name", decls: [
+      decl(prop: "font-family", value: scale_var(t: font_mono)),
+      decl(prop: "font-size", value: scale_var(t: text_12)),
+      role_decl(prop: "color", r: TextRole),
+    ] },
+    StaticRule { selector: ".role-var", decls: [
+      decl(prop: "font-family", value: scale_var(t: font_mono)),
+      decl(prop: "font-size", value: scale_var(t: text_12)),
+      role_decl(prop: "color", r: TextDimRole),
+    ] },
+    StaticRule { selector: ".token-row", decls: [
+      decl(prop: "display", value: "flex"),
+      decl(prop: "gap", value: scale_var(t: space_8)),
+      decl(prop: "font-family", value: scale_var(t: font_mono)),
+      decl(prop: "font-size", value: scale_var(t: text_12)),
+      role_decl(prop: "color", r: TextDimRole),
+    ] },
+    StaticRule { selector: ".gallery-row", decls: [
+      decl(prop: "display", value: "flex"),
+      decl(prop: "gap", value: scale_var(t: space_8)),
+      decl(prop: "flex-wrap", value: "wrap"),
+      decl(prop: "align-items", value: "baseline"),
+    ] },
+  ]
+}
+
+fn sandbox_css() -> String {
+  join([roadmap_css(), serialize_rules(rules: sandbox_rules())], "\n")
+}
+
+fn role_swatch(theme: Theme, role: ThemeRole) -> MarkupNode {
+  ElementNode {
+    tag: "span",
+    attrs: [
+      MarkupAttr { name: "class", value: "swatch" },
+      MarkupAttr { name: "style", value: join(["background: ", paint(m: assignment_material(t: theme, r: role))], "") },
+      MarkupAttr { name: "title", value: join([theme.name, " ", role_key(r: role)], "") },
+    ],
+    children: [],
+  }
+}
+
+fn role_row(role: ThemeRole) -> MarkupNode {
+  el_class("div", "swatch-row", [
+    role_swatch(theme: night_theme, role: role),
+    role_swatch(theme: day_theme, role: role),
+    el_class("span", "role-name", [ txt(role_key(r: role)) ]),
+    el_class("span", "role-var", [ txt(role_var(r: role)) ]),
+  ])
+}
+
+fn roles_section() -> MarkupNode {
+  el_class("section", "sandbox-roles",
+    concat([ el("h2", [ txt("roles — night / day") ]) ],
+      map(theme_roles, r => role_row(role: r))))
+}
+
+fn scale_token_row(t: ScaleToken) -> MarkupNode {
+  el_class("div", "token-row", [
+    el_class("span", "token-name", [ txt(t.name) ]),
+    el_class("span", "token-value", [ txt(t.value) ]),
+  ])
+}
+
+fn scale_group(label: String, tokens: List<ScaleToken>) -> MarkupNode {
+  el_class("div", "scale-group",
+    concat([ el_class("h3", "group-label", [ txt(label) ]) ],
+      map(tokens, t => scale_token_row(t: t))))
+}
+
+fn scales_section() -> MarkupNode {
+  el_class("section", "sandbox-scales", [
+    el("h2", [ txt("scales") ]),
+    scale_group(label: "spacing", tokens: spacing_scale),
+    scale_group(label: "type", tokens: type_scale),
+    scale_group(label: "font", tokens: font_stack),
+    scale_group(label: "dimension", tokens: dimension_scale),
+  ])
+}
+
+fn gallery_states() -> List<ComponentState> {
+  concat([dispatch_idle_state, dispatch_requested_state], dispatch_button_terminal_states())
+}
+
+fn gallery_instance(state: ComponentState) -> MarkupNode {
+  let cls = dispatch_state_class(state: state)
+  let full = if cls == "" { "dispatch-btn" } else { join(["dispatch-btn ", cls], "") }
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: full },
+      MarkupAttr { name: "type", value: "button" },
+      MarkupAttr { name: "disabled", value: "" },
+    ],
+    children: [ txt(dispatch_state_display_text(state: state)) ],
+  }
+}
+
+fn gallery_section() -> MarkupNode {
+  el_class("section", "sandbox-gallery", [
+    el("h2", [ txt("dispatch button — every state (static)") ]),
+    el_class("div", "gallery-row", map(gallery_states(), s => gallery_instance(state: s))),
+  ])
+}
+
+fn live_instance(wire_label: String) -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") },
+      MarkupAttr { name: "type", value: "button" },
+      MarkupAttr { name: "data-status", value: wire_label },
+    ],
+    children: [ txt(wire_label) ],
+  }
+}
+
+fn live_section() -> MarkupNode {
+  el_class("section", "sandbox-live", [
+    el("h2", [ txt("live — press to exercise each wire arm (POST /sandbox/echo)") ]),
+    el_class("div", "gallery-row", map(belt_dispatch_all_status_labels(), l => live_instance(wire_label: l))),
+  ])
+}
+
+fn sandbox_page() -> MarkupNode {
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      el("head", [
+        ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+        el("style", [ txt(sandbox_css()) ]),
+        el("title", [ txt("gunbc — sandbox") ]),
+      ]),
+      el("body", [
+        roadmap_header(title: "gunbc — sandbox"),
+        el_class("main", "sandbox", [
+          roles_section(),
+          scales_section(),
+          gallery_section(),
+          live_section(),
+        ]),
+        ElementNode {
+          tag: "script",
+          attrs: [
+            MarkupAttr { name: "src", value: sandbox_asset_path },
+            MarkupAttr { name: "defer", value: "" },
+          ],
+          children: [],
+        },
+      ]),
+    ],
+  }
+}
+
+fn sandbox_gallery_terminal_labels() -> List<String> {
+  map(component_terminal_states(c: dispatch_button_component()), s => dispatch_state_display_text(state: s))
+}
