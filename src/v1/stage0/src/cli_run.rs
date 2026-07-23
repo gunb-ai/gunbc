@@ -13058,7 +13058,8 @@ fn floor_diff_edits_from_line_ranges(
             continue;
         }
         let file_norm = normalize_repo_path(file_path);
-        if !std::path::Path::new(file_path).exists() {
+        let disk_path = process_workspace_root().join(&file_norm);
+        if !disk_path.is_file() {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
                 // is empty by construction — the file has no declarations to
@@ -13080,7 +13081,7 @@ fn floor_diff_edits_from_line_ranges(
         } else {
             index
         };
-        let content = match std::fs::read_to_string(file_path) {
+        let content = match std::fs::read_to_string(&disk_path) {
             Ok(c) => c,
             Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
