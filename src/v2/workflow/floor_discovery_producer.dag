@@ -33,7 +33,7 @@ type FloorDiscoveryProducerResult
 type FloorDiscoveryWalkState {
   rows: List<FloorDiscoveryRow>
   walk_failures: Int
-  walk_failure_path: String
+  walk_failure_path: Optional<String>
   sidecar_violations: List<FloorDiscoverySidecarViolation>
 }
 
@@ -41,36 +41,34 @@ fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
   FloorDiscoveryWalkState {
     rows: [],
     walk_failures: 0,
-    walk_failure_path: "",
+    walk_failure_path: optional_absent(),
     sidecar_violations: []
   }
 }
 
-fn floor_discovery_record_walk_list_failure(
+fn floor_discovery_record_walk_failure(
   state: FloorDiscoveryWalkState,
-  dir_path: String
+  path: String
 ) -> FloorDiscoveryWalkState {
   FloorDiscoveryWalkState {
     rows: state.rows,
     walk_failures: state.walk_failures + 1,
-    walk_failure_path: if state.walk_failure_path == "" {
-      dir_path
-    } else {
-      state.walk_failure_path
+    walk_failure_path: match state.walk_failure_path {
+      Present { value: _ } => state.walk_failure_path
+      Absent => optional_present(value: path)
     },
     sidecar_violations: state.sidecar_violations
   }
 }
 
-fn floor_discovery_walk_failure_refusal_reason(path: String) -> String {
-  if path == "" {
-    "directory listing failed during floor discovery walk (typed refusal, never empty roster)"
-  } else {
-    concat(
-      "directory listing failed during floor discovery walk at ",
+fn floor_discovery_walk_failure_refusal_reason(path_opt: Optional<String>) -> String {
+  match path_opt {
+    Present { value: path } => concat(
+      "filesystem operation failed during floor discovery walk at ",
       path,
       " (typed refusal, never empty roster)"
     )
+    Absent => "filesystem operation failed during floor discovery walk (typed refusal, never empty roster)"
   }
 }
 
@@ -340,16 +338,20 @@ fn floor_discovery_process_dag_file(
   } else if floor_filename_contains_double_underscore(path: repo_path) {
     state
   } else {
-    let content = filesystem_read(path: repo_path).content
-    floor_discovery_apply_wire_contract_sidecar_rules(
-      state: floor_discovery_apply_test_sidecar_rules(
-        state: state,
+    let read_out = Filesystem.Read(path: repo_path)
+    if !read_out.success {
+      floor_discovery_record_walk_failure(state: state, path: repo_path)
+    } else {
+      floor_discovery_apply_wire_contract_sidecar_rules(
+        state: floor_discovery_apply_test_sidecar_rules(
+          state: state,
+          repo_path: repo_path,
+          content: read_out.content
+        ),
         repo_path: repo_path,
-        content: content
-      ),
-      repo_path: repo_path,
-      content: content
-    )
+        content: read_out.content
+      )
+    }
   }
 }
 
@@ -364,7 +366,7 @@ fn floor_discovery_walk_dir(
 ) -> FloorDiscoveryWalkState {
   let listed = Filesystem.List(path: dir_path)
   if !listed.success {
-    floor_discovery_record_walk_list_failure(state: state, dir_path: dir_path)
+    floor_discovery_record_walk_failure(state: state, path: dir_path)
   } else if listed.entries == "" {
     state
   } else {
@@ -409,53 +411,35 @@ fn floor_discovery_unified_claim_label(decl_name: String) -> String {
   }
 }
 
-fn floor_discovery_owned_data_row_from_record(rec: OwnedDataDeclRecord) -> Optional<FloorDiscoveryRow> {
+fn floor_discovery_merge_owned_data_record(
+  state: FloorDiscoveryWalkState,
+  rec: OwnedDataDeclRecord
+) -> FloorDiscoveryWalkState {
   match rec.initializer {
     OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
       if (entry == "") || (function == "") {
-        optional_absent()
+        state
       } else {
-        let witness_content = filesystem_read(path: entry).content
-        optional_present(
-          value: FloorDiscoveryRow {
-            label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
-            entry: entry,
-            function: function,
-            reads_live_tree: floor_discovery_entry_reads_live_tree_default(
-              content: witness_content
-            )
-          }
-        )
+        let read_out = Filesystem.Read(path: entry)
+        if !read_out.success {
+          floor_discovery_record_walk_failure(state: state, path: entry)
+        } else {
+          floor_discovery_append_row(
+            state: state,
+            row: FloorDiscoveryRow {
+              label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
+              entry: entry,
+              function: function,
+              reads_live_tree: floor_discovery_entry_reads_live_tree_default(
+                content: read_out.content
+              )
+            }
+          )
+        }
       }
-    OwnedNodeCorpusInit => optional_absent()
-    OwnedOtherInit { resolved: _ } => optional_absent()
+    OwnedNodeCorpusInit => state
+    OwnedOtherInit { resolved: _ } => state
   }
-}
-
-fn floor_discovery_owned_data_rows(
-  records: List<OwnedDataDeclRecord>
-) -> List<FloorDiscoveryRow> {
-  fold(
-    records,
-    init: [],
-    f: fn(acc, rec) {
-      match floor_discovery_owned_data_row_from_record(rec: rec) {
-        Present { value: row } => concat(acc, [row])
-        Absent => acc
-      }
-    }
-  )
-}
-
-fn floor_discovery_merge_owned_rows(
-  state: FloorDiscoveryWalkState,
-  owned_rows: List<FloorDiscoveryRow>
-) -> FloorDiscoveryWalkState {
-  fold(
-    owned_rows,
-    init: state,
-    f: fn(acc, row) { floor_discovery_append_row(state: acc, row: row) }
-  )
 }
 
 fn floor_discovery_paths_for_sidecar_kind(
@@ -524,8 +508,9 @@ fn discover_floor_corpus_rows_from_host_facts(
   owned_data_records: List<OwnedDataDeclRecord>
 ) -> FloorDiscoveryProducerResult {
   floor_discovery_finalize(
-    state: floor_discovery_merge_owned_rows(
-      state: fold(
+    state: fold(
+      owned_data_records,
+      init: fold(
         source_roots,
         init: floor_discovery_walk_state_zero(),
         f: fn(acc, root) {
@@ -536,7 +521,7 @@ fn discover_floor_corpus_rows_from_host_facts(
           )
         }
       ),
-      owned_rows: floor_discovery_owned_data_rows(records: owned_data_records)
+      f: fn(acc, rec) { floor_discovery_merge_owned_data_record(state: acc, rec: rec) }
     )
   )
 }
@@ -565,7 +550,7 @@ fn floor_filename_hygiene_refusal_for_paths(
   )
 }
 
-data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. Interior directory candidates (basename has no '.') increment walk_failures on list failure; dotted basenames are skipped as non-dag files. Listing failure is FloorDiscoveryRefused, never an empty roster."
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
 
 data floor_discovery_directory_candidate_dissolve_on: String = "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty)."
 
