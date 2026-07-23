@@ -6,6 +6,9 @@ import extdeps.firmware.uefi_shell {
   UefiNetworkInterface,
   UefiDeviceMapping,
   uefi_interface_has_link,
+  uefi_ipv4_unspecified,
+  uefi_ipv4_link_local_prefix,
+  uefi_shell_removable_media_device_path_tokens,
   UefiShellCommand,
   MapDevices,
   BcfgDump,
@@ -26,19 +29,21 @@ type BootInstallSituation
   | NetworkUpNeedsDhcp { interface: NonEmptyStr }
   | NoBootSourceAvailable { reason: NonEmptyStr }
 
-fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
-  ipv4 == "0.0.0.0"
-    || string_contains(s: ipv4 as String, pattern: "169.254.")
+fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
+  starts_with(ipv4 as String, prefix: uefi_ipv4_link_local_prefix)
 }
 
-fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
-  string_contains(s: ipv4 as String, pattern: "169.254.")
+fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
+  ipv4 as String == uefi_ipv4_unspecified
+    || ipv4_link_local(ipv4: ipv4)
 }
 
 fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
-  string_contains(s: m.device_path as String, pattern: "CDROM")
-    || string_contains(s: m.device_path as String, pattern: "USB")
-    || string_contains(s: m.device_path as String, pattern: "CDDVD")
+  fold(
+    uefi_shell_removable_media_device_path_tokens,
+    init: false,
+    f: (acc, token) => acc || string_contains(s: m.device_path as String, pattern: token),
+  )
 }
 
 type MediaScan {

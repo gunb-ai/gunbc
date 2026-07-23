@@ -130,9 +130,6 @@ fn bmc_ssh_target(plan: BmcNetbootServePlan) -> NonEmptyStr {
   join(["root@", plan.bmc_host as String], "") as NonEmptyStr
 }
 
-fn bmc_remote_target(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptyStr {
-  join([bmc_ssh_target(plan: plan) as String, ":", bmc_netboot_staged_path(plan: plan, name: name) as String], "") as NonEmptyStr
-}
 
 data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -143,7 +140,7 @@ data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   }
 }
 
-data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — realization driver sequences the staging manifest + serve over shell.Exec.Run / bmc.Ssh.PutFile / Filesystem.Write; the BMC commands go through the extdeps.exec.command seam (no bespoke blob) but the per-file sequencing is hand-unrolled for the known plan. DISSOLVES WHEN a host_effect_apply binds the staging manifest fold generically and dag/gunbc/bmc_netboot_serve.dag retires its hand-unrolled sequencing"
+data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run + bmc.Ssh.PutFile glue on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue"
 
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> ProcessExit
   uses net: Network
@@ -153,47 +150,65 @@ func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> Proce
   if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: ", run.stderr)) }
 }
 
-func bmc_netboot_put(plan: BmcNetbootServePlan, local: NonEmptyStr, name: NonEmptyStr) -> ProcessExit
-  uses net: Network
-{
-  let put = bmc.Ssh.PutFile(local_path: local, remote_target: bmc_remote_target(plan: plan, name: name))
-  if put.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", name as String)) }
-}
-
-func bmc_netboot_put_inline(plan: BmcNetbootServePlan, local: NonEmptyStr, content: String, name: NonEmptyStr) -> ProcessExit
-  uses net: Network
-{
-  let w = Filesystem.Write(path: local as String, content: content)
-  if w.success == false {
-    return exit_failure(reason: concat("bmc-netboot: local write failed for ", name as String))
-  }
-  return bmc_netboot_put(plan: plan, local: local, name: name)
-}
-
-fn process_exit_first_failure(results: List<ProcessExit>) -> ProcessExit {
+fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
   fold(
-    results,
-    init: ExitSuccess,
-    f: (acc, r) => match acc {
-      ExitFailure { code: _, reason: _ } => acc
-      ExitSuccess => r
-    }
+    split(s: remote_path as String, delimiter: "/"),
+    init: "",
+    f: (acc, segment) => segment,
   )
 }
+
+func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
+  uses net: Network
+{
+  let put = bmc.Ssh.PutFile(
+    local_path: local,
+    remote_target: join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr,
+  )
+  if put.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
+}
+
+func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
+  uses net: Network
+{
+  match file.content {
+    LocalArtifact { path: p } => bmc_netboot_put_path(plan: plan, local: p, remote_path: file.remote_path)
+    InlineText { text: t } => bmc_netboot_stage_inline(plan: plan, remote_path: file.remote_path, content: t)
+    FetchFromUri { source: _ } => exit_failure(
+      reason: concat("bmc-netboot: FetchFromUri staging has no realized transport — refusing for ", file.remote_path as String),
+    )
+  }
+}
+
+func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptyStr, content: String) -> ProcessExit
+  uses net: Network
+{
+  let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as NonEmptyStr
+  let w = Filesystem.Write(path: local as String, content: content)
+  if w.success == false {
+    return exit_failure(reason: concat("bmc-netboot: local write failed for ", remote_path as String))
+  }
+  return bmc_netboot_put_path(plan: plan, local: local, remote_path: remote_path)
+}
+
 
 func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   uses net: Network
 {
   let mk = bmc_netboot_run_bmc(plan: plan, argv: ["mkdir", "-p", join([plan.netboot_dir as String, "/nocloud"], "")])
-  let a1 = bmc_netboot_put(plan: plan, local: bmc_netboot_artifact(name: "busybox"), name: "busybox")
-  let a2 = bmc_netboot_put(plan: plan, local: bmc_netboot_artifact(name: "vmlinuz"), name: "vmlinuz")
-  let a3 = bmc_netboot_put(plan: plan, local: bmc_netboot_artifact(name: "initrd"), name: "initrd")
-  let a4 = bmc_netboot_put(plan: plan, local: bmc_netboot_artifact(name: "grubaa64.efi"), name: "grubaa64.efi")
-  let g = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-grub.cfg", content: bmc_netboot_grub_cfg_text(plan: plan), name: "grub.cfg")
-  let ud = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-user-data", content: bmc_netboot_nocloud_user_data(plan: plan), name: "nocloud/user-data")
-  let md = bmc_netboot_put_inline(plan: plan, local: "/tmp/gunbc-bmc-meta-data", content: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""), name: "nocloud/meta-data")
-  let serve = bmc_netboot_run_bmc(plan: plan, argv: bmc_netboot_serve_command_local(plan: plan).argv)
-  process_exit_first_failure(results: [mk, a1, a2, a3, a4, g, ud, md, serve])
+  let staged = fold(
+    bmc_netboot_staging_manifest(plan: plan),
+    init: mk,
+    f: (acc, file) => match acc {
+      ExitFailure { code: _, reason: _ } => acc
+      ExitSuccess => bmc_netboot_stage_file(plan: plan, file: file)
+    }
+  )
+  let serve = match staged {
+    ExitFailure { code: _, reason: _ } => staged
+    ExitSuccess => bmc_netboot_run_bmc(plan: plan, argv: bmc_netboot_serve_command_local(plan: plan).argv)
+  }
+  serve
 }
 
 func srv4_bmc_netboot_provision() -> ProcessExit

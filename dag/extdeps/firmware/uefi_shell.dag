@@ -130,6 +130,16 @@ type UefiDeviceMapping {
   device_path: NonEmptyStr
 }
 
+data uefi_ipv4_unspecified: String = "0.0.0.0"
+
+data uefi_ipv4_link_local_prefix: String = "169.254."
+
+data uefi_ipv4_link_local_prefix_doc: String = "RFC 3927 link-local subnet is 169.254.0.0/16; on the dotted-quad rendering the UEFI shell ifconfig emits, membership is exactly the string prefix 169.254. — a prefix test, never a substring scan (a substring would also match 10.169.254.x)."
+
+data uefi_shell_removable_media_device_path_tokens: List<String> = ["CDROM", "CDDVD", "USB"]
+
+data uefi_shell_removable_media_tokens_doc: String = "🟡 dissolve-on: uefi_shell_removable_media_device_path_tokens — the removable-install-media classification reads the UEFI shell 'map -r' device-path RENDERING for these node tokens (CDROM/CDDVD messaging device-path nodes, USB messaging node — UEFI spec §10 device path protocol as the shell renders it). Token-in-rendering is a classification over upstream text, not a parsed device-path model; a mapping whose rendering uses an unlisted token classifies as not-removable and the decision layer refuses with NoBootSourceAvailable (loud refusal, never a fabricated boot source). DISSOLVES WHEN UefiDeviceMapping.device_path becomes a parsed device-path node list and the class is a match over node kinds."
+
 type UefiShellEnvironment {
   mappings: List<UefiDeviceMapping>
   boot_options: List<UefiBootOption>
