@@ -4,6 +4,12 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
 import v2.lens.module_graph { entry_affected_by_touched_paths }
+import v2.workflow.floor_compile_clean_predicates {
+  compile_clean_all_touched_paths_docs_universe,
+  compile_clean_all_touched_paths_selectable,
+  compile_clean_departed_paths_outside_docs,
+  compile_clean_touched_path_selectable
+}
 import std.types { String, Bool, List, list_length }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -13,61 +19,12 @@ type CompileCleanScopeDisposition
   | SkipNoAffectedEntries { reason: String }
   | RequireWholeTree { reason: String }
 
-fn compile_clean_touched_path_norm(path: String) -> String {
-  if starts_with(s: path, prefix: "./") {
-    substring(s: path, start: 2, end: string_length(s: path))
-  } else {
-    path
-  }
-}
-
-fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
-  starts_with(
-    s: compile_clean_touched_path_norm(path: path),
-    prefix: "docs/"
-  )
-}
-
-fn compile_clean_all_touched_paths_docs_universe(touched_paths: List<String>) -> Bool {
-  list_length(items: touched_paths) > 0
-    && fold(
-      touched_paths,
-      init: true,
-      f: fn(ok, p) { ok && compile_clean_touched_path_is_docs_only(path: p) }
-    )
-}
-
-fn compile_clean_touched_path_is_dag_source(path: String) -> Bool {
-  ends_with(s: compile_clean_touched_path_norm(path: path), suffix: ".dag")
-}
-
-fn compile_clean_touched_path_selectable(path: String) -> Bool {
-  compile_clean_touched_path_is_docs_only(path: path)
-    || compile_clean_touched_path_is_dag_source(path: path)
-}
-
-fn compile_clean_all_touched_paths_selectable(touched_paths: List<String>) -> Bool {
-  fold(
-    touched_paths,
-    init: true,
-    f: fn(ok, p) { ok && compile_clean_touched_path_selectable(path: p) }
-  )
-}
-
-fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bool {
-  fold(
-    departed_paths,
-    init: false,
-    f: fn(found, p) { found || (compile_clean_touched_path_is_docs_only(path: p) == false) }
-  )
-}
-
 data compile_clean_scope_import_closure_reground_note: String = "2026-07-16 reground (channel 2 of operator fork (c), 2026-07-10): compile-clean per-PR selection consumes v2.lens.module_graph.entry_affected_by_touched_paths (import-closure grain, edge-source-agnostic) — the same authority the discovery-corpus entry_file_touched channel regrounded onto. The fn-arrow DependencyView chain (entry_affected_by_dependency_view, gated on corpus_dependency_view_per_pr_substrate_ready / #6239) is no longer a consumer here; it remains in tree as the decl-level candidate only. Two guards keep the whole-tree baseline where import-closure selection cannot answer: (a) any touched path outside the selectable universe (docs/** or *.dag) is a compiler/infra change — whole-tree; (b) any non-docs departed path (deletion/rename-from) is invisible to current-tree adjacency (a dangling import drops the edge, so the broken importer would not be selected) — whole-tree."
 
 data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "tools.dag_compile_clean_scope",
+    module_path: "v2.workflow.floor_compile_clean_predicates",
     decl_name: "compile_clean_all_touched_paths_docs_universe",
     field: WholeDeclaration
   }
@@ -79,8 +36,8 @@ fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots
 }
 
-fn compile_clean_entry_root() -> String {
-  compile_clean_partition_boundary().entry_root
+fn compile_clean_entry_roots() -> List<String> {
+  compile_clean_partition_boundary().entry_roots
 }
 
 fn compile_clean_affected_entry_paths_from_roster(
@@ -195,8 +152,8 @@ fn witness_pool_roots_match_witness_layer_roots() -> Bool {
   })
 }
 
-fn witness_entry_root_is_first_witness_layer_root() -> Bool {
-  compile_clean_entry_root() == witness_layer_roots.first()
+fn witness_entry_roots_are_witness_layer_roots() -> Bool {
+  compile_clean_entry_roots() == witness_layer_roots
 }
 
 fn witness_empty_touched_skips() -> Bool {
@@ -322,7 +279,7 @@ fn witness_docs_only_departure_still_skips() -> Bool {
 fn lever_a_local_receipts_hold() -> Bool {
   witness_empty_touched_skips()
     && witness_touched_path_dispositions_hold()
-    && witness_entry_root_is_first_witness_layer_root()
+    && witness_entry_roots_are_witness_layer_roots()
     && witness_pool_roots_match_witness_layer_roots()
     && witness_mixed_rs_and_dag_requires_whole_tree()
     && witness_departed_dag_path_requires_whole_tree()

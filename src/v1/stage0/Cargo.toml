@@ -187,8 +187,8 @@ name = "floor_skip_discovery_witness"
 path = "src/bin/floor_skip_discovery_witness.rs"
 
 # Host-physics CI witness: docs-only floor admission via tools.dag_compile_clean_scope
-# (Ruling 1 path grain). Prints documentation_only_skip | run_full_floor for the
-# generated ci floor script; empty diff / diff failure → run_full_floor (fail-closed).
+# (Ruling 1 path grain). Prints typed witness labels (documentation_only_skip |
+# run_full_floor_{scoping_inactive|diff_observation_failed|empty_diff|non_docs_change}).
 [[bin]]
 name = "compile_clean_floor_skip_witness"
 path = "src/bin/compile_clean_floor_skip_witness.rs"
@@ -244,6 +244,12 @@ path = "src/bin/parse_witness.rs"
 [[bin]]
 name = "compile_clean_diagnostic_histogram"
 path = "src/bin/compile_clean_diagnostic_histogram.rs"
+
+# SCAFFOLD (Lane B HAND-RUST) — census TSV/histogram emit transport;
+# dissolve-on: pure `.dag` row fold replaces this bin.
+[[bin]]
+name = "witness_entry_eligibility_census_emit"
+path = "src/bin/witness_entry_eligibility_census_emit.rs"
 
 # SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
 # gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on

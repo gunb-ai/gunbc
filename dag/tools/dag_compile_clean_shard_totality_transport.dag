@@ -2,6 +2,7 @@ module tools.dag_compile_clean_shard_totality_transport
 
 import extdeps.shell
 import extdeps.git
+import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import std.types { String, Bool, List }
 
 type LiveDagEntryGlobResult {
@@ -10,8 +11,22 @@ type LiveDagEntryGlobResult {
   stderr: String
 }
 
+fn live_dag_entry_glob_seed() -> LiveDagEntryGlobResult {
+  LiveDagEntryGlobResult { success: true, stdout: "", stderr: "" }
+}
+
 fn run_live_dag_entry_glob() -> LiveDagEntryGlobResult {
   let toplevel = git.Core.Toplevel()
-  let result = shell.Find.Files(workdir: toplevel.path, root: "dag", name_glob: "*.dag")
-  LiveDagEntryGlobResult { success: result.success, stdout: result.stdout, stderr: result.stderr }
+  fold(
+    compile_clean_partition_boundary().entry_roots,
+    init: live_dag_entry_glob_seed(),
+    f: fn(acc, root) {
+      let result = shell.Find.Files(workdir: toplevel.path, root: root, name_glob: "*.dag")
+      LiveDagEntryGlobResult {
+        success: acc.success && result.success,
+        stdout: concat(acc.stdout, concat("\n", result.stdout)),
+        stderr: concat(acc.stderr, concat("\n", result.stderr))
+      }
+    }
+  )
 }

@@ -9,7 +9,7 @@ import tools.dag_compile_clean_scope {
   ExpectSkip,
   ExpectScopedContaining,
   ExpectWholeTree,
-  witness_entry_root_is_first_witness_layer_root,
+  witness_entry_roots_are_witness_layer_roots,
   witness_pool_roots_match_witness_layer_roots,
   witness_mixed_rs_and_dag_requires_whole_tree,
   witness_departed_dag_path_requires_whole_tree,
@@ -41,7 +41,7 @@ test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
 }
 
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
-  witness_entry_root_is_first_witness_layer_root()
+  witness_entry_roots_are_witness_layer_roots()
     && witness_pool_roots_match_witness_layer_roots()
 }
 

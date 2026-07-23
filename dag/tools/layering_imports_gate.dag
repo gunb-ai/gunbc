@@ -1,21 +1,14 @@
 module tools.layering_imports_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.layering_imports_transport {
-  run_clean_tree_gate,
-  run_scanner_perturb_receipts,
-  run_reference_only_perturb_receipt
-}
+import tools.layering_imports_transport { run_layering_imports_claims }
 
 func run_layering_imports_gate_body() -> ProcessExit {
-  let clean = run_clean_tree_gate()
-  let perturb = run_scanner_perturb_receipts()
-  let reference_only = run_reference_only_perturb_receipt()
-  return if clean && perturb && reference_only {
+  return if run_layering_imports_claims() {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "layering imports gate failed: clean_tree and/or scanner-execution perturb receipts"
+      reason: "layering imports gate failed: clean_tree and/or scanner-execution perturb receipts (failing claim named in the pooled claim_batch FAIL lines)"
     )
   }
 }

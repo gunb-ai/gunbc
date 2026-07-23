@@ -1,0 +1,65 @@
+module v2.compiler.self_host.native_agreement_support
+
+import v2.compiler.eval { TestClaimRun }
+import v2.std.collection { Optional, Present, Absent }
+import v2.std.diagnostic { Accepted }
+import v2.std.native_agreement {
+  NativeAgreementDivergence,
+  runtime_value_octet_label
+}
+import v2.std.runtime { RuntimeValue }
+import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred }
+
+fn native_agreement_divergence_from_run<Subj>(
+  member_id: String,
+  run: TestClaimRun<Subj, RuntimeValue>
+) -> Optional<NativeAgreementDivergence> {
+  match run.verdict {
+    Pass => Absent
+    SemanticMismatch {
+      actual: Accepted { value: native_val, diagnostics: None },
+      falsification: Present {
+        value: receipt
+      }
+    } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: runtime_value_octet_label(value: receipt.expected),
+          native_value: runtime_value_octet_label(value: native_val)
+        }
+      }
+    SemanticMismatch { actual: _, falsification: Absent } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: "?",
+          native_value: "?"
+        }
+      }
+    BuildFailed { actual: _, diagnostic: _ } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: "build_failed",
+          native_value: "build_failed"
+        }
+      }
+    RunFailed { actual: _, diagnostic: _ } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: "run_failed",
+          native_value: "run_failed"
+        }
+      }
+    Deferred { actual: _, diagnostic: _ } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: "deferred",
+          native_value: "deferred"
+        }
+      }
+  }
+}

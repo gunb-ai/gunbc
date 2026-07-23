@@ -1,0 +1,80 @@
+module test.claim.dispatch_presentation_witness
+
+import std.types { Int, String, Bool, List }
+import gunbc.design.material { CssDecl, decl, css_block }
+import gunbc.design.theme { role_var, FigureRole, BoundaryRole, TextDimRole, TextRole }
+import gunbc.design.component { ComponentState, component_state_for_label }
+import gunbc.roadmap_component {
+  dispatch_reserved_ch, dispatch_reserved_ch_for, longest_label_len,
+  dispatch_class_requested, dispatch_class_ok, dispatch_class_refused,
+  dispatch_button_component, dispatch_client_js_source,
+}
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import gunbc.roadmap_style { roadmap_css }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_presentation_witness_note: String = "P3 keystone: the dispatch button's presentation is a projection of the modeled state rows, not hand pixels/colors. The reserved width is derived from the longest wire label (grows if a longer arm lands — the RED control proves the projection); each chip's material is the P0 state's role, cross-checked as the EXACT css rule so a role drift reds; the located fields (step/detail) surface into a title attribute, not console-only; and the client script + stylesheet flip the SAME class vocabulary (one authority), so the live button and the P4 gallery cannot disagree."
+
+fn role_var_for_label(wire_label: String) -> String {
+  fold(component_state_for_label(c: dispatch_button_component(), wire_label: wire_label),
+    init: "", f: (acc, s) => role_var(r: s.role))
+}
+
+fn witness_reserved_width_is_label_projection() -> Bool {
+  let labels = belt_dispatch_all_status_labels()
+  let real = dispatch_reserved_ch()
+  real == longest_label_len(labels: labels) + 2
+    && real >= longest_label_len(labels: labels)
+    && dispatch_reserved_ch_for(labels: ["short"]) == 7
+    && dispatch_reserved_ch_for(labels: ["already_done_signed_off"]) > dispatch_reserved_ch_for(labels: ["short"])
+    && string_contains(s: roadmap_css(), pattern: join([to_string(real), "ch"], ""))
+}
+
+fn witness_chip_material_is_state_role() -> Bool {
+  let css = roadmap_css()
+  let ok_block = css_block(
+    selector: join([".dispatch-btn.", dispatch_class_ok], ""),
+    decls: [decl(prop: BorderColor, value: role_var_for_label(wire_label: "spawned"))])
+  let refused_block = css_block(
+    selector: join([".dispatch-btn.", dispatch_class_refused], ""),
+    decls: [decl(prop: BorderColor, value: role_var_for_label(wire_label: "spawn_failed"))])
+  string_contains(s: css, pattern: ok_block)
+    && string_contains(s: css, pattern: refused_block)
+    && role_var_for_label(wire_label: "spawned") == role_var(r: FigureRole)
+    && role_var_for_label(wire_label: "spawn_failed") == role_var(r: BoundaryRole)
+}
+
+fn witness_chip_wrong_role_not_shipped() -> Bool {
+  let wrong = css_block(
+    selector: join([".dispatch-btn.", dispatch_class_ok], ""),
+    decls: [decl(prop: BorderColor, value: role_var(r: TextRole))])
+  !string_contains(s: roadmap_css(), pattern: wrong)
+}
+
+fn witness_located_fields_surface_to_title() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "b.title =")
+    && string_contains(s: js, pattern: "j.step")
+    && string_contains(s: js, pattern: "j.detail")
+}
+
+fn witness_js_and_css_share_class_authority() -> Bool {
+  let js = dispatch_client_js_source()
+  let css = roadmap_css()
+  string_contains(s: js, pattern: dispatch_class_ok)
+    && string_contains(s: js, pattern: dispatch_class_refused)
+    && string_contains(s: js, pattern: dispatch_class_requested)
+    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_ok], ""))
+    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_refused], ""))
+    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_requested], ""))
+}
+
+test fn dispatch_presentation_keystone_holds() -> Bool {
+  witness_reserved_width_is_label_projection()
+    && witness_chip_material_is_state_role()
+    && witness_chip_wrong_role_not_shipped()
+    && witness_located_fields_surface_to_title()
+    && witness_js_and_css_share_class_authority()
+}
