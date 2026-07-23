@@ -4683,6 +4683,167 @@ pub fn collect_item_type_surface_names(
     }
 }
 
+pub fn collect_value_emit_type_surface_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_names = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                record_lit_ref_names(n.clone(), source_indices.clone())
+            }
+            _ => {
+                let nm = authored_name_at(source_indices.clone(), n.clone());
+                match v1_rt::map_get(&variant_to_enum, nm.clone()) {
+                    Some(parent) => {
+                        if (parent.clone() != "".to_string()) {
+                            Rc::new(vec![parent.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                    None => Rc::new(vec![]),
+                }
+            }
+        };
+        let child_names = v1_rt::concat(
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_emit_type_surface_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_emit_type_surface_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.uses.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_emit_type_surface_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.properties.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_value_emit_type_surface_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+        );
+        let opt_names = v1_rt::concat(
+            match n.body.clone() {
+                Some(b) => collect_value_emit_type_surface_names(
+                    b.clone(),
+                    source_indices.clone(),
+                    variant_to_enum.clone(),
+                ),
+                None => Rc::new(vec![]),
+            },
+            v1_rt::concat(
+                match n.transport.clone() {
+                    Some(t) => collect_value_emit_type_surface_names(
+                        t.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+                match n.type_annotation.clone() {
+                    Some(t) => {
+                        collect_type_node_import_surface_names(t.clone(), source_indices.clone())
+                    }
+                    None => Rc::new(vec![]),
+                },
+            ),
+        );
+        unique_strings(v1_rt::concat(
+            self_names.clone(),
+            v1_rt::concat(child_names.clone(), opt_names.clone()),
+        ))
+    })
+}
+
+pub fn collect_item_emit_surface_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
+    {
+        let from_signature = collect_item_type_surface_names(item.clone(), source_indices.clone());
+        let from_body = match item.body.clone() {
+            Some(b) => collect_value_emit_type_surface_names(
+                b.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+            ),
+            None => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(from_signature.clone(), from_body.clone()))
+    }
+}
+
+pub fn provider_proven_exports_symbol(
+    name: String,
+    provider_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    name_in_transitive_export_surface(
+        name.clone(),
+        provider_module.clone(),
+        Rc::new(vec![]),
+        export_sets.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    )
+}
+
 pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
     if (v1_rt::contains(line.clone(), "use ".to_string()) == false) {
         Rc::new(vec![])
@@ -4747,7 +4908,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
 pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4782,9 +4943,13 @@ pub fn reference_derived_use_lines(
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_item_type_surface_names(item.clone(), source_indices.clone()))
-                        .iter()
-                        .cloned(),
+                    (*collect_item_emit_surface_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.variant_to_enum.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
@@ -4834,7 +4999,16 @@ pub fn reference_derived_use_lines(
                     } else {
                         match v1_rt::map_get(&registry, name.clone()) {
                             Some(info) => {
-                                if (info.module_name.clone() != this_module_name.clone()) {
+                                if ((info.module_name.clone() != this_module_name.clone())
+                                    && provider_proven_exports_symbol(
+                                        name.clone(),
+                                        info.module_name.clone(),
+                                        export_sets.clone(),
+                                        typed_modules.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    ))
+                                {
                                     Rc::new(vec![name.clone()])
                                 } else {
                                     Rc::new(vec![])
@@ -4931,25 +5105,36 @@ pub fn reference_derived_use_lines(
                                     )) {
                                         Rc::new(vec![])
                                     } else {
-                                        Rc::new(vec![v1_rt::concat(
-                                            rust_visibility_prefix(),
-                                            v1_rt::concat(
-                                                "use crate::".to_string(),
+                                        if provider_proven_exports_symbol(
+                                            nm.clone(),
+                                            provider.clone(),
+                                            export_sets.clone(),
+                                            typed_modules.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        ) {
+                                            Rc::new(vec![v1_rt::concat(
+                                                rust_visibility_prefix(),
                                                 v1_rt::concat(
-                                                    module_to_filename(provider.clone()),
+                                                    "use crate::".to_string(),
                                                     v1_rt::concat(
-                                                        "::".to_string(),
+                                                        module_to_filename(provider.clone()),
                                                         v1_rt::concat(
-                                                            emit_import_name(
-                                                                nm.clone(),
-                                                                registry.clone(),
+                                                            "::".to_string(),
+                                                            v1_rt::concat(
+                                                                emit_import_name(
+                                                                    nm.clone(),
+                                                                    registry.clone(),
+                                                                ),
+                                                                ";".to_string(),
                                                             ),
-                                                            ";".to_string(),
                                                         ),
                                                     ),
                                                 ),
-                                            ),
-                                        )])
+                                            )])
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
                                     })
                                     .iter()
                                     .cloned(),
