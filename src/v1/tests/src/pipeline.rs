@@ -1250,7 +1250,8 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "src/v2/test/claim/manual".to_string(),
     ];
     let excludes = witness_exclusion_substrings();
-    let rows = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]).expect("discover roster");
+    let rows =
+        discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     let index = build_multi_entry_index(&roots);
 

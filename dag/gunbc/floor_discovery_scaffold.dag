@@ -13,7 +13,7 @@ data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data floor_discovery_dissolve_trigger: String = "🟡 dissolve-on: floor_discovery_hand_rust_bridge — floor_discovery_producer.dag is roster authority; Rust host still realizes effect-reach reclassification (apply_effect_reach_derived_reads_live_tree), parallel tree walks for check_floor_filename_hygiene / build_floor_lens_import_graph, and discover_floor_corpus_rows_from_dag_producer interpreter transport; DISSOLVES WHEN discovery admission consumes v2.lens.effect_reach directly and hygiene/lens-graph feed the .dag producer closure (witness: dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag). Legacy discover_floor_corpus_rows_inner_rust_legacy deleted."
+data floor_discovery_dissolve_trigger: String = "🟡 dissolve-on: floor_discovery_hand_rust_bridge — floor_discovery_producer.dag is roster authority; Rust host still realizes effect-reach reclassification (apply_effect_reach_derived_reads_live_tree), parallel tree walks for build_floor_lens_import_graph, and invoke_floor_discovery_producer interpreter transport via discover_floor_witness_roster; DISSOLVES WHEN discovery admission consumes v2.lens.effect_reach directly and lens-graph feed the .dag producer closure (witness: dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag). Legacy discover_floor_corpus_rows_inner_rust_legacy deleted; discover_floor_corpus_rows / check_floor_filename_hygiene / _inner / _scoped arms deleted."
 
 data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"
 

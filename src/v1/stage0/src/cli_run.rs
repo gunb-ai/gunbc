@@ -10842,7 +10842,7 @@ fn parse_floor_discovery_producer_result(
             Err(reason)
         }
         other => Err(format!(
-            "discover_floor_witness_roster_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
             ctx.format_value(other)
         )),
     }
@@ -10898,11 +10898,11 @@ fn invoke_floor_discovery_producer(
     ];
     let result = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "discover_floor_witness_roster_from_host_facts",
+        "discover_floor_corpus_rows_from_host_facts",
         &args,
         false,
     )
-    .map_err(|e| format!("discover_floor_witness_roster_from_host_facts: {e}"))?;
+    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
     parse_floor_discovery_producer_result(&ctx, &result)
 }
 
@@ -11023,13 +11023,12 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     let scan_dirs = witness_discovery_scan_dirs();
     let excludes = default_floor_lens_hygiene_excludes();
     match build_floor_lens_import_graph(&roots) {
-        Ok(graph) => {
-            match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
-                Ok(rows) => inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path)
-                    .len() as i64,
-                Err(_) => -1,
+        Ok(graph) => match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
+            Ok(rows) => {
+                inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len() as i64
             }
-        }
+            Err(_) => -1,
+        },
         Err(_) => -1,
     }
 }
@@ -17592,8 +17591,8 @@ mod inert_lens_hygiene_tests {
 mod construction_justification_hygiene_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
-        declares_construction_justification, discover_floor_witness_roster, unjustified_lens_modules,
-        wall_now_authority_refs, witness_exclusion_substrings,
+        declares_construction_justification, discover_floor_witness_roster,
+        unjustified_lens_modules, wall_now_authority_refs, witness_exclusion_substrings,
     };
     use std::collections::BTreeSet;
     use std::collections::HashMap;

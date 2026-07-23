@@ -505,18 +505,14 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         let excludes = witness_exclusion_substrings();
-        let mut rows = match discover_floor_witness_roster(
-            &source_roots,
-            &disc.scan_dirs,
-            &excludes,
-            &[],
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("claim_batch: discovery roster failed: {e}");
-                return Err(ExitCode::from(2));
-            }
-        };
+        let mut rows =
+            match discover_floor_witness_roster(&source_roots, &disc.scan_dirs, &excludes, &[]) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("claim_batch: discovery roster failed: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            };
         let mut seen: std::collections::BTreeSet<(String, String)> = rows
             .iter()
             .map(|r| (r.entry.clone(), r.function.clone()))
