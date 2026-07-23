@@ -11,6 +11,9 @@ import v2.std.host_transport {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.lens.common.construction_justification { WallNow, WallAfterGrounding, RatchetForever }
+import std.decl_ref { WholeDeclaration, NamedField }
+import v2.lens.emitted_binary_effect_confinement { construction_justification }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -53,4 +56,18 @@ test fn emitted_family_runtime_row_gated_refuses_unrostered_family() -> Bool {
 test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
   emitted_family_effect_admitted(family: "filesystem_read_family")
     && emitted_family_effect_admitted(family: "shell_exec_run_family")
+}
+
+test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool {
+  match construction_justification.class {
+    WallNow { mechanism: _, authority: authority } =>
+      authority.module_path == "v2.std.host_transport"
+        && authority.decl_name == "emitted_effect_family_roster"
+        && (match authority.field {
+          WholeDeclaration => true
+          NamedField { field_name: _ } => false
+        })
+    WallAfterGrounding { dissolves_to: _ } => false
+    RatchetForever => false
+  }
 }
