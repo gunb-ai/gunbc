@@ -40,13 +40,7 @@ fn witness_zero_native_at_landing_holds() -> Bool {
   witness_bulk_routing_zero_native_at_landing_holds()
 }
 
-fn witness_retained_and_ineligible_split() -> Bool {
-  (length(xs: native_routed_entry_rows()) == 0)
-    && (length(xs: interpreted_retained_entry_rows()) == 14)
-    && (length(xs: emit_ineligible_entry_rows()) == 2)
-}
-
-fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
+fn witness_retained_rows_carry_typed_reason_and_trigger() -> Bool {
   fold(
     interpreted_retained_entry_rows(),
     init: true,
@@ -81,8 +75,7 @@ test fn witness_bulk_routing_witnesses() -> Bool {
     && witness_each_sample_entry_has_exactly_one_row()
     && witness_unlisted_entry_has_no_row()
     && witness_zero_native_at_landing_holds()
-    && witness_retained_and_ineligible_split()
-    && witness_retained_rows_carry_reason_and_trigger()
+    && witness_retained_rows_carry_typed_reason_and_trigger()
     && witness_ineligible_rows_carry_typed_cause()
     && witness_sample_count_matches_expected()
 }

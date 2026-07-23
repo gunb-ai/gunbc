@@ -19,9 +19,17 @@ type EmitIneligibleCause
   | CensusPending
   | EmitIneligibleUnknown
 
+type InterpretedRetainedReason
+  = BulkFlipPendingCensusIncomplete
+  | HostFedCeiling
+  | EmitOnDemandFamilyGrain
+  | RetainedPendingLongLane
+  | RetainedPendingOfflineRecipe
+  | RetainedReadsLiveTreeCarrier
+
 type WitnessExecutionDisposition
   = NativeRouted
-  | InterpretedRetained { reason: String, dissolve_on: String }
+  | InterpretedRetained { reason: InterpretedRetainedReason, dissolve_on: String }
   | EmitIneligible { cause: EmitIneligibleCause, detail: String }
 
 type WitnessExecutionLeg
