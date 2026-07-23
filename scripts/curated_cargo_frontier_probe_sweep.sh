@@ -15,7 +15,7 @@ PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
 if [[ "$FORCE_REPROBE" == "1" ]] || [[ ! -f "$REPORT" ]] || ! grep -qF "$CLASSIFIER_STAMP" "$REPORT" 2>/dev/null; then
   {
     echo "# classifier_stamp: $CLASSIFIER_STAMP"
-    echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict\tresidual_histogram"
+    echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict\tresidual_histogram\traw_dup_pub_use"
   } >"$REPORT"
 fi
 

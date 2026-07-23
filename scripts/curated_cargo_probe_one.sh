@@ -80,16 +80,50 @@ CARGO_VERDICT="skip"
 FIRST_ERROR=""
 MAPPED_GATE=""
 ERROR_HISTOGRAM=""
+RAW_DUP_PUB_USE="unmeasured"
+
+# Census instrument for the last cssl sanitize rule (dedupe_pub_use_symbols):
+# count, on the RAW emit BEFORE assembly rewrites, symbols that repeat across
+# `pub use path::{...}`/`pub use path::Name;` lines within one file. Zero across
+# the sweep is the by-execution receipt that the emitter no longer re-exports a
+# symbol via two transitive paths (the rule's recorded dissolution trigger).
+measure_raw_dup_pub_use() {
+  local src_dir="$1"
+  python3 - "$src_dir" <<'PY'
+import re, sys, pathlib
+src = pathlib.Path(sys.argv[1])
+findings = []
+for f in sorted(src.glob("*.rs")):
+    seen = {}
+    for line in f.read_text().splitlines():
+        t = line.strip()
+        if not t.startswith("pub use "):
+            continue
+        rest = t[len("pub use "):]
+        m = re.match(r"^(.*)\{(.*)\}\s*;", rest)
+        syms = [s.strip() for s in m.group(2).split(",")] if m else [rest.rstrip(";").split("::")[-1].strip()]
+        for s in syms:
+            if not s:
+                continue
+            base = s.split(" as ")[0].strip()
+            if base in seen:
+                findings.append(f"{f.name}:{base}")
+            else:
+                seen[base] = True
+print(f"{len(findings)}" + (":" + ",".join(findings[:8]) if findings else ""))
+PY
+}
 
 if [[ "$EMIT_OK" -eq 1 ]]; then
+  RAW_DUP_PUB_USE="$(measure_raw_dup_pub_use "$OUT/src")"
   if [[ "$STD_SEED_LINK" == "1" ]]; then
     if ! "$CSSL_ASSEMBLE" --out-dir "$OUT" --entry-dag "$MODULE_PATH" --root "$ROOT" >"$OUT/assemble.log" 2>&1; then
       CARGO_VERDICT="harness_refuse"
       FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
       exit 0
     fi
   fi
@@ -110,8 +144,8 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     FIRST_ERROR="cssl harness authority unavailable"
     MAPPED_GATE="HARNESS_MISSING"
     VERDICT="HARNESS_REFUSE"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
     exit 0
   fi
 
@@ -180,5 +214,5 @@ elif [[ "$EMIT_OK" -eq 0 ]]; then
   VERDICT="EMIT_REFUSE"
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
