@@ -1,7 +1,5 @@
 module test.fixture.floor_discovery.malformed_live_tree_fixture
 
-import v2.std.live_tree { LiveTreeDisposition }
-
-data live_tree_disposition: LiveTreeDisposition = MaybeLive
-
 test fn malformed_live_tree_fixture_witness() -> Bool { true }
+
+data live_tree_disposition: Bool = true
