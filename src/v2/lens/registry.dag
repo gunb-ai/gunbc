@@ -22,6 +22,7 @@ type LensIdV0
   | DocReachability
   | DuplicateComputation
   | EffectReach
+  | EmittedBinaryEffectConfinement
   | MandatoryTag
   | ExtdepsShapeTransportPolicy
   | FactCardinality
@@ -174,6 +175,11 @@ data lens_registry_v0_duplicate_computation: LensRegistryEntryV0 = {
 data lens_registry_v0_effect_reach: LensRegistryEntryV0 = {
   lens_id: EffectReach
   module_path: Bound { path: "v2.lens.effect_reach" }
+}
+
+data lens_registry_v0_emitted_binary_effect_confinement: LensRegistryEntryV0 = {
+  lens_id: EmittedBinaryEffectConfinement
+  module_path: Bound { path: "v2.lens.emitted_binary_effect_confinement" }
 }
 
 data lens_registry_v0_mandatory_tag: LensRegistryEntryV0 = {
@@ -362,6 +368,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_doc_reachability,
   lens_registry_v0_duplicate_computation,
   lens_registry_v0_effect_reach,
+  lens_registry_v0_emitted_binary_effect_confinement,
   lens_registry_v0_mandatory_tag,
   lens_registry_v0_extdeps_shape_transport_policy,
   lens_registry_v0_fact_cardinality,
@@ -477,6 +484,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     EffectReach => match right {
       EffectReach => true
+      _ => false
+    }
+    EmittedBinaryEffectConfinement => match right {
+      EmittedBinaryEffectConfinement => true
       _ => false
     }
     MandatoryTag => match right {

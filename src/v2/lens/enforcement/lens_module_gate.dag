@@ -6,7 +6,7 @@ import v2.lens.registry {
   Bound, LensIdV0, Unbound, lens_registry_v0,
   Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
-  DocReachability, DuplicateComputation, EffectReach, MandatoryTag, ExtdepsShapeTransportPolicy,
+  DocReachability, DuplicateComputation, EffectReach, EmittedBinaryEffectConfinement, MandatoryTag, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
   MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
@@ -361,6 +361,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictEffectFact,
       remedy: RemedyReport,
+      admission: GenuinelyNewInvariant
+    }
+    EmittedBinaryEffectConfinement => LensInvariantSurface {
+      module: module,
+      projection: ProjectionNodeDag,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
     Idempotency => LensInvariantSurface {
