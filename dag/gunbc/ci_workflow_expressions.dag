@@ -82,9 +82,9 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
-data ci_regen_heal_if: String = "github.event_name == 'pull_request' || github.event_name == 'push'"
+data ci_regen_heal_if: String = "github.event_name == 'pull_request'"
 
-data ci_regen_heal_if_note: String = "The generated-artifact heal runs on pull_request AND main push (operator-directed 2026-07-23: 'i would regen push to PRs please — convenience in general, by the time it gets to main this should be green regardless'). It auto-regenerates drifted artifacts and pushes the fix back to the triggering branch, so drift is repaired on the PR branch before it reaches main. merge_group and workflow_dispatch are excluded: a merge-queue ref is not a pushable branch, and a manual dispatch has no branch-heal intent. Push events on this workflow only fire for main, so the push arm is the main safety net (the same tree the deploy job guards)."
+data ci_regen_heal_if_note: String = "The generated-artifact heal runs on pull_request ONLY (operator-directed 2026-07-23: 'i think we can disable main pushes for now — i don't expect this to be needed on main — we can just fail CI on main if regen somehow fails there'). It auto-regenerates drifted artifacts and pushes the fix back to the PR branch, so drift is repaired on the branch before it reaches main. The push event (main) is deliberately EXCLUDED: main is protected by a ruleset that requires the 'ci' status check, so a heal push to main is rejected (GH013 repository-rule violation, receipt 2026-07-23), and — more fundamentally — a main-drift auto-push is not wanted. On main the ci job's own drift gate reds honestly if regen ever drifts (fail-closed, DESIGN §5), which is the correct main behavior: by the time a change reaches main it should already be green because its PR auto-healed. merge_group and workflow_dispatch are also excluded: a merge-queue ref is not a pushable branch, and a manual dispatch has no branch-heal intent."
 
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
