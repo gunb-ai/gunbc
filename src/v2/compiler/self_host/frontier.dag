@@ -22,8 +22,7 @@ import v2.compiler.self_host.frontier_probe_types {
   curated_cargo_probe_emit_assemble_refuse_reason,
   curated_cargo_probe_generic_type_render_reason,
   curated_cargo_probe_type_ref_import_missing_reason,
-  curated_cargo_probe_emit_shape_reason,
-  curated_cargo_probe_struct_literal_body_reason,
+  gate_a_flip_probe_witness_std_dup_reason,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
@@ -247,7 +246,7 @@ data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_mea
   closure_reads: 102,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_emit_shape_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -256,7 +255,7 @@ data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_me
   closure_reads: 17,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_struct_literal_body_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -265,7 +264,7 @@ data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measu
   closure_reads: 65,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -286,7 +285,7 @@ data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_meas
   closure_reads: 104,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_emit_shape_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -473,7 +472,7 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = executi
   closure_reads: 87,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
