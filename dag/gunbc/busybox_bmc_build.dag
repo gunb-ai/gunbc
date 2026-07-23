@@ -43,7 +43,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   let cflags = bb_make_var(key: "EXTRA_CFLAGS", value: plan.extra_cflags as String)
   let config = bb_config_path(plan: plan)
   [
-    ArgvCommand { argv: ["curl", "-sL", "-o", plan.source_tarball as String, uri_wire(uri: plan.source_url)] },
+    ArgvCommand { argv: ["curl", "-fsL", "-o", plan.source_tarball as String, uri_wire(uri: plan.source_url)] },
     ArgvCommand { argv: ["mkdir", "-p", bd] },
     ArgvCommand { argv: ["tar", "xf", plan.source_tarball as String, "-C", bd, "--strip-components=1"] },
     ArgvCommand { argv: ["make", "-C", bd, arch, cross, "defconfig"] },
