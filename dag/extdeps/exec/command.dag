@@ -1,6 +1,6 @@
 module extdeps.exec.command
 
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -72,4 +72,32 @@ fn shell_quote(arg: String) -> String {
 
 fn shell_command_render(command: ArgvCommand) -> String {
   join(map(command.argv, a => shell_quote(arg: a)), " ")
+}
+
+data argv_builder_note: String = "Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the derived realization, not a magic string the caller must remember. This is the ArgvCommand-value analogue of the transport rest dissolution — see gunbc.plans.transport_argv_anemia_dissolution (Lane B)."
+
+fn curl_download_command(url: String, destination: String) -> ArgvCommand {
+  ArgvCommand { argv: ["curl", "-fsL", "-o", destination, url] }
+}
+
+fn mkdir_p_command(directory: String) -> ArgvCommand {
+  ArgvCommand { argv: ["mkdir", "-p", directory] }
+}
+
+fn tar_extract_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
+  ArgvCommand {
+    argv: ["tar", "xf", archive, "-C", into_directory, concat("--strip-components=", to_string(strip_components))]
+  }
+}
+
+fn make_command(directory: String, arguments: List<String>) -> ArgvCommand {
+  ArgvCommand { argv: append(["make", "-C", directory], items: arguments) }
+}
+
+fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
+  ArgvCommand { argv: ["sed", "-i", expression, path] }
+}
+
+fn cp_command(source: String, destination: String) -> ArgvCommand {
+  ArgvCommand { argv: ["cp", source, destination] }
 }
