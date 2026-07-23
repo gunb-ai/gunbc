@@ -30,6 +30,8 @@ fn retained_parity_open(family: String, entry: String, f: String) -> NativeRouti
   }
 }
 
+data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms — so this is a genuine native-vs-eval divergence or member-run failure, NOT a cold cache. The frontier worked as designed: the revert is this one data edit, the investigation proceeds off the merge-critical path, and the falsifier cold control keeps exercising both legs. Named loudness gap to close BEFORE re-flipping: the agreement fn's false carries no located member and no value pair — a divergence receipt must NAME which member and both answers (DESIGN 5: typed, located). routed_via_family_crate below is retained as the re-flip constructor."
+
 fn routed_via_family_crate(family: String) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
     family: family,
@@ -50,7 +52,15 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
     f: "emit_host_field_access_equals_eval_holds"
   ),
-  routed_via_family_crate(family: "complement"),
+  NativeRoutingFrontierRow {
+    family: "complement",
+    agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
+    disposition: InterpretedRetained {
+      reason: "agreement_red_on_main",
+      dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
+    }
+  },
   retained_parity_open(
     family: "match",
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
@@ -66,7 +76,15 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
     f: "emit_host_fold_closure_equals_eval_holds"
   ),
-  routed_via_family_crate(family: "meet_join"),
+  NativeRoutingFrontierRow {
+    family: "meet_join",
+    agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
+    disposition: InterpretedRetained {
+      reason: "agreement_red_on_main",
+      dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
+    }
+  },
   retained_parity_open(
     family: "variant_construct",
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
