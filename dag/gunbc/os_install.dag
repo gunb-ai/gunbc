@@ -148,7 +148,6 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-<<<<<<< HEAD
   ssh_authorized_keys: fleet_authorized_keys,
   ssh_password_auth: false,
   storage_policy: StoragePolicyDirectLayout,
@@ -174,8 +173,6 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   install_openssh_server: true,
   ssh_authorized_keys: fleet_authorized_keys,
   ssh_password_auth: false,
-=======
->>>>>>> origin/main
   storage_policy: StoragePolicyDirectLayout,
 }
 

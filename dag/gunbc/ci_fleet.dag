@@ -11,11 +11,8 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
-<<<<<<< HEAD
   srv4_host,
-=======
   fleet_host_memory_nominal_vs_usable_note,
->>>>>>> origin/main
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }

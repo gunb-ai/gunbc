@@ -1,45 +1,5 @@
 module gunbc.srv3_seeded_install_media
 
-<<<<<<< HEAD
-import extdeps.os.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import extdeps.os.ubuntu_seeded_install_media {
-  UbuntuSeededInstallMediaArtifactRow,
-  ubuntu_seeded_install_media_default_nocloud_dir,
-  ubuntu_seeded_install_media_grub_kernel_cmdline,
-  seeded_install_media_content_hash,
-  ubuntu_seeded_install_media_install_path,
-}
-import extdeps.os.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_script,
-  install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_bash_emit_dissolution_trigger,
-}
-import extdeps.os.ubuntu_seeded_install_media_toolchain {
-  install_media_remaster_toolchain_requirement,
-  install_media_remaster_toolchain_is_complete,
-}
-import extdeps.tools.xorriso { xorriso_cli_tool }
-import extdeps.apt { package_xorriso }
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_access_apt_get_privileged_command,
-  deploy_access_preflight_check_block,
-  deploy_access_sudo_n_apt_get_install_command,
-}
-import extdeps.shell
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, String, Bool, ContentHash }
-import std.resources { Network }
-=======
->>>>>>> origin/main
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
@@ -66,127 +26,6 @@ data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaff
   }
 }
 
-<<<<<<< HEAD
-data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3_seeded_install_media",
-    decl_name: "install_media_remaster_toolchain_ensure_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
-data install_media_remaster_toolchain_ensure_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster_toolchain_ensure — xorriso Installed branch via sudo -n deploy_access_apt_get_binary_path (privileged/gated, same class as ci_deploy_access); DISSOLVES WHEN host_effect_apply binds InstallMediaRemasterToolchainEnsure without concat runner glue"
-
-fn install_media_remaster_toolchain_ensure_script() -> String {
-  let tool_name = xorriso_cli_tool.name as String
-  let apt_package = package_xorriso as String
-  let apt_preflight = deploy_access_preflight_check_block(
-    access: ci_deploy_srv1_access,
-    cmd: deploy_access_apt_get_privileged_command(),
-  )
-  let privileged_install = deploy_access_sudo_n_apt_get_install_command(package: package_xorriso)
-  concat(
-    concat(
-      concat(
-        concat("#!/usr/bin/env bash\nset -euo pipefail\nif command -v ", tool_name),
-        " >/dev/null 2>&1 && ",
-      ),
-      concat(tool_name, " --version >/dev/null 2>&1; then\n"),
-    ),
-    concat(
-      concat(
-        concat(
-          concat("  echo \"InstallMediaRemasterToolchainReceipt: outcome=Present tool=", tool_name),
-          concat(" package=", apt_package),
-        ),
-        "\"\n  exit 0\nfi\n",
-      ),
-      concat(
-        concat(
-          concat(
-            concat(apt_preflight, privileged_install),
-            "\n",
-          ),
-          concat(tool_name, " --version >/dev/null\n"),
-        ),
-        concat(
-          concat("echo \"InstallMediaRemasterToolchainReceipt: outcome=Installed tool=", tool_name),
-          concat(" package=", apt_package, "\"\n"),
-        ),
-      ),
-    ),
-  )
-}
-
-data srv3_seeded_install_media_unattended_not_proven_marker: String = "🟡 scaffold: seeded ISO path modeled but unattended install NOT proven by execution — srv3_os_install_actuate_scope seed-gap fail-closed remains until boot-once + SOL receipt + OS-up witness green"
-
-data srv3_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
-  payload: srv3_ubuntu_autoinstall_on_iso,
-) as NonEmptyStr
-
-data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
-  hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
-)
-
-data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(
-  nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
-)
-
-data srv3_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
-  stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-)
-
-data srv3_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {
-  stock_artifact: noble_numbat_2404_3_live_server_arm64,
-  autoinstall: srv3_ubuntu_autoinstall_on_iso,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-  content_hash: srv3_seeded_install_media_content_hash,
-}
-
-data srv3_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path(
-  artifact: srv3_seeded_install_media_artifact,
-)
-
-data srv4_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
-  payload: srv4_ubuntu_autoinstall_on_iso,
-) as NonEmptyStr
-
-data srv4_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
-  hostname: srv4_ubuntu_autoinstall_on_iso.identity.hostname,
-)
-
-data srv4_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(
-  nocloud_dir: srv4_seeded_nocloud_dir_on_iso,
-)
-
-data srv4_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
-  stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
-  autoinstall_user_data_body: srv4_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv4_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv4_seeded_nocloud_dir_on_iso,
-)
-
-data srv4_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {
-  stock_artifact: noble_numbat_2404_3_live_server_arm64,
-  autoinstall: srv4_ubuntu_autoinstall_on_iso,
-  autoinstall_user_data_body: srv4_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv4_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv4_seeded_nocloud_dir_on_iso,
-  content_hash: srv4_seeded_install_media_content_hash,
-}
-
-data srv4_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path(
-  artifact: srv4_seeded_install_media_artifact,
-)
-
-=======
->>>>>>> origin/main
 func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
   uses net: std.resources.Network
 {
@@ -211,24 +50,6 @@ func srv3_seeded_install_media_remaster() -> ProcessExit
     r: srv3_seeded_install_media_remaster_apply(),
     failure_prefix: "seeded-install-media-remaster: ",
   )
-}
-
-func srv4_seeded_install_media_remaster() -> ProcessExit
-  uses net: Network
-{
-  let ensure_script = install_media_remaster_toolchain_ensure_script()
-  let ensure_run = shell.Exec.Run(script: shell_exec_via_bash(body: ensure_script))
-  if ensure_run.success == false {
-    return exit_failure(reason: concat("seeded-install-media-remaster: toolchain ensure failed: ", ensure_run.stderr))
-  }
-
-  let script = install_media_remaster_script(artifact: srv4_seeded_install_media_artifact)
-  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("seeded-install-media-remaster: ", run.stderr))
-  }
 }
 
 fn srv3_seeded_install_media_actuator_host() -> ComputeHost {

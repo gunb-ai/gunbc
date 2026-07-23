@@ -1,50 +1,5 @@
 module gunbc.srv3_boot_once_cd
 
-<<<<<<< HEAD
-import extdeps.bmc.http
-import extdeps.filesystem.filesystem_io
-import std.types { NonEmptyStr, String }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideTarget,
-  BootTargetCd,
-  RedfishBootSourceOverrideEnabled,
-  BootOverrideOnce,
-  RedfishResetType,
-  ResetForceRestart,
-  redfish_boot_target_wire,
-  redfish_boot_override_enabled_wire,
-  redfish_reset_type_wire,
-}
-import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
-import gunbc.tools.bmc_onboard {
-  bmc_onboard_netrc_path,
-  netrc_content,
-  boot_override_body,
-  reset_body,
-}
-import gunbc.bmc_onboarding { srv3_onboarding_plan }
-import gunbc.workflow_escalation {
-  WorkflowApprovalState,
-  workflow_destructive_step_refusal_reason,
-}
-import gunbc.srv3_os_install_actuate_workflow {
-  srv3_boot_once_cd_escalation,
-  srv3_boot_once_cd_default_approval,
-  srv3_boot_once_cd_operator_granted_approval,
-  srv3_boot_once_cd_workflow_disposition,
-}
-import gunbc.srv3_bmc_credential_resolve {
-  observe_and_resolve_srv3_bmc_credential,
-  materialize_bmc_login_password,
-  CredentialResolutionRefused,
-  BmcCredentialResolution,
-}
-=======
->>>>>>> origin/main
 
 data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

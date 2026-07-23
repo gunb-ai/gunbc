@@ -1,39 +1,5 @@
 module extdeps.bmc.webui.nbd_proxy_serve
 
-<<<<<<< HEAD
-import std.types { NonEmptyStr, Int, String, List }
-import std.logic { Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool, websocat_install_path }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import extdeps.languages.bash.program {
-  ShellWord,
-  ShellStmt,
-  ShellProgram,
-  Lit,
-  Command,
-  RawLine,
-  WithRedir,
-  RedirToFile,
-  lit,
-  command,
-  assign,
-  serialize_bash,
-}
-import extdeps.bmc.webui.nbd_proxy {
-  nbd_proxy_role_assignment,
-  NbdServer,
-}
-import extdeps.uri { Uri, Https }
-import extdeps.bmc.virtual_media {
-  VirtualMediaIntent,
-  NbdProxyWebsocatParams,
-  virtual_media_source_iso,
-}
-=======
->>>>>>> origin/main
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -85,7 +51,6 @@ fn nbd_proxy_serve_transport_intent(
   }
 }
 
-<<<<<<< HEAD
 fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdProxyWebsocatParams) -> NbdProxyServeTransportIntent {
   NbdProxyServeTransportIntent {
     bmc_host: vm.bmc_host,
@@ -96,10 +61,7 @@ fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdPr
   }
 }
 
-fn bmcweb_session_login_program(
-=======
 fn bmcweb_session_login_curl_args(
->>>>>>> origin/main
   bmc_host: NonEmptyStr,
   request_body_file: NonEmptyStr,
   response_path: NonEmptyStr,

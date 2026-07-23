@@ -19,14 +19,9 @@ import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_cata
 import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
-<<<<<<< HEAD
 import extdeps.cache.sccache { sccache_toolchain_capability }
-import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability, LatencyClass }
-import product.placement_supply { HostIdentity, PlacementSupplyRow }
-=======
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
 import product.placement_supply { HostIdentity }
->>>>>>> origin/main
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }

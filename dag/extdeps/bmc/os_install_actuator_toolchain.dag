@@ -1,17 +1,5 @@
 module extdeps.bmc.os_install_actuator_toolchain
 
-<<<<<<< HEAD
-import std.types { NonEmptyStr, List, Bool }
-import extdeps.tools { CliTool }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import extdeps.tools.gcloud { gcloud_cli_tool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-=======
->>>>>>> origin/main
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -60,13 +60,6 @@ test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool 
     && string_contains(s: script, pattern: "HTTP_CODE=$(curl")
 }
 
-test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
-  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
-  !string_contains(s: script, pattern: "HTTP_CODE=if")
-    && !string_contains(s: script, pattern: "echo 000))")
-    && string_contains(s: script, pattern: "HTTP_CODE=$(curl")
-}
-
 test fn remote_bmc_probe_needs_serve_observation() -> Bool {
   srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation()
     && match diagnose_srv3_install(
@@ -194,8 +187,6 @@ test fn parse_bmc_websocket_http_code_non_101_red_despite_serve_websocat_present
     }
 }
 
-<<<<<<< HEAD
-=======
 test fn observe_script_names_bash_emit_dissolution_scaffold() -> Bool {
   match srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger {
     Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
@@ -203,7 +194,6 @@ test fn observe_script_names_bash_emit_dissolution_scaffold() -> Bool {
   }
 }
 
->>>>>>> origin/main
 test fn checklist_entrypoint_carries_dissolution_trigger() -> Bool {
   srv3_install_diagnostic_checklist_entrypoint_is_declared()
 }

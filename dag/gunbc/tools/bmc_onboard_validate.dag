@@ -1,13 +1,5 @@
 module gunbc.tools.bmc_onboard_validate
 
-<<<<<<< HEAD
-import extdeps.bmc.http
-import gunbc.bmc_onboarding { srv3_onboarding_plan }
-import std.types { NonEmptyStr, Secret }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-=======
->>>>>>> origin/main
 
 func bmc_onboard_validate() -> ProcessExit
   uses net: std.resources.Network
