@@ -1,3 +1,0 @@
-# Fleet SSH public keys (public — safe to store here). Authority: dag/gunbc/fleet_ssh_access.dag
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF macbook-m4
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc
