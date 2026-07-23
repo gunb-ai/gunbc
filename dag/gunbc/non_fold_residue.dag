@@ -44,6 +44,8 @@ data nfr_dissolve_wildcard_total: String = "the site's wildcard arm migrates to 
 
 data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
 
+data nfr_dissolve_gate_membership: String = "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     unit: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
@@ -663,12 +665,12 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     unit: "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
     reason: nfr_reason_ci_floor_gate_membership,
-    dissolve_on: nfr_dissolve_derived_equality
+    dissolve_on: nfr_dissolve_gate_membership
   },
   FrontierRow {
     unit: "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
     reason: nfr_reason_ci_floor_gate_membership,
-    dissolve_on: nfr_dissolve_derived_equality
+    dissolve_on: nfr_dissolve_gate_membership
   }
 ]
 
