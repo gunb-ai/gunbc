@@ -2,7 +2,7 @@ module gunbc.commit_workflow
 
 import gunbc.ci_gate {
   Gate,
-  EmitHostGate, LayeringImportsGate,
+  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
@@ -60,6 +60,10 @@ data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
 data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitHostGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: CheapClaimPoolGate },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
@@ -573,6 +577,7 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
 fn gate_eq(a: Gate, b: Gate) -> Bool {
   match a {
     EmitHostGate => match b { EmitHostGate => true  _ => false }
+    CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
     LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
     ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }

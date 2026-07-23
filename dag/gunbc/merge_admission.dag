@@ -17,7 +17,7 @@ import std.realization_schedule {
 }
 import gunbc.ci_gate {
   Gate,
-  EmitHostGate, LayeringImportsGate,
+  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate,
@@ -72,6 +72,7 @@ data gate_content_hash_variant_tag_scaffold: Disposition = Scaffold {
 fn gate_content_hash(g: Gate) -> ContentHash {
   match g {
     EmitHostGate => content_hash_atom(value: "EmitHostGate")
+    CheapClaimPoolGate => content_hash_atom(value: "CheapClaimPoolGate")
     LayeringImportsGate => content_hash_atom(value: "LayeringImportsGate")
     ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
     DagCompileCleanGate => content_hash_atom(value: "DagCompileCleanGate")
