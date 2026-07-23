@@ -14,9 +14,9 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model
+  dag_language_model,
+  qualified_name_from_module_node
 }
-import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid }
@@ -358,7 +358,7 @@ fn module_storage_binding_from_provenance(
   prov: SourceIrArtifactProvenance,
   source_root: SourceRootRef
 ) -> Outcome<ModuleStorageBinding> {
-  match qualified_name_from_module_node_graft_aware(root: prov.node) {
+  match qualified_name_from_module_node(root: prov.node) {
     Accepted { value: qn, diagnostics: _ } =>
       outcome_accepted(
         value: ModuleStorageBinding {
