@@ -1926,9 +1926,7 @@ fn call_compile_clean_bool_list_fn(
     }
 }
 
-fn compile_clean_all_touched_paths_docs_universe(
-    touched_paths: &[String],
-) -> Result<bool, String> {
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> Result<bool, String> {
     call_compile_clean_bool_list_fn(
         "compile_clean_all_touched_paths_docs_universe",
         "touched_paths",
@@ -10598,29 +10596,6 @@ fn scan_wire_contract_decl_names(content: &str) -> Vec<String> {
     out
 }
 
-struct SidecarPlacementRule {
-    required_suffix: &'static str,
-    decl_description: &'static str,
-    scan: fn(&str) -> Vec<String>,
-    emit_discovery: bool,
-}
-
-const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
-    SidecarPlacementRule {
-        required_suffix: "_test.dag",
-        decl_description: "`test`-marked decls",
-        scan: scan_test_decl_names,
-        emit_discovery: true,
-    },
-    SidecarPlacementRule {
-        required_suffix: "_contracts.dag",
-        decl_description:
-            "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
-        scan: scan_wire_contract_decl_names,
-        emit_discovery: false,
-    },
-];
-
 fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     let mut out = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -10931,27 +10906,6 @@ fn discover_floor_corpus_rows_from_dag_producer(
     parse_floor_discovery_producer_result(&ctx, &result)
 }
 
-fn discover_floor_corpus_rows_roster_fingerprint(rows: &[DiscoveryRow]) -> String {
-    let mut lines: Vec<String> = rows
-        .iter()
-        .map(|r| {
-            format!(
-                "{}|{}|{}|{}",
-                r.entry,
-                r.function,
-                r.label,
-                if r.reads_live_tree {
-                    "ReadsLiveTree"
-                } else {
-                    "SubstrateInputsOnly"
-                }
-            )
-        })
-        .collect();
-    lines.sort();
-    lines.join("\n")
-}
-
 fn apply_discovery_scope_dirs_filter(
     mut rows: Vec<DiscoveryRow>,
     discovery_scope_dirs: &[String],
@@ -11037,135 +10991,6 @@ fn build_floor_lens_import_graph(source_roots: &[String]) -> Result<FloorLensImp
     })
 }
 
-fn discover_floor_corpus_rows_inner_rust_legacy(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let excludes: Vec<String> = exclude_substrings.to_vec();
-    let mut rows: Vec<DiscoveryRow> = Vec::new();
-    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
-    let mut entry_dispositions: std::collections::BTreeMap<String, bool> =
-        std::collections::BTreeMap::new();
-    for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
-        for rec in discovery.records {
-            if let OwnedDataDeclInitializer::BoolWitnessClaim {
-                witness_entry,
-                witness_function,
-            } = rec.initializer
-            {
-                if witness_entry.is_empty() || witness_function.is_empty() {
-                    return Err(format!(
-                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
-                        rec.decl_name
-                    ));
-                }
-                if seen.insert((witness_entry.clone(), witness_function.clone())) {
-                    let label = rec
-                        .decl_name
-                        .strip_prefix("unified_claim_")
-                        .unwrap_or(&rec.decl_name)
-                        .to_string();
-                    let reads_live_tree = match entry_dispositions.get(&witness_entry) {
-                        Some(d) => *d,
-                        None => {
-                            let d = read_entry_live_tree_disposition(&witness_entry)?;
-                            entry_dispositions.insert(witness_entry.clone(), d);
-                            d
-                        }
-                    };
-                    rows.push(DiscoveryRow {
-                        label,
-                        entry: witness_entry,
-                        function: witness_function,
-                        reads_live_tree,
-                    });
-                }
-            }
-        }
-    }
-
-    let mut sidecar_violations: Vec<Vec<String>> =
-        SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
-                continue;
-            }
-            if !discovery_scope_dirs.is_empty()
-                && !discovery_scope_dirs
-                    .iter()
-                    .any(|d| entry.contains(d.as_str()))
-            {
-                continue;
-            }
-            let rule_decls: Vec<Vec<String>> = SIDECAR_PLACEMENT_RULES
-                .iter()
-                .map(|rule| (rule.scan)(&content))
-                .collect();
-            for (i, (rule, names)) in SIDECAR_PLACEMENT_RULES
-                .iter()
-                .zip(rule_decls.iter())
-                .enumerate()
-            {
-                if !names.is_empty() && !entry.ends_with(rule.required_suffix) {
-                    sidecar_violations[i].push(entry.clone());
-                }
-                if rule.emit_discovery && entry.ends_with(rule.required_suffix) {
-                    let reads_live_tree = match entry_dispositions.get(&entry) {
-                        Some(d) => *d,
-                        None => {
-                            let d = parse_entry_live_tree_disposition(&entry, &content)?;
-                            entry_dispositions.insert(entry.clone(), d);
-                            d
-                        }
-                    };
-                    for name in names {
-                        if seen.insert((entry.clone(), name.clone())) {
-                            rows.push(DiscoveryRow {
-                                label: name.clone(),
-                                entry: entry.clone(),
-                                function: name.clone(),
-                                reads_live_tree,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for (rule, violations) in SIDECAR_PLACEMENT_RULES
-        .iter()
-        .zip(sidecar_violations.iter())
-    {
-        if !violations.is_empty() {
-            let mut sorted = violations.clone();
-            sorted.sort();
-            return Err(format!(
-                "{} must live in `*{}` files; found in: {}",
-                rule.decl_description,
-                rule.required_suffix,
-                sorted.join(", ")
-            ));
-        }
-    }
-
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    Ok(rows)
-}
-
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
     witness_exclusion_substrings()
 }
@@ -11208,25 +11033,6 @@ fn discover_floor_corpus_rows_inner(
 ) -> Result<Vec<DiscoveryRow>, String> {
     let mut rows =
         discover_floor_corpus_rows_from_dag_producer(source_roots, scan_dirs, exclude_substrings)?;
-    if std::env::var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN").as_deref() == Ok("1") {
-        let legacy = discover_floor_corpus_rows_inner_rust_legacy(
-            source_roots,
-            scan_dirs,
-            exclude_substrings,
-            discovery_scope_dirs,
-        )?;
-        let dag_fp = discover_floor_corpus_rows_roster_fingerprint(
-            &apply_discovery_scope_dirs_filter(rows.clone(), discovery_scope_dirs),
-        );
-        let legacy_fp = discover_floor_corpus_rows_roster_fingerprint(&legacy);
-        if dag_fp != legacy_fp {
-            panic!(
-                "floor discovery dual-run roster mismatch (GUNBC_FLOOR_DISCOVERY_DUAL_RUN=1):\n\
-                 === dag (after scope filter) ===\n{dag_fp}\n\
-                 === legacy rust ===\n{legacy_fp}"
-            );
-        }
-    }
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
         path_imports,
@@ -17688,43 +17494,6 @@ mod source_root_ingest_manifest_tests {
             out.contains("import v2.std.cross_tree.import_model"),
             "manifest referencing V2Tree/DagTree must import them or witnesses hit \
              `undefined variable`; got:\n{out}"
-        );
-    }
-}
-
-/// Pins HAND-RUST `discover_floor_corpus_rows_inner` against
-/// `floor_discovery_producer.dag`. Witness:
-/// `dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag`.
-#[cfg(test)]
-mod floor_discovery_dag_equivalence_tests {
-    use super::{
-        default_source_roots, discover_floor_corpus_rows, witness_discovery_scan_dirs,
-        witness_exclusion_substrings,
-    };
-    use std::path::PathBuf;
-
-    fn workspace_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root")
-            .to_path_buf()
-    }
-
-    #[test]
-    fn floor_discovery_dag_rust_dual_run_equivalence_on_live_corpus() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        std::env::set_var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN", "1");
-        let roots = default_source_roots();
-        let scan_dirs = witness_discovery_scan_dirs();
-        let excludes = witness_exclusion_substrings();
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
-        std::env::remove_var("GUNBC_FLOOR_DISCOVERY_DUAL_RUN");
-        assert!(
-            result.is_ok(),
-            "floor discovery dual-run must succeed on live corpus: {}",
-            result.err().unwrap_or_default()
         );
     }
 }
