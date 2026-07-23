@@ -4,7 +4,7 @@ import extdeps.shell
 import extdeps.git
 import extdeps.gunbc
 import gunbc.cli_services
-import tools.host_prelude { run_witness_bin }
+import tools.host_prelude { ClaimRun, claim_batch_claims_argv, run_witness_bin }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,23 +76,24 @@ test fn typed_gunbc_cli_run_claim_holds() -> Bool {
   result.success
 }
 
-test fn typed_gunbc_cli_run_claims_pooled_holds() -> Bool {
-  let result = gunbc.Cli.RunClaims(
-    workdir: "/",
-    bin_path: "/bin/true",
-    source_roots: ["dag"],
-    claim_specs: ["noop.dag::noop", "noop.dag::noop_two"]
-  )
-  result.success
+test fn typed_claim_batch_pooled_argv_shape_holds() -> Bool {
+  claim_batch_claims_argv(
+    source_roots: ["dag", "src/v2"],
+    claims: [
+      ClaimRun { entry: "a.dag", function: "f1" },
+      ClaimRun { entry: "a.dag", function: "f2" },
+      ClaimRun { entry: "b.dag", function: "g" }
+    ]
+  ) == [
+    "--source-root", "dag", "--source-root", "src/v2",
+    "--entry", "a.dag", "--function", "f1", "--function", "f2",
+    "--entry", "b.dag", "--function", "g",
+    "--claim-run", "--wet"
+  ]
 }
 
-test fn typed_gunbc_cli_run_claims_pooled_nonzero_red_control_holds() -> Bool {
-  let result = gunbc.Cli.RunClaims(
-    workdir: "/",
-    bin_path: "/bin/false",
-    source_roots: ["dag"],
-    claim_specs: ["noop.dag::noop"]
-  )
+test fn typed_claim_batch_pooled_run_red_control_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", args: ["--entry", "x.dag"])
   result.success == false
 }
 

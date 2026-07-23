@@ -68,12 +68,6 @@ enum Commands {
         /// TestClaim / witness run: Bool false → exit 1; requires --entry
         #[arg(long)]
         claim_run: bool,
-        /// Pooled claim rows (repeatable): `ENTRY::FUNCTION`, each with --claim-run
-        /// semantics, all in THIS process against one shared resolve store — N rows
-        /// over K distinct entries pay K entry resolves instead of N cold
-        /// per-process resolves. Mutually exclusive with --entry/--function.
-        #[arg(long = "claim")]
-        claims: Vec<String>,
     },
 
     /// Apply a host's typed converge policy in-process
@@ -629,26 +623,8 @@ fn main() {
             function,
             entry,
             claim_run,
-            claims,
         } => {
-            if !claims.is_empty() {
-                if entry.is_some() {
-                    eprintln!(
-                        "error: --claim ENTRY::FUNCTION rows and --entry/--function are \
-                         mutually exclusive"
-                    );
-                    std::process::exit(1);
-                }
-                cli_run::handle_run_claims_pooled(source_roots, claims);
-            } else {
-                cli_run::handle_run_with_options(
-                    source_roots,
-                    function,
-                    entry,
-                    cli.dry_run,
-                    claim_run,
-                );
-            }
+            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);
         }
 
         Commands::Converge { host } => {

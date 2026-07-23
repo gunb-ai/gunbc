@@ -4,7 +4,6 @@ import std.types { FilePath, String }
 import gunbc.cli_invoke {
   claim_executor_run_plan_transport_argv,
   claim_executor_verify_artifacts_transport_argv,
-  gunbc_run_claims_transport_argv,
   gunbc_run_transport_argv
 }
 
@@ -44,36 +43,6 @@ service gunbc.Cli {
     }
   }
 
-  operation RunClaims {
-    input {
-      workdir: FilePath
-      bin_path: FilePath
-      source_roots: List<String>
-      claim_specs: List<String>
-    }
-    output {
-      success: Bool from "exit_success"
-      exit_code: Int from "exit_code"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell {
-      argv: [
-        "env",
-        "-C",
-        "{workdir}",
-        "{bin_path}",
-        gunbc_run_claims_transport_argv(
-          source_roots: source_roots,
-          claim_specs: claim_specs
-        )
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "gunbc pooled claim run exited nonzero"
-    }
-  }
 }
 
 service claim_executor.Executor {
