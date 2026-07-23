@@ -14500,7 +14500,7 @@ pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemIn
                     ),
                     emit_import_name(leaf.clone(), registry.clone()),
                 ),
-                None => emit_ident(name.clone(), RenderTarget::Rust),
+                None => emit_ident(leaf.clone(), RenderTarget::Rust),
             }
         }
     } else {
