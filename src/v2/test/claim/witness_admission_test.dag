@@ -6,7 +6,7 @@ import v2.workflow.witness_admission {
   witness_admission_explicit_consumer_manifest,
   witness_admission_manifest_covers_row
 }
-import v2.std.witness_admission {
+import std.witness_admission {
   WitnessConsumerCadence,
   FalsifierSelfHostWet,
   BinWitnessWet,

@@ -45,6 +45,7 @@ type LensIdV0
   | MutationAdequacy
   | NonFoldResidue
   | RealizationVocabularyContainment
+  | RosterRegistry
   | ScheduleLens
   | SimulatedRelationship
   | StructuralSimilarity
@@ -347,6 +348,11 @@ data lens_registry_v0_witness_cost_locality: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.witness_cost_locality" }
 }
 
+data lens_registry_v0_roster_registry: LensRegistryEntryV0 = {
+  lens_id: RosterRegistry
+  module_path: Bound { path: "v2.lens.roster_registry" }
+}
+
 data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_complexity,
   lens_registry_v0_cost,
@@ -391,6 +397,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_non_fold_residue,
   lens_registry_v0_realization_vocabulary_containment,
+  lens_registry_v0_roster_registry,
   lens_registry_v0_schedule_lens,
   lens_registry_v0_simulated_relationship,
   lens_registry_v0_structural_similarity,
@@ -576,6 +583,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     RealizationVocabularyContainment => match right {
       RealizationVocabularyContainment => true
+      _ => false
+    }
+    RosterRegistry => match right {
+      RosterRegistry => true
       _ => false
     }
     ScheduleLens => match right {

@@ -3,24 +3,47 @@ module v2.compiler.self_host.native_routing_frontier
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.algebra { length }
+import v2.std.algebra { length, any, contains }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  module_declaration_facts_live,
+  dependency_resolution_facts_live,
+  build_dependency_adjacency,
+  import_closure_bfs_walk,
+  ImportClosureBfsState
+}
 
 data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA gated by the parity window (v2.compiler.self_host.parity_window): N consecutive green falsifier cadence windows (agreement + warm compile_skipped=true) are required evidence; a refusal or divergence resets the window. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation. All 9 families start InterpretedRetained with reason parity_window_open at landing; the PR ships the machine, receipts flip it."
+
+data native_routing_subject_key_note: String = "Subject re-key (group-of-units ruling 2026-07-22, gunbc.roster_registry): a family's identity is its SUBJECT — a DeclarationRef to the construct/fixture declaration the family exercises — never a bare family: String nickname. Membership is DERIVED: an agreement entry is a member of a family exactly when its dependency closure (import + reference edges, the v2.lens.module_graph authority) reaches the subject's module — native_routing_row_membership_derived below is the ByDerivation predicate gunbc.roster_registry names, witnessed by the equivalence receipt in native_routing_membership_receipt_test (derived membership == the bound agreement entry, per row, plus a RED control: an entry whose closure does not reach the subject is not a member). The parity-window receipts (parity_receipts_local) stay keyed by their falsifier-observation family names; the frontier test binds those receipts to subject-keyed rows explicitly — observation data, not a second row key."
 
 type NativeRoutingDisposition
   = NativeRouted
   | InterpretedRetained { reason: String, dissolve_on: String }
 
 type NativeRoutingFrontierRow {
-  family: String
+  subject: DeclarationRef
   agreement_entry: String
   agreement_function: String
   disposition: NativeRoutingDisposition
 }
 
-fn retained_parity_open(family: String, entry: String, f: String) -> NativeRoutingFrontierRow {
+fn family_subject(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration
+  }
+}
+
+fn retained_parity_open(
+  subject: DeclarationRef,
+  entry: String,
+  f: String
+) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
-    family: family,
+    subject: subject,
     agreement_entry: entry,
     agreement_function: f,
     disposition: InterpretedRetained {
@@ -32,9 +55,9 @@ fn retained_parity_open(family: String, entry: String, f: String) -> NativeRouti
 
 data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms — so this is a genuine native-vs-eval divergence or member-run failure, NOT a cold cache. The frontier worked as designed: the revert is this one data edit, the investigation proceeds off the merge-critical path, and the falsifier cold control keeps exercising both legs. Named loudness gap to close BEFORE re-flipping: the agreement fn's false carries no located member and no value pair — a divergence receipt must NAME which member and both answers (DESIGN 5: typed, located). routed_via_family_crate below is retained as the re-flip constructor."
 
-fn routed_via_family_crate(family: String) -> NativeRoutingFrontierRow {
+fn routed_via_family_crate(subject: DeclarationRef) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
-    family: family,
+    subject: subject,
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: NativeRouted
@@ -43,17 +66,26 @@ fn routed_via_family_crate(family: String) -> NativeRoutingFrontierRow {
 
 data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   retained_parity_open(
-    family: "add",
+    subject: family_subject(
+      module_path: "v2.test.manual.rust_add_emit_translate",
+      decl_name: "rust_add_inferred_tree"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     f: "emit_host_add_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "field_access",
+    subject: family_subject(
+      module_path: "v2.test.execution.emit_host_field_access_equals_eval",
+      decl_name: "emit_field_eval_subgraph_node"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
     f: "emit_host_field_access_equals_eval_holds"
   ),
   NativeRoutingFrontierRow {
-    family: "complement",
+    subject: family_subject(
+      module_path: "v2.test.execution.emit_host_complement_equals_eval",
+      decl_name: "emit_complement_eval_subject"
+    ),
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
@@ -62,22 +94,34 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     }
   },
   retained_parity_open(
-    family: "match",
+    subject: family_subject(
+      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      decl_name: "table_fixture_match_arrow_with_body"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
     f: "emit_host_match_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "loop",
+    subject: family_subject(
+      module_path: "v2.test.complexity_gate.table_fixture_loop_subject_producer",
+      decl_name: "table_fixture_loop_arrow_with_body"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
     f: "emit_host_loop_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "fold_closure",
+    subject: family_subject(
+      module_path: "v2.test.emit.fold_call_closure_fixture",
+      decl_name: "fold_fixture_param_call_body"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
     f: "emit_host_fold_closure_equals_eval_holds"
   ),
   NativeRoutingFrontierRow {
-    family: "meet_join",
+    subject: family_subject(
+      module_path: "v2.test.execution.emit_host_meet_join_equals_eval",
+      decl_name: "meet_join_eval_subject"
+    ),
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
@@ -86,12 +130,18 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     }
   },
   retained_parity_open(
-    family: "variant_construct",
+    subject: family_subject(
+      module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
+      decl_name: "emit_variant_construct_eval_subgraph_node"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
     f: "emit_host_variant_construct_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "classical_not_ingested",
+    subject: family_subject(
+      module_path: "v2.test.execution.emit_host_classical_not_ingested_equals_eval",
+      decl_name: "ingested_classical_not_source"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
@@ -144,12 +194,16 @@ fn interpreted_retained_rows() -> List<NativeRoutingFrontierRow> {
   )
 }
 
-fn routing_frontier_row_for_family(family: String) -> List<NativeRoutingFrontierRow> {
+fn subject_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  (a.module_path == b.module_path) && (a.decl_name == b.decl_name)
+}
+
+fn routing_frontier_row_for_subject(subject: DeclarationRef) -> List<NativeRoutingFrontierRow> {
   fold(
     native_routing_frontier_roster,
     init: [],
     f: fn(acc, row) {
-      if row.family == family {
+      if subject_eq(a: row.subject, b: subject) {
         concat(acc, [row])
       } else {
         acc
@@ -162,4 +216,117 @@ fn routing_frontier_total_holds() -> Bool {
   let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
   length(xs: native_routing_frontier_roster) == native_routing_frontier_family_count_expected
     && split_total == native_routing_frontier_family_count_expected
+}
+
+fn string_eq_native_routing(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn routing_frontier_agreement_entries_distinct() -> List<String> {
+  fold(
+    native_routing_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if contains(xs: acc, item: row.agreement_entry, eq: string_eq_native_routing) {
+        acc
+      } else {
+        concat(acc, [row.agreement_entry])
+      }
+    }
+  )
+}
+
+fn subject_module_source_paths(
+  subject: DeclarationRef,
+  facts: List<ModuleDeclarationFact>
+) -> List<String> {
+  fold(
+    facts,
+    init: [],
+    f: fn(acc, fact) {
+      if fact.module == subject.module_path {
+        concat(acc, [fact.path])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+type NativeRoutingEntryClosure {
+  entry: String
+  closure: List<String>
+}
+
+fn native_routing_pool_closures(
+  pool_entries: List<String>,
+  pool_roots: List<String>
+) -> List<NativeRoutingEntryClosure> {
+  let edges = dependency_resolution_facts_live(
+    pool_roots: pool_roots,
+    importer_roots: pool_roots,
+    exclude_substrings: []
+  )
+  let nodes = module_declaration_facts_live(pool_roots: pool_roots)
+  let adjacency = build_dependency_adjacency(
+    edges: edges,
+    nodes: nodes
+  )
+  fold(
+    pool_entries,
+    init: [],
+    f: fn(acc, entry) {
+      concat(
+        acc,
+        [
+          NativeRoutingEntryClosure {
+            entry: entry,
+            closure: import_closure_bfs_walk(
+              state: ImportClosureBfsState { reached: [entry], queue: [entry] },
+              adjacency: adjacency
+            )
+          }
+        ]
+      )
+    }
+  )
+}
+
+fn native_routing_closure_reaches_subject(
+  closure: List<String>,
+  subject: DeclarationRef,
+  facts: List<ModuleDeclarationFact>
+) -> Bool {
+  any(
+    xs: subject_module_source_paths(subject: subject, facts: facts),
+    predicate: fn(p) {
+      contains(xs: closure, item: p, eq: string_eq_native_routing)
+    }
+  )
+}
+
+fn native_routing_row_membership_derived(
+  row: NativeRoutingFrontierRow,
+  pool: List<NativeRoutingEntryClosure>,
+  facts: List<ModuleDeclarationFact>
+) -> List<String> {
+  fold(
+    pool,
+    init: [],
+    f: fn(acc, ec) {
+      if native_routing_closure_reaches_subject(
+        closure: ec.closure,
+        subject: row.subject,
+        facts: facts
+      ) {
+        concat(acc, [ec.entry])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn native_routing_membership_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
+  module_declaration_facts_live(pool_roots: pool_roots)
 }

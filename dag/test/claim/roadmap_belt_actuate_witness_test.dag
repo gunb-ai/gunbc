@@ -33,6 +33,10 @@ import gunbc.roadmap_belt_actuate {
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
   belt_dispatch_result_ok,
+  belt_dispatch_status_label,
+  belt_dispatch_ok_status_labels,
+  BeltClaudePreflight, ClaudePreflightOk, ClaudePreflightRefused,
+  belt_claude_preflight_decision,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -308,6 +312,111 @@ fn witness_dispatch_result_refusals_not_ok() -> Bool {
     && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
 }
 
+fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
+  let ok = belt_dispatch_result_ok(r: r)
+  let label_in_ok_set = any(belt_dispatch_ok_status_labels, l => l == belt_dispatch_status_label(r: r))
+  ok == label_in_ok_set
+}
+
+fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
+  status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s" })
+    && status_label_glued_to_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "s" })
+    && status_label_glued_to_ok(r: DispatchNodeNotFound { node_id: "a" })
+    && status_label_glued_to_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
+    && status_label_glued_to_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
+    && status_label_glued_to_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
+}
+
+fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
+  belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s" }) == "spawned"
+    && belt_dispatch_status_label(r: DispatchAlreadyLive { node_id: "a", session_name: "s" }) == "already_live"
+    && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
+    && belt_dispatch_status_label(r: DispatchNodeAlreadyDone { node_id: "a" }) == "already_done_signed_off"
+    && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
+    && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
+}
+
+fn preflight_refused_step(p: BeltClaudePreflight) -> String {
+  match p {
+    ClaudePreflightRefused { step: st, detail: _ } => st
+    ClaudePreflightOk => ""
+  }
+}
+
+fn preflight_ok(p: BeltClaudePreflight) -> Bool {
+  match p {
+    ClaudePreflightOk => true
+    ClaudePreflightRefused { step: _, detail: _ } => false
+  }
+}
+
+fn seeded_trust_config() -> String {
+  "\{\"projects\":\{\"/opt/x/worktrees\":\{\"hasTrustDialogAccepted\":true\}\}\}"
+}
+
+fn preflight_with_config(config: String) -> BeltClaudePreflight {
+  belt_claude_preflight_decision(
+    claude_on_path: true,
+    home: "/home/u",
+    trust_store_path: "/home/u/.claude.json",
+    trust_store_readable: true,
+    trust_store_text: config,
+    trust_root: "/opt/x/worktrees",
+  )
+}
+
+fn witness_preflight_refuses_missing_claude() -> Bool {
+  preflight_refused_step(p: belt_claude_preflight_decision(
+    claude_on_path: false,
+    home: "/home/u",
+    trust_store_path: "",
+    trust_store_readable: false,
+    trust_store_text: "",
+    trust_root: "/opt/x/worktrees",
+  )) == "claude-cli"
+}
+
+fn witness_preflight_refuses_unknown_home() -> Bool {
+  preflight_refused_step(p: belt_claude_preflight_decision(
+    claude_on_path: true,
+    home: "",
+    trust_store_path: "",
+    trust_store_readable: false,
+    trust_store_text: "",
+    trust_root: "/opt/x/worktrees",
+  )) == "claude-trust-home"
+}
+
+fn witness_preflight_refuses_unreadable_store() -> Bool {
+  preflight_refused_step(p: belt_claude_preflight_decision(
+    claude_on_path: true,
+    home: "/home/u",
+    trust_store_path: "/home/u/.claude.json",
+    trust_store_readable: false,
+    trust_store_text: "",
+    trust_root: "/opt/x/worktrees",
+  )) == "claude-trust-store"
+}
+
+fn witness_preflight_refuses_unseeded_root() -> Bool {
+  preflight_refused_step(p: preflight_with_config(
+    config: "\{\"projects\":\{\"/opt/other\":\{\"hasTrustDialogAccepted\":true\}\}\}",
+  )) == "claude-trust-seed"
+    && preflight_refused_step(p: preflight_with_config(
+      config: "\{\"projects\":\{\"/opt/x/worktrees\":\{\"hasTrustDialogAccepted\":false\}\}\}",
+    )) == "claude-trust-seed"
+}
+
+fn witness_preflight_ok_when_seeded() -> Bool {
+  preflight_ok(p: preflight_with_config(config: seeded_trust_config()))
+}
+
+fn witness_preflight_ok_on_enriched_entry() -> Bool {
+  preflight_ok(p: preflight_with_config(
+    config: "\{\"projects\":\{\"/opt/x/worktrees\":\{\"mcpServers\":\{\},\"allowedTools\":[\"a\}b\"],\"hasTrustDialogAccepted\":true\}\}\}",
+  ))
+}
+
 test fn roadmap_belt_actuate_witnesses() -> Bool {
   witness_exec_ok_runs_echo()
     && witness_exec_refuses_missing_program()
@@ -332,4 +441,12 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_node_session_live_false()
     && witness_dispatch_result_ok_spawned_and_live()
     && witness_dispatch_result_refusals_not_ok()
+    && witness_dispatch_status_labels_glued_to_ok_set()
+    && witness_dispatch_status_labels_pin_wire_contract()
+    && witness_preflight_refuses_missing_claude()
+    && witness_preflight_refuses_unknown_home()
+    && witness_preflight_refuses_unreadable_store()
+    && witness_preflight_refuses_unseeded_root()
+    && witness_preflight_ok_when_seeded()
+    && witness_preflight_ok_on_enriched_entry()
 }

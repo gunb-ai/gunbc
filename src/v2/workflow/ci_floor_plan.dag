@@ -446,7 +446,7 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
     scan_dirs: spec.discovery_scan_dirs,
     explicit_entries: corpus_witness_entries(spec: spec),
     node_frontier_selection: SelectionApplied,
-    exclude_substrings: witness_exclusion_substrings,
+    exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
@@ -777,7 +777,7 @@ fn gunbc_falsifier_predict_only_batch() -> Runnable {
     scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
-    exclude_substrings: witness_exclusion_substrings,
+    exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,

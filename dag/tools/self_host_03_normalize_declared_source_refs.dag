@@ -1,0 +1,29 @@
+module tools.self_host_03_normalize_declared_source_refs
+
+import v2.compiler.source_authority { SourceRef, source_ref_for_storage_path }
+import v2.std.collection { List }
+
+data sn_declared_source_refs_doc: String = "declared_source_refs for the 03_normalize behavioral witness only (review 41433 fix): this list opts src/v2/compiler/03_normalize.dag's witness entry into the cli_run.rs affected-set selection axis (docs/plans/declared-source-ref-selection-design.md §4-5, §5.1 flagship). Homed in its OWN module, imported only by dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag — not by tools.self_host_module_behavioral_transport_roster, which all 16 frontier witness entries share. cli_run.rs's declared_source_ref scan is closure-wide (every file in a witness entry's transitive import closure), so a declared_source_refs list living in the shared roster would leak this selection axis onto all 16 entries; a dedicated per-entry module keeps the axis scoped to 03_normalize alone, matching the roster row's module_path/shim_lib_rel/shim_writes/driver_rel exactly."
+
+data sn_source_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/03_normalize.dag")
+
+data sn_shim_lib_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/lib.rs")
+
+data sn_shim_driver_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/witness_main.rs")
+
+data sn_declared_source_refs_completeness_note: String = "Hand-verified completeness (docs/plans/declared-source-ref-selection-design.md §5.1 flagship): every storage path this transport reads is listed in declared_source_refs — emitter .dag, shim lib, witness driver, and each curated shim write source. Widening opt-in past this row waits on effect_reach census join admission."
+
+data declared_source_refs: List<SourceRef> = [
+  sn_source_ref,
+  sn_shim_lib_ref,
+  sn_shim_driver_ref,
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs")
+]

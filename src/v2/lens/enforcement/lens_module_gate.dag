@@ -12,7 +12,7 @@ import v2.lens.registry {
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
   MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
-  RealizationVocabularyContainment, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
+  RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
   Parallelism, EffectEnumeration, Idempotency, Provenance
@@ -212,6 +212,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
     WitnessCostLocality => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyReport,
+      admission: GenuinelyNewInvariant
+    }
+    RosterRegistry => LensInvariantSurface {
+      module: module,
+      projection: ProjectionDeclForest,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
