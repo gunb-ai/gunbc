@@ -54,18 +54,41 @@ enum FloorBatchStopPolicy {
     FullLedger,
 }
 
-fn plan_uses_floor_batch_stop_policy(plan_function: &str) -> bool {
-    matches!(
-        plan_function,
-        "gunbc_ci_floor_batches" | "gunbc_ci_plan_artifact_batches" | "gunbc_falsifier_batches"
-    )
+fn plan_uses_floor_batch_stop_policy(
+    plan_ctx: &InterpContext,
+    plan_function: &str,
+) -> bool {
+    match run_in_context_with_args(
+        plan_ctx,
+        "gunbc_ci_floor_plan_uses_batch_stop_policy",
+        &[(
+            Some("plan_function".to_string()),
+            Value::Str(plan_function.to_string()),
+        )],
+        true,
+    ) {
+        Ok(Value::Bool(b)) => b,
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: gunbc_ci_floor_plan_uses_batch_stop_policy returned \
+                 non-bool {other:?} (treating as not enrolled)"
+            );
+            false
+        }
+        Err(msg) => {
+            eprintln!(
+                "claim_executor: gunbc_ci_floor_plan_uses_batch_stop_policy unavailable: {msg}"
+            );
+            false
+        }
+    }
 }
 
 fn resolve_floor_batch_stop_policy(
     plan_ctx: &InterpContext,
     plan_function: &str,
 ) -> FloorBatchStopPolicy {
-    if !plan_uses_floor_batch_stop_policy(plan_function) {
+    if !plan_uses_floor_batch_stop_policy(plan_ctx, plan_function) {
         return FloorBatchStopPolicy::StopBeforeDependents;
     }
     let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
