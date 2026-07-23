@@ -1183,7 +1183,7 @@ const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The `WitnessConsumerCadence` variant names a `witness_exclusion_frontier` row may carry
-/// (`v2.std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
+/// (`std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
 /// exclusion row claiming discovery is a contradiction and the reader refuses it.
 const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
     "OfflineLocalRecipe",

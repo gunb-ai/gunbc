@@ -27,7 +27,7 @@ import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.witness_admission {
+import std.witness_admission {
   WitnessConsumerCadence,
   WitnessAdmissionRefusal,
   DiscoverySelection,
