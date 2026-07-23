@@ -119,6 +119,22 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_extdeps_languages_dag.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "std_algebra.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/std_algebra.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "std_types.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/std_types.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_integer.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_integer.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_compiler_namespace_graft.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_namespace_graft.rs"
       }
     ],
     driver_rel: "dag/tools/self_host_03_normalize_shims/witness_main.rs",

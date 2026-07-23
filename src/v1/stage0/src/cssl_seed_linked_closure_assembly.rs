@@ -197,7 +197,23 @@ fn dedupe_pub_use_symbols(content: &str) -> String {
 }
 
 fn sanitize_emit_artifact_content(content: &str) -> String {
-    dedupe_pub_use_symbols(content)
+    let deduped = dedupe_pub_use_symbols(content);
+    let replaced = deduped
+        .replace("std.algebra._empty", "crate::v2_std_algebra::freemonoid_empty()")
+        .replace("QualifiedName<String>", "QualifiedName");
+    replaced
+        .lines()
+        .filter(|line| {
+            let t = line.trim();
+            !matches!(
+                t,
+                "pub use crate::v2_std_integer::GroupCompletion;"
+                    | "pub use crate::v2_std_collection::List;"
+                    | "pub use crate::v2_std_collection::Map;"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
@@ -720,5 +736,107 @@ mod tests {
             }
             other => panic!("expected RefusedDep, got {other:?}"),
         }
+    }
+
+    /// RED control for 03_normalize wet-receipt shim refresh: dropping `pub mod
+    /// v2_compiler_namespace_graft` from the narrow hand lib must refuse cargo.
+    #[test]
+    fn normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo() {
+        let root = std::env::current_dir().expect("cwd");
+        let gunbc = root.join("target/release/gunbc");
+        let assemble_bin = root.join("target/release/cssl_assemble");
+        let shim_dir = root.join("dag/tools/self_host_03_normalize_shims");
+        if !gunbc.is_file() || !assemble_bin.is_file() || !shim_dir.is_dir() {
+            return;
+        }
+        let out = std::env::temp_dir().join(format!(
+            "cssl_normalize_stale_red_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&out);
+        let compile_ok = std::process::Command::new(&gunbc)
+            .args([
+                "compile",
+                "--source-root",
+                "dag",
+                "--source-root",
+                "src/v2",
+                "--entry",
+                "src/v2/compiler/03_normalize.dag",
+                "--output-dir",
+                &out.to_string_lossy(),
+                "--target",
+                "rust",
+                "--dependency-pool-index",
+                "primary-precedence",
+            ])
+            .current_dir(&root)
+            .status()
+            .expect("gunbc compile")
+            .success();
+        if !compile_ok {
+            return;
+        }
+        let assemble_ok = std::process::Command::new(&assemble_bin)
+            .args([
+                "--out-dir",
+                &out.to_string_lossy(),
+                "--entry-dag",
+                "src/v2/compiler/03_normalize.dag",
+                "--root",
+                &root.to_string_lossy(),
+                "--std-bridge-dir",
+                "dag/tools/self_host_std_bridge_shims",
+            ])
+            .current_dir(&root)
+            .status()
+            .expect("cssl_assemble")
+            .success();
+        if !assemble_ok {
+            return;
+        }
+        for entry in fs::read_dir(&shim_dir).expect("shim dir") {
+            let entry = entry.expect("entry");
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == "lib.rs" || name == "witness_main.rs" {
+                continue;
+            }
+            fs::copy(entry.path(), out.join("src").join(name.as_ref())).expect("copy shim");
+        }
+        let stale_lib = "// stale RED control — namespace_graft pub mod deliberately dropped\n\
+            #![allow(clippy::all, dead_code, unused_imports)]\n\
+            pub use v1_compiler::NonEmptyVec;\n\
+            pub use v1_compiler::NonEmptyBTreeSet;\n\
+            pub use v1_compiler::v1_rt;\n\
+            pub mod std_algebra;\npub mod std_types;\npub mod v2_std_integer;\n\
+            pub mod v2_std_algebra;\npub mod v2_std_collection;\npub mod v2_std_grammar;\n\
+            pub mod v2_std_diagnostic;\npub mod v2_std_node;\npub mod v2_std_compilers_sugar;\n\
+            pub mod v2_compiler_body_lowering_fold;\npub mod v2_compiler_normalized_tree;\n\
+            pub mod v2_extdeps_languages_dag;\npub mod v2_compiler_normalize;\n";
+        fs::write(out.join("src/lib.rs"), stale_lib).expect("stale lib");
+        fs::write(
+            out.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"stale_red\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
+                 [lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n\
+                 im = {{ version = \"15.1\", features = [\"serde\"] }}\n\
+                 v1-compiler = {{ path = \"{}\" }}\n",
+                root.join("src/v1/stage0").display()
+            ),
+        )
+        .expect("cargo");
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--lib"])
+            .current_dir(&out)
+            .env("RUSTC_WRAPPER", "")
+            .env("CTRL_BUILD_WRAP_CARGO", "0")
+            .status()
+            .expect("cargo");
+        assert!(
+            !status.success(),
+            "stale narrow lib without namespace_graft must refuse cargo"
+        );
+        let _ = fs::remove_dir_all(&out);
     }
 }
