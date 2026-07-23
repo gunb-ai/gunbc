@@ -129,6 +129,28 @@ fn unthemed_color_decls(rules: List<BuildRule>) -> List<UnthemedColorDecl> {
       }))
 }
 
+data untokened_length_note: String = "The length/font sibling of the unthemed-color census (P2): a rule value carrying a raw pixel literal or a quoted font family bypasses the scale (gunbc.design.scale), so it is neither DRY (the value forks per site) nor retunable in one place. The rule is the same shape as the color census — every length/font must route through a token var — and the exclusion is the same by scope: this census runs over a surface's BuildRule rows, never the scale :root block (the one home of the literals). value_has_raw_length keys on 'px' and the single-quote of a font family; unitless 0, %, em, ms (a time, from the timing scale) are not lengths and are not flagged."
+
+type UntokenedLengthDecl {
+  selector: String
+  prop: String
+  value: String
+}
+
+fn value_has_raw_length(value: String) -> Bool {
+  string_contains(s: value, pattern: "px") || string_contains(s: value, pattern: "'")
+}
+
+fn untokened_length_decls(rules: List<BuildRule>) -> List<UntokenedLengthDecl> {
+  fold(rules, init: [], f: (acc, r) =>
+    fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
+      if value_has_raw_length(value: d.value) {
+        concat(inner, [UntokenedLengthDecl { selector: rule_selector(rule: r), prop: d.prop, value: d.value }])
+      } else {
+        inner
+      }))
+}
+
 fn reframe_transition_value(props: List<String>, t: TimingToken) -> String {
   join(map(props, p => join([p, " ", to_string(t.duration_ms), "ms ", t.easing], "")), ", ")
 }

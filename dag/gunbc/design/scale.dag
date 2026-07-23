@@ -18,6 +18,18 @@ fn scale_decl(t: ScaleToken) -> CssDecl {
   decl(prop: concat("--", t.name), value: t.value)
 }
 
+fn scale_pair(a: ScaleToken, b: ScaleToken) -> String {
+  join([scale_var(t: a), " ", scale_var(t: b)], "")
+}
+
+fn scale_triple(a: ScaleToken, b: ScaleToken, c: ScaleToken) -> String {
+  join([scale_var(t: a), " ", scale_var(t: b), " ", scale_var(t: c)], "")
+}
+
+fn scale_border(w: ScaleToken, color_var: String) -> String {
+  join([scale_var(t: w), " solid ", color_var], "")
+}
+
 data space_0: ScaleToken = ScaleToken { name: "space-0", value: "0" }
 data space_1: ScaleToken = ScaleToken { name: "space-1", value: "1px" }
 data space_2: ScaleToken = ScaleToken { name: "space-2", value: "2px" }

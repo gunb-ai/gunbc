@@ -15,14 +15,15 @@ import gunbc.design.theme {
   theme_root_css,
 }
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import gunbc.design.theme_transition { unthemed_color_decls }
+import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls }
+import gunbc.design.scale { scale_root_css }
 import gunbc.site.mark { render_mark }
 import gunbc.design.interaction {
   Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
   DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
-import gunbc.roadmap_style { roadmap_rules, roadmap_css }
+import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_instance_rules }
 import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_interaction {
   roadmap_elements, roadmap_behaviors,
@@ -54,6 +55,26 @@ fn witness_local_hex_literal_refused() -> Bool {
   caught.length() == 1
     && all(caught, c =>
       c.selector == ".rogue-link" && c.prop == "color" && c.value == "#0969da")
+}
+
+fn witness_roadmap_lengths_all_tokened() -> Bool {
+  untokened_length_decls(rules: roadmap_instance_rules()).length() == 0
+}
+
+fn rogue_px_rule() -> BuildRule {
+  StaticRule { selector: ".rogue-pad", decls: [ decl(prop: "padding", value: "14px") ] }
+}
+
+fn witness_local_px_literal_refused() -> Bool {
+  let caught = untokened_length_decls(rules: concat(roadmap_instance_rules(), [rogue_px_rule()]))
+  caught.length() == 1
+    && all(caught, c => c.selector == ".rogue-pad" && c.prop == "padding" && c.value == "14px")
+}
+
+fn witness_scale_block_is_the_px_home() -> Bool {
+  string_contains(s: scale_root_css(), pattern: "14px")
+    && string_contains(s: roadmap_css(), pattern: "var(--text-14)")
+    && untokened_length_decls(rules: roadmap_instance_rules()).length() == 0
 }
 
 fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
@@ -165,6 +186,9 @@ test fn roadmap_register_keystone_holds() -> Bool {
   witness_roadmap_theme_set_coherent()
     && witness_roadmap_colors_all_routed()
     && witness_local_hex_literal_refused()
+    && witness_roadmap_lengths_all_tokened()
+    && witness_local_px_literal_refused()
+    && witness_scale_block_is_the_px_home()
     && witness_derived_responses_ship_with_reduced_motion_collapse()
     && witness_roadmap_coverage_complete()
     && witness_dropped_row_gap_is_located()
