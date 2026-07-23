@@ -5,7 +5,8 @@ import std.types { List }
 import extdeps.firmware.uefi_shell {
   UefiShellCommand,
   UefiNetworkInterface,
-  uefi_interface_has_link,
+  MediaPresent,
+  MediaDisconnected,
   uefi_shell_command_line,
   ConnectRecursive,
   Ifconfig,
@@ -22,7 +23,7 @@ test fn new_shell_commands_render() -> Bool {
 test fn srv4_observed_env_has_link_and_windows() -> Bool {
   let env = srv4_uefi_observed_environment
   let eth0_up = fold(env.interfaces, init: false, f: (acc, i) =>
-    acc || (i.name == "eth0" && uefi_interface_has_link(iface: i)))
+    acc || (i.name == "eth0" && (match i.media { MediaPresent => true, MediaDisconnected => false })))
   let has_windows = fold(env.boot_options, init: false, f: (acc, b) =>
     acc || b.description == "Windows Boot Manager")
   eth0_up && has_windows

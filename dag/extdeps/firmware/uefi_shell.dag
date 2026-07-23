@@ -109,13 +109,6 @@ type UefiNetworkInterface {
   ipv4: NonEmptyStr
 }
 
-fn uefi_interface_has_link(iface: UefiNetworkInterface) -> Bool {
-  match iface.media {
-    MediaPresent => true
-    MediaDisconnected => false
-  }
-}
-
 type UefiBootOption {
   index: Int
   variable: NonEmptyStr

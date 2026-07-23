@@ -12,7 +12,7 @@ import gunbc.uefi_boot_install_decision {
   diagnose_boot_install,
   decide_boot_install,
   boot_install_commands,
-  boot_install_is_refused,
+  RefuseNoSource,
   InstalledFleetNode,
   NetworkUpNeedsDhcp,
 }
@@ -31,7 +31,8 @@ test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
     Present { value: cs } => string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth2 dhcp")
     Absent => false
   }
-  is_needs_dhcp && cmds_have_dhcp && !boot_install_is_refused(action: action)
+  let not_refused = match action { RefuseNoSource { reason: _ } => false, _ => true }
+  is_needs_dhcp && cmds_have_dhcp && not_refused
 }
 
 test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
@@ -60,5 +61,6 @@ test fn no_source_fails_closed() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
-  boot_install_is_refused(action: action) && no_commands
+  let is_refused = match action { RefuseNoSource { reason: _ } => true, _ => false }
+  is_refused && no_commands
 }
