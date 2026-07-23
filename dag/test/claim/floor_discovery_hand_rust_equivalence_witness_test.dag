@@ -21,6 +21,8 @@ import v2.workflow.floor_discovery_producer {
   discover_floor_corpus_rows_from_host_facts,
   floor_discovery_scan_test_decl_names,
   floor_discovery_content_has_wire_contract_decl,
+  floor_discovery_wire_contract_sidecar_refusal_for_content,
+  floor_discovery_entry_live_tree_disposition_refusal_for_content,
   floor_filename_hygiene_refusal_for_paths
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
@@ -40,10 +42,39 @@ data fixture_test_data_content: String = "test data floor_discovery_data_fixture
 data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
 data fixture_hygiene_clean_path: String = "dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag"
 data fixture_hygiene_bad_path: String = "dag/test/claim/bad__hygiene.dag"
-data fixture_wire_contract_coproduct_content: String = "data foo: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }"
-data fixture_wire_contract_variant_content: String = "data bar: VariantEncoding = llm_snake_wire_contract"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
-data fixture_misplaced_wire_contract_scan_dir: String = "dag/test/fixture/floor_discovery"
+data fixture_live_tree_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+
+fn fixture_wire_contract_coproduct_content() -> String {
+  concat(
+    "data foo: Coproduct",
+    "WireContract = { coproduct: \"X\", encoding: UntaggedVariant }"
+  )
+}
+
+fn fixture_wire_contract_variant_content() -> String {
+  concat("data bar: Variant", "Encoding = llm_snake_wire_contract")
+}
+
+fn fixture_misplaced_wire_contract_content() -> String {
+  concat(
+    "data anthropic_chat_message_wire_contract: Coproduct",
+    "WireContract = { coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n"
+  )
+}
+
+fn fixture_live_tree_malformed_variant_content() -> String {
+  concat(
+    "module m\n\ndata live_tree_disposition: LiveTreeDisposition = MaybeLive\n"
+  )
+}
+
+fn fixture_live_tree_duplicate_decl_content() -> String {
+  concat(
+    "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\n",
+    "data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n"
+  )
+}
 
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
@@ -212,25 +243,55 @@ test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
 }
 
 test fn floor_discovery_equivalence_wire_contract_coproduct_scan_holds() -> Bool {
-  floor_discovery_content_has_wire_contract_decl(content: fixture_wire_contract_coproduct_content)
+  floor_discovery_content_has_wire_contract_decl(
+    content: fixture_wire_contract_coproduct_content()
+  )
 }
 
 test fn floor_discovery_equivalence_wire_contract_variant_scan_holds() -> Bool {
-  floor_discovery_content_has_wire_contract_decl(content: fixture_wire_contract_variant_content)
+  floor_discovery_content_has_wire_contract_decl(content: fixture_wire_contract_variant_content())
 }
 
 test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> Bool {
-  match discover_floor_corpus_rows_from_host_facts(
-    source_roots: [fixture_misplaced_wire_contract_scan_dir],
-    scan_dirs: [],
-    exclude_substrings: [],
-    owned_data_records: []
+  match floor_discovery_wire_contract_sidecar_refusal_for_content(
+    repo_path: fixture_misplaced_wire_contract_entry,
+    content: fixture_misplaced_wire_contract_content()
   ) {
-    FloorDiscoveryRefused { reason: msg } =>
+    Present { value: msg } =>
       string_contains(s: msg, pattern: "wire-contract decls")
         && string_contains(s: msg, pattern: "_contracts.dag")
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
-    FloorDiscoveryAccepted { rows: _ } => false
+    Absent => false
+  }
+}
+
+test fn floor_discovery_live_tree_malformed_variant_refuses_red_control() -> Bool {
+  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+    entry_path: fixture_live_tree_entry,
+    content: fixture_live_tree_malformed_variant_content()
+  ) {
+    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
+    Absent => false
+  }
+}
+
+test fn floor_discovery_live_tree_duplicate_decl_refuses_red_control() -> Bool {
+  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+    entry_path: fixture_live_tree_entry,
+    content: fixture_live_tree_duplicate_decl_content()
+  ) {
+    Present { value: msg } => string_contains(s: msg, pattern: "more than once")
+    Absent => false
+  }
+}
+
+test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds() -> Bool {
+  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+    entry_path: fixture_live_tree_entry,
+    content: "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n"
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 

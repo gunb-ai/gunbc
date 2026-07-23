@@ -1,8 +1,0 @@
-module test.fixture.floor_discovery.misplaced_wire_contract
-
-import std.serialization { CoproductWireContract, UntaggedVariant }
-
-data anthropic_chat_message_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicChatMessage",
-  encoding: UntaggedVariant
-}

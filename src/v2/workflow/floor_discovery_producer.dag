@@ -35,6 +35,7 @@ type FloorDiscoveryWalkState {
   walk_failures: Int
   walk_failure_path: Optional<String>
   sidecar_violations: List<FloorDiscoverySidecarViolation>
+  disposition_refusal: Optional<String>
 }
 
 fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
@@ -42,7 +43,24 @@ fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
     rows: [],
     walk_failures: 0,
     walk_failure_path: optional_absent(),
-    sidecar_violations: []
+    sidecar_violations: [],
+    disposition_refusal: optional_absent()
+  }
+}
+
+fn floor_discovery_record_disposition_refusal(
+  state: FloorDiscoveryWalkState,
+  reason: String
+) -> FloorDiscoveryWalkState {
+  match state.disposition_refusal {
+    Present { value: _ } => state
+    Absent => FloorDiscoveryWalkState {
+      rows: state.rows,
+      walk_failures: state.walk_failures,
+      walk_failure_path: state.walk_failure_path,
+      sidecar_violations: state.sidecar_violations,
+      disposition_refusal: optional_present(value: reason)
+    }
   }
 }
 
@@ -57,7 +75,8 @@ fn floor_discovery_record_walk_failure(
       Present { value: _ } => state.walk_failure_path
       Absent => optional_present(value: path)
     },
-    sidecar_violations: state.sidecar_violations
+    sidecar_violations: state.sidecar_violations,
+    disposition_refusal: state.disposition_refusal
   }
 }
 
@@ -187,32 +206,148 @@ fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
   )
 }
 
-fn floor_discovery_line_reads_live_tree_disposition(line: String) -> Optional<LiveTreeDisposition> {
+fn floor_discovery_line_is_disposition_row(line: String) -> Bool {
   let trimmed = trim(line)
-  if !starts_with(s: trimmed, prefix: "data live_tree_disposition:") {
-    optional_absent()
-  } else if string_contains(s: trimmed, pattern: "SubstrateInputsOnly") {
+  if !starts_with(s: trimmed, prefix: "data live_tree_disposition") {
+    false
+  } else {
+    let after = substring(s: trimmed, start: 26, end: string_length(s: trimmed))
+    let head = trim(after)
+    (head != "") && (starts_with(s: head, prefix: ":") || starts_with(s: head, prefix: " "))
+  }
+}
+
+fn floor_discovery_malformed_disposition_reason(
+  entry_path: String,
+  detail: String
+) -> String {
+  concat(
+    "entry ",
+    entry_path,
+    " declares a malformed `live_tree_disposition` row (",
+    detail,
+    "); expected `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree | SubstrateInputsOnly` — no silent reclassification"
+  )
+}
+
+fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
+  if string_contains(s: line, pattern: "SubstrateInputsOnly") {
     optional_present(value: SubstrateInputsOnly)
-  } else if string_contains(s: trimmed, pattern: "ReadsLiveTree") {
+  } else if string_contains(s: line, pattern: "ReadsLiveTree") {
     optional_present(value: ReadsLiveTree)
   } else {
     optional_absent()
   }
 }
 
-fn floor_discovery_entry_reads_live_tree_default(content: String) -> LiveTreeDisposition {
-  match fold_list(
-    xs: split(s: content, delimiter: "\n"),
-    empty: optional_absent(),
-    cons: fn(found, line) {
-      match found {
-        Present { value: _ } => found
-        Absent => floor_discovery_line_reads_live_tree_disposition(line: line)
+type FloorDiscoveryDispositionFoldState {
+  refusal: Optional<String>
+  declared: Bool
+  disposition: Optional<LiveTreeDisposition>
+}
+
+fn floor_discovery_disposition_fold_zero() -> FloorDiscoveryDispositionFoldState {
+  FloorDiscoveryDispositionFoldState {
+    refusal: optional_absent(),
+    declared: false,
+    disposition: optional_absent()
+  }
+}
+
+fn floor_discovery_disposition_fold_line(
+  state: FloorDiscoveryDispositionFoldState,
+  entry_path: String,
+  line: String
+) -> FloorDiscoveryDispositionFoldState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent => {
+      if !floor_discovery_line_is_disposition_row(line: line) {
+        state
+      } else if !string_contains(s: line, pattern: "LiveTreeDisposition") {
+        FloorDiscoveryDispositionFoldState {
+          refusal: optional_present(
+            value: floor_discovery_malformed_disposition_reason(
+              entry_path: entry_path,
+              detail: "type annotation is not `LiveTreeDisposition`"
+            )
+          ),
+          declared: state.declared,
+          disposition: state.disposition
+        }
+      } else {
+        match floor_discovery_disposition_row_variant(line: line) {
+          Present { value: disposition } => {
+            if state.declared {
+              FloorDiscoveryDispositionFoldState {
+                refusal: optional_present(
+                  value: floor_discovery_malformed_disposition_reason(
+                    entry_path: entry_path,
+                    detail: "declared more than once in one entry"
+                  )
+                ),
+                declared: true,
+                disposition: state.disposition
+              }
+            } else {
+              FloorDiscoveryDispositionFoldState {
+                refusal: optional_absent(),
+                declared: true,
+                disposition: optional_present(value: disposition)
+              }
+            }
+          }
+          Absent => FloorDiscoveryDispositionFoldState {
+            refusal: optional_present(
+              value: floor_discovery_malformed_disposition_reason(
+                entry_path: entry_path,
+                detail: "unknown variant"
+              )
+            ),
+            declared: state.declared,
+            disposition: state.disposition
+          }
+        }
       }
     }
-  ) {
-    Present { value: disposition } => disposition
-    Absent => ReadsLiveTree
+  }
+}
+
+type FloorDiscoveryEntryLiveTreeOutcome
+  = EntryLiveTreeResolved { disposition: LiveTreeDisposition }
+  | EntryLiveTreeDispositionRefused { reason: String }
+
+fn floor_discovery_resolve_entry_live_tree(
+  entry_path: String,
+  content: String
+) -> FloorDiscoveryEntryLiveTreeOutcome {
+  let folded = fold(
+    split(s: content, delimiter: "\n"),
+    init: floor_discovery_disposition_fold_zero(),
+    f: fn(acc, line) {
+      floor_discovery_disposition_fold_line(
+        state: acc,
+        entry_path: entry_path,
+        line: line
+      )
+    }
+  )
+  match folded.refusal {
+    Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
+    Absent => match folded.disposition {
+      Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
+      Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
+    }
+  }
+}
+
+fn floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  entry_path: String,
+  content: String
+) -> Optional<String> {
+  match floor_discovery_resolve_entry_live_tree(entry_path: entry_path, content: content) {
+    EntryLiveTreeDispositionRefused { reason: reason } => optional_present(value: reason)
+    EntryLiveTreeResolved { disposition: _ } => optional_absent()
   }
 }
 
@@ -249,7 +384,8 @@ fn floor_discovery_append_row(
       rows: concat(state.rows, [row]),
       walk_failures: state.walk_failures,
       walk_failure_path: state.walk_failure_path,
-      sidecar_violations: state.sidecar_violations
+      sidecar_violations: state.sidecar_violations,
+      disposition_refusal: state.disposition_refusal
     }
   }
 }
@@ -270,7 +406,8 @@ fn floor_discovery_collect_sidecar_violation(
         kind: kind,
         required_suffix: required_suffix
       }
-    ])
+    ]),
+    disposition_refusal: state.disposition_refusal
   }
 }
 
@@ -279,33 +416,38 @@ fn floor_discovery_apply_test_sidecar_rules(
   repo_path: String,
   content: String
 ) -> FloorDiscoveryWalkState {
-  let test_names = floor_discovery_scan_test_decl_names(content: content)
-  let reads_live = floor_discovery_entry_reads_live_tree_default(content: content)
-  if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
-    fold(
-      test_names,
-      init: state,
-      f: fn(acc, name) {
-        floor_discovery_append_row(
-          state: acc,
-          row: FloorDiscoveryRow {
-            label: name,
-            entry: repo_path,
-            function: name,
-            reads_live_tree: reads_live
+  match floor_discovery_resolve_entry_live_tree(entry_path: repo_path, content: content) {
+    EntryLiveTreeDispositionRefused { reason: reason } =>
+      floor_discovery_record_disposition_refusal(state: state, reason: reason)
+    EntryLiveTreeResolved { disposition: reads_live } => {
+      let test_names = floor_discovery_scan_test_decl_names(content: content)
+      if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
+        fold(
+          test_names,
+          init: state,
+          f: fn(acc, name) {
+            floor_discovery_append_row(
+              state: acc,
+              row: FloorDiscoveryRow {
+                label: name,
+                entry: repo_path,
+                function: name,
+                reads_live_tree: reads_live
+              }
+            )
           }
         )
+      } else if length(xs: test_names) > 0 {
+        floor_discovery_collect_sidecar_violation(
+          state: state,
+          entry_path: repo_path,
+          kind: TestMarkedDecl,
+          required_suffix: floor_test_sidecar_suffix
+        )
+      } else {
+        state
       }
-    )
-  } else if length(xs: test_names) > 0 {
-    floor_discovery_collect_sidecar_violation(
-      state: state,
-      entry_path: repo_path,
-      kind: TestMarkedDecl,
-      required_suffix: floor_test_sidecar_suffix
-    )
-  } else {
-    state
+    }
   }
 }
 
@@ -424,17 +566,23 @@ fn floor_discovery_merge_owned_data_record(
         if !read_out.success {
           floor_discovery_record_walk_failure(state: state, path: entry)
         } else {
-          floor_discovery_append_row(
-            state: state,
-            row: FloorDiscoveryRow {
-              label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
-              entry: entry,
-              function: function,
-              reads_live_tree: floor_discovery_entry_reads_live_tree_default(
-                content: read_out.content
+          match floor_discovery_resolve_entry_live_tree(
+            entry_path: entry,
+            content: read_out.content
+          ) {
+            EntryLiveTreeDispositionRefused { reason: reason } =>
+              floor_discovery_record_disposition_refusal(state: state, reason: reason)
+            EntryLiveTreeResolved { disposition: reads_live } =>
+              floor_discovery_append_row(
+                state: state,
+                row: FloorDiscoveryRow {
+                  label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
+                  entry: entry,
+                  function: function,
+                  reads_live_tree: reads_live
+                }
               )
-            }
-          )
+          }
         }
       }
     OwnedNodeCorpusInit => state
@@ -492,12 +640,18 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
     FloorDiscoveryRefused {
       reason: floor_discovery_walk_failure_refusal_reason(path: state.walk_failure_path)
     }
-  } else if length(xs: state.sidecar_violations) > 0 {
-    FloorDiscoveryRefused {
-      reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)
-    }
   } else {
-    FloorDiscoveryAccepted { rows: state.rows }
+    match state.disposition_refusal {
+      Present { value: reason } => FloorDiscoveryRefused { reason: reason }
+      Absent =>
+        if length(xs: state.sidecar_violations) > 0 {
+          FloorDiscoveryRefused {
+            reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)
+          }
+        } else {
+          FloorDiscoveryAccepted { rows: state.rows }
+        }
+    }
   }
 }
 
@@ -524,6 +678,24 @@ fn discover_floor_corpus_rows_from_host_facts(
       f: fn(acc, rec) { floor_discovery_merge_owned_data_record(state: acc, rec: rec) }
     )
   )
+}
+
+fn floor_discovery_wire_contract_sidecar_refusal_for_content(
+  repo_path: String,
+  content: String
+) -> Optional<String> {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
+    optional_absent()
+  } else if floor_discovery_content_has_wire_contract_decl(content: content) {
+    optional_present(
+      value: concat(
+        "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+        repo_path
+      )
+    )
+  } else {
+    optional_absent()
+  }
 }
 
 fn floor_filename_hygiene_refusal_for_paths(
@@ -554,4 +726,4 @@ data floor_discovery_producer_note: String = "Floor discovery producer: enrolled
 
 data floor_discovery_directory_candidate_dissolve_on: String = "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty)."
 
-data floor_discovery_live_tree_disposition_dissolve_on: String = "dissolve-on: floor_discovery_live_tree_disposition — producer reads the entry's `data live_tree_disposition: LiveTreeDisposition = …` row (first match; undeclared = ReadsLiveTree). Malformed/duplicate declaration refusal and effect-reach reclassification remain on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold)."
+data floor_discovery_live_tree_disposition_dissolve_on: String = "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold)."
