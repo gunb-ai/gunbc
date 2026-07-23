@@ -4,7 +4,12 @@ import gunbc.ci_workflow {
   ci_workflow,
   ci_heal_generated_artifacts_job,
   ci_build_job,
-  ci_job
+  ci_job,
+  ci_heal_branch_ref_expr
+}
+import extdeps.languages.yaml.types {
+  YamlKeyValue, YamlValue,
+  YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping
 }
 import gunbc.ci_spec {
   ci_heal_generated_artifact_regen_function,
