@@ -2334,7 +2334,6 @@ fn compile_clean_scoping_active() -> bool {
 }
 
 pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
-pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
 pub const RUN_FULL_FLOOR_SCOPING_INACTIVE_LABEL: &str = "run_full_floor_scoping_inactive";
 pub const RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL: &str =
     "run_full_floor_diff_observation_failed";
