@@ -47,7 +47,7 @@ fn witness_roadmap_colors_all_routed() -> Bool {
 }
 
 fn rogue_hex_rule() -> BuildRule {
-  StaticRule { selector: ".rogue-link", decls: [ decl(prop: "color", value: "#0969da") ] }
+  StaticRule { selector: ClassSelector { name: "rogue-link" }, decls: [ decl(prop: Color, value: "#0969da") ] }
 }
 
 fn witness_local_hex_literal_refused() -> Bool {
@@ -62,7 +62,7 @@ fn witness_roadmap_lengths_all_tokened() -> Bool {
 }
 
 fn rogue_px_rule() -> BuildRule {
-  StaticRule { selector: ".rogue-pad", decls: [ decl(prop: "padding", value: "14px") ] }
+  StaticRule { selector: ClassSelector { name: "rogue-pad" }, decls: [ decl(prop: Padding, value: "14px") ] }
 }
 
 fn witness_local_px_literal_refused() -> Bool {

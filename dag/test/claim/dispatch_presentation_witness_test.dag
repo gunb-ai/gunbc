@@ -36,10 +36,10 @@ fn witness_chip_material_is_state_role() -> Bool {
   let css = roadmap_css()
   let ok_block = css_block(
     selector: join([".dispatch-btn.", dispatch_class_ok], ""),
-    decls: [decl(prop: "border-color", value: role_var_for_label(wire_label: "spawned"))])
+    decls: [decl(prop: BorderColor, value: role_var_for_label(wire_label: "spawned"))])
   let refused_block = css_block(
     selector: join([".dispatch-btn.", dispatch_class_refused], ""),
-    decls: [decl(prop: "border-color", value: role_var_for_label(wire_label: "spawn_failed"))])
+    decls: [decl(prop: BorderColor, value: role_var_for_label(wire_label: "spawn_failed"))])
   string_contains(s: css, pattern: ok_block)
     && string_contains(s: css, pattern: refused_block)
     && role_var_for_label(wire_label: "spawned") == role_var(r: FigureRole)
@@ -49,7 +49,7 @@ fn witness_chip_material_is_state_role() -> Bool {
 fn witness_chip_wrong_role_not_shipped() -> Bool {
   let wrong = css_block(
     selector: join([".dispatch-btn.", dispatch_class_ok], ""),
-    decls: [decl(prop: "border-color", value: role_var(r: TextRole))])
+    decls: [decl(prop: BorderColor, value: role_var(r: TextRole))])
   !string_contains(s: roadmap_css(), pattern: wrong)
 }
 

@@ -46,7 +46,7 @@ fn scale_var(t: ScaleToken) -> String {
 }
 
 fn scale_decl(t: ScaleToken) -> CssDecl {
-  decl(prop: concat("--", t.name), value: scale_value_wire(v: t.value))
+  decl(prop: CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
 }
 
 fn scale_pair(a: ScaleToken, b: ScaleToken) -> String {

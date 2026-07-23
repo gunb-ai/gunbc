@@ -28,48 +28,48 @@ data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the regis
 
 fn sandbox_rules() -> List<BuildRule> {
   [
-    StaticRule { selector: ".sandbox", decls: [
-      decl(prop: "padding", value: scale_pair(a: space_16, b: space_24)),
-      decl(prop: "max-width", value: scale_var(t: measure_page)),
+    StaticRule { selector: ClassSelector { name: "sandbox" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
+      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
     ] },
-    StaticRule { selector: ".sandbox section", decls: [
-      decl(prop: "margin-bottom", value: scale_var(t: space_24)),
+    StaticRule { selector: RawSelector { text: ".sandbox section" }, decls: [
+      decl(prop: MarginBottom, value: scale_var(t: space_24)),
     ] },
-    StaticRule { selector: ".swatch-row", decls: [
-      decl(prop: "display", value: "flex"),
-      decl(prop: "align-items", value: "center"),
-      decl(prop: "gap", value: scale_var(t: space_6)),
-      decl(prop: "margin-bottom", value: scale_var(t: space_2)),
+    StaticRule { selector: ClassSelector { name: "swatch-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: MarginBottom, value: scale_var(t: space_2)),
     ] },
-    StaticRule { selector: ".swatch", decls: [
-      decl(prop: "display", value: "inline-block"),
-      decl(prop: "width", value: scale_var(t: space_24)),
-      decl(prop: "height", value: scale_var(t: space_24)),
-      decl(prop: "border-radius", value: scale_var(t: radius_3)),
-      decl(prop: "border", value: scale_border(w: border_1, color_var: "var(--border)")),
+    StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Width, value: scale_var(t: space_24)),
+      decl(prop: Height, value: scale_var(t: space_24)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
     ] },
-    StaticRule { selector: ".role-name", decls: [
-      decl(prop: "font-family", value: scale_var(t: font_mono)),
-      decl(prop: "font-size", value: scale_var(t: text_12)),
-      role_decl(prop: "color", r: TextRole),
+    StaticRule { selector: ClassSelector { name: "role-name" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ".role-var", decls: [
-      decl(prop: "font-family", value: scale_var(t: font_mono)),
-      decl(prop: "font-size", value: scale_var(t: text_12)),
-      role_decl(prop: "color", r: TextDimRole),
+    StaticRule { selector: ClassSelector { name: "role-var" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ".token-row", decls: [
-      decl(prop: "display", value: "flex"),
-      decl(prop: "gap", value: scale_var(t: space_8)),
-      decl(prop: "font-family", value: scale_var(t: font_mono)),
-      decl(prop: "font-size", value: scale_var(t: text_12)),
-      role_decl(prop: "color", r: TextDimRole),
+    StaticRule { selector: ClassSelector { name: "token-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ".gallery-row", decls: [
-      decl(prop: "display", value: "flex"),
-      decl(prop: "gap", value: scale_var(t: space_8)),
-      decl(prop: "flex-wrap", value: "wrap"),
-      decl(prop: "align-items", value: "baseline"),
+    StaticRule { selector: ClassSelector { name: "gallery-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "baseline"),
     ] },
   ]
 }
