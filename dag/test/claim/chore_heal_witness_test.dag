@@ -1,0 +1,62 @@
+module test.claim.chore_heal_witness
+
+import gunbc.ci_gate {
+  Gate, GeneratedArtifactDriftGate, LayeringImportsGate, DagCompileCleanGate
+}
+import gunbc.ci_remedy {
+  HealOutcome, HealDeclinedJudgment, HealRefusedVerifyFailed, HealDryRun, HealApplied,
+  HealDelivery, HealDirectPush, HealViaPullRequest,
+  chore_heal_outcome, chore_heal_live_outcome, chore_heal_armed,
+  heal_delivery_allowed
+}
+
+data chore_heal_witness_note: String = "Green-by-execution proof of the chore CONSUMER decision (the pure part; the run-command/commit/push host effects are the CI heal job's, not fired here). The four outcome arms are each pinned with a discriminating input: a judgment-class gate DECLINES (leaves red, never fixes); a derivation-class gate whose re-verify FAILED refuses EVEN WHEN ARMED (witness_armed_but_unverified_refuses is the load-bearing §5 control — the healer never commits output that did not re-pass its own gate, so a nondeterministic or partial regen becomes a typed refusal, not a churn commit); a derivation-class gate that re-verified but is NOT armed is a DRY-RUN report (the safe default); armed + verified + delivery-allowed APPLIES. witness_live_default_is_dryrun proves the shipped default (chore_heal_armed=false) reports rather than pushes. The direct-push↔branch-protection link is witnessed via heal_delivery_allowed: a direct-push heal is allowed only because the heal bot is DECLARED in the branch-protection push-allowance (that declaration is separately red-controlled in branch_protection_witness_test)."
+
+fn is_declined(o: HealOutcome) -> Bool {
+  match o { HealDeclinedJudgment { located_debt: _ } => true  _ => false }
+}
+fn is_refused_verify(o: HealOutcome) -> Bool {
+  match o { HealRefusedVerifyFailed => true  _ => false }
+}
+fn is_dryrun(o: HealOutcome) -> Bool {
+  match o { HealDryRun { command: _ } => true  _ => false }
+}
+fn is_applied(o: HealOutcome) -> Bool {
+  match o { HealApplied { command: _, delivery: _ } => true  _ => false }
+}
+
+fn witness_judgment_declines() -> Bool {
+  is_declined(o: chore_heal_outcome(g: LayeringImportsGate, verify_passed: true, armed: true))
+    && is_declined(o: chore_heal_outcome(g: DagCompileCleanGate, verify_passed: true, armed: true))
+}
+
+fn witness_armed_but_unverified_refuses() -> Bool {
+  is_refused_verify(o: chore_heal_outcome(g: GeneratedArtifactDriftGate, verify_passed: false, armed: true))
+}
+
+fn witness_dryrun_when_unarmed() -> Bool {
+  is_dryrun(o: chore_heal_outcome(g: GeneratedArtifactDriftGate, verify_passed: true, armed: false))
+}
+
+fn witness_applied_when_armed_and_allowed() -> Bool {
+  is_applied(o: chore_heal_outcome(g: GeneratedArtifactDriftGate, verify_passed: true, armed: true))
+}
+
+fn witness_live_default_is_dryrun() -> Bool {
+  (chore_heal_armed == false)
+    && is_dryrun(o: chore_heal_live_outcome(g: GeneratedArtifactDriftGate, verify_passed: true))
+}
+
+fn witness_direct_push_gated_on_allowance() -> Bool {
+  heal_delivery_allowed(delivery: HealDirectPush)
+    && heal_delivery_allowed(delivery: HealViaPullRequest)
+}
+
+test fn chore_heal_witnesses() -> Bool {
+  witness_judgment_declines()
+    && witness_armed_but_unverified_refuses()
+    && witness_dryrun_when_unarmed()
+    && witness_applied_when_armed_and_allowed()
+    && witness_live_default_is_dryrun()
+    && witness_direct_push_gated_on_allowance()
+}
