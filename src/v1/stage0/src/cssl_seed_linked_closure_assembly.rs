@@ -3,14 +3,10 @@
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
 use sha2::Digest;
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const BOOTSTRAP_INLINE_MODS: &[&str] = &["NonEmptyVec", "NonEmptyBTreeSet"];
-
-/// Emitted peripheral helpers that are not seed-routed but are known gunbc closure artifacts.
-const PERIPHERAL_EMIT_RETAIN_MODS: &[&str] = &["dry_run"];
 
 #[derive(Debug)]
 pub enum AssemblyError {
@@ -125,84 +121,17 @@ fn is_compiler_family_module(module: &str) -> bool {
         || module.starts_with("v1_compiler_")
 }
 
-/// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
-/// `dag/tools/self_host_curated_seed_linked_harness.dag`. One remaining structural
-/// pass on every emit-retained artifact: dedupe symbols across sequential
-/// `pub use path::{...}` lines (emitter re-exports the same name via transitive
-/// paths — e.g. `Optional` via both `v2_std_grammar` and `v2_std_collection`).
+/// The emit-artifact sanitize scaffold is DISSOLVED (2026-07-23, dissolution
+/// trigger in `cssl_emit_artifact_sanitize_scaffold_debt` fired): its last rule
+/// (dedupe symbols across `pub use` lines) moved to the emitter's construction
+/// seam (`strip_repeated_use_symbols` in v1.compiler.emit_rust), and the 21-module
+/// curated sweep census (docs/probes/curated_cargo_frontier_probe_sweep.tsv,
+/// raw_dup_pub_use column, measured on the RAW emit before assembly) shows zero
+/// firings. Emit-retained artifacts are now byte-untouched by assembly.
 ///
-/// The former `use crate::v1_rt::NAME` strip (redundant import when the file
-/// locally defines `pub enum/struct/type NAME`) was CENSUSED DEAD 2026-07-22 across
-/// a representative sweep of the deepest emit-retained closures (02_parse,
-/// 06_translate, 00_compile, 05_eval, materialization_carriers, 05_emit,
-/// emit_module, emit_produced, emit_semantic_decl, emit_host, fold_lowering,
-/// 03_name_resolve — zero real firings, confirmed by content diff, not raw
-/// `!=` which false-positives on this fn's own trailing-newline rejoin) —
-/// #6981 (`emit_imports`: field-struct import synth asks "provides" not
-/// "physically defines") and #7033 (fold-closure generic-T, Witness prelude,
-/// value-qualified refs) dissolved it at the source; deleted here, not improved.
-fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
-    let content = fs::read_to_string(path)?;
-    let sanitized = sanitize_emit_artifact_content(&content);
-    if sanitized != content {
-        eprintln!(
-            "CSSL_ASSEMBLE: sanitize scaffold applied to {}",
-            path.display()
-        );
-        fs::write(path, sanitized)?;
-    }
-    Ok(())
-}
-
-fn dedupe_pub_use_symbols(content: &str) -> String {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("pub use ") {
-            if let Some(brace_start) = rest.find('{') {
-                if let Some(brace_end) = rest.rfind('}') {
-                    if brace_end > brace_start {
-                        let path_prefix = &rest[..brace_start];
-                        let symbols_str = &rest[brace_start + 1..brace_end];
-                        let suffix = &rest[brace_end + 1..];
-                        let symbols: Vec<&str> = symbols_str
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .collect();
-                        let mut kept = Vec::new();
-                        for sym in symbols {
-                            if seen.insert(sym.to_string()) {
-                                kept.push(sym);
-                            }
-                        }
-                        if kept.is_empty() {
-                            continue;
-                        }
-                        out.push(format!(
-                            "{indent}pub use {}{{{}}}{suffix}",
-                            path_prefix,
-                            kept.join(", "),
-                        ));
-                        continue;
-                    }
-                }
-            }
-        }
-        out.push(line.to_string());
-    }
-    out.join("\n")
-}
-
-fn sanitize_emit_artifact_content(content: &str) -> String {
-    dedupe_pub_use_symbols(content)
-}
-
-/// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
-/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · whole-closure
-/// emit-retain default (typed Refused only when closure mod lacks emitted .rs).
+/// Assembly arms: entry untouched · compiler seed re-export · bootstrap_inline ·
+/// whole-closure emit-retain default (typed Refused only when closure mod lacks
+/// emitted .rs).
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
@@ -246,47 +175,19 @@ pub fn assemble_seed_linked_closure(
             });
         }
 
-        if is_compiler_family_module(&module) {
-            if is_emitted_closure_member(&emitted_lib_rs, &module, &dest) {
-                // Structural: closure manifest membership → emit-retain (gunbc surface).
-                sanitize_emitter_artifact_in_place(&dest)?;
-            } else if seed_has_pub_mod(&seed_lib_rs, &module)? {
-                write_compiler_seed_reexport(&dest, &module)?;
-            } else {
-                sanitize_emitter_artifact_in_place(&dest)?;
-            }
-            continue;
-        }
-
-        if module.starts_with("v2_std_") {
-            // Emit-retain: gunbc-emitted v2 std is closure authority. Hand bridges
-            // (dag/tools/self_host_std_bridge_shims) are minimal ABI stubs that break
-            // dependents (e.g. v2_std_logic re-exports from v2_std_algebra).
-            sanitize_emitter_artifact_in_place(&dest)?;
-            continue;
-        }
-
-        if module.starts_with("std_") {
-            sanitize_emitter_artifact_in_place(&dest)?;
-            continue;
-        }
-
-        if module == "v1_rt" || module.starts_with("v2_extdeps_") {
-            sanitize_emitter_artifact_in_place(&dest)?;
-            continue;
-        }
-
-        if module.starts_with("v2_lens_") || PERIPHERAL_EMIT_RETAIN_MODS.contains(&module.as_str())
+        if is_compiler_family_module(&module)
+            && !is_emitted_closure_member(&emitted_lib_rs, &module, &dest)
+            && seed_has_pub_mod(&seed_lib_rs, &module)?
         {
-            sanitize_emitter_artifact_in_place(&dest)?;
+            write_compiler_seed_reexport(&dest, &module)?;
             continue;
         }
 
         // Whole-closure default (cssl_closure_assembly_note): any module in the
-        // gunbc-emitted closure manifest with a sibling .rs is emit-retained —
+        // gunbc-emitted closure manifest with a sibling .rs is emit-retained,
+        // byte-untouched — v2_std_*, std_*, v1_rt, v2_extdeps_*, v2_lens_*,
         // gunbc_* product modules, test_* witnesses, tools_*, etc. Refusal
         // relocates to the cargo verdict, not assemble-time prefix whitelisting.
-        sanitize_emitter_artifact_in_place(&dest)?;
     }
 
     let entry_hash_after = sha256_hex(&entry_file)?;
@@ -476,96 +377,6 @@ mod tests {
             !status.success(),
             "deliberate-red: broken closure dep must refuse cargo"
         );
-    }
-
-    /// RED control for the v1_rt-import-strip DISSOLUTION (2026-07-22 census):
-    /// fixture is the real, current `gunbc compile --target rust` output for
-    /// `v2.std.witness` (src/v2/std/witness.dag, entry `src/v2/compiler/02_parse.dag`
-    /// closure) — a locally-defined `pub enum Witness<C>` with NO redundant
-    /// `use crate::v1_rt::Witness` import line. Before #6981/#7033 this fixture would
-    /// have carried that redundant import and the (now-deleted) strip rule would have
-    /// fired on it; today `sanitize_emit_artifact_content` is a byte-identical no-op,
-    /// proving the emitter — not the scaffold — produces the correct form natively.
-    #[test]
-    fn witness_emit_no_longer_carries_redundant_v1_rt_import_construction_receipt() {
-        let real_emitted_witness_src = concat!(
-            // Split across two literals so this test fixture's source text never
-            // contains the contiguous generated-file marker regen_stage0's
-            // assert_output_set_matches_registry scans committed .rs files for — the
-            // runtime string value (what the test exercises) is unaffected, concat!
-            // joins the pieces identically to the real emitted header.
-            "// Generated by v1 compi",
-            "ler -- do not edit.\n",
-            "// Source module: v2.std.witness\n",
-            "\n",
-            "use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n",
-            "use crate::v1_rt::{VecCompat, VecJoin};\n",
-            "use std::rc::Rc;\n",
-            "use crate::v1_rt;\n",
-            "use crate::NonEmptyVec;\n",
-            "use crate::NonEmptyBTreeSet;\n",
-            "pub use crate::v2_std_diagnostic::{Diagnostic};\n",
-            "pub use crate::v2_std_node::{Node, Symbol};\n",
-            "use self::Witness::*;\n",
-            "\n",
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n",
-            "#[serde(tag = \"_variant\")]\n",
-            "pub enum Witness<C> {\n",
-            "    Holds {\n",
-            "        value: C,\n",
-            "    },\n",
-            "    Violates {\n",
-            "        diagnostic: Rc<Diagnostic>,\n",
-            "    },\n",
-            "}\n",
-        );
-        // Precondition the fixture actually exercises the dissolved rule's trigger shape:
-        // a locally-defined generic `pub enum Witness<C>` alongside `use crate::v1_rt::`
-        // lines for OTHER names (VecCompat/VecJoin/the bare module) — never `Witness` itself.
-        assert!(real_emitted_witness_src.contains("pub enum Witness<C>"));
-        assert!(!real_emitted_witness_src.contains("use crate::v1_rt::Witness"));
-        let kept = sanitize_emit_artifact_content(real_emitted_witness_src);
-        // trim_end: the surviving dedupe pass always rejoins lines (drops a trailing
-        // newline even as a no-op) — semantically a no-op, not a second live rule.
-        assert_eq!(
-            kept.trim_end(),
-            real_emitted_witness_src.trim_end(),
-            "sanitize must be a no-op on current emitter output — the redundant \
-             v1_rt::Witness import that the deleted rule targeted is already absent"
-        );
-    }
-
-    #[test]
-    fn pub_use_symbol_dedup_clears_transitive_reexport_collision() {
-        let src = concat!(
-            "pub use crate::v2_std_grammar::{grammar_formal_terminal, Optional};\n",
-            "pub use crate::v2_std_collection::{List, Map, Set, Optional};\n"
-        );
-        let kept = sanitize_emit_artifact_content(src);
-        assert_eq!(kept.matches("Optional").count(), 1);
-        assert!(!kept.contains("Set, Optional"));
-    }
-
-    /// LIVE rule receipt via the in-place path (2026-07-22 census): captured from real
-    /// `gunbc compile --target rust` output for `v2.extdeps.languages.rust` in the
-    /// `src/v2/compiler/emit_produced.dag` closure — `Optional` is re-exported once via
-    /// `v2_std_grammar` and again via `v2_std_collection` (transitive re-export collision,
-    /// still live on main; emitter gap named in `cssl_emit_artifact_sanitize_scaffold_debt`).
-    #[test]
-    fn pub_use_dedup_file_sanitize_via_in_place_path() {
-        let root = temp_fixture_root();
-        let out = root.join("out");
-        let src = out.join("src");
-        fs::create_dir_all(&src).expect("src");
-        let real_collision_src = concat!(
-            "pub use crate::v2_std_grammar::{grammar_formal_terminal, Optional};\n",
-            "pub use crate::v2_std_collection::{List, Map, Set, Optional};\n",
-        );
-        let path = src.join("v2_extdeps_languages_rust.rs");
-        fs::write(&path, real_collision_src).expect("write collision fixture");
-        sanitize_emitter_artifact_in_place(&path).expect("sanitize");
-        let kept = fs::read_to_string(&path).expect("read");
-        assert_eq!(kept.matches("Optional").count(), 1);
     }
 
     #[test]

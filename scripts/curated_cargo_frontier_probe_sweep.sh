@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 REPORT="${ROOT}/docs/probes/curated_cargo_frontier_probe_sweep.tsv"
-CLASSIFIER_STAMP="rule1-first-error-dup-harness-unknown-unresolved-v2"
+CLASSIFIER_STAMP="rule1-first-error-plus-residual-histogram-v3"
 FORCE_REPROBE="${CSSL_FORCE_REPROBE:-0}"
 mkdir -p "$(dirname "$REPORT")"
 PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
@@ -15,7 +15,7 @@ PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
 if [[ "$FORCE_REPROBE" == "1" ]] || [[ ! -f "$REPORT" ]] || ! grep -qF "$CLASSIFIER_STAMP" "$REPORT" 2>/dev/null; then
   {
     echo "# classifier_stamp: $CLASSIFIER_STAMP"
-    echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict"
+    echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict\tresidual_histogram\traw_dup_pub_use"
   } >"$REPORT"
 fi
 
