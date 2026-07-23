@@ -8473,9 +8473,11 @@ fn witness_entry_eligibility_census_declared_entry_count_from_authority(
         Ok(v1_interpreter::Value::Int(n)) => Ok(n),
         Ok(other) => Err(format!(
             "witness_entry_eligibility_census_declared_entry_count returned {}, expected Int",
-            ctx.format_value(other)
+            ctx.format_value(&other)
         )),
-        Err(e) => Err(format!("witness_entry_eligibility_census_declared_entry_count: {e}")),
+        Err(e) => Err(format!(
+            "witness_entry_eligibility_census_declared_entry_count: {e}"
+        )),
     }
 }
 
@@ -8617,27 +8619,12 @@ pub fn emit_witness_entry_eligibility_census(
         hist.push_str(&format!("{disposition}\t{reason}\t{count}\n"));
     }
     std::fs::write(hist_path, hist).map_err(|e| format!("write {}: {e}", hist_path.display()))?;
-    let declared = match v1_interpreter::run_in_context(
-        &ctx,
-        "witness_entry_eligibility_census_declared_entry_count",
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Int(n)) => n,
-        Ok(other) => {
-            return Err(format!(
-                "witness_entry_eligibility_census_declared_entry_count returned {}, expected Int",
-                ctx.format_value(&other)
-            ));
-        }
-        Err(e) => {
-            return Err(format!(
-                "witness_entry_eligibility_census_declared_entry_count: {e}"
-            ));
-        }
-    };
+    let declared = witness_entry_eligibility_census_declared_entry_count_from_authority(&ctx)?;
     if rows.len() as i64 != declared {
         return Err(format!(
-            "census emit: roster has {} entries but witness_entry_eligibility_census_entry_count={declared} — update the .dag constant then regen"
+            "census emit: roster has {count} entries but witness_entry_eligibility_census_entry_count={declared} — update the .dag constant then regen",
+            count = rows.len(),
+            declared = declared,
         ));
     }
     Ok(rows.len())
@@ -8659,6 +8646,27 @@ fn chrono_lite_utc_stamp() -> String {
             }
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod witness_entry_eligibility_census_tsv_sync_tests {
+    use super::*;
+
+    #[test]
+    fn tsv_data_row_count_matches_declared_authority() {
+        let rows = witness_entry_eligibility_census_tsv_data_row_count();
+        let roots = witness_layer_roots();
+        let (graph, indices) =
+            resolve_entry_graph_shared(&roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+                .expect("resolve census authority");
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let declared =
+            witness_entry_eligibility_census_declared_entry_count_from_authority(&ctx).unwrap();
+        assert_eq!(
+            rows as i64, declared,
+            "update witness_entry_eligibility_census_entry_count or regen TSV via scripts/witness_entry_eligibility_census.sh"
+        );
+    }
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {

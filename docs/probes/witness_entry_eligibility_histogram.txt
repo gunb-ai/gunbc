@@ -1,8 +1,8 @@
-# witness_entry_eligibility_histogram stamp=2026-07-23T07:25Z total_entries=762
+# witness_entry_eligibility_histogram stamp=2026-07-23T08:00Z total_entries=763
 disposition	reason	count
-InterpretedRetained	BulkFlipPendingCensusIncomplete	603
+InterpretedRetained	BulkFlipPendingCensusIncomplete	588
 EmitIneligible	OfflineLocalRecipe	81
 EmitIneligible	LongLaneScheduled	63
-InterpretedRetained	EmitOnDemandFamilyGrain	8
+InterpretedRetained	EmitOnDemandFamilyGrain	24
 InterpretedRetained	HostFedCeiling	6
 InterpretedRetained	RetainedReadsLiveTreeCarrier	1
