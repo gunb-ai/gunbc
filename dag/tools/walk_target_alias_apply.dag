@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, Terminal }
 import std.types { String, Bool, Int, list_length }
 import tools.walk_target_alias_plan {
-  WalkTargetAliasPlan,
   WalkTargetAliasPlanRow,
   walk_target_alias_plan_class_label
 }
@@ -17,6 +16,13 @@ import v2.std.diagnostic {
   Rejected,
   Diagnostic,
   None,
+  Locus,
+  Textual,
+  NodeLocus,
+  PortLocus,
+  Extent,
+  WholeFile,
+  ByteRange,
   bind_outcome,
   outcome_rejected,
   outcome_accepted
@@ -28,16 +34,26 @@ import v2.std.node {
   Named,
   Positional,
   TypeNode,
+  ComputationNode,
   Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
   Atom,
-  SyntheticOccurrence
+  SyntheticOccurrence,
+  MintedOccurrence,
+  OccurrenceId
 }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import v2.std.node_query { find_named_child }
+import v2.std.provenance { SpanIndex, span_index_lookup, OriginEvent, FromSource, DerivedBy, GeneratedBy }
+import v2.std.witness { Witness, Holds, Violates }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.parse { parse, parse_module, ParseArtifact }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.dag {
   dag_language_model,
   dag_target_model,
@@ -46,9 +62,9 @@ import v2.extdeps.languages.dag {
   emit_bound_token
 }
 
-data walk_target_alias_apply_authority_note: String = "§13 walk-target alias codemod APPLY phase (namespace-resolution-design.md). Pure fold over plan rows → typed effect plan; alias surface text via grammar emit/serialize (never Rust format!); corpus writes gated on #6979; insert anchor derived from parsed module Node tree (operator ruling msg_774deff3). Plan types/fold authority: tools.walk_target_alias_plan (Phase 7 #6984 Rust retirement gated on equivalence receipt). dissolve-on: stern-owl-401 Phase 3 refusal flip."
+data walk_target_alias_apply_authority_note: String = "§13 walk-target alias codemod APPLY phase (namespace-resolution-design.md). Pure fold over per-module inputs → typed splice-edit plan; alias surface text via grammar emit/serialize (never Rust format!); insert anchor derived from the parsed module Node tree (operator ruling msg_774deff3) and the splice offset read from the parse span index at that anchor; corpus writes gated on the v1 alias parse arm (see walk_target_alias_apply_corpus_write_gated_reason). Plan types/fold authority: tools.walk_target_alias_plan (Phase 7 #6984 Rust retirement gated on equivalence receipt)."
 
-data walk_target_alias_apply_corpus_write_gated_reason: String = "corpus --write refused: alias decl surface is unparseable until #6979 alias parse arm merges (operator ruling 2026-07-22); use dry-run apply + pre-edit oracles now; post-edit whole-tree binding-identity oracle discharges after #6979"
+data walk_target_alias_apply_corpus_write_gated_reason: String = "corpus --write refused: the v1 seed parser has no alias-decl arm — proven by execution 2026-07-22: gunbc compile of an alias fixture fails with expected-item-declaration, so written alias decls would red the corpus compile floor. The v2 grammar arm and symbol-index binding rows landed in gunbc PR 6979; the v1 seed arm is the named residual. dissolve-on: v1 alias parse arm green with a corpus probe; use dry-run apply + pre-edit oracles now"
 
 data walk_target_alias_apply_executed_oracle_seed_scaffold: Disposition = Scaffold {
   dissolves_to: Terminal,
@@ -61,7 +77,7 @@ data walk_target_alias_apply_executed_oracle_seed_scaffold: Disposition = Scaffo
 
 data walk_target_alias_apply_executed_oracle_dissolve_trigger: String = "dissolve-on: executed binding-identity oracle requires whole-tree resolve + census replay in-workflow; until .dag-callable resolve bridge lands, transport refuses with walk_target_alias_binding_identity_oracle_executed_refused (seed-gap row 1 escalation)"
 
-data walk_target_alias_apply_module_index_seed_gap: String = "module_path_index: build_module_path_index / v2.compiler.source_authority bridge not yet callable from .dag workflow (seed-gap row 2 — escalate before live corpus apply)"
+data walk_target_alias_apply_path_projection_note: String = "module-to-path projection happens at the host boundary by design (module-identity-storage-binding thread: code references modules; only host boundaries project paths). The driver bin feeds WalkTargetAliasModuleInput rows — declaring module, its storage-projected rel path, and the file's source text — and this module decides everything else; the former module_path_index seed-gap refusal dissolved into that module_input shape."
 
 type WalkTargetAliasApplyEdit {
   declaring_module: String
@@ -71,22 +87,28 @@ type WalkTargetAliasApplyEdit {
   written: Bool
 }
 
+type WalkTargetAliasModuleInput {
+  declaring_module: String
+  rel_source_path: String
+  source_text: String
+  rows: List<WalkTargetAliasPlanRow>
+}
+
+type WalkTargetAliasModuleSplice {
+  declaring_module: String
+  rel_source_path: String
+  splice_offset: Int
+  insert_text: String
+}
+
 type WalkTargetAliasApplyReport {
   edits: List<WalkTargetAliasApplyEdit>
+  splices: List<WalkTargetAliasModuleSplice>
   skipped_existing: Int
   refused: List<String>
   source_scope_label: String
   binding_identity_static_oracle_passed: Bool
   write_requested: Bool
-}
-
-type ModuleInsertAnchor {
-  child_index: Int
-}
-
-type ChildEdgeSplit {
-  prefix: List<Edge>
-  suffix: List<Edge>
 }
 
 fn walk_target_alias_corpus_write_refused(write_requested: Bool) -> Optional<String> {
@@ -157,104 +179,33 @@ fn walk_target_alias_binding_identity_oracle_executed_refused() -> String {
   "BINDING_IDENTITY_ORACLE_EXECUTED: whole-tree resolve replay not yet wired in .dag workflow (seed-gap row 1 — escalate before enabling live corpus apply)"
 }
 
-fn alias_apply_subtree_has_emitted_identity(node: Node, emitted: Symbol) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == emitted {
-        true
-      } else {
-        alias_apply_subtree_has_emitted_identity_in_children(node: node, emitted: emitted)
-      }
-    Absent => alias_apply_subtree_has_emitted_identity_in_children(node: node, emitted: emitted)
-  }
-}
-
-fn alias_apply_subtree_has_emitted_identity_in_children(node: Node, emitted: Symbol) -> Bool {
-  fold(
-    node.children,
-    init: false,
-    f: fn(found, edge) {
-      if found {
-        true
-      } else {
-        alias_apply_subtree_has_emitted_identity(node: edge.target, emitted: emitted)
-      }
-    }
-  )
-}
-
-fn alias_apply_node_is_import_decl(node: Node) -> Bool {
-  alias_apply_subtree_has_emitted_identity(node: node, emitted: ^dag_surface_import_decl)
-}
-
-type AliasApplyInsertScan
-  = AliasApplyInsertScanContinue { index: Int, anchor: Int }
-  | AliasApplyInsertScanDone { anchor: Int }
 
 fn alias_apply_node_is_module_header(node: Node) -> Bool {
-  alias_apply_subtree_has_emitted_identity(node: node, emitted: ^dag_surface_module_header)
-}
-
-fn alias_apply_insert_scan_step(
-  state: AliasApplyInsertScan,
-  edge: Edge
-) -> AliasApplyInsertScan {
-  match state {
-    AliasApplyInsertScanDone { anchor: a } => AliasApplyInsertScanDone { anchor: a }
-    AliasApplyInsertScanContinue { index: i, anchor: a } =>
-      if alias_apply_node_is_module_header(node: edge.target) {
-        AliasApplyInsertScanContinue { index: i + 1, anchor: a }
-      } else if alias_apply_node_is_import_decl(node: edge.target) {
-        AliasApplyInsertScanContinue { index: i + 1, anchor: i + 1 }
-      } else {
-        AliasApplyInsertScanDone { anchor: a }
-      }
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_module_header
+    Absent => false
   }
 }
 
-fn alias_apply_find_module_root_in_children(node: Node) -> Optional<Node> {
-  fold(
-    node.children,
-    init: optional_absent(),
-    f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => alias_apply_find_module_root(node: edge.target)
-      }
-    }
-  )
-}
-
-fn alias_apply_find_module_root(node: Node) -> Optional<Node> {
+fn alias_apply_node_is_header_or_import(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      if id == ^dag_surface_module {
-        optional_present(value: node)
-      } else {
-        alias_apply_find_module_root_in_children(node: node)
+      (id == ^dag_surface_module_header) || (id == ^dag_surface_import_decl)
+    Absent => false
+  }
+}
+
+fn alias_apply_header_import_max_end(node: Node, span_index: SpanIndex, acc: Int) -> Int {
+  if alias_apply_node_is_header_or_import(node: node) {
+    alias_apply_subtree_max_extent_end(node: node, span_index: span_index, acc: acc)
+  } else {
+    fold(
+      node.children,
+      init: acc,
+      f: fn(best, edge) {
+        alias_apply_header_import_max_end(node: edge.target, span_index: span_index, acc: best)
       }
-    Absent => alias_apply_find_module_root_in_children(node: node)
-  }
-}
-
-fn alias_apply_insert_scan_root(node: Node) -> Outcome<ModuleInsertAnchor> {
-  let final_state = fold(
-    node.children,
-    init: AliasApplyInsertScanContinue { index: 0, anchor: 0 },
-    f: fn(state, edge) { alias_apply_insert_scan_step(state: state, edge: edge) }
-  )
-  match final_state {
-    AliasApplyInsertScanDone { anchor: a } =>
-      outcome_accepted(value: ModuleInsertAnchor { child_index: a })
-    AliasApplyInsertScanContinue { index: _, anchor: a } =>
-      outcome_accepted(value: ModuleInsertAnchor { child_index: a })
-  }
-}
-
-fn alias_apply_insert_anchor_after_import_block(module_root: Node) -> Outcome<ModuleInsertAnchor> {
-  match alias_apply_find_module_root(node: module_root) {
-    Present { value: root } => alias_apply_insert_scan_root(node: root)
-    Absent => alias_apply_insert_scan_root(node: module_root)
+    )
   }
 }
 
@@ -277,124 +228,546 @@ fn alias_apply_row_node_from_binding_row(row: AliasBindingRow) -> Node {
   )
 }
 
-fn alias_apply_source_line_from_row(row: AliasBindingRow) -> Outcome<String> {
-  let decl = alias_apply_row_node_from_binding_row(row: row)
+type AliasApplyQnTokenAcc {
+  first: Bool
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn alias_apply_qualified_name_tokens(qn: QualifiedName) -> List<ConcreteSyntaxToken> {
+  let acc = fold(
+    qn,
+    init: AliasApplyQnTokenAcc { first: true, tokens: [] },
+    f: fn(state, seg) {
+      if state.first {
+        AliasApplyQnTokenAcc {
+          first: false,
+          tokens: [BoundToken { token_class: ^dag_token_ident, binding: seg }]
+        }
+      } else {
+        AliasApplyQnTokenAcc {
+          first: false,
+          tokens: list_append(
+            left: state.tokens,
+            right: [
+              FixedToken { token_class: ^dag_token_dot },
+              BoundToken { token_class: ^dag_token_ident, binding: seg }
+            ]
+          )
+        }
+      }
+    }
+  )
+  acc.tokens
+}
+
+fn alias_apply_alias_decl_tokens(row: AliasBindingRow) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: [
+      FixedToken { token_class: ^dag_token_kw_alias },
+      BoundToken { token_class: ^dag_token_ident, binding: row.binding },
+      FixedToken { token_class: ^dag_token_eq }
+    ],
+    right: alias_apply_qualified_name_tokens(qn: row.target)
+  )
+}
+
+data alias_apply_token_gap_note: String = "DAG whitespace is DeclaredNormalized trivia (dag_whitespace_fidelity), so token spellings carry no gaps; this is the normalized-whitespace rendering for the alias-decl token sequence only (tight around dots, single space elsewhere). A general per-token-class gap policy belongs on the language target model when a second consumer appears — do not widen this one silently."
+
+fn alias_apply_token_is_dot(token: ConcreteSyntaxToken) -> Bool {
+  match token {
+    FixedToken { token_class: c } => c == ^dag_token_dot
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+
+fn alias_apply_token_gap(left: ConcreteSyntaxToken, right: ConcreteSyntaxToken) -> String {
+  if alias_apply_token_is_dot(token: left) || alias_apply_token_is_dot(token: right) {
+    ""
+  } else {
+    " "
+  }
+}
+
+fn alias_apply_token_spelling(token: ConcreteSyntaxToken) -> Outcome<String> {
   bind_outcome(
-    o: target_serialize_source_from_model(target: dag_target_model(), emitted: decl),
+    o: serialize_concrete_syntax_tokens_to_source(
+      target: dag_target_model(),
+      tokens: [token]
+    ),
     f: fn(medium) {
       outcome_accepted(value: medium.carried)
     }
   )
 }
 
-fn alias_apply_parse_module_source(text: String, file_anchor: Symbol) -> Outcome<Node> {
+type AliasApplyTokenJoin {
+  text: String
+  prev: Optional<ConcreteSyntaxToken>
+}
+
+fn alias_apply_source_line_from_row(row: AliasBindingRow) -> Outcome<String> {
+  bind_outcome(
+    o: fold(
+      alias_apply_alias_decl_tokens(row: row),
+      init: outcome_accepted(value: AliasApplyTokenJoin { text: "", prev: optional_absent() }),
+      f: fn(acc, token) {
+        bind_outcome(
+          o: acc,
+          f: fn(join) {
+            bind_outcome(
+              o: alias_apply_token_spelling(token: token),
+              f: fn(spelling) {
+                let gap = match join.prev {
+                  Absent => ""
+                  Present { value: prev_token } =>
+                    alias_apply_token_gap(left: prev_token, right: token)
+                }
+                outcome_accepted(
+                  value: AliasApplyTokenJoin {
+                    text: concat(join.text, concat(gap, spelling)),
+                    prev: optional_present(value: token)
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(join) {
+      outcome_accepted(value: join.text)
+    }
+  )
+}
+
+fn alias_apply_parse_module_artifact(text: String, file_anchor: Symbol) -> Outcome<ParseArtifact> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: text, file: file_anchor, rules: lm.lex),
     f: fn(token_stream) {
-      parse(tokens: token_stream, grammar: lm.grammar)
+      parse_module(tokens: token_stream, grammar: lm.grammar)
     }
   )
 }
 
-fn alias_apply_split_children_at(children: List<Edge>, at: Int) -> ChildEdgeSplit {
-  fold(
-    children,
-    init: ChildEdgeSplit { prefix: [], suffix: [] },
-    f: fn(state, edge) {
-      if list_length(items: state.prefix) < at {
-        ChildEdgeSplit {
-          prefix: list_snoc_item(xs: state.prefix, item: edge),
-          suffix: state.suffix
-        }
-      } else {
-        ChildEdgeSplit {
-          prefix: state.prefix,
-          suffix: list_snoc_item(xs: state.suffix, item: edge)
-        }
+fn alias_apply_parse_module_source(text: String, file_anchor: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: alias_apply_parse_module_artifact(text: text, file_anchor: file_anchor),
+    f: fn(artifact) {
+      outcome_accepted(value: artifact.tree)
+    }
+  )
+}
+
+fn alias_apply_extent_end_or(event: OriginEvent, fallback: Int) -> Int {
+  match event {
+    FromSource { locus: locus } =>
+      match locus {
+        Textual { file: _, extent: extent } =>
+          match extent {
+            ByteRange { start: _, end: e } => e
+            WholeFile => fallback
+          }
+        NodeLocus { anchor: _ } => fallback
+        PortLocus { anchor: _ } => fallback
       }
+    DerivedBy { producer: _, from: _ } => fallback
+    GeneratedBy { generator: _, from: _ } => fallback
+  }
+}
+
+fn alias_apply_subtree_max_extent_end(node: Node, span_index: SpanIndex, acc: Int) -> Int {
+  let self_end = match node.occurrence_id {
+    MintedOccurrence { id: id } =>
+      match span_index_lookup(index: span_index, id: id) {
+        Holds { value: event } => alias_apply_extent_end_or(event: event, fallback: acc)
+        Violates { diagnostic: _ } => acc
+      }
+    SyntheticOccurrence => acc
+  }
+  let base = if self_end > acc { self_end } else { acc }
+  fold(
+    node.children,
+    init: base,
+    f: fn(best, edge) {
+      alias_apply_subtree_max_extent_end(node: edge.target, span_index: span_index, acc: best)
     }
   )
 }
 
-fn alias_apply_module_with_inserted_row(
-  module_root: Node,
-  anchor: ModuleInsertAnchor,
-  row: AliasBindingRow
-) -> Node {
-  let split = alias_apply_split_children_at(children: module_root.children, at: anchor.child_index)
-  let new_edge = Edge {
-    label: Positional,
-    target: alias_apply_row_node_from_binding_row(row: row)
+type AliasApplyParsedModule {
+  tree: Node
+  span_index: SpanIndex
+}
+
+fn alias_apply_parse_module_tree_and_span(text: String, file_anchor: Symbol) -> Outcome<AliasApplyParsedModule> {
+  bind_outcome(
+    o: alias_apply_parse_module_artifact(text: text, file_anchor: file_anchor),
+    f: fn(artifact) {
+      bind_outcome(
+        o: outcome_accepted(value: artifact.tree),
+        f: fn(tree) {
+          outcome_accepted(value: AliasApplyParsedModule { tree: tree, span_index: artifact.span_index })
+        }
+      )
+    }
+  )
+}
+
+fn alias_apply_module_splice_offset(parsed: AliasApplyParsedModule) -> Outcome<Int> {
+  let end = alias_apply_header_import_max_end(
+    node: parsed.tree,
+    span_index: parsed.span_index,
+    acc: 0
+  )
+  if end == 0 {
+    outcome_rejected(Diagnostic {
+      reason: "ALIAS_APPLY_SPLICE: no module header or import decl with a source extent found in the parse tree — refusing to pick a splice point",
+      at: none,
+      correction: none
+    })
+  } else {
+    outcome_accepted(value: end)
   }
-  Node {
-    kind: module_root.kind,
-    children: list_append(
-      left: split.prefix,
-      right: list_append(left: [new_edge], right: split.suffix)
-    ),
-    occurrence_id: module_root.occurrence_id
+}
+
+data alias_apply_binding_scan_note: String = "Existing-alias detection walks the whole parse tree in DFS (source) order: a parsed alias decl stamps its binding ident leaf with the LEXEME as atom identity, immediately after the dag_token_kw_alias atom (probed by execution 2026-07-22). The declared binding is therefore the atom right after each alias keyword — no assumption about the sequence-spine nesting the grammar produces."
+
+type AliasApplyBindingScan {
+  prev_was_alias_kw: Bool
+  found: Bool
+}
+
+fn alias_apply_binding_scan_step(
+  state: AliasApplyBindingScan,
+  node: Node,
+  binding: Symbol
+) -> AliasApplyBindingScan {
+  let after_self = match node.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } =>
+          if state.found {
+            state
+          } else if id == ^dag_token_kw_alias {
+            AliasApplyBindingScan { prev_was_alias_kw: true, found: false }
+          } else {
+            AliasApplyBindingScan {
+              prev_was_alias_kw: false,
+              found: state.prev_was_alias_kw && (id == binding)
+            }
+          }
+        Conj => state
+        Disj => state
+        Arrow => state
+        Cardinality => state
+        Instantiation => state
+      }
+    ComputationNode { behavior: _ } => state
   }
+  fold(
+    node.children,
+    init: after_self,
+    f: fn(acc, edge) {
+      alias_apply_binding_scan_step(state: acc, node: edge.target, binding: binding)
+    }
+  )
 }
 
 fn alias_apply_module_tree_has_binding(module_root: Node, binding: Symbol) -> Bool {
-  fold(
-    module_root.children,
-    init: false,
-    f: fn(found, edge) {
-      if found {
-        true
-      } else {
-        match parse_production_emitted_identity_optional(node: edge.target) {
-          Present { value: id } =>
-            if id == ^dag_surface_alias_decl {
-              match find_named_child(root: edge.target, name: ^dag_surface_alias_decl_binding) {
-                Accepted { value: binding_node, diagnostics: _ } =>
-                  match parse_production_emitted_identity_optional(node: binding_node) {
-                    Present { value: bound } => bound == binding
-                    Absent => false
-                  }
-                Rejected { diagnostics: _ } => false
-              }
-            } else {
-              false
-            }
-          Absent => false
-        }
-      }
-    }
+  let scanned = alias_apply_binding_scan_step(
+    state: AliasApplyBindingScan { prev_was_alias_kw: false, found: false },
+    node: module_root,
+    binding: binding
   )
+  scanned.found
 }
 
 fn alias_apply_binding_row_from_plan_row(row: WalkTargetAliasPlanRow) -> AliasBindingRow {
   AliasBindingRow {
-    binding: row.key.binding,
+    binding: symbol_intern_lexeme(lexeme: row.key.binding),
     target: qualified_name_from_dotted_string(dotted: row.pre_flip_qualified_path)
   }
 }
 
-fn walk_target_alias_apply_plan_pure(
-  plan: WalkTargetAliasPlan,
+type AliasApplyRowSplit {
+  pending: List<WalkTargetAliasPlanRow>
+  skipped_existing: Int
+  conflict: Optional<String>
+}
+
+fn alias_apply_rows_conflict(rows: List<WalkTargetAliasPlanRow>) -> Optional<String> {
+  fold(
+    rows,
+    init: optional_absent(),
+    f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          fold(
+            rows,
+            init: optional_absent(),
+            f: fn(inner, other) {
+              match inner {
+                Present { value: _ } => inner
+                Absent =>
+                  if row.key.binding == other.key.binding
+                    && row.pre_flip_qualified_path != other.pre_flip_qualified_path {
+                    optional_present(
+                      value: concat(
+                        "ALIAS_APPLY_CONFLICT: binding=",
+                        concat(
+                          row.key.binding,
+                          concat(
+                            " has divergent targets ",
+                            concat(row.pre_flip_qualified_path, concat(" vs ", other.pre_flip_qualified_path))
+                          )
+                        )
+                      )
+                    )
+                  } else {
+                    optional_absent()
+                  }
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn alias_apply_split_rows_by_presence(
+  tree: Node,
+  rows: List<WalkTargetAliasPlanRow>
+) -> AliasApplyRowSplit {
+  fold(
+    rows,
+    init: AliasApplyRowSplit { pending: [], skipped_existing: 0, conflict: optional_absent() },
+    f: fn(state, row) {
+      let binding_sym = symbol_intern_lexeme(lexeme: row.key.binding)
+      if alias_apply_module_tree_has_binding(module_root: tree, binding: binding_sym) {
+        AliasApplyRowSplit {
+          pending: state.pending,
+          skipped_existing: state.skipped_existing + 1,
+          conflict: state.conflict
+        }
+      } else {
+        AliasApplyRowSplit {
+          pending: list_snoc_item(xs: state.pending, item: row),
+          skipped_existing: state.skipped_existing,
+          conflict: state.conflict
+        }
+      }
+    }
+  )
+}
+
+type AliasApplyLineAcc {
+  lines: List<String>
+  edits: List<WalkTargetAliasApplyEdit>
+  failure: Optional<String>
+}
+
+fn alias_apply_lines_for_rows(
+  module_input: WalkTargetAliasModuleInput,
+  rows: List<WalkTargetAliasPlanRow>
+) -> AliasApplyLineAcc {
+  fold(
+    rows,
+    init: AliasApplyLineAcc { lines: [], edits: [], failure: optional_absent() },
+    f: fn(acc, row) {
+      match acc.failure {
+        Present { value: _ } => acc
+        Absent =>
+          match alias_apply_source_line_from_row(row: alias_apply_binding_row_from_plan_row(row: row)) {
+            Rejected { diagnostics: d } =>
+              AliasApplyLineAcc {
+                lines: acc.lines,
+                edits: acc.edits,
+                failure: optional_present(
+                  value: concat("ALIAS_APPLY_EMIT: binding=", concat(row.key.binding, concat(" refused: ", d.head.reason)))
+                )
+              }
+            Accepted { value: line, diagnostics: _ } =>
+              AliasApplyLineAcc {
+                lines: list_snoc_item(xs: acc.lines, item: line),
+                edits: list_snoc_item(
+                  xs: acc.edits,
+                  item: WalkTargetAliasApplyEdit {
+                    declaring_module: module_input.declaring_module,
+                    rel_source_path: module_input.rel_source_path,
+                    binding: row.key.binding,
+                    alias_line: line,
+                    written: false
+                  }
+                ),
+                failure: optional_absent()
+              }
+          }
+      }
+    }
+  )
+}
+
+fn alias_apply_join_lines(lines: List<String>) -> String {
+  fold(
+    lines,
+    init: "",
+    f: fn(acc, line) {
+      if acc == "" {
+        concat("\n\n", line)
+      } else {
+        concat(acc, concat("\n", line))
+      }
+    }
+  )
+}
+
+type WalkTargetAliasModuleOutcome
+  = ModulePlanned {
+      edits: List<WalkTargetAliasApplyEdit>
+      splice: WalkTargetAliasModuleSplice
+      skipped_existing: Int
+    }
+  | ModuleAllPresent { skipped_existing: Int }
+  | ModuleRefused { declaring_module: String, reason: String }
+
+fn walk_target_alias_apply_module_outcome(
+  module_input: WalkTargetAliasModuleInput
+) -> WalkTargetAliasModuleOutcome {
+  match alias_apply_parse_module_tree_and_span(
+    text: module_input.source_text,
+    file_anchor: symbol_intern_lexeme(lexeme: module_input.rel_source_path)
+  ) {
+    Rejected { diagnostics: d } =>
+      ModuleRefused {
+        declaring_module: module_input.declaring_module,
+        reason: concat("ALIAS_APPLY_PARSE: ", d.head.reason)
+      }
+    Accepted { value: parsed, diagnostics: _ } =>
+      match alias_apply_rows_conflict(rows: module_input.rows) {
+        Present { value: conflict } =>
+          ModuleRefused { declaring_module: module_input.declaring_module, reason: conflict }
+        Absent => {
+          let split = alias_apply_split_rows_by_presence(tree: parsed.tree, rows: module_input.rows)
+          if list_length(items: split.pending) == 0 {
+            ModuleAllPresent { skipped_existing: split.skipped_existing }
+          } else {
+            let acc = alias_apply_lines_for_rows(module_input: module_input, rows: split.pending)
+            match acc.failure {
+              Present { value: reason } =>
+                ModuleRefused { declaring_module: module_input.declaring_module, reason: reason }
+              Absent =>
+                match alias_apply_module_splice_offset(parsed: parsed) {
+                  Rejected { diagnostics: d } =>
+                    ModuleRefused {
+                      declaring_module: module_input.declaring_module,
+                      reason: d.head.reason
+                    }
+                  Accepted { value: offset, diagnostics: _ } =>
+                    ModulePlanned {
+                      edits: acc.edits,
+                      splice: WalkTargetAliasModuleSplice {
+                        declaring_module: module_input.declaring_module,
+                        rel_source_path: module_input.rel_source_path,
+                        splice_offset: offset,
+                        insert_text: alias_apply_join_lines(lines: acc.lines)
+                      },
+                      skipped_existing: split.skipped_existing
+                    }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+type AliasApplyFoldAcc {
+  edits: List<WalkTargetAliasApplyEdit>
+  splices: List<WalkTargetAliasModuleSplice>
+  skipped_existing: Int
+  refused: List<String>
+}
+
+fn walk_target_alias_apply_collect_rows(inputs: List<WalkTargetAliasModuleInput>) -> List<WalkTargetAliasPlanRow> {
+  fold(
+    inputs,
+    init: [],
+    f: fn(acc, module_input) { list_append(left: acc, right: module_input.rows) }
+  )
+}
+
+fn walk_target_alias_apply_module_fold(
+  inputs: List<WalkTargetAliasModuleInput>,
+  source_scope_label: String,
   write_requested: Bool
 ) -> Outcome<WalkTargetAliasApplyReport> {
   match walk_target_alias_corpus_write_refused(write_requested: write_requested) {
     Present { value: reason } => outcome_rejected(Diagnostic { reason: reason, at: none, correction: none })
     Absent =>
-      match walk_target_alias_binding_identity_oracle_static(rows: plan.rows) {
+      match walk_target_alias_binding_identity_oracle_static(rows: walk_target_alias_apply_collect_rows(inputs: inputs)) {
         Present { value: oracle_msg } =>
           outcome_rejected(Diagnostic { reason: oracle_msg, at: none, correction: none })
-        Absent =>
+        Absent => {
+          let folded = fold(
+            inputs,
+            init: AliasApplyFoldAcc { edits: [], splices: [], skipped_existing: 0, refused: [] },
+            f: fn(acc, module_input) {
+              match walk_target_alias_apply_module_outcome(module_input: module_input) {
+                ModulePlanned { edits: edits, splice: splice, skipped_existing: skipped } =>
+                  AliasApplyFoldAcc {
+                    edits: list_append(left: acc.edits, right: edits),
+                    splices: list_snoc_item(xs: acc.splices, item: splice),
+                    skipped_existing: acc.skipped_existing + skipped,
+                    refused: acc.refused
+                  }
+                ModuleAllPresent { skipped_existing: skipped } =>
+                  AliasApplyFoldAcc {
+                    edits: acc.edits,
+                    splices: acc.splices,
+                    skipped_existing: acc.skipped_existing + skipped,
+                    refused: acc.refused
+                  }
+                ModuleRefused { declaring_module: m, reason: reason } =>
+                  AliasApplyFoldAcc {
+                    edits: acc.edits,
+                    splices: acc.splices,
+                    skipped_existing: acc.skipped_existing,
+                    refused: list_snoc_item(
+                      xs: acc.refused,
+                      item: concat("module=", concat(m, concat(": ", reason)))
+                    )
+                  }
+              }
+            }
+          )
           outcome_accepted(
             value: WalkTargetAliasApplyReport {
-              edits: [],
-              skipped_existing: 0,
-              refused: [walk_target_alias_apply_module_index_seed_gap],
-              source_scope_label: plan.source_scope_label,
+              edits: folded.edits,
+              splices: folded.splices,
+              skipped_existing: folded.skipped_existing,
+              refused: folded.refused,
+              source_scope_label: source_scope_label,
               binding_identity_static_oracle_passed: true,
               write_requested: write_requested
             }
           )
+        }
       }
+  }
+}
+
+fn walk_target_alias_module_input_from_plan_row(
+  row: WalkTargetAliasPlanRow,
+  rel_source_path: String,
+  source_text: String
+) -> WalkTargetAliasModuleInput {
+  WalkTargetAliasModuleInput {
+    declaring_module: row.key.declaring_module,
+    rel_source_path: rel_source_path,
+    source_text: source_text,
+    rows: [row]
   }
 }
 

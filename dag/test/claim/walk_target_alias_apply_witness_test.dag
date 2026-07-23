@@ -1,12 +1,14 @@
 module test.claim.walk_target_alias_apply_witness_test
 
 import tools.walk_target_alias_apply {
-  walk_target_alias_apply_plan_pure,
+  walk_target_alias_apply_module_fold,
   walk_target_alias_binding_identity_oracle_static,
   walk_target_alias_binding_identity_oracle_executed_refused,
   alias_apply_row_node_from_binding_row,
-  WalkTargetAliasPlan
+  alias_apply_rows_conflict,
+  WalkTargetAliasModuleInput
 }
+import tools.walk_target_alias_apply_transport { walk_target_alias_apply_dry_run_receipt_holds }
 import tools.walk_target_alias_plan {
   WalkTargetAliasPlanRow,
   WalkTargetAliasPlanRowKey,
@@ -15,7 +17,7 @@ import tools.walk_target_alias_plan {
   FnParentFirstHit
 }
 import v2.std.collection { Present, Absent }
-import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.node { Named }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -23,7 +25,7 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wtaa_parse_witness_lane_note: String = "The two parse-driven apply witnesses (parse_fixture, insert_anchor_tree_fact) live in test.claim.long.walk_target_alias_apply_parse_witness: alias_apply_parse_module_source pulls the v2 tokenize/parse closure past the 5000ms fast-lane budget (operator 5s rule 2026-07-12)."
+data wtaa_parse_witness_lane_note: String = "The parse-driven apply witnesses (parse fixture, insert anchor, end-to-end module fold over real source text) live in test.claim.long.walk_target_alias_apply_parse_witness: alias_apply_parse_module_artifact pulls the v2 tokenize/parse closure past the 5000ms fast-lane budget (operator 5s rule 2026-07-12). This file keeps the sub-ms row/oracle/gate witnesses."
 
 data wtaa_global_bare_lcp_plan_row: WalkTargetAliasPlanRow = WalkTargetAliasPlanRow {
   key: WalkTargetAliasPlanRowKey {
@@ -116,29 +118,78 @@ fn wtaa_alias_decl_emit_node_holds() -> Bool {
   )
 }
 
-fn wtaa_corpus_write_gate_refuses_holds() -> Bool {
-  let plan = WalkTargetAliasPlan {
-    rows: [wtaa_global_bare_lcp_plan_row],
-    refused: [],
-    source_scope_label: "write-gate-fixture"
-  }
-  match walk_target_alias_apply_plan_pure(plan: plan, write_requested: true) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      string_contains(s: d.head.reason, pattern: "#6979")
+fn wtaa_gate_input_no_source() -> WalkTargetAliasModuleInput {
+  WalkTargetAliasModuleInput {
+    declaring_module: "test.aliasplan.near.consumer",
+    rel_source_path: "test/aliasplan/near/consumer.dag",
+    source_text: "",
+    rows: [wtaa_global_bare_lcp_plan_row]
   }
 }
 
-fn wtaa_dry_run_apply_seed_gap_refuses_holds() -> Bool {
-  let plan = WalkTargetAliasPlan {
-    rows: [wtaa_global_bare_lcp_plan_row],
-    refused: [],
-    source_scope_label: "dry-run-fixture"
+fn wtaa_corpus_write_gate_refuses_holds() -> Bool {
+  match walk_target_alias_apply_module_fold(
+    inputs: [wtaa_gate_input_no_source()],
+    source_scope_label: "write-gate-fixture",
+    write_requested: true
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      string_contains(s: d.head.reason, pattern: "v1 seed parser")
   }
-  match walk_target_alias_apply_plan_pure(plan: plan, write_requested: false) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: report, diagnostics: _ } =>
-      report.binding_identity_static_oracle_passed && !report.write_requested
+}
+
+fn wtaa_module_fold_oracle_refuses_before_parse() -> Bool {
+  let bad = WalkTargetAliasPlanRow {
+    key: WalkTargetAliasPlanRowKey {
+      class: GlobalBareLcp,
+      declaring_module: "test.bad",
+      binding: "X",
+      walk_target_qualified_path: "test.bad.X"
+    },
+    pre_flip_qualified_path: "test.bad.X",
+    walk_verified: false,
+    lookup_events: 0
+  }
+  let module_input = WalkTargetAliasModuleInput {
+    declaring_module: "test.bad",
+    rel_source_path: "test/bad.dag",
+    source_text: "",
+    rows: [bad]
+  }
+  match walk_target_alias_apply_module_fold(
+    inputs: [module_input],
+    source_scope_label: "oracle-gate-fixture",
+    write_requested: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      string_contains(s: d.head.reason, pattern: "BINDING_IDENTITY_ORACLE")
+  }
+}
+
+fn wtaa_rows_conflict_refuses_divergent_targets() -> Bool {
+  let row_b = WalkTargetAliasPlanRow {
+    key: WalkTargetAliasPlanRowKey {
+      class: FnParentFirstHit,
+      declaring_module: "test.aliasplan.near.consumer",
+      binding: "AmbigType",
+      walk_target_qualified_path: "test.aliasplan.far.AmbigType"
+    },
+    pre_flip_qualified_path: "test.aliasplan.far.AmbigType",
+    walk_verified: true,
+    lookup_events: 1
+  }
+  match alias_apply_rows_conflict(rows: [wtaa_global_bare_lcp_plan_row, row_b]) {
+    Present { value: msg } => string_contains(s: msg, pattern: "ALIAS_APPLY_CONFLICT")
+    Absent => false
+  }
+}
+
+fn wtaa_rows_conflict_accepts_consistent_rows() -> Bool {
+  match alias_apply_rows_conflict(rows: [wtaa_global_bare_lcp_plan_row, wtaa_fn_parent_plan_row]) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -170,8 +221,20 @@ test fn walk_target_alias_apply_corpus_write_gate_refuses_holds() -> Bool {
   wtaa_corpus_write_gate_refuses_holds()
 }
 
-test fn walk_target_alias_apply_dry_run_seed_gap_holds() -> Bool {
-  wtaa_dry_run_apply_seed_gap_refuses_holds()
+test fn walk_target_alias_apply_module_fold_oracle_gate_holds() -> Bool {
+  wtaa_module_fold_oracle_refuses_before_parse()
+}
+
+test fn walk_target_alias_apply_rows_conflict_red_holds() -> Bool {
+  wtaa_rows_conflict_refuses_divergent_targets()
+}
+
+test fn walk_target_alias_apply_rows_conflict_green_holds() -> Bool {
+  wtaa_rows_conflict_accepts_consistent_rows()
+}
+
+test fn walk_target_alias_apply_dry_run_gate_receipt_holds() -> Bool {
+  walk_target_alias_apply_dry_run_receipt_holds()
 }
 
 test fn walk_target_alias_apply_executed_oracle_seed_gap_holds() -> Bool {
