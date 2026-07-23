@@ -23,7 +23,7 @@ data witness_entry_eligibility_census_tsv_path: String = "docs/probes/witness_en
 
 data witness_entry_eligibility_census_histogram_path: String = "docs/probes/witness_entry_eligibility_histogram.txt"
 
-data witness_entry_eligibility_census_entry_count: Int = 761
+data witness_entry_eligibility_census_entry_count: Int = 762
 
 data witness_entry_eligibility_census_stamp: String = "2026-07-23T07:20Z"
 
@@ -159,13 +159,25 @@ fn census_reason_column_for_entry(entry: String) -> String {
   }
 }
 
+data census_native_family_crate_leg_label: String = concat(
+  "NativeFamilyLeg{",
+  concat("family_crate", "}")
+)
+
+data census_emit_on_demand_family_grain_leg_label: String = concat(
+  "InterpretedLeg{",
+  concat("EmitOnDemandFamilyGrain", "}")
+)
+
+data census_default_interpreted_leg_label: String = "InterpretedLeg"
+
 fn census_execution_leg_label(entry: String) -> String {
   if census_entry_path_contains(entry: entry, pattern: "emit_on_demand_family_crate") {
-    "NativeFamilyLeg{family_crate}"
+    census_native_family_crate_leg_label
   } else if census_entry_path_matches_emit_on_demand(entry: entry) {
-    "InterpretedLeg{EmitOnDemandFamilyGrain}"
+    census_emit_on_demand_family_grain_leg_label
   } else {
-    "InterpretedLeg"
+    census_default_interpreted_leg_label
   }
 }
 

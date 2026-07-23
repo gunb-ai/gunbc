@@ -253,5 +253,9 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 # telemetry class dissolves (§13 unique-on-chain resolution ships, per
 # falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
 [[bin]]
+name = "witness_entry_eligibility_census_emit"
+path = "src/bin/witness_entry_eligibility_census_emit.rs"
+
+[[bin]]
 name = "silent_pick_crosscheck"
 path = "src/bin/silent_pick_crosscheck.rs"

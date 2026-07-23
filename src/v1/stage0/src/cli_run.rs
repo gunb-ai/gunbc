@@ -8387,20 +8387,218 @@ pub fn run_claim_failure_receipt(
     }
 }
 
-/// Entry-grain execution-leg label for floor receipts (dissolve-on: derive from
-/// `v2.compiler.self_host.witness_bulk_routing` at construction).
-pub fn witness_execution_leg_label(entry: &str) -> &'static str {
-    if entry.contains("emit_on_demand_family_crate") {
-        "NativeFamilyLeg{family_crate}"
-    } else if entry.contains("emit_on_demand") {
-        "InterpretedLeg{EmitOnDemandFamilyGrain}"
-    } else if entry.contains("/long/") {
-        "ExecutionRefused{LongLaneScheduled}"
-    } else if entry.contains("/manual/") || entry.contains("/complexity/") {
-        "ExecutionRefused{OfflineLocalRecipe}"
-    } else {
-        "InterpretedLeg"
+/// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_execution_leg_label`):
+/// Floor receipt leg labels are projected from the committed census TSV (itself emitted
+/// from `v2.compiler.self_host.witness_entry_eligibility_census` via
+/// `witness_entry_eligibility_census_emit`). dissolve-on: claim_executor derives
+/// `WitnessExecutionLeg` from the routing frontier row at runtime (construction).
+pub fn witness_execution_leg_label(entry: &str) -> String {
+    witness_entry_eligibility_execution_leg_from_tsv(entry)
+        .unwrap_or_else(|| "InterpretedLeg".to_string())
+}
+
+const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
+    "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
+const WITNESS_ENTRY_ELIGIBILITY_CENSUS_TSV_REL: &str =
+    "docs/probes/witness_entry_eligibility_census.tsv";
+
+fn witness_entry_eligibility_execution_legs_by_entry() -> &'static HashMap<String, String> {
+    static LEGS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LEGS.get_or_init(|| {
+        let path = process_workspace_root().join(WITNESS_ENTRY_ELIGIBILITY_CENSUS_TSV_REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "witness execution leg TSV: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        parse_witness_entry_eligibility_execution_legs(&content)
+    })
+}
+
+fn parse_witness_entry_eligibility_execution_legs(content: &str) -> HashMap<String, String> {
+    let mut legs = HashMap::new();
+    let mut saw_header = false;
+    for line in content.lines() {
+        if line.starts_with('#') {
+            continue;
+        }
+        if !saw_header {
+            saw_header = true;
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut cols = line.split('\t');
+        let entry = cols.next().unwrap_or("").trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let leg = cols
+            .nth(6)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("InterpretedLeg");
+        legs.insert(entry.to_string(), leg.to_string());
     }
+    legs
+}
+
+fn witness_entry_eligibility_execution_leg_from_tsv(entry: &str) -> Option<String> {
+    witness_entry_eligibility_execution_legs_by_entry()
+        .get(entry)
+        .cloned()
+}
+
+fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
+    let root = process_workspace_root();
+    let mut entries = BTreeSet::new();
+    for rel_root in ["dag/test/claim", "src/v2/test/claim"] {
+        let output = std::process::Command::new("find")
+            .arg(root.join(rel_root))
+            .arg("-name")
+            .arg("*_test.dag")
+            .arg("!")
+            .arg("-path")
+            .arg("*/generated/*")
+            .output()
+            .map_err(|e| format!("find {rel_root}: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("find {rel_root} failed"));
+        }
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let path = line.trim();
+            if path.is_empty() {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(root.to_str().unwrap_or(""))
+                .unwrap_or(path)
+                .trim_start_matches('/');
+            entries.insert(rel.to_string());
+        }
+    }
+    Ok(entries.into_iter().collect())
+}
+
+fn module_path_from_entry_source(path: &Path) -> String {
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            return rest.split_whitespace().next().unwrap_or("unknown").to_string();
+        }
+    }
+    "unknown".to_string()
+}
+
+fn eval_census_string_fn(
+    ctx: &v1_interpreter::InterpContext,
+    fn_name: &str,
+    entry: &str,
+) -> Result<String, String> {
+    let args = [(Some("entry".to_string()), v1_interpreter::Value::Str(entry.to_string()))];
+    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Str(s)) => Ok(s),
+        Ok(other) => Err(format!(
+            "{fn_name}({entry:?}) returned {}, expected String",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{fn_name}({entry:?}): {e}")),
+    }
+}
+
+/// SCAFFOLD (§7 HAND-RUST — `witness_entry_eligibility_census_emit`):
+/// Host transport that writes the census TSV/histogram from the `.dag` classification
+/// authority. dissolve-on: Filesystem.List walk + pure `.dag` row fold replaces this bin.
+pub fn emit_witness_entry_eligibility_census(
+    tsv_path: &Path,
+    hist_path: &Path,
+) -> Result<usize, String> {
+    let roots = witness_layer_roots();
+    let (graph, indices) = resolve_entry_graph_shared(
+        &roots,
+        WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
+    )
+    .map_err(|e| format!("resolve census authority: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let root = process_workspace_root();
+    let stamp = chrono_lite_utc_stamp();
+    let entries = collect_witness_entry_closure_paths()?;
+    let mut rows = Vec::new();
+    for rel_entry in &entries {
+        let abs = root.join(rel_entry);
+        let module_path = module_path_from_entry_source(&abs);
+        let disposition = eval_census_string_fn(&ctx, "census_disposition_column_for_entry", rel_entry)?;
+        let reason = eval_census_string_fn(&ctx, "census_reason_column_for_entry", rel_entry)?;
+        let first_error = match v1_interpreter::run_in_context(
+            &ctx,
+            "census_first_error_class_column",
+            false,
+        ) {
+            Ok(v1_interpreter::Value::Str(s)) => s,
+            Ok(other) => {
+                return Err(format!(
+                    "census_first_error_class_column returned {}, expected String",
+                    ctx.format_value(&other)
+                ));
+            }
+            Err(e) => return Err(format!("census_first_error_class_column: {e}")),
+        };
+        let leg = eval_census_string_fn(&ctx, "census_execution_leg_label", rel_entry)?;
+        rows.push(format!(
+            "{rel_entry}\t{module_path}\t{module_path}\twitness_entry\t{disposition}\t{reason}\t{first_error}\t{leg}"
+        ));
+    }
+    rows.sort();
+    let mut tsv = format!(
+        "# witness_entry_eligibility_census stamp={stamp} grain=entry_closure roots=dag/test/claim,src/v2/test/claim\n"
+    );
+    tsv.push_str(
+        "entry\tmodule_path\tsubject_module\tsubject_decl\tdisposition\tretained_or_ineligible_reason\tfirst_error_class\texecution_leg\n",
+    );
+    for row in &rows {
+        tsv.push_str(row);
+        tsv.push('\n');
+    }
+    std::fs::write(tsv_path, tsv).map_err(|e| format!("write {}: {e}", tsv_path.display()))?;
+
+    let mut hist_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for row in &rows {
+        let cols: Vec<_> = row.split('\t').collect();
+        if cols.len() < 6 {
+            continue;
+        }
+        let disposition = cols[4].to_string();
+        let reason = cols[5].to_string();
+        *hist_counts.entry((disposition, reason)).or_default() += 1;
+    }
+    let mut hist = format!(
+        "# witness_entry_eligibility_histogram stamp={stamp} total_entries={}\n",
+        rows.len()
+    );
+    hist.push_str("disposition\treason\tcount\n");
+    let mut sorted: Vec<_> = hist_counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    for ((disposition, reason), count) in sorted {
+        hist.push_str(&format!("{disposition}\t{reason}\t{count}\n"));
+    }
+    std::fs::write(hist_path, hist).map_err(|e| format!("write {}: {e}", hist_path.display()))?;
+    Ok(rows.len())
+}
+
+fn chrono_lite_utc_stamp() -> String {
+    std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%MZ"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() { None } else { Some(s) }
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
@@ -14366,7 +14564,7 @@ fn run_discovery_rows(
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
-        let execution_leg = witness_execution_leg_label(&row.entry).to_string();
+        let execution_leg = witness_execution_leg_label(&row.entry);
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
             function: row.function.clone(),
