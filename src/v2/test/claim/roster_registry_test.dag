@@ -50,7 +50,7 @@ test fn roster_registry_standard_holds_live() -> Bool {
 }
 
 test fn roster_registry_enrolls_known_rosters() -> Bool {
-  length(xs: roster_registry) >= 13
+  length(xs: roster_registry) >= 14
 }
 
 test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
