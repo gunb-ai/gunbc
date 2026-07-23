@@ -8543,10 +8543,20 @@ fn witness_entry_eligibility_census_ctx() -> Result<Rc<v1_interpreter::InterpCon
     if let Some(ctx) = WITNESS_ENTRY_ELIGIBILITY_CENSUS_CTX.with(|slot| slot.borrow().clone()) {
         return Ok(ctx);
     }
-    let roots = witness_layer_roots();
-    let (graph, indices) =
-        resolve_entry_graph_shared(&roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-            .map_err(|e| format!("resolve census authority: {e}"))?;
+    // Anchor on the workspace root rather than the process cwd: the label is derived on
+    // every floor witness row, and a caller that happens to run from a subdirectory must
+    // get the same answer, not a resolve failure.
+    let root = process_workspace_root();
+    let roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|r| root.join(r).to_string_lossy().into_owned())
+        .collect();
+    let entry = root
+        .join(WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+        .map_err(|e| format!("resolve census authority: {e}"))?;
     let ctx = Rc::new(make_eval_context(
         &graph,
         indices,
