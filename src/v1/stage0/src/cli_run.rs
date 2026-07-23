@@ -8376,13 +8376,16 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
-pub fn run_claim_failure_receipt(
-    ctx: &v1_interpreter::InterpContext,
-    function: &str,
-) -> Option<String> {
+/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
+/// interpreter error or wrong type — never silent None (review 41847, §5).
+pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s),
-        _ => None,
+        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(other) => format!(
+            "failure_receipt_refused: {function} returned {}, expected String",
+            ctx.format_value(&other)
+        ),
+        Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
 
@@ -14668,7 +14671,8 @@ fn run_discovery_rows(
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
                 if let Some(companion) = failure_receipt_companion(&row.function) {
-                    if let Some(receipt) = run_claim_failure_receipt(ctx_ref, &companion) {
+                    let receipt = run_claim_failure_receipt(ctx_ref, &companion);
+                    if !receipt.is_empty() {
                         failure.push_str(" | ");
                         failure.push_str(&receipt);
                     }
