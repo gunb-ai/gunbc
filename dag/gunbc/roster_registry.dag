@@ -132,6 +132,14 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note"),
     unit_kind: "long-lane witness file (dag/test/claim/long/, src/v2/test/claim/long/)",
     membership: ByContainment
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
+    unit_kind: "stage0 seed module basename per partition crate",
+    membership: DeclaredFrontier {
+      reason: "the hand-drawn stage0 crate split: per-crate module membership is hand-listed (stage0_std_primitive_modules and siblings) while the true relation is the module import closure — enrolled 2026-07-23 off two drift incidents this class caused silently (std_currency absent from std-core after #6977 added the measure→currency edge, so v1-stage0-std-core stopped building standalone; the partition allow-block lacked the monolith's recursion_limit so v1-stage0-extdeps-languages failed on serde json_internal). Nothing in CI builds the partition crate libs, so the drift had zero signal (sheet row ts-group-partition-drift)",
+      dissolve_on: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job"
+    }
   }
 ]
 
