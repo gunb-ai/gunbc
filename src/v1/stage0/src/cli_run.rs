@@ -10616,7 +10616,7 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
+fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Result<(), String> {
     let mut dag_paths: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
@@ -10842,13 +10842,13 @@ fn parse_floor_discovery_producer_result(
             Err(reason)
         }
         other => Err(format!(
-            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            "discover_floor_witness_roster_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
             ctx.format_value(other)
         )),
     }
 }
 
-fn discover_floor_corpus_rows_from_dag_producer(
+fn invoke_floor_discovery_producer(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
@@ -10898,11 +10898,11 @@ fn discover_floor_corpus_rows_from_dag_producer(
     ];
     let result = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "discover_floor_corpus_rows_from_host_facts",
+        "discover_floor_witness_roster_from_host_facts",
         &args,
         false,
     )
-    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
+    .map_err(|e| format!("discover_floor_witness_roster_from_host_facts: {e}"))?;
     parse_floor_discovery_producer_result(&ctx, &result)
 }
 
@@ -10921,26 +10921,47 @@ fn apply_discovery_scope_dirs_filter(
     rows
 }
 
-pub fn discover_floor_corpus_rows(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    discover_floor_corpus_rows_inner(source_roots, scan_dirs, exclude_substrings, &[])
-}
-
-pub fn discover_floor_corpus_rows_scoped(
+pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    discover_floor_corpus_rows_inner(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )
+    floor_filename_hygiene_refusal_via_producer(source_roots)?;
+    let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
+    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
+    let FloorLensImportGraph {
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    } = build_floor_lens_import_graph(source_roots)?;
+    let facts = build_module_graph_facts_live(source_roots);
+    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
+    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
+    if !inert.is_empty() {
+        return Err(format!(
+            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
+             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
+             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
+             scan-dir `unified_claim_*`) or delete it: {}",
+            inert.len(),
+            inert.join(", ")
+        ));
+    }
+    let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
+    if !unjustified.is_empty() {
+        return Err(format!(
+            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
+             not record a `construction_justification` — before adding a lens you must justify why \
+             the bad-state class cannot be made unwritable by construction. Add a `data \
+             construction_justification: ConstructionJustification = …` decl (see \
+             v2.lens.common.construction_justification) classifying it as WallNow / \
+             WallAfterGrounding / RatchetForever: {}",
+            unjustified.len(),
+            unjustified.join(", ")
+        ));
+    }
+    Ok(rows)
 }
 
 struct FloorLensImportGraph {
@@ -11003,7 +11024,7 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     let excludes = default_floor_lens_hygiene_excludes();
     match build_floor_lens_import_graph(&roots) {
         Ok(graph) => {
-            match discover_floor_corpus_rows_from_dag_producer(&roots, &scan_dirs, &excludes) {
+            match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
                 Ok(rows) => inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path)
                     .len() as i64,
                 Err(_) => -1,
@@ -11023,49 +11044,6 @@ pub fn inert_lens_top_level_module_count() -> i64 {
             .count() as i64,
         Err(_) => -1,
     }
-}
-
-fn discover_floor_corpus_rows_inner(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let mut rows =
-        discover_floor_corpus_rows_from_dag_producer(source_roots, scan_dirs, exclude_substrings)?;
-    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    let FloorLensImportGraph {
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    } = build_floor_lens_import_graph(source_roots)?;
-    let facts = build_module_graph_facts_live(source_roots);
-    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
-    if !inert.is_empty() {
-        return Err(format!(
-            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
-             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
-             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
-             scan-dir `unified_claim_*`) or delete it: {}",
-            inert.len(),
-            inert.join(", ")
-        ));
-    }
-    let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
-    if !unjustified.is_empty() {
-        return Err(format!(
-            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
-             not record a `construction_justification` — before adding a lens you must justify why \
-             the bad-state class cannot be made unwritable by construction. Add a `data \
-             construction_justification: ConstructionJustification = …` decl (see \
-             v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever: {}",
-            unjustified.len(),
-            unjustified.join(", ")
-        ));
-    }
-    Ok(rows)
 }
 
 fn declares_construction_justification(content: &str) -> bool {
@@ -13262,12 +13240,11 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
-    check_floor_filename_hygiene(source_roots)?;
     let mut rows =
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_corpus_rows_scoped(
+            discover_floor_witness_roster(
                 source_roots,
                 scan_dirs,
                 &options.exclude_substrings,
@@ -17501,7 +17478,7 @@ mod source_root_ingest_manifest_tests {
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
+        default_source_roots, discover_floor_witness_roster, inert_lens_modules,
         is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
         DiscoveryRow,
     };
@@ -17602,7 +17579,7 @@ mod inert_lens_hygiene_tests {
         let roots = default_source_roots();
         let scan_dirs = witness_discovery_scan_dirs();
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
@@ -17615,7 +17592,7 @@ mod inert_lens_hygiene_tests {
 mod construction_justification_hygiene_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
-        declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
+        declares_construction_justification, discover_floor_witness_roster, unjustified_lens_modules,
         wall_now_authority_refs, witness_exclusion_substrings,
     };
     use std::collections::BTreeSet;
@@ -17688,7 +17665,7 @@ mod construction_justification_hygiene_tests {
             "src/v2/test/claim/manual".to_string(),
         ];
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
@@ -17777,7 +17754,7 @@ mod construction_justification_hygiene_tests {
 
 #[cfg(test)]
 mod sidecar_placement_hygiene_tests {
-    use super::{discover_floor_corpus_rows, scan_wire_contract_decl_names};
+    use super::{discover_floor_witness_roster, scan_wire_contract_decl_names};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -17830,11 +17807,11 @@ mod sidecar_placement_hygiene_tests {
         )
         .expect("write temp file");
         let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_corpus_rows(&[root], &[], &[]);
+        let result = discover_floor_witness_roster(&[root], &[], &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive discover_floor_corpus_rows to Err");
+            .expect("misplaced wire-contract decl must drive discover_floor_witness_roster to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
@@ -26154,7 +26131,7 @@ mod import_closure_equivalence_tests {
 
     /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
     /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_corpus_rows` lens-hygiene work — closure set-identity
+    /// Avoids `discover_floor_witness_roster` lens-hygiene work — closure set-identity
     /// only needs the witness entry roster, not inert-lens classification.
     fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
         let mut entries = BTreeSet::new();

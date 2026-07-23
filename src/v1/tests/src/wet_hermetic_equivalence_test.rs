@@ -1,5 +1,5 @@
 use v1_compiler::cli_run::{
-    discover_floor_corpus_rows, is_governed_service_representative_row,
+    discover_floor_witness_roster, is_governed_service_representative_row,
     run_discovery_corpus_with_options, wet_hermetic_discovery_outcome_divergences,
     wet_hermetic_scaffold_roster_entry_prefix, witness_exclusion_substrings, ClaimOutcome,
     DiscoveryCorpusOptions, DiscoveryRow, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
@@ -83,7 +83,7 @@ fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
         .expect("load scaffold roster prefix from witness .dag authority");
     let scan_dirs = ci_witness_scan_dirs();
     let excludes = witness_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
+    let rows = discover_floor_witness_roster(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for governed-service representative roster");
     let rep: Vec<(String, String)> = rows
         .iter()
@@ -108,7 +108,7 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
     );
     let scan_dirs = ci_witness_scan_dirs();
     let excludes = witness_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
+    let rows = discover_floor_witness_roster(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for prefix authority check");
     let rep: Vec<&DiscoveryRow> = rows
         .iter()
