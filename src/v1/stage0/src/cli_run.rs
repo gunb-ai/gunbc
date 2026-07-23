@@ -8575,6 +8575,43 @@ fn eval_census_string_fn(
     }
 }
 
+#[cfg(test)]
+mod witness_execution_leg_derivation_tests {
+    use super::*;
+
+    /// Replaces the deleted census TSV-sync test. That one checked a committed carrier
+    /// agreed with a hand-synced count literal; this one checks the thing that now
+    /// actually happens — the label is computed from the `.dag` classification authority.
+    ///
+    /// Discriminating (§5): the three classes must yield three DIFFERENT labels. A
+    /// derivation that collapsed to one default, returned a hardcoded string, or lost the
+    /// entry argument would still produce plausible receipt lines, and reds here instead.
+    #[test]
+    fn leg_labels_derive_per_class_from_the_dag_authority() {
+        let native = witness_execution_leg_label(
+            "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+        );
+        let family_grain = witness_execution_leg_label(
+            "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
+        );
+        let interpreted =
+            witness_execution_leg_label("src/v2/test/claim/self_host/witness_bulk_routing_test.dag");
+
+        assert_eq!(native, "NativeFamilyLeg{family_crate}");
+        assert_eq!(family_grain, "InterpretedLeg{EmitOnDemandFamilyGrain}");
+        assert_eq!(interpreted, "InterpretedLeg");
+
+        assert_ne!(
+            native, family_grain,
+            "leg classes collapsed — the entry argument is not reaching the .dag rule"
+        );
+        assert_ne!(
+            family_grain, interpreted,
+            "family-grain and default legs collapsed — the .dag rule is not discriminating"
+        );
+    }
+}
+
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
     // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
