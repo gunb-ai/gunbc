@@ -1,6 +1,6 @@
 module v2.compiler.program_assembly
 
-import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
@@ -74,7 +74,7 @@ fn program_assembly_fold_step(
     ProgramAssemblyFoldOk { roots: acc, index: idx } =>
       match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
         Accepted { value: root, diagnostics: _ } =>
-          match qualified_name_from_module_node_graft_aware(root: root) {
+          match qualified_name_from_module_node(root: root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyFoldOk {
                 roots: list_snoc_item(xs: acc, item: root),

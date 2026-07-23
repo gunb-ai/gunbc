@@ -44,6 +44,15 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<ItemForm>>> = {
                 Rc::new(vec![Rc::new(ItemForm {
+        kind: ItemFormKind::OtherForm,
+        keyword: "alias".to_string(),
+        has_type_params: false,
+        has_params: false,
+        has_return_type: false,
+        return_required: false,
+        has_uses: false,
+        body_kind: BodyKind::AliasBody,
+    }), Rc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "type".to_string(),
         has_type_params: true,
@@ -145,6 +154,7 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             let mut __m = HashMap::new();
             __m.insert("module".to_string(), true);
             __m.insert("import".to_string(), true);
+            __m.insert("alias".to_string(), true);
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
             __m.insert("func".to_string(), true);

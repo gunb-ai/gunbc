@@ -1,18 +1,74 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
+import gunbc.ci_layer_roots {
+  WitnessExclusionRow,
+  DiscoverySelection,
+  BinWitnessWet,
+  NoConsumer,
+  OfflineLocalRecipe
+}
 import v2.workflow.witness_admission {
-  witness_admission_offline_exclusion_rows_align_with_discovery_holds,
-  witness_admission_fixture_exclusion_rows_align_with_discovery_holds,
-  witness_admission_offline_fixture_exclusion_rows_disjoint_holds,
+  witness_exclusion_rows_well_formed,
+  witness_exclusion_rows_well_formed_holds,
+  witness_exclusion_explicit_roster_rows_consistent,
+  witness_exclusion_explicit_roster_rows_consistent_holds,
+  witness_exclusion_falsifier_rows_consistent_holds,
   witness_whole_tree_resolve_exclusion_concat_authority_holds
 }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 
-data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots exclusion single-authority (witness_exclusion_single_authority_reconciliation_note): offline/fixture admission rows align with discovery exclusions; offline ∩ fixture = ∅; whole-tree probe policy is exactly concat(discovery, strict-resolve). RED if a parallel list drifts."
+data witness_exclusion_reconciliation_note: String = "Executable reconciliation for the typed gunbc.ci_layer_roots.witness_exclusion_frontier (successor of the parallel-list containment witness, whose lists deleted when rows gained derived consumer classification): every row is well-formed (never DiscoverySelection; NoConsumer only for the synthetic admission RED-control path; nonempty reason and dissolve_on), explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). RED controls: a DiscoverySelection-classified row and an unbacked BinWitnessWet row both red."
 
-test fn witness_exclusion_single_authority_reconciliation_holds() -> Bool {
-  witness_admission_offline_exclusion_rows_align_with_discovery_holds()
-    && witness_admission_fixture_exclusion_rows_align_with_discovery_holds()
-    && witness_admission_offline_fixture_exclusion_rows_disjoint_holds()
+test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
+  witness_exclusion_rows_well_formed_holds()
+    && witness_exclusion_explicit_roster_rows_consistent_holds()
+    && witness_exclusion_falsifier_rows_consistent_holds()
     && witness_whole_tree_resolve_exclusion_concat_authority_holds()
+}
+
+fn synthetic_row(pattern: String) -> WitnessExclusionRow {
+  WitnessExclusionRow {
+    pattern: pattern,
+    classification: DiscoverySelection,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  }
+}
+
+test fn witness_exclusion_red_control_discovery_selection_row_reds() -> Bool {
+  let verdict = witness_exclusion_rows_well_formed(
+    rows: [synthetic_row(pattern: "synthetic_row.dag")]
+  )
+  verdict == false
+}
+
+test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
+  witness_exclusion_rows_well_formed(
+    rows: [
+      WitnessExclusionRow {
+        pattern: "synthetic_nickname.dag",
+        classification: OfflineLocalRecipe,
+        reason: "",
+        dissolve_on: ""
+      }
+    ]
+  ) == false
+}
+
+test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
+  witness_exclusion_explicit_roster_rows_consistent(
+    rows: [
+      WitnessExclusionRow {
+        pattern: "no_such_entry_anywhere.dag",
+        classification: BinWitnessWet,
+        reason: "synthetic",
+        dissolve_on: "synthetic"
+      }
+    ],
+    bin_entries: [],
+    probe_entries: []
+  ) == false
 }
