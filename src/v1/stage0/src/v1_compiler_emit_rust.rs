@@ -26549,6 +26549,7 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
                 "2".to_string(),
                 Rc::new(vec!["json".to_string()]),
             ),
+            emit_cargo_dep("libc".to_string(), "0.2".to_string(), Rc::new(vec![])),
         ]);
         let async_deps = if has_services.clone() {
             Rc::new(vec![
