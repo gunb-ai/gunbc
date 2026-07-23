@@ -67,3 +67,13 @@ This is the numeric-tower precedent (#5428) applied to the text carrier: constru
 Extend Gate-1 text-carrier grounding to the type-alias emit path (`rust_string_grounded_type_alias_decl_line` — corpus-repr-agnostic). Discriminating tests: `faithful_string_*` witness suite.
 
 **Seam walls respected:** no E0433 import-closure changes; no Lane-D dotted-name rendering changes.
+
+## Post-fix receipt (Phase 2, same probe)
+
+| Metric | Before | After | Δ |
+|---|---:|---:|---:|
+| E0308 (06_translate) | 3176 | 1099 | −2077 (−65%) |
+| TEXT FreeMonoid↔String bucket | 2185 (67.9%) | 41 (3.7%) | −2144 |
+| `v2_std_text` String alias | `Rc<FreeMonoid<Char>>` | `std::string::String` | grounded |
+
+Remaining E0308 is secondary buckets (Vector/FreeMonoid ~25%, Optional/Option ~21%, RC_WRAP ~6%) — staged successors, not systemic fork.
