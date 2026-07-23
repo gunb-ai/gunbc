@@ -22,6 +22,7 @@ type BodyKind
   | NoBody
   | ServiceBody
   | ResourceBody
+  | AliasBody
 
 type ItemFormKind
   = FuncForm

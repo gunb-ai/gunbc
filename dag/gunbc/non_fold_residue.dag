@@ -1,0 +1,683 @@
+module gunbc.non_fold_residue
+
+import std.roster_frontier { FrontierRow, frontier_units, frontier_rows_well_formed }
+
+data non_fold_residue_authority_note: String = "Single authority for the non-fold-residue roster (DESIGN §6 census; group-of-units re-home per gunbc.roster_registry, operator ruling 2026-07-22 — formerly the NON_FOLD_RESIDUE_ROSTER const in src/v1/stage0/src/cli_run.rs). Each row asserts a corpus site (a path::fn key) whose match over a closed-coproduct param carries a top-level wildcard arm, with its reason and dissolution trigger as typed fields — shared class strings below, per-row receipts where a dated landing receipt existed in the Rust const's comments. The census SCAN stays host-side (nfr_residue_sites in cli_run.rs) and reads these rows through non_fold_residue_units_from_module_source, so rows must stay DIRECT record literals (a helper-fn call would blind the host reader); the scan and reader fold together into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364). Detection-only: never auto-delete rows — greening a site deletes its row by hand with the receipt on the PR."
+
+data non_fold_residue_lens_precision_note: String = "Lens-precision bound (2026-07-14, receipt carried over from the Rust const): fleet_converge_cli.dag::converge_cli_applied_knob_count went wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to 15 on an independent base — green alone, red together; main went compile-red). The fn is one-special-variant dispatch (ConvergePlan knob count, else fallback). The nfr scan covers param-scrutinee matches only, so a field-scrutinee site (intent.effect) is scan-invisible and a roster row for it would be STALE — recorded here as a precision note, not a row."
+
+data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
+
+data nfr_reason_local_tidy: String = "one-special-variant dispatch (LocalTidyCargoFmtCheck special, else the glob fallback), landed with the shell-to-dag bash de-fork (#6751); surfaced by the whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
+
+data nfr_dissolve_local_tidy: String = "local_tidy_spec's fold migration totals the dispatch and the row deletes"
+
+data nfr_reason_structural_eq_backfill: String = "structural equality (param scrutinee, off-variant wildcard arm returning false) landed unrostered when per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (masking class receipted on #6530/#6533; sites from the 2026-07-18 backfill, #6857, and #6582); declared so the ratchet re-arms"
+
+data nfr_dissolve_derived_equality: String = "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row"
+
+data nfr_reason_frontier_probe: String = "#6533 (Wave 2 frontier probe) landed this site unrostered — the nfr witnesses are corpus-read rows the affected-set selection did not run for that diff, so the red surfaced on the next whole-corpus cold sweep (masking class receipted on #6530); declared so the ratchet re-arms"
+
+data nfr_dissolve_frontier_probe: String = "the frontier probe's fold migration totals the match and the row deletes"
+
+data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
+
+data nfr_dissolve_orch_emit: String = "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration"
+
+data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
+
+data nfr_dissolve_owning_fold: String = "the owning file's fold migration totals the match and the row deletes"
+
+data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_legacy_result) — off-variant arms reduce to the identity, so enumerating would clone the arm per variant; landed with #7009, surfaced by the scheduled cold falsifier (alert #7032)"
+
+data nfr_dissolve_legacy_slice1: String = "the legacy slice-1 result carrier is deleted in favor of the per-unit outcome model and the rows delete"
+
+data nfr_reason_reaper_oracle: String = "two-axis discriminating predicate (occupant by action) with off-variant wildcard arms returning false — the reaper witnesses' oracle, same shape as the structural-equality rows; landed with #7026, surfaced by the scheduled cold falsifier (alert #7032)"
+
+data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
+
+data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
+
+data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying a top-level wildcard arm — un-migrated modeling declared before per-row landing receipts were required (no dated receipt recorded; DESIGN §6: a named irreducible kernel or un-migrated modeling, there is no third)"
+
+data nfr_dissolve_wildcard_total: String = "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes"
+
+data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
+
+data nfr_dissolve_gate_membership: String = "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them"
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+    unit: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
+    reason: nfr_reason_local_tidy,
+    dissolve_on: nfr_dissolve_local_tidy
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/effect_reach.dag::sink_kind_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
+    reason: nfr_reason_frontier_probe,
+    dissolve_on: nfr_dissolve_frontier_probe
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    reason: nfr_reason_orch_emit,
+    dissolve_on: nfr_dissolve_orch_emit
+  },
+  FrontierRow {
+    unit: "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    reason: nfr_reason_structural_eq_backfill,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_known",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_parse_tree_opaque",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_unknown",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/extdeps/languages/markdown.dag::md_nested",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/generated_artifact.dag::artifact_eq",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/commit_workflow.dag::gate_eq",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    reason: nfr_reason_land_red_era,
+    dissolve_on: nfr_dissolve_owning_fold
+  },
+  FrontierRow {
+    unit: "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid",
+    reason: nfr_reason_legacy_slice1_bridge,
+    dissolve_on: nfr_dissolve_legacy_slice1
+  },
+  FrontierRow {
+    unit: "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_applied_count",
+    reason: nfr_reason_legacy_slice1_bridge,
+    dissolve_on: nfr_dissolve_legacy_slice1
+  },
+  FrontierRow {
+    unit: "dag/gunbc/host_hygiene_reaper.dag::action_kills_build_cache_server",
+    reason: nfr_reason_reaper_oracle,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/gunbc/os_install_deduction.dag::runtime_verdict_from_kvm_attestation",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/runner_unit_live_read.dag::converge_target_live_verdict",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_factory",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_secret_ref",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_boot_override_consumed_or_weak",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_post_boot",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_observed",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_ready",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_weak_kvm_or_inconclusive",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_router_not_installed",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_serve_ready",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_boot_override_consumed_failure",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_os_installed",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_ready_to_boot",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::install_has_progress_evidence",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::parse_virtual_media_session_observation",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::router_lacks_os_installed_lease",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::sol_has_autoinstall_evidence",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_boot_override_consumed",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_os_installed",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_ready_to_boot",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/change.dag::keyed_diff_hunks_equal",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/computation.dag::constant_bound_value",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/computation.dag::is_constant_bound",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/effect_grant.dag::namespace_tree_eq",
+    reason: nfr_reason_namespace_tree_eq,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/std/effects.dag::key_source_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/std/encoding.dag::encoding_lattice_join",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/encoding.dag::encoding_lattice_meet",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/filesystem.dag::is_text_encoding",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::compose_sub_value",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::compose_sub_value_relations",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::is_strict_style_structural",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::recursion_shape_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::shrink_factor_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/std/induction.dag::sub_value_structural_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "dag/std/reducible.dag::reduce_verdict_combine",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/termination.dag::descent_evidence_lattice_join",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/termination.dag::descent_evidence_lattice_meet",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/termination.dag::promote_to_strict",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/tools/ci_gates.dag::exit_ok",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/tools/generated_artifact_gate.dag::exit_ok",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::eval_loop_node",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::eval_transform_node",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::eval_value_node",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_false",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_true",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_value_as_int",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/node.dag::connective_edge_discipline_for_children",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/complexity.dag::complexity_bound_dominates",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/complexity.dag::complexity_bound_from_class",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::asymptotic_class_dominates",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::multiply_classes",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::symbolic_cost_dominates",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::symbolic_cost_witness",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::symbolic_max",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::symbolic_product",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/cost.dag::symbolic_sequential",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/lens/idempotency.dag::idempotency_verdict_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/ownership.dag::ownership_mode_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/parallelism.dag::parallelism_relation_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/registry.dag::lens_id_v0_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/lens/unused_parameters.dag::use_relation_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/program.dag::program_runtime_bool_false",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/program.dag::program_runtime_bool_true",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::source_atom_value_as_bool",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::source_atom_value_as_char",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::source_atom_value_as_string",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::source_atom_value_as_symbol",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/float.dag::float_body_is_nan",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/node_minimal.dag::node_superset_field_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
+    reason: nfr_reason_structural_eq_mint,
+    dissolve_on: nfr_dissolve_derived_equality
+  },
+  FrontierRow {
+    unit: "src/v2/std/qualified_name.dag::qn_fold_step",
+    reason: nfr_reason_mint_era,
+    dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
+    reason: nfr_reason_ci_floor_gate_membership,
+    dissolve_on: nfr_dissolve_gate_membership
+  },
+  FrontierRow {
+    unit: "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
+    reason: nfr_reason_ci_floor_gate_membership,
+    dissolve_on: nfr_dissolve_gate_membership
+  }
+]
+
+fn non_fold_residue_frontier_units() -> List<String> {
+  frontier_units(rows: non_fold_residue_frontier)
+}
+
+fn non_fold_residue_frontier_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: non_fold_residue_frontier)
+}
