@@ -12,6 +12,7 @@ data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 fn synthetic_correct_schedule() -> List<List<Runnable>> {
   [
     [
+      RunnableSingleClaim { entry: gate_entry, function: "cheap_claim_pool_gate_passes", profile: runnable_resource_profile_negligible() },
       RunnableSingleClaim { entry: gate_entry, function: "layering_imports_gate_passes", profile: runnable_resource_profile_negligible() },
       RunnableSingleClaim { entry: gate_entry, function: "extdeps_external_authority_gate_passes", profile: runnable_resource_profile_negligible() },
       RunnableSingleClaim { entry: gate_entry, function: "generated_artifact_drift_gate_passes", profile: runnable_resource_profile_negligible() }

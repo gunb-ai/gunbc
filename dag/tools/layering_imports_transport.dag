@@ -1,14 +1,12 @@
 module tools.layering_imports_transport
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.logic { Bool }
-import tools.host_prelude { ClaimRun, run_gunbc_claims }
+import tools.host_prelude { ClaimRun }
 
 data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
 data clean_tree_entry: String = "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
-data layering_claims_pooled_note: String = "ONE pooled claim_batch child for the whole gate (the cold-child class, attribution doc section 9): the three former per-concern fns each made their own run_gunbc_claims call — 7 serial cold children total, each paying its own module-index build. One call = one child = one index; per-claim verdicts stay named by claim_batch's own PASS/FAIL-per-function loop, and pooling REMOVES the old cross-call short-circuit (a clean_tree failure previously skipped the scanner receipts via the gate's &&) — every claim now reports on every run, deliberately."
+data layering_claims_pooled_note: String = "This module is the layering CONCERN authority only: the claim list below. Execution moved to the batch-0 pooled child (tools.cheap_gate_pool, CI floor endgame D1 2026-07-23 — one claim_batch child for the whole cheap batch, superseding #7122's one-child-per-GATE which still paid one corpus-denominated index build per gate); the per-gate run fn deleted with its last consumer. Per-claim verdicts stay named by claim_batch's PASS/FAIL-per-function loop, and the gate module beside this transport is now the enrollment wall that every claim here is a member of the pool."
 
 fn scanner_claim(scenario: String, function: String) -> ClaimRun {
   ClaimRun {
@@ -30,8 +28,4 @@ fn layering_imports_claims() -> List<ClaimRun> {
       function: "detects_reference_only_compiler_import_holds"
     }
   ]
-}
-
-fn run_layering_imports_claims() -> Bool {
-  run_gunbc_claims(source_roots: witness_layer_roots, claims: layering_imports_claims())
 }

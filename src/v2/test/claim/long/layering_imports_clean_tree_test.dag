@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data layering_std_roots: List<String> = ["src/v2/std", "dag/std"]
 data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dag/extdeps"]
 
-data layering_clean_tree_long_note: String = "Full-corpus layering_imports clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts unions reference_resolution_facts over witness_layer_roots (gunbc_ci_fast_lane_rule_note). Per-PR fast-lane coverage: five scanner perturb receipts, reference_only_compiler_fixture, lens_unit fixtures. Excluded from discovery by test/claim/long/ dir grain. Gate enrollment: dag/tools/layering_imports_transport.dag run_layering_imports_claims (pooled claim_batch child)."
+data layering_clean_tree_long_note: String = "Full-corpus layering_imports clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts unions reference_resolution_facts over witness_layer_roots (gunbc_ci_fast_lane_rule_note). Per-PR fast-lane coverage: five scanner perturb receipts, reference_only_compiler_fixture, lens_unit fixtures. Excluded from discovery by test/claim/long/ dir grain. Gate enrollment: tools.cheap_gate_pool cheap_claim_pool_claims (the batch-0 pooled claim_batch child; the transport module carries the concern's claim list)."
 
 test fn clean_tree_no_wrong_direction_imports_holds() -> Bool {
   layering_imports_clean_holds(facts: layer_import_facts_live(

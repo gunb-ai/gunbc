@@ -1,0 +1,27 @@
+module v2.test.fixture.floor_skip.budget_red_control_plan
+
+import std.realization_schedule {
+  Runnable,
+  RunnableSingleClaim,
+  runnable_resource_profile_negligible
+}
+import v2.std.collection { List }
+import std.types { Int }
+
+data budget_red_control_plan_note: String = "THE COST WALL's by-execution RED-control fixture (endgame D5): a minimal plan whose fn is NAMED gunbc_ci_floor_batches so claim_executor arms the per-batch wall budgets against it — one tiny hermetic batch, one generous budget row. RED direction: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS=0 tightens the budget to zero, the batch overruns by construction, and the run must exit nonzero with the typed FLOOR-BATCH-OVER-BUDGET refusal naming batch 1. GREEN direction: the same invocation without the env exits zero. The injection is tighten-only (min), so this fixture can force the refusal but can never widen a real budget — a fault injection, not an escape hatch. Recipe: target/release/claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/floor_skip/budget_red_control_plan.dag --plan-function gunbc_ci_floor_batches. Lives under test/fixture/floor_skip/ (discovery-excluded at dir grain) and declares no test fns, so it is invisible to the witness corpus — driven only by this recipe."
+
+fn budget_red_control_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag",
+    function: "falsifier_green_control_holds",
+    profile: runnable_resource_profile_negligible()
+  }
+}
+
+fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
+  [[budget_red_control_claim()]]
+}
+
+fn gunbc_ci_floor_batch_wall_budgets_seconds() -> List<Int> {
+  [600]
+}
