@@ -187,6 +187,17 @@ pub fn render_rust_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
+        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_optional_carrier_applied(
+                n.clone(),
+                emit_info.fn_generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                emit_info.variant_to_enum.clone(),
+                emit_info.fn_type_env.clone(),
+            );
+        }
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: tv, .. }) => {
                 if type_var_in_fn_generic_scope(
@@ -244,6 +255,17 @@ pub fn render_rust_type_without_applied_binding(
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+        }
+        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_optional_carrier_applied(
+                n.clone(),
+                emit_info.fn_generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                emit_info.variant_to_enum.clone(),
+                emit_info.fn_type_env.clone(),
+            );
         }
         if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
@@ -429,7 +451,73 @@ pub fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> bool {
 }
 
 pub fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> bool {
-    (corpus_repr_is_host(corpus_repr.clone()) && (name.clone() == "FreeMonoid".to_string()))
+    (name.clone() == "FreeMonoid".to_string())
+}
+
+pub fn is_host_optional_carrier_alias(name: String) -> bool {
+    (name.clone() == "Optional".to_string())
+}
+
+pub fn is_grounded_coproduct_native_alias(name: String, corpus_repr: RustCorpusRepr) -> bool {
+    (is_host_freemonoid_vec_alias(name.clone(), corpus_repr.clone())
+        || is_host_optional_carrier_alias(name.clone()))
+}
+
+pub fn is_host_optional_carrier_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((authored_name_at(source_indices.clone(), n.clone()) == "Optional".to_string())
+        && ((n.children.clone().len() as i64) > 0))
+}
+
+pub fn render_rust_optional_carrier_inner(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    match n.children.clone().first().cloned() {
+        Some(elem) => render_rust_applied_type_arg(
+            elem.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            corpus_repr.clone(),
+            source_indices.clone(),
+            variant_to_enum.clone(),
+            env.clone(),
+        ),
+        None => "()".to_string(),
+    }
+}
+
+pub fn render_rust_optional_carrier_applied(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "Option<".to_string(),
+            render_rust_optional_carrier_inner(
+                n.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            ),
+        ),
+        ">".to_string(),
+    )
 }
 
 pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
@@ -597,9 +685,7 @@ pub fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -
 }
 
 pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> Option<String> {
-    if (((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string()))
-        && corpus_repr_is_host(corpus_repr.clone()))
-    {
+    if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
         Some("Vec".to_string())
     } else {
         None
@@ -1015,6 +1101,17 @@ pub fn render_rust_applied_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
+        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_optional_carrier_applied(
+                n.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            );
+        }
         let base_name = authored_name_at(source_indices.clone(), n.clone());
         if ((n.children.clone().len() as i64) == 0) {
             match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone()) {
@@ -1137,6 +1234,17 @@ pub fn render_rust_decl_type(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+        }
+        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_optional_carrier_applied(
+                n.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            );
         }
         let applied_prop = find_property(
             n.properties.clone(),
@@ -1474,6 +1582,17 @@ pub fn render_rust_fn_sig_type(
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+        }
+        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_optional_carrier_applied(
+                n.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            );
         }
         if type_node_has_value_variant_arg(
             n.clone(),
@@ -5408,7 +5527,7 @@ pub fn emit_module_full(
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
                     if ((is_type_def_item(item.clone()) && is_coproduct_type(item.clone()))
-                        && !is_host_freemonoid_vec_alias(
+                        && !is_grounded_coproduct_native_alias(
                             authored_name(scope.type_env.clone(), item.clone()),
                             emit_info.corpus_repr.clone(),
                         ))
@@ -8087,7 +8206,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.clone().iter().cloned() {
-                        __result.push(if is_host_freemonoid_vec_alias(parent.clone(), emit_info.corpus_repr.clone()) {
+                        __result.push(if is_grounded_coproduct_native_alias(parent.clone(), emit_info.corpus_repr.clone()) {
                     "".to_string()
                 } else {
                     {
@@ -8157,7 +8276,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                                 }
                                 __found
                             } == false)
-                                && !is_host_freemonoid_vec_alias(
+                                && !is_grounded_coproduct_native_alias(
                                     en.clone(),
                                     emit_info.corpus_repr.clone(),
                                 ))
@@ -10276,7 +10395,40 @@ pub fn emit_type_def_from_connective(
                 )
             }
         } else {
-            if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone()) {
+            if is_host_optional_carrier_alias(item_text.clone()) {
+                {
+                    let elem_csv = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in item.params.clone().iter().cloned() {
+                            __result.push(to_pascal(generic_param_name_at(
+                                p.clone(),
+                                env.source_indices.clone(),
+                            )));
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string());
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            rust_visibility_prefix(),
+                                            "type ".to_string(),
+                                        ),
+                                        item_text.clone(),
+                                    ),
+                                    type_params.clone(),
+                                ),
+                                " = Option<".to_string(),
+                            ),
+                            elem_csv.clone(),
+                        ),
+                        ">;".to_string(),
+                    )
+                }
+            } else if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone()) {
                 {
                     let elem_csv = Rc::new({
                         let mut __result = Vec::new();
