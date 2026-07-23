@@ -13,6 +13,7 @@ fn sample_outcome(entry: &str, function: &str, outcome: ClaimOutcome) -> Discove
         entry: entry.to_string(),
         function: function.to_string(),
         outcome,
+        execution_leg: "InterpretedLeg".to_string(),
     }
 }
 

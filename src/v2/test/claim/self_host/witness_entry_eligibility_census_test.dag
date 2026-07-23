@@ -1,0 +1,31 @@
+module v2.test.claim.self_host.witness_entry_eligibility_census_test
+
+import v2.compiler.self_host.witness_entry_eligibility_census {
+  witness_entry_eligibility_census_entry_count,
+  witness_entry_eligibility_census_meets_floor,
+  witness_entry_eligibility_census_tsv_path,
+  witness_entry_eligibility_histogram_path
+}
+import v2.compiler.self_host.witness_bulk_routing {
+  witness_bulk_routing_sample_roster,
+  witness_bulk_entry_count_expected
+}
+import v2.std.algebra { length }
+
+data witness_entry_eligibility_census_test_note: String = "Census receipt: the mechanical TSV count meets the ROADMAP 2a floor (>=744 entry closures) and strictly exceeds the 16-entry stratified sample — totality is the bulk-flip gate, not the sample."
+
+test fn witness_entry_eligibility_census_count_holds() -> Bool {
+  witness_entry_eligibility_census_meets_floor()
+    && witness_entry_eligibility_census_entry_count > witness_bulk_entry_count_expected
+    && length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
+}
+
+test fn witness_entry_eligibility_census_carrier_paths_holds() -> Bool {
+  witness_entry_eligibility_census_tsv_path != ""
+    && witness_entry_eligibility_histogram_path != ""
+}
+
+test fn witness_entry_eligibility_census_witnesses() -> Bool {
+  witness_entry_eligibility_census_count_holds()
+    && witness_entry_eligibility_census_carrier_paths_holds()
+}

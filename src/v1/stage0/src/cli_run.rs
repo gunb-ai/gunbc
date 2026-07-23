@@ -8368,6 +8368,41 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
+/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
+fn failure_receipt_companion(function: &str) -> Option<String> {
+    function
+        .strip_suffix("_holds")
+        .map(|base| format!("{base}_failure_receipt"))
+}
+
+/// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
+pub fn run_claim_failure_receipt(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+) -> Option<String> {
+    match v1_interpreter::run_in_context(ctx, function, false) {
+        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s),
+        _ => None,
+    }
+}
+
+/// Entry-grain execution-leg label for floor receipts (dissolve-on: derive from
+/// `v2.compiler.self_host.witness_bulk_routing` at construction).
+pub fn witness_execution_leg_label(entry: &str) -> &'static str {
+    if entry.contains("emit_on_demand_family_crate") {
+        "NativeFamilyLeg{family_crate}"
+    } else if entry.contains("emit_on_demand") {
+        "InterpretedLeg{EmitOnDemandFamilyGrain}"
+    } else if entry.contains("/long/") {
+        "ExecutionRefused{LongLaneScheduled}"
+    } else if entry.contains("/manual/") || entry.contains("/complexity/") {
+        "ExecutionRefused{OfflineLocalRecipe}"
+    } else {
+        "InterpretedLeg"
+    }
+}
+
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
     // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
@@ -10027,6 +10062,8 @@ pub struct DiscoveryWitnessOutcome {
     pub entry: String,
     pub function: String,
     pub outcome: ClaimOutcome,
+    /// Which execution leg ran (`v2.std.witness_execution_routing.WitnessExecutionLeg` projection).
+    pub execution_leg: String,
 }
 
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
@@ -14027,7 +14064,14 @@ impl ShardStyle {
         }
     }
 
-    fn stream_witness(self, function: &str, entry: &str, wall_nanos: u128, passed: bool) {
+    fn stream_witness(
+        self,
+        function: &str,
+        entry: &str,
+        execution_leg: &str,
+        wall_nanos: u128,
+        passed: bool,
+    ) {
         if !self.stream {
             return;
         }
@@ -14041,11 +14085,11 @@ impl ShardStyle {
                 "\x1b[31m✗\x1b[0m"
             };
             eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms"
+                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry} leg={execution_leg})\x1b[0m {ms:.1}ms"
             );
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({entry}) {ms:.1}ms");
+            eprintln!("{ts} {tag}{glyph} {function} ({entry} leg={execution_leg}) {ms:.1}ms");
         }
     }
 }
@@ -14322,14 +14366,17 @@ fn run_discovery_rows(
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
+        let execution_leg = witness_execution_leg_label(&row.entry).to_string();
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
+            execution_leg: execution_leg.clone(),
         });
         style.stream_witness(
             &row.function,
             &row.entry,
+            &execution_leg,
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
         );
@@ -14349,10 +14396,16 @@ fn run_discovery_rows(
         }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => summary.failures.push(format!(
-                "{} ({}) returned Bool(false)",
-                row.function, row.entry
-            )),
+            ClaimOutcome::Fail => {
+                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
+                if let Some(companion) = failure_receipt_companion(&row.function) {
+                    if let Some(receipt) = run_claim_failure_receipt(ctx_ref, &companion) {
+                        failure.push_str(" | ");
+                        failure.push_str(&receipt);
+                    }
+                }
+                summary.failures.push(failure);
+            }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
@@ -17884,16 +17937,19 @@ mod witness_timing_attribution_tests {
                     entry: "a.dag".to_string(),
                     function: "fast".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "b.dag".to_string(),
                     function: "slow".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "a.dag".to_string(),
                     function: "medium".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
             ],
             entry_resolve_receipts: vec![
