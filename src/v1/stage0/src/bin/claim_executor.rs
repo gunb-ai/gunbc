@@ -54,10 +54,7 @@ enum FloorBatchStopPolicy {
     FullLedger,
 }
 
-fn plan_uses_floor_batch_stop_policy(
-    plan_ctx: &InterpContext,
-    plan_function: &str,
-) -> bool {
+fn plan_uses_floor_batch_stop_policy(plan_ctx: &InterpContext, plan_function: &str) -> bool {
     match run_in_context_with_args(
         plan_ctx,
         "gunbc_ci_floor_plan_uses_batch_stop_policy",
