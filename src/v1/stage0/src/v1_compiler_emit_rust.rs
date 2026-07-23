@@ -441,8 +441,6 @@ pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
     )
 }
 
-/// Gate-1 text-carrier grounding: modeled `String = FreeMonoid<Char>` emits as native Rust
-/// `String` in every corpus repr (numeric-tower parity — native form == modeled form).
 pub fn rust_string_grounded_type_alias_decl_line() -> String {
     v1_rt::concat(
         v1_rt::concat(
