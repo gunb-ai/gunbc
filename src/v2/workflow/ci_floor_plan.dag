@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_rehomed_bin_wet_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
@@ -10,10 +10,11 @@ import gunbc.ci_spec {
   floor_plan_function,
   plan_artifact_plan_function,
   FloorBatchStopPolicy,
+  gunbc_ci_floor_batch_wall_budget_seconds,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.ci_gate {
-  Gate, EmitHostGate, LayeringImportsGate,
+  Gate, EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
@@ -78,6 +79,7 @@ data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/s
 data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 
 data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
+  CheapClaimPoolGate,
   LayeringImportsGate,
   ExtdepsExternalAuthorityGate,
   GeneratedArtifactDriftGate,
@@ -97,6 +99,7 @@ data gunbc_ci_cheap_floor_gate_membership_disposition: Disposition = Scaffold {
 fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
   fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(found, member) {
     match member {
+      CheapClaimPoolGate => match g { CheapClaimPoolGate => true  _ => found }
       LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
@@ -108,6 +111,7 @@ fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
 fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
   fold(spec.gates, init: false, f: fn(found, sg) {
     match sg {
+      CheapClaimPoolGate => match g { CheapClaimPoolGate => true  _ => found }
       LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
@@ -182,6 +186,7 @@ fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
 fn gate_node(g: Gate) -> Node {
   match g {
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [], occurrence_id: SyntheticOccurrence }
+    CheapClaimPoolGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_cheap_claim_pool } }, children: [], occurrence_id: SyntheticOccurrence }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [], occurrence_id: SyntheticOccurrence }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [], occurrence_id: SyntheticOccurrence }
     DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
@@ -254,6 +259,7 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         memory: substantial,
         execution_mode: Wet
       )
+    CheapClaimPoolGate => gate_profile_negligible_wet_declared()
     LayeringImportsGate => gate_profile_negligible_wet_declared()
     ExtdepsExternalAuthorityGate => gate_profile_negligible_wet_declared()
     GeneratedArtifactDriftGate => gate_profile_negligible_wet_declared()
@@ -275,6 +281,7 @@ fn gate_runnable(g: Gate) -> Runnable {
   let profile = gate_runnable_profile(g: g)
   match g {
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
+    CheapClaimPoolGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "cheap_claim_pool_gate_passes", profile: profile }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
     DagCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes", profile: profile }
@@ -424,6 +431,18 @@ data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
 
 fn gunbc_ci_fast_lane_eval_budget_ms() -> Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
+}
+
+fn gunbc_ci_floor_batch_wall_budgets_seconds() -> List<Int> {
+  gunbc_ci_floor_batch_wall_budget_seconds
+}
+
+fn witness_floor_batch_wall_budgets_cover_schedule() -> Bool {
+  length(xs: gunbc_ci_floor_batch_wall_budgets_seconds()) == length(xs: gunbc_ci_floor_batches())
+}
+
+fn witness_floor_batch_wall_budgets_all_positive() -> Bool {
+  fold(gunbc_ci_floor_batch_wall_budgets_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
 }
 
 data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). The primary refusal is WitnessWallBudgetExceeded on whole-receipt wall time; the secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget."
@@ -888,6 +907,29 @@ fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Boo
   }
 }
 
+data falsifier_rehomed_bin_wet_batch_note: String = "Nightly falsifier batch 5 (CI floor endgame D6, 2026-07-23): the declared Wet bin-execution lane for rows RE-HOMED off the per-PR bin-witness batch because their measured wall exceeds bin_witness_wet_per_row_wall_budget_seconds (gunbc.ci_layer_roots falsifier_rehomed_bin_wet_rows — typed frontier rows, reason + dissolve_on each). Same mechanism as the other falsifier lanes (RunnableDiscoveryBatch, SelectionApplied, fail-closed halt on earlier batch failure), so correctness coverage continues at the 4-hourly cadence while the per-PR floor keeps only short/quick rows."
+
+fn falsifier_rehomed_bin_wet_batch_enrolled() -> Bool {
+  length(xs: falsifier_rehomed_bin_wet_entries()) > 0
+}
+
+fn gunbc_falsifier_rehomed_bin_wet_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_rehomed_bin_wet_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   let base = [[gunbc_falsifier_predict_only_batch()]]
   let with_wet = falsifier_batches_append_if_enrolled(
@@ -900,10 +942,15 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     enrolled: falsifier_known_red_probe_batch_enrolled(),
     batch: gunbc_falsifier_known_red_probe_batch()
   )
-  falsifier_batches_append_if_enrolled(
+  let with_silent_pick = falsifier_batches_append_if_enrolled(
     acc: with_probe,
     enrolled: falsifier_silent_pick_gate_batch_enrolled(),
     batch: gunbc_falsifier_silent_pick_gate_batch()
+  )
+  falsifier_batches_append_if_enrolled(
+    acc: with_silent_pick,
+    enrolled: falsifier_rehomed_bin_wet_batch_enrolled(),
+    batch: gunbc_falsifier_rehomed_bin_wet_batch()
   )
 }
 

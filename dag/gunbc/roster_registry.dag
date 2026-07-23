@@ -55,6 +55,24 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "bin-execution rows re-homed off the per-PR wet batch because their measured wall exceeds bin_witness_wet_per_row_wall_budget_seconds (CI floor endgame D6); per-row measured wall, reason, and dissolve_on in-row",
+      dissolve_on: "per row: the row's realization lands under the per-row budget on a measured run and it re-enrolls per-PR (or deletes as a duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "tools.cheap_gate_pool", decl_name: "cheap_claim_pool_claims"),
+    unit_kind: "claim run (entry file x function)",
+    membership: ByDerivation {
+      predicate: roster_decl(
+        module_path: "tools.cheap_gate_pool",
+        decl_name: "cheap_claim_pool_claims"
+      )
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
