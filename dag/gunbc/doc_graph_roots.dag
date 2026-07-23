@@ -113,6 +113,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "resolve-regression-journey",
+    work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when the ComputationIdentity authority + floor-time regression gate land (its section-5 items 1-2) — the history stays in git, the standing analysis moves to the carriers" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
