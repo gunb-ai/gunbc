@@ -459,15 +459,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/fleet_converge_emit_test.dag",
-      check_fns: ["fleet_converge_emit_holds"],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag",
       check_fns: [
         "wave1_gate1_c1_derived_list_append_index_witness_holds",

@@ -109,20 +109,56 @@ fn signed_off_dispatch_node() -> RoadmapNode {
   }
 }
 
-fn witness_open_node_doc_emits_button_and_script() -> Bool {
+fn dispatch_doc_page(rn: RoadmapNode) -> MarkupNode {
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  roadmap_page(doc: doc, merged: [])
+}
+
+fn witness_open_node_doc_emits_button_and_external_script() -> Bool {
   let h = dispatch_doc_html_for(rn: open_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
-    && string_contains(s: h, pattern: "<script>")
-    && string_contains(s: h, pattern: "fetch('/dispatch/")
+    && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
+    && !string_contains(s: h, pattern: "querySelectorAll")
+    && !string_contains(s: h, pattern: "j.status")
 }
 
-fn witness_dispatch_script_reads_belt_b_status_contract() -> Bool {
-  let h = dispatch_doc_html_for(rn: open_dispatch_node())
-  string_contains(s: h, pattern: "j.status==='spawned'")
-    && string_contains(s: h, pattern: "j.status==='already_live'")
-    && !string_contains(s: h, pattern: "j.ok")
-    && !string_contains(s: h, pattern: "j.node)")
+fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "fetch('/dispatch/")
+    && string_contains(s: js, pattern: "j.status === 'spawned'")
+    && string_contains(s: js, pattern: "j.status === 'already_live'")
+    && !string_contains(s: js, pattern: "j.ok")
+    && !string_contains(s: js, pattern: "j.node)")
+}
+
+fn witness_page_script_census_clean() -> Bool {
+  page_script_census(page: dispatch_doc_page(rn: open_dispatch_node())).length() == 0
+}
+
+fn hand_inline_script_page() -> MarkupNode {
+  ElementNode { tag: "body", attrs: [], children: [
+    dispatch_client_script(),
+    ElementNode { tag: "script", attrs: [], children: [ TextNode { text: "alert('rogue')" } ] },
+  ] }
+}
+
+fn witness_inline_hand_script_reds() -> Bool {
+  let v = page_script_census(page: hand_inline_script_page())
+  v.length() == 1 && all(v, x => x.kind == "inline-js" && x.detail == "alert('rogue')")
+}
+
+fn rogue_src_script_page() -> MarkupNode {
+  ElementNode { tag: "body", attrs: [], children: [
+    dispatch_client_script(),
+    ElementNode { tag: "script", attrs: [ MarkupAttr { name: "src", value: "https://evil.example/x.js" } ], children: [] },
+  ] }
+}
+
+fn witness_rogue_src_script_reds() -> Bool {
+  let v = page_script_census(page: rogue_src_script_page())
+  v.length() == 1 && all(v, x => x.kind == "unknown-src")
 }
 
 fn witness_signed_off_node_doc_has_no_button() -> Bool {
@@ -148,8 +184,11 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_authority_shows_three_gate_progress()
     && witness_depth_cap_fails_honest()
     && witness_bold_title_renders_strong()
-    && witness_open_node_doc_emits_button_and_script()
-    && witness_dispatch_script_reads_belt_b_status_contract()
+    && witness_open_node_doc_emits_button_and_external_script()
+    && witness_dispatch_asset_reads_belt_b_status_contract()
+    && witness_page_script_census_clean()
+    && witness_inline_hand_script_reds()
+    && witness_rogue_src_script_reds()
     && witness_signed_off_node_doc_has_no_button()
     && witness_superseded_node_marked_no_button()
 }

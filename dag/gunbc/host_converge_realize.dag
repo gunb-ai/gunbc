@@ -1,6 +1,6 @@
 module gunbc.host_converge_realize
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, NonEmptyStr }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeTarget,
@@ -14,9 +14,11 @@ import gunbc.host_converge {
   VerifyOnlyCap,
   GunbcPinnedTree,
 }
+import gunbc.host_axis_caps { desired_cap_member, cap_upsert_script }
 
 type ConvergeKnobInterpretVerdict =
     KnobUnimplemented { knob_name: String, target_kind: String, reason: String }
+  | KnobEffect { knob_name: String, effect_script: String }
 
 fn converge_target_kind_label(t: ConvergeTarget) -> String {
   match t {
@@ -54,10 +56,22 @@ fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
 }
 
 fn interpret_converge_knob(knob: ConvergeKnob) -> ConvergeKnobInterpretVerdict {
-  KnobUnimplemented {
-    knob_name: knob.name,
-    target_kind: converge_target_kind_label(t: knob.target),
-    reason: converge_knob_unimplemented_reason(knob: knob),
+  match knob.target {
+    PerSlotMemoryCap { dropin_path: dp, instance_glob: _, property: prop, bytes_value: bv } =>
+      KnobEffect {
+        knob_name: knob.name,
+        effect_script: cap_upsert_script(m: desired_cap_member(
+          dropin_path: dp as NonEmptyStr,
+          property: prop as NonEmptyStr,
+          bytes_value: bv as NonEmptyStr,
+        )),
+      }
+    _ =>
+      KnobUnimplemented {
+        knob_name: knob.name,
+        target_kind: converge_target_kind_label(t: knob.target),
+        reason: converge_knob_unimplemented_reason(knob: knob),
+      }
   }
 }
 
@@ -86,6 +100,8 @@ fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpret
                     concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
                   ),
                 }
+              KnobEffect { knob_name: _, effect_script: s } =>
+                ConvergeHostInterpreted { knob_count: n + 1, stdout: concat(out, s) }
             }
         }
       }

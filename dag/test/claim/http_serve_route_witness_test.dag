@@ -1,7 +1,7 @@
 module test.claim.http_serve_route_witness
 
 import extdeps.http.server {
-  HttpContentType, TextHtmlUtf8, ApplicationJsonUtf8,
+  text_html_utf8,
   ServedStaticRoute,
   ServedRoute, StaticRoute, DynamicRoute,
   ServedRouteTable,
@@ -36,7 +36,7 @@ fn probe_table() -> ServedRouteTable<ProbeHandler> {
         method: GET,
         path_pattern: tpl(raw: "/healthz"),
         body: "ok",
-        content_type: TextHtmlUtf8,
+        content_type: text_html_utf8,
         status_on_hit: 200,
       } },
       DynamicRoute { method: POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },

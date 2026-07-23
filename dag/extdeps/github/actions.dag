@@ -102,6 +102,8 @@ type Job {
   timeout_minutes: Int?
   continue_on_error: Bool?
   concurrency: ConcurrencySpec?
+
+  permissions: WorkflowPermissions?
 }
 
 type CancelInProgressSpec

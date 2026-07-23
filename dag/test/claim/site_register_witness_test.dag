@@ -63,9 +63,9 @@ fn witness_dataviz_seam_open_but_unused() -> Bool {
 fn brass_paints_text_somewhere(rules: List<BuildRule>) -> Bool {
   fold(rules, init: false, f: (acc, r) => acc || match r {
     StaticRule { selector: _, decls } =>
-      fold(decls, init: false, f: (inner, d) => inner || (d.prop == "color" && d.value == role_var(r: FocusRole)))
+      fold(decls, init: false, f: (inner, d) => inner || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole)))
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
-      fold(concat(base_decls, response_decls), init: false, f: (inner, d) => inner || (d.prop == "color" && d.value == role_var(r: FocusRole)))
+      fold(concat(base_decls, response_decls), init: false, f: (inner, d) => inner || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole)))
   })
 }
 
@@ -204,7 +204,7 @@ fn witness_unthemed_color_census_empty() -> Bool {
 }
 
 fn witness_unthemed_color_is_counted() -> Bool {
-  let rogue = StaticRule { selector: ".rogue", decls: [ decl(prop: "color", value: "hsl(194 88% 76%)") ] }
+  let rogue = StaticRule { selector: ClassSelector { name: "rogue" }, decls: [ decl(prop: Color, value: "hsl(194 88% 76%)") ] }
   let census = unthemed_color_decls(rules: [rogue])
   census.length() == 1
     && all(census, c => c.selector == ".rogue" && c.prop == "color")

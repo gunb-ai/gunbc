@@ -24,6 +24,7 @@ import gunbc.commit_workflow {
 }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.generated_artifact { committed_generated_artifact_paths }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -431,5 +432,62 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
       claim_run: false
     )
   )
+}
+
+data ci_heal_generated_artifact_gate_entry: String = "dag/tools/generated_artifact_gate.dag"
+
+data ci_heal_generated_artifact_regen_function: String = "main_wet"
+
+data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold — a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing — the loop terminates in one heal. That fixed point is the enforced contract of generated_artifact_drift_test.witness_committed_is_fixed_point (committed bytes == artifact_generate), so a non-terminating heal loop is unwritable while that witness stays green."
+
+fn gunbc_ci_heal_regen_invoke() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: ci_heal_generated_artifact_gate_entry,
+      function: ci_heal_generated_artifact_regen_function,
+      rooted: true,
+      claim_run: false
+    )
+  )
+}
+
+data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH step: a GitHub Actions run: foreign-executor context (the shell-intent design's bootstrap/foreign-executor case that renders through bash), so the git commit/push is a hand-authored shell string like the deploy invoke and the release-bins unpack script beside it. COMMIT SCOPE IS ARTIFACT-ONLY BY CONSTRUCTION (review 41703, DESIGN §5 no-silent-widen): staging is `git add` over EXACTLY committed_generated_artifact_paths() (the registry the drift gate guards and the exact set main_wet writes) — never `git add -A`, so an incidental dirty file on the runner (checkout residue, line-ending normalization, leftover state) can never be swept into an unattended push to main. The commit fires ONLY when `git diff --cached --quiet` reports a staged change — i.e. only when main_wet actually healed a registry artifact — so a clean tree is a no-op, and the byte-idempotent fixed point makes the healed commit's own re-run a no-op that terminates the loop. The push authenticates with the job's GITHUB_TOKEN (persisted by actions/checkout) and needs the job-scoped contents:write grant. Loop termination is NOT a re-run of CI on the healed commit: a push made with the workflow's GITHUB_TOKEN does NOT trigger a new workflow run (GitHub's cascade-prevention is by design), so the healed commit fires no follow-on run — termination is guaranteed instead by the byte-idempotent fixed point itself, PROVEN pre-merge by generated_artifact_drift_test.witness_committed_is_fixed_point (committed bytes == artifact_generate) with its RED control, so a second heal would be a no-op even if one were triggered (review 41782 correction: the earlier 'verified by execution on the healed commit' claim was wrong — no such run exists). The healed artifacts are re-validated by the batch-0 drift gate on the NEXT unrelated PR/push, not on the heal commit, which is correct-by-construction (it is main_wet's own output). A concurrent main advance makes the push a non-fast-forward that fails LOUDLY (never a force-push), and the next main push retries."
+
+data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_heal_commit_push_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_heal_commit_push_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — hand-authored git config/add/commit/push shell for the unattended generated-artifact heal, a foreign-executor (GitHub Actions run:) git transport (the same scaffold class as merge_admission_ci_gate_step_scaffold and merge_admission_shell_emit_disposition beside it); DISSOLVES WHEN the shell→intent lane models git commit/push as typed host effects on host_effect_apply (host-effect-orchestration Do-effect migration, ROADMAP shell→intent), at which point the heal's git transport is a realization handler bound to the modeled operation, not emitted bash — the regen half (main_wet) is already modeled, only the git transport awaits (the host_effect Do-effect carrier, not a command string)."
+
+fn ci_heal_git_add_scoped_line() -> String {
+  fold(committed_generated_artifact_paths(), init: "git add", f: fn(acc, p) {
+    concat(acc, concat(" \"", concat(p, "\"")))
+  })
+}
+
+fn ci_heal_shell_lines() -> List<String> {
+  [
+    "git config user.name \"gunbc-ci-auto-heal\"",
+    "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\"",
+    ci_heal_git_add_scoped_line(),
+    "if git diff --cached --quiet; then",
+    "  echo \"chore-heal: no generated-artifact drift on this tree; nothing to commit\"",
+    "else",
+    "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
+    "  git push origin HEAD:main",
+    "  echo \"chore-heal: pushed regenerated generated artifacts to main\"",
+    "fi"
+  ]
+}
+
+fn gunbc_ci_heal_commit_push_script() -> String {
+  fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) })
 }
 
