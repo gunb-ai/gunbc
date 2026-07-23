@@ -4,6 +4,8 @@ import gunbc.design.material {
   BuildRule, StaticRule, ResponseRule, CssDecl, decl, css_block,
   TimingToken, reframe_page, response_base_selector,
 }
+import extdeps.languages.css.properties { css_property_wire }
+import extdeps.languages.css.selectors { selector_subject_wire }
 import gunbc.design.theme {
   night_theme, day_theme,
 }
@@ -49,7 +51,7 @@ fn color_transition_prop(prop: String) -> String {
 }
 
 fn decl_is_color(d: CssDecl) -> Bool {
-  color_transition_prop(prop: d.prop).length() > 0
+  color_transition_prop(prop: css_property_wire(p: d.prop)).length() > 0
 }
 
 fn decl_is_role_themed(d: CssDecl) -> Bool {
@@ -67,7 +69,7 @@ fn contains_prop(props: List<String>, prop: String) -> Bool {
 fn themed_props_of(decls: List<CssDecl>) -> List<String> {
   fold(decls, init: [], f: (acc, d) =>
     if decl_is_role_themed(d: d) {
-      let tp = color_transition_prop(prop: d.prop)
+      let tp = color_transition_prop(prop: css_property_wire(p: d.prop))
       if contains_prop(props: acc, prop: tp) { acc } else { concat(acc, [tp]) }
     } else {
       acc
@@ -76,7 +78,7 @@ fn themed_props_of(decls: List<CssDecl>) -> List<String> {
 
 fn rule_selector(rule: BuildRule) -> String {
   match rule {
-    StaticRule { selector, decls: _ } => selector
+    StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)
     ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
       response_base_selector(subject: subject, shape: shape)
   }
@@ -123,7 +125,29 @@ fn unthemed_color_decls(rules: List<BuildRule>) -> List<UnthemedColorDecl> {
   fold(rules, init: [], f: (acc, r) =>
     fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
       if decl_is_literal_color(d: d) {
-        concat(inner, [UnthemedColorDecl { selector: rule_selector(rule: r), prop: d.prop, value: d.value }])
+        concat(inner, [UnthemedColorDecl { selector: rule_selector(rule: r), prop: css_property_wire(p: d.prop), value: d.value }])
+      } else {
+        inner
+      }))
+}
+
+data untokened_length_note: String = "The length/font sibling of the unthemed-color census (P2): a rule value carrying a raw pixel literal or a quoted font family bypasses the scale (gunbc.design.scale), so it is neither DRY (the value forks per site) nor retunable in one place. The rule is the same shape as the color census — every length/font must route through a token var — and the exclusion is the same by scope: this census runs over a surface's BuildRule rows, never the scale :root block (the one home of the literals). value_has_raw_length keys on 'px' and the single-quote of a font family; unitless 0, %, em, ms (a time, from the timing scale) are not lengths and are not flagged."
+
+type UntokenedLengthDecl {
+  selector: String
+  prop: String
+  value: String
+}
+
+fn value_has_raw_length(value: String) -> Bool {
+  string_contains(s: value, pattern: "px") || string_contains(s: value, pattern: "'")
+}
+
+fn untokened_length_decls(rules: List<BuildRule>) -> List<UntokenedLengthDecl> {
+  fold(rules, init: [], f: (acc, r) =>
+    fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
+      if value_has_raw_length(value: d.value) {
+        concat(inner, [UntokenedLengthDecl { selector: rule_selector(rule: r), prop: css_property_wire(p: d.prop), value: d.value }])
       } else {
         inner
       }))
@@ -146,13 +170,13 @@ fn reframe_css(rules: List<BuildRule>) -> String {
       join(map(pairs, p =>
         css_block(
           selector: reframe_selector(selector: p.selector),
-          decls: [decl(prop: "transition", value: reframe_transition_value(props: p.props, t: reframe_page))])), "\n"),
+          decls: [decl(prop: Transition, value: reframe_transition_value(props: p.props, t: reframe_page))])), "\n"),
       join([
         "@media (prefers-reduced-motion: reduce) { ",
         join(map(pairs, p =>
           css_block(
             selector: reframe_selector(selector: p.selector),
-            decls: [decl(prop: "transition", value: "none")])), " "),
+            decls: [decl(prop: Transition, value: "none")])), " "),
         " }",
       ], ""),
     ], "\n")

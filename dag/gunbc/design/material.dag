@@ -2,6 +2,8 @@ module gunbc.design.material
 
 import std.types { Milliseconds }
 import extdeps.color.srgb { Srgb8, srgb8_to_hsl_projection, hsl_projection_s_pct, hsl_projection_l_pct }
+import extdeps.languages.css.properties { CssPropertyName, Transition, css_property_wire }
+import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
 data tokens_note: String = "Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together, so the gamer register is inadmissible by row. DataVizArea (review finding 4 on PR 6927, pre-modeled seam): status-dense product surfaces (node-level CI views, dashboards) need mutually distinguishable categorical series at exactly the chroma-and-brightness the quiet envelope forbids — so the envelope is AREA-SCOPED by construction: DataVizArea is the one declared exemption lane, its own admission law (distinguishability + CVD separation, cited categorical palettes) lands with its first consumer (the Dashboard archetype study), and today NO theme role projects it — the witness pins that its introduction is a conscious event, never a leak. ThemeCoherence: a Theme is a TOTAL assignment of roles to materials (theme_gaps countable, mirrors interaction coverage), each material's area class must equal the role's declared area class, and every color the page uses routes through a role var — one rule set, N themes; prefers-color-scheme selects, never forks. ContrastLaw (review finding 1, hardened 2026-07-21): theme contrast is computed WCAG relative-luminance contrast via extdeps.accessibility.wcag_contrast — the earlier HSL-lightness-gap check was a non-perceptual proxy that could green while legibility failed; text roles must clear AA normal text (4.5:1), figure/focus roles AA graphical (3:1), against BOTH canvas and surface. StillUntilTouched: MotionTrigger has no ambient variant; no animation/keyframes constructor exists."
 
 type AreaClass
@@ -111,17 +113,17 @@ fn trigger_pseudo(t: MotionTrigger) -> String {
 }
 
 type CssDecl {
-  prop: String
+  prop: CssPropertyName
   value: String
 }
 
-fn decl(prop: String, value: String) -> CssDecl {
+fn decl(prop: CssPropertyName, value: String) -> CssDecl {
   CssDecl { prop: prop, value: value }
 }
 
 fn transition_decl(props: String, t: TimingToken) -> CssDecl {
   CssDecl {
-    prop: "transition",
+    prop: Transition,
     value: join([props, " ", to_string(t.duration_ms), "ms ", t.easing], ""),
   }
 }
@@ -132,9 +134,9 @@ type TriggerShape
   | ContainerHas { container: String, target: String }
 
 type BuildRule
-  = StaticRule { selector: String, decls: List<CssDecl> }
+  = StaticRule { selector: SelectorSubject, decls: List<CssDecl> }
   | ResponseRule {
-      subject: String,
+      subject: SelectorSubject,
       shape: TriggerShape,
       trigger: MotionTrigger,
       transition_props: String,
@@ -143,26 +145,26 @@ type BuildRule
       response_decls: List<CssDecl>,
     }
 
-fn response_base_selector(subject: String, shape: TriggerShape) -> String {
+fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> String {
   match shape {
-    SelfResponse => subject
-    WithinSubject { target } => join([subject, " ", target], "")
+    SelfResponse => selector_subject_wire(s: subject)
+    WithinSubject { target } => join([selector_subject_wire(s: subject), " ", target], "")
     ContainerHas { container: _, target } => target
   }
 }
 
-fn response_hot_selector(subject: String, shape: TriggerShape, trigger: MotionTrigger) -> String {
+fn response_hot_selector(subject: SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
   let pseudo = trigger_pseudo(t: trigger)
   match shape {
-    SelfResponse => concat(subject, pseudo)
-    WithinSubject { target } => join([subject, pseudo, " ", target], "")
+    SelfResponse => concat(selector_subject_wire(s: subject), pseudo)
+    WithinSubject { target } => join([selector_subject_wire(s: subject), pseudo, " ", target], "")
     ContainerHas { container, target } =>
-      join([container, ":has(", subject, pseudo, ") ", target], "")
+      join([container, ":has(", selector_subject_wire(s: subject), pseudo, ") ", target], "")
   }
 }
 
 fn serialize_decls(decls: List<CssDecl>) -> String {
-  join(map(decls, d => join([d.prop, ": ", d.value], "")), "; ")
+  join(map(decls, d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
 }
 
 fn css_block(selector: String, decls: List<CssDecl>) -> String {
@@ -171,7 +173,7 @@ fn css_block(selector: String, decls: List<CssDecl>) -> String {
 
 fn serialize_rule(rule: BuildRule) -> String {
   match rule {
-    StaticRule { selector, decls } => css_block(selector: selector, decls: decls)
+    StaticRule { selector, decls } => css_block(selector: selector_subject_wire(s: selector), decls: decls)
     ResponseRule { subject, shape, trigger, transition_props, timing, base_decls, response_decls } =>
       join([
         css_block(
@@ -204,7 +206,7 @@ fn reduced_motion_block(rules: List<BuildRule>) -> String {
   } else {
     join([
       "@media (prefers-reduced-motion: reduce) { ",
-      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: "transition", value: "none")])), " "),
+      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), " "),
       " }",
     ], "")
   }

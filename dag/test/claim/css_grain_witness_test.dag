@@ -1,0 +1,66 @@
+module test.claim.css_grain_witness
+
+import extdeps.languages.css.properties {
+  CssPropertyName, FontSize, BorderColor, ColorScheme, CustomProperty, RawProperty, css_property_wire,
+}
+import extdeps.languages.css.selectors {
+  SelectorSubject, ClassSelector, ElementSelector, PseudoSuffix, RawSelector,
+  selector_subject_wire, raw_selector_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data css_grain_witness_note: String = "D5 keystone: the CSS grain (extdeps.languages.css) is the typed authority for the register's property names and selector subjects — the last stringly medium in the served stack, now typed. The serializers reproduce the emitted strings byte-exact (the register's whole-stylesheet byte-identity is proven by the lift-parity + register witnesses; here the grain's OWN serializers are pinned with RED controls). RawSelector is the COUNTED frontier: raw_selector_count is the honest residue number (selectors still expressed as raw text — descendant/compound/functional-pseudo, awaiting the combinator grammar), and RawProperty is the same escape for a non-standard property name."
+
+fn witness_property_wire_byte_exact() -> Bool {
+  css_property_wire(p: FontSize) == "font-size"
+    && css_property_wire(p: BorderColor) == "border-color"
+    && css_property_wire(p: ColorScheme) == "color-scheme"
+    && css_property_wire(p: CustomProperty { name: "space-8" }) == "--space-8"
+    && css_property_wire(p: RawProperty { name: "code-spacing" }) == "code-spacing"
+}
+
+data property_wire_red_note: String = "RED control: css_property_wire must produce the upstream hyphenated spelling; a camelCase or underscored mis-serialization reds the byte-exact pin above (browsers are the consumer)."
+
+fn witness_property_wire_red() -> Bool {
+  css_property_wire(p: FontSize) != "fontSize"
+    && css_property_wire(p: FontSize) != "font_size"
+}
+
+fn witness_selector_wire_byte_exact() -> Bool {
+  selector_subject_wire(s: ClassSelector { name: "dispatch-btn" }) == ".dispatch-btn"
+    && selector_subject_wire(s: ElementSelector { tag: "body" }) == "body"
+    && selector_subject_wire(s: PseudoSuffix { base: "a", pseudo: "hover" }) == "a:hover"
+    && selector_subject_wire(s: RawSelector { text: ".frontier-bucket h2" }) == ".frontier-bucket h2"
+}
+
+data selector_wire_red_note: String = "RED control: a ClassSelector must serialize with its leading dot; dropping it reds. RawSelector carries the exact text so a complex selector emits byte-identical."
+
+fn witness_selector_wire_red() -> Bool {
+  selector_subject_wire(s: ClassSelector { name: "x" }) != "x"
+    && selector_subject_wire(s: ClassSelector { name: "x" }) == ".x"
+}
+
+fn d5_sample_subjects() -> List<SelectorSubject> {
+  [
+    ClassSelector { name: "status" },
+    ElementSelector { tag: "body" },
+    RawSelector { text: ".frontier-bucket h2" },
+    RawSelector { text: "li.node" },
+    PseudoSuffix { base: "a", pseudo: "hover" },
+  ]
+}
+
+fn witness_raw_selector_census() -> Bool {
+  raw_selector_count(subjects: d5_sample_subjects()) == 2
+    && raw_selector_count(subjects: [ClassSelector { name: "only-simple" }]) == 0
+}
+
+test fn css_grain_witnesses() -> Bool {
+  witness_property_wire_byte_exact()
+    && witness_property_wire_red()
+    && witness_selector_wire_byte_exact()
+    && witness_selector_wire_red()
+    && witness_raw_selector_census()
+}

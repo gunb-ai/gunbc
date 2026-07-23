@@ -158,6 +158,22 @@ data roster_registry: List<RosterRegistration> = [
       reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6); per-row reasons and dissolution triggers in-row via shared class strings, dated landing receipts preserved; the host census (nfr_residue_sites) reads the rows through the record-row reader",
       dissolve_on: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the host scan and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)"
     }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_exemplars"),
+    unit_kind: "BeltDispatchResult variant exemplar",
+    membership: DeclaredFrontier {
+      reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls a 7th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
+      dissolve_on: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
+    unit_kind: "stage0 seed module basename per partition crate",
+    membership: DeclaredFrontier {
+      reason: "the hand-drawn stage0 crate split: per-crate module membership is hand-listed (stage0_std_primitive_modules and siblings) while the true relation is the module import closure — enrolled 2026-07-23 off two drift incidents this class caused silently (std_currency absent from std-core after #6977 added the measure→currency edge, so v1-stage0-std-core stopped building standalone; the partition allow-block lacked the monolith's recursion_limit so v1-stage0-extdeps-languages failed on serde json_internal). Nothing in CI builds the partition crate libs, so the drift had zero signal (sheet row ts-group-partition-drift)",
+      dissolve_on: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job"
+    }
   }
 ]
 

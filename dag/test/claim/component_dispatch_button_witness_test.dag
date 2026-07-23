@@ -1,0 +1,52 @@
+module test.claim.component_dispatch_button_witness
+
+import std.types { Int, String, Bool, List }
+import gunbc.design.scale { scale_well_formed }
+import gunbc.design.component {
+  Component, ComponentState,
+  component_wire_total, labels_missing_state, states_missing_label,
+  component_drop_state, component_terminal_states,
+  state_kind_ok, state_kind_key,
+}
+import gunbc.roadmap_component {
+  dispatch_button_component, dispatch_button_wire_total, dispatch_button_terminal_count,
+}
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_ok_status_labels }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data component_dispatch_button_witness_note: String = "P0 keystone: the component concept, executable. The dispatch button's terminal states are DERIVED from the belt wire vocabulary and cross-checked total both directions; the RED control resurrects the exact drift the dispatch-button incident was — a wire label with no state row — and proves the totality check LOCATES it (returns the missing label), not vacuously passes. The role split (ok -> figure, refusal -> boundary) is proven derived from the ok-label authority, so a label moving across the ok line moves its chip material by derivation."
+
+fn witness_scale_well_formed() -> Bool {
+  scale_well_formed()
+}
+
+fn witness_dispatch_button_states_total_over_wire() -> Bool {
+  dispatch_button_wire_total()
+    && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
+    && belt_dispatch_all_status_labels().length() == 6
+}
+
+fn witness_dropped_state_is_located_red() -> Bool {
+  let broken = component_drop_state(c: dispatch_button_component(), drop_key: "spawned")
+  let gaps = labels_missing_state(c: broken, wire_labels: belt_dispatch_all_status_labels())
+  gaps.length() == 1 && all(gaps, g => g == "spawned")
+}
+
+fn witness_no_fabricated_state() -> Bool {
+  states_missing_label(c: dispatch_button_component(), wire_labels: belt_dispatch_all_status_labels()).length() == 0
+}
+
+fn witness_terminal_role_split_follows_ok_set() -> Bool {
+  all(component_terminal_states(c: dispatch_button_component()), s =>
+    state_kind_ok(k: s.kind) == any(belt_dispatch_ok_status_labels, l => l == state_kind_key(k: s.kind)))
+}
+
+test fn component_dispatch_button_keystone_holds() -> Bool {
+  witness_scale_well_formed()
+    && witness_dispatch_button_states_total_over_wire()
+    && witness_dropped_state_is_located_red()
+    && witness_no_fabricated_state()
+    && witness_terminal_role_split_follows_ok_set()
+}

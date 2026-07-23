@@ -34,26 +34,26 @@ data roadmap_behaviors: List<BehaviorRow> = [
 fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
-      subject: ".dispatch-btn",
+      subject: ClassSelector { name: "dispatch-btn" },
       shape: SelfResponse,
       trigger: t,
       transition_props: "border-color",
       timing: timing,
       base_decls: [],
-      response_decls: [ decl(prop: "border-color", value: "var(--focus)") ],
+      response_decls: [ decl(prop: BorderColor, value: "var(--focus)") ],
     })
 }
 
 fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
   [
     ResponseRule {
-      subject: ".dispatch-btn",
+      subject: ClassSelector { name: "dispatch-btn" },
       shape: SelfResponse,
       trigger: OnActive,
       transition_props: "background-color",
       timing: timing,
       base_decls: [],
-      response_decls: [ decl(prop: "background", value: "var(--border)") ],
+      response_decls: [ decl(prop: Background, value: "var(--border)") ],
     },
   ]
 }

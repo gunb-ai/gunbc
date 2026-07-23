@@ -16,20 +16,94 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type HttpContentType
-  = TextHtmlUtf8
-  | TextPlainUtf8
-  | ApplicationJsonUtf8
-  | ApplicationOctetStream
-
-fn http_content_type_wire_label(content_type: HttpContentType) -> String {
-  match content_type {
-    TextHtmlUtf8 => "text/html; charset=utf-8"
-    TextPlainUtf8 => "text/plain; charset=utf-8"
-    ApplicationJsonUtf8 => "application/json; charset=utf-8"
-    ApplicationOctetStream => "application/octet-stream"
+data media_type_grammar_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-8.3.1"
   }
 }
+
+data media_top_level_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc6838#section-4.2"
+  }
+}
+
+data media_type_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/media-types/media-types.xhtml"
+  }
+}
+
+data charset_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/character-sets/character-sets.xhtml"
+  }
+}
+
+data media_type_note: String = "Cited upstream: a media type is type \"/\" subtype with optional \"; \" parameters (RFC 9110 section 8.3.1 media-type grammar; the Content-Type header carries exactly one). The top-level type is a CLOSED registry (RFC 6838 section 4.2 + the IANA media-types registry: application/audio/example/font/image/message/model/multipart/text/video); the subtype is an upstream-spelled string (each its own IANA registration); parameters are name=value pairs, of which charset (value from the IANA character-sets registry, utf-8 per RFC 3629) is the one this served stack uses. The WIRE STRING is a SERIALIZATION of this structure (DESIGN section 2, decompress the string): the fused HttpContentType enum that hid media-type x charset inside variant NAMES is deleted, media_type_wire_label is the sole serializer, and ApplicationOctetStream's charset-less form falls out as an EMPTY parameter list rather than a special variant. Forward reading (parsing an incoming Content-Type through these same rows) is the NAMED later direction (DESIGN section 4, one grammar both ways), not built here."
+
+type MediaTopLevel
+  = TopLevelApplication
+  | TopLevelAudio
+  | TopLevelExample
+  | TopLevelFont
+  | TopLevelImage
+  | TopLevelMessage
+  | TopLevelModel
+  | TopLevelMultipart
+  | TopLevelText
+  | TopLevelVideo
+
+fn media_top_level_token(t: MediaTopLevel) -> String {
+  match t {
+    TopLevelApplication => "application"
+    TopLevelAudio => "audio"
+    TopLevelExample => "example"
+    TopLevelFont => "font"
+    TopLevelImage => "image"
+    TopLevelMessage => "message"
+    TopLevelModel => "model"
+    TopLevelMultipart => "multipart"
+    TopLevelText => "text"
+    TopLevelVideo => "video"
+  }
+}
+
+type MediaTypeParameter {
+  name: String
+  value: String
+}
+
+data charset_utf8: MediaTypeParameter = MediaTypeParameter { name: "charset", value: "utf-8" }
+
+type MediaType {
+  top_level: MediaTopLevel
+  subtype: String
+  parameters: List<MediaTypeParameter>
+}
+
+fn media_type_parameter_wire(p: MediaTypeParameter) -> String {
+  join(["; ", p.name, "=", p.value], "")
+}
+
+fn media_type_wire_label(m: MediaType) -> String {
+  join([
+    media_top_level_token(t: m.top_level),
+    "/",
+    m.subtype,
+    join(map(m.parameters, p => media_type_parameter_wire(p: p)), ""),
+  ], "")
+}
+
+data text_html_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "html", parameters: [charset_utf8] }
+data text_plain_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "plain", parameters: [charset_utf8] }
+data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
+data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
+data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
 
 data parse_http_method_label_note: String = "The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy)."
 
@@ -118,7 +192,7 @@ type ServedStaticRoute {
   method: HttpMethod
   path_pattern: PathTemplate
   body: String
-  content_type: HttpContentType
+  content_type: MediaType
   status_on_hit: HttpStatus
 }
 
@@ -134,7 +208,7 @@ type ServeHttpRequest {
 
 type ServeHttpResponse {
   status: HttpStatus
-  content_type: HttpContentType
+  content_type: MediaType
   body: String
 }
 
@@ -149,7 +223,7 @@ type ServeWireResponse {
 fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
   ServeWireResponse {
     status: r.status,
-    content_type_label: http_content_type_wire_label(content_type: r.content_type),
+    content_type_label: media_type_wire_label(m: r.content_type),
     body: r.body,
   }
 }

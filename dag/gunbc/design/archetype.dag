@@ -4,7 +4,7 @@ import std.types { Int, String, Bool }
 import gunbc.design.theme {
   ThemeRole, role_key,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FigureEdgeRole, FocusRole,
+  FigureRole, FigureEdgeRole, FocusRole, BoundaryRole,
 }
 import gunbc.design.interaction { InteractionVerb, Approach, Dispatch, verb_key }
 
@@ -42,7 +42,7 @@ data dashboard_archetype: SurfaceArchetype = SurfaceArchetype {
   verbs: [Approach, Dispatch],
   role_demand: [
     CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-    FigureRole, FigureEdgeRole, FocusRole,
+    FigureRole, FigureEdgeRole, FocusRole, BoundaryRole,
   ],
 }
 
