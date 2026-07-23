@@ -8,6 +8,7 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import std.cache_interface {
   NativeInternalLookup,
   OverwriteAllowed,
@@ -46,14 +47,14 @@ data sccache_releases_authority: ExternalAuthority = ExternalAuthority {
 
 type SccacheBinaryRelease {
   version: NonEmptyStr
-  sha256_aarch64: NonEmptyStr
-  sha256_x86_64: NonEmptyStr
+  digest_aarch64: Digest
+  digest_x86_64: Digest
 }
 
 data sccache_release_0_15_0: SccacheBinaryRelease = SccacheBinaryRelease {
   version: "v0.15.0",
-  sha256_aarch64: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8",
-  sha256_x86_64: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e",
+  digest_aarch64: sha256_digest(hex: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8"),
+  digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
 }
 
 data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
@@ -66,13 +67,19 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
 
 data sccache_install_dissolution_trigger: String = "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf."
 
-fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
+fn sccache_digest_verify_line(digest: Digest) -> String {
+  match digest.algorithm {
+    Sha256 => join(["echo '", digest.hex as String, "  /tmp/sccache.tar.gz' | sha256sum -c -"], "")
+  }
+}
+
+fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
   let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
   let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
   join([
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
-    join(["echo '", sha256 as String, "  /tmp/sccache.tar.gz' | sha256sum -c -"], ""),
+    sccache_digest_verify_line(digest: digest),
     "tar -xzf /tmp/sccache.tar.gz -C /tmp",
     join(["sudo mv '/tmp/", dir, "/sccache' /usr/local/bin/sccache"], ""),
     "sudo chmod +x /usr/local/bin/sccache",

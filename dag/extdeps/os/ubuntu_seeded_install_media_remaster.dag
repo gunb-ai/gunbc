@@ -50,6 +50,22 @@ data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusa
 
 data install_media_remaster_boot_fidelity_doc: String = "xorriso -boot_image any replay modifies the stock ISO by mapping in only the NoCloud seed dir and grub.cfg, so the arm64 El Torito/ESP boot structure survives; an -as mkisofs rebuild destroyed it and the media stopped booting (root-caused live on srv4, PR #7027); instance-id derives from the artifact's nocloud dir basename, never a hardcoded host name"
 
+data el_torito_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pdos.csail.mit.edu/6.828/2014/readings/boot-cdrom.pdf"
+  }
+}
+
+data esp_boot_structure_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "uefi.org/specs/UEFI/2.10/13_Protocols_Media_Access.html"
+  }
+}
+
+data boot_structure_authorities_note: String = "The boot structure the replay preserves is owned by two specs the fidelity doc names in prose: the El Torito Bootable CD-ROM Format Specification 1.0 (Phoenix/IBM 1995; anchor is a hosted copy of the original) and the UEFI spec's EFI System Partition / media-access section (UEFI 2.10 §13). These are the entities the mkisofs rebuild violated."
+
 type InstallMediaRemasterProbeVerdict
   = InstallMediaRemasterProbeValid
   | InstallMediaRemasterProbeStale

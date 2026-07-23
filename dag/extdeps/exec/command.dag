@@ -19,6 +19,15 @@ type CommandTransport
   = LocalExec
   | SshExec { ssh_target: NonEmptyStr }
 
+data sshpass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sourceforge.net/projects/sshpass/"
+  }
+}
+
+data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_exec_prefix — DECLARED SECURITY POSTURE, not an accident of argv building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key verification for these fleet/BMC transports, so a LAN-position MITM would not be detected; accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on gunbc.fleet_ssh_access (pinned host key per fleet member) and this prefix drops both overrides in favor of a pinned UserKnownHostsFile."
+
 fn ssh_exec_prefix(target: NonEmptyStr) -> List<String> {
   [
     "sshpass", "-e",

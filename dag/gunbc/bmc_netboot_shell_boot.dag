@@ -1,7 +1,8 @@
 module gunbc.bmc_netboot_shell_boot
 
 import std.types { NonEmptyStr, String, List }
-import extdeps.uri { uri_wire }
+import extdeps.uri { uri_wire, Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.firmware.uefi_shell {
   UefiShellCommand,
   Ifconfig,
@@ -17,6 +18,15 @@ import gunbc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
   bmc_netboot_seed_datasource,
 }
+
+data tftp_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1350"
+  }
+}
+
+data tftp_authority_note: String = "The tftp transfer semantics this boot path relies on (both busybox tftpd serving and the UEFI shell tftp command fetching) are owned by RFC 1350 (TFTP protocol revision 2) — a distinct upstream from the UEFI Shell 2.2 spec, which owns only the shell command surface."
 
 data shell_boot_local_kernel: NonEmptyStr = "fs0:\\vmlinuz"
 data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"

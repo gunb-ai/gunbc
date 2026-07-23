@@ -14,15 +14,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type DockerCeAptRepo {
   keyring_url: NonEmptyStr
   keyring_path: NonEmptyStr
+  keyring_fingerprint: NonEmptyStr
   repo_base: NonEmptyStr
   suite: NonEmptyStr
   component: NonEmptyStr
   arch: NonEmptyStr
 }
 
+data docker_gpg_key_fingerprint_note: String = "Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests."
+
 data docker_ce_apt_repo_noble_arm64: DockerCeAptRepo = DockerCeAptRepo {
   keyring_url: "https://download.docker.com/linux/ubuntu/gpg",
   keyring_path: "/etc/apt/keyrings/docker.gpg",
+  keyring_fingerprint: "9DC858229FC7DD38854AE2D88D81803C0EBFCD88",
   repo_base: "https://download.docker.com/linux/ubuntu",
   suite: "noble",
   component: "stable",
@@ -57,6 +61,7 @@ fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyS
       "sudo install -m 0755 -d /etc/apt/keyrings",
       join(["curl -fsSL ", repo.keyring_url as String, " | sudo gpg --dearmor --yes -o ", repo.keyring_path as String], ""),
       join(["sudo chmod a+r ", repo.keyring_path as String], ""),
+      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'DockerKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
       join(["echo '", docker_ce_apt_source_line(repo: repo), "' | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null"], ""),
       "sudo apt-get update -q",
       join(["sudo apt-get install -y -q ", join(map(packages, p => p as String), " ")], ""),

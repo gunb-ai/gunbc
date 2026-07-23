@@ -28,6 +28,15 @@ type AutoinstallStoragePolicy
   = StoragePolicyAbsent
   | StoragePolicyDirectLayout
 
+data nocloud_datasource_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloudinit.readthedocs.io/en/latest/reference/datasources/nocloud.html"
+  }
+}
+
+data nocloud_datasource_note: String = "The ds= kernel-cmdline token grammar (ds=nocloud;s=<seedfrom> / ds=nocloud-net;s=<url>) is owned by cloud-init's NoCloud datasource (anchor above) — a DISTINCT upstream from subiquity's autoinstall reference (the module anchor), which owns the autoinstall payload the seed delivers. The ';' inside this token is the character that forced grub_cmdline_arg_render's quoting rule: unquoted, grub treats ';' as a command separator and silently truncates the seedfrom, degrading autoinstall to interactive (root-caused live on srv3/srv4)."
+
 type UbuntuAutoinstallPayload {
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
