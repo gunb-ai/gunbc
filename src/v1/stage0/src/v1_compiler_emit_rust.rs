@@ -4754,7 +4754,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
 pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4800,7 +4800,31 @@ pub fn reference_derived_use_lines(
             v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
             type_surface_names.clone(),
         ));
-        let already = already_imported_names.clone().iter().cloned().fold(
+        let local_decl_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let nm = authored_name_at(source_indices.clone(), item.clone());
+                        if (nm.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![nm.clone()])
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let already = v1_rt::concat(
+            already_imported_names.clone(),
+            v1_rt::concat(local_type_names.clone(), local_decl_names.clone()),
+        )
+        .iter()
+        .cloned()
+        .fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, nm: String| {
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
@@ -8361,6 +8385,201 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
     }
 }
 
+pub fn rust_use_bound_symbol(entry: String) -> String {
+    match Rc::new(
+        entry
+            .clone()
+            .split(&" as ".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .get(1 as usize)
+    .cloned()
+    {
+        Some(bound_name) => bound_name.clone(),
+        None => entry.clone(),
+    }
+}
+
+pub fn strip_repeated_use_symbols_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a per-line projection against it — linear in total bound symbols (an owner line always retains its owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost rule, 2026-07-10).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_use_line_bound_symbols(line: String) -> Rc<Vec<String>> {
+    if ((rust_use_crate_marker(line.clone()) == "".to_string())
+        || v1_rt::contains(line.clone(), "::*".to_string()))
+    {
+        Rc::new(vec![])
+    } else {
+        {
+            let braced = rust_pub_use_braced_names(line.clone());
+            if ((braced.clone().len() as i64) > 0) {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for entry in braced.clone().iter().cloned() {
+                        __result.push(rust_use_bound_symbol(entry.clone()));
+                    }
+                    __result
+                })
+            } else {
+                {
+                    let singleton = rust_pub_use_singleton_name(line.clone());
+                    if (singleton.clone() == "".to_string()) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![singleton.clone()])
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    {
+        let owners = lines.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, line: String| {
+                rust_use_line_bound_symbols(line.clone())
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner: Rc<HashMap<String, String>>, bound: String| {
+                        if v1_rt::map_contains_key(&inner, bound.clone()) {
+                            inner.clone()
+                        } else {
+                            v1_rt::rc_map_insert(inner.clone(), bound.clone(), line.clone())
+                        }
+                    })
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for line in lines.clone().iter().cloned() {
+                __result.extend(
+                    (*if ((rust_use_crate_marker(line.clone()) == "".to_string())
+                        || v1_rt::contains(line.clone(), "::*".to_string()))
+                    {
+                        Rc::new(vec![line.clone()])
+                    } else {
+                        {
+                            let braced = rust_pub_use_braced_names(line.clone());
+                            if ((braced.clone().len() as i64) > 0) {
+                                {
+                                    let fresh_bounds = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for bound in unique_strings(Rc::new({
+                                            let mut __result = Vec::new();
+                                            for entry in braced.clone().iter().cloned() {
+                                                __result.push(rust_use_bound_symbol(entry.clone()));
+                                            }
+                                            __result
+                                        }))
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if match v1_rt::map_get(&owners, bound.clone()) {
+                                                Some(owner) => (owner.clone() == line.clone()),
+                                                None => false,
+                                            } {
+                                                __result.push(bound);
+                                            }
+                                        }
+                                        __result
+                                    });
+                                    let kept = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for bound in fresh_bounds.clone().iter().cloned() {
+                                            __result.extend(
+                                                (*match Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for entry in braced.clone().iter().cloned() {
+                                                        if (rust_use_bound_symbol(entry.clone())
+                                                            == bound.clone())
+                                                        {
+                                                            __result.push(entry);
+                                                        }
+                                                    }
+                                                    __result
+                                                })
+                                                .first()
+                                                .cloned()
+                                                {
+                                                    Some(entry) => Rc::new(vec![entry.clone()]),
+                                                    None => Rc::new(vec![]),
+                                                })
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    });
+                                    if ((kept.clone().len() as i64) == 0) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        if ((kept.clone().len() as i64)
+                                            == (braced.clone().len() as i64))
+                                        {
+                                            Rc::new(vec![line.clone()])
+                                        } else {
+                                            match Rc::new(
+                                                line.clone()
+                                                    .split(&"::{".to_string())
+                                                    .map(|s| s.to_string())
+                                                    .collect::<Vec<_>>(),
+                                            )
+                                            .first()
+                                            .cloned()
+                                            {
+                                                Some(prefix) => Rc::new(vec![v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            prefix.clone(),
+                                                            "::{".to_string(),
+                                                        ),
+                                                        kept.clone().join(&", ".to_string()),
+                                                    ),
+                                                    "};".to_string(),
+                                                )]),
+                                                None => Rc::new(vec![line.clone()]),
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                {
+                                    let singleton = rust_pub_use_singleton_name(line.clone());
+                                    if (singleton.clone() == "".to_string()) {
+                                        Rc::new(vec![line.clone()])
+                                    } else {
+                                        match v1_rt::map_get(&owners, singleton.clone()) {
+                                            Some(owner) => {
+                                                if (owner.clone() == line.clone()) {
+                                                    Rc::new(vec![line.clone()])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                }
+                                            }
+                                            None => Rc::new(vec![line.clone()]),
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let exact = unique_strings(Rc::new({
@@ -8372,7 +8591,7 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
             }
             __result
         }));
-        Rc::new({
+        let covered = Rc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {
                 if (((rust_pub_use_singleton_covered(line.clone(), exact.clone()) == false)
@@ -8384,7 +8603,8 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 }
             }
             __result
-        })
+        });
+        strip_repeated_use_symbols(covered.clone())
     }
 }
 
