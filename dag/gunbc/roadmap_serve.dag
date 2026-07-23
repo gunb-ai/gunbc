@@ -1,6 +1,6 @@
 module gunbc.roadmap_serve
 
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST }
+import std.types { String, Int, Bool, List, HttpMethod, GET, POST, HttpStatus }
 import std.http_path { PathParamBinding, path_param_value }
 import std.markup { MarkupNode }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -9,9 +9,10 @@ import extdeps.uri_path {
   ParsedPathTemplate,
   MalformedPathTemplate,
   parse_path_template,
+  uri_query_param,
 }
 import extdeps.http.server {
-  HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8,
+  MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
@@ -21,11 +22,15 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
-  http_content_type_wire_label,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_component {
+  dispatch_client_js_source, roadmap_dispatch_asset_path,
+  sandbox_client_js_source, sandbox_asset_path,
+}
+import gunbc.roadmap_sandbox { sandbox_page }
 import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
@@ -37,6 +42,8 @@ import gunbc.roadmap_belt_actuate {
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
   belt_dispatch_node,
   belt_dispatch_result_json_value,
+  belt_dispatch_result_for_label,
+  belt_dispatch_all_status_labels,
 }
 
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
@@ -59,6 +66,10 @@ type RoadmapServeHandler
   | DispatchJsonHandler
   | HealthzHandler
   | BeltDispatchHandler
+  | DispatchAssetHandler
+  | SandboxPageHandler
+  | SandboxAssetHandler
+  | SandboxEchoHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -79,6 +90,10 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
   ]
 }
@@ -129,7 +144,7 @@ fn roadmap_serve_route_table_build() -> RoadmapServeTableBuild {
   roadmap_serve_build_from_specs(specs: roadmap_serve_route_specs())
 }
 
-fn serve_text_response(status: Int, content_type: HttpContentType, body: String) -> ServeHttpResponse {
+fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
   ServeHttpResponse { status: status, content_type: content_type, body: body }
 }
 
@@ -138,11 +153,11 @@ data serve_page_response_note: String = "A page render refusal is a TYPED 500 ca
 fn serve_page_response(page: MarkupNode) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
-      serve_text_response(status: 200, content_type: TextHtmlUtf8, body: h)
+      serve_text_response(status: 200, content_type: text_html_utf8, body: h)
     EmitRejected { reason: r } =>
       serve_text_response(
         status: 500,
-        content_type: TextPlainUtf8,
+        content_type: text_plain_utf8,
         body: join(["page render refused: ", r, "\n"], ""),
       )
   }
@@ -150,7 +165,7 @@ fn serve_page_response(page: MarkupNode) -> ServeHttpResponse {
 
 data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
 
-fn belt_dispatch_status(r: BeltDispatchResult) -> Int {
+fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
   match r {
     DispatchSpawned { node_id: _, session_name: _ } => 200
     DispatchAlreadyLive { node_id: _, session_name: _ } => 200
@@ -164,7 +179,7 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> Int {
 fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
   serve_text_response(
     status: belt_dispatch_status(r: r),
-    content_type: ApplicationJsonUtf8,
+    content_type: application_json_utf8,
     body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
   )
 }
@@ -176,11 +191,34 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
   if node_id == "" {
     serve_text_response(
       status: 400,
-      content_type: TextPlainUtf8,
+      content_type: text_plain_utf8,
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
     belt_dispatch_response(r: belt_dispatch_node(node_id: node_id))
+  }
+}
+
+data sandbox_echo_note: String = "The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param — the query survives in request.path; match_path_template strips it only for routing) and maps it to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a 400 that names the valid label set, never a fabricated arm."
+
+fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
+  let status = uri_query_param(path: request.path, key: "status")
+  match belt_dispatch_result_for_label(wire_label: status) {
+    Present { value: r } =>
+      serve_text_response(
+        status: 200,
+        content_type: application_json_utf8,
+        body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+      )
+    Absent =>
+      serve_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: join([
+          "unknown status label: ", status,
+          " (fail-closed; valid: ", join(belt_dispatch_all_status_labels(), ", "), ")\n",
+        ], ""),
+      )
   }
 }
 
@@ -190,10 +228,14 @@ fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBind
   match handler {
     RoadmapDailyPageHandler => serve_page_response(page: roadmap_daily_workspace_page_for_authority())
     RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: TextPlainUtf8, body: roadmap_site_roadmap_md_body())
-    DispatchJsonHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_dispatch_json_body())
-    HealthzHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_healthz_body())
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
+    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body())
     BeltDispatchHandler => serve_dispatch_handler_response(params: params)
+    DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
+    SandboxPageHandler => serve_page_response(page: sandbox_page())
+    SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
+    SandboxEchoHandler => sandbox_echo_response(request: request)
   }
 }
 
@@ -217,11 +259,11 @@ fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>, re
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
-        content_type: TextPlainUtf8,
+        content_type: text_plain_utf8,
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
     NoRouteMatched =>
-      serve_text_response(status: 404, content_type: TextPlainUtf8, body: "not found\n")
+      serve_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
   }
 }
 
@@ -230,7 +272,7 @@ fn roadmap_serve_respond(method_label: String, path: String, body: String) -> Se
     UnknownMethod { label: l } =>
       serve_text_response(
         status: 501,
-        content_type: TextPlainUtf8,
+        content_type: text_plain_utf8,
         body: join(["unrecognized method: ", l, "\n"], ""),
       )
     KnownMethod { method: m } =>
@@ -238,7 +280,7 @@ fn roadmap_serve_respond(method_label: String, path: String, body: String) -> Se
         RoadmapServeTableRefused { raw: r, segment: s, reason: why } =>
           serve_text_response(
             status: 500,
-            content_type: TextPlainUtf8,
+            content_type: text_plain_utf8,
             body: join([
               "route table refused: malformed route literal raw=", r,
               " segment=", s,

@@ -3,6 +3,7 @@ module gunbc.site.moodboard
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
+import extdeps.languages.css.properties { Cursor }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.site.register_principles {
   RegisterPrinciple, register_principles, register_thesis, principle_id_key,
@@ -60,13 +61,13 @@ fn approach_triggers() -> List<MotionTrigger> {
 fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
-      subject: ".star",
+      subject: ClassSelector { name: "star" },
       shape: SelfResponse,
       trigger: t,
       transition_props: "fill",
       timing: timing,
-      base_decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "cursor", value: "pointer") ],
-      response_decls: [ role_decl(prop: "fill", r: FigureLitRole) ],
+      base_decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Cursor, value: "pointer") ],
+      response_decls: [ role_decl(prop: Fill, r: FigureLitRole) ],
     })
 }
 
@@ -74,39 +75,39 @@ fn star_legend_reveal_rules(timing: TimingToken) -> List<BuildRule> {
   fold(layer_stars, init: [], f: (acc, s) =>
     concat(acc, map(approach_triggers(), t =>
       ResponseRule {
-        subject: concat(".star-", s.key),
+        subject: RawSelector { text: concat(".star-", s.key) },
         shape: ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
         trigger: t,
         transition_props: "opacity",
         timing: timing,
-        base_decls: [ decl(prop: "opacity", value: "0.5") ],
-        response_decls: [ decl(prop: "opacity", value: "1") ],
+        base_decls: [ decl(prop: Opacity, value: "0.5") ],
+        response_decls: [ decl(prop: Opacity, value: "1") ],
       })))
 }
 
 fn hash_reveal_rules(timing: TimingToken) -> List<BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
-      subject: ".hash",
+      subject: ClassSelector { name: "hash" },
       shape: WithinSubject { target: ".hash-full" },
       trigger: t,
       transition_props: "opacity",
       timing: timing,
-      base_decls: [ decl(prop: "opacity", value: "0") ],
-      response_decls: [ decl(prop: "opacity", value: "1") ],
+      base_decls: [ decl(prop: Opacity, value: "0") ],
+      response_decls: [ decl(prop: Opacity, value: "1") ],
     })
 }
 
 fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
-      subject: ".swatch",
+      subject: ClassSelector { name: "swatch" },
       shape: SelfResponse,
       trigger: t,
       transition_props: "border-color",
       timing: timing,
-      base_decls: [ decl(prop: "border", value: "1px solid var(--border)") ],
-      response_decls: [ role_decl(prop: "border-color", r: FigureEdgeRole) ],
+      base_decls: [ decl(prop: Border, value: "1px solid var(--border)") ],
+      response_decls: [ role_decl(prop: BorderColor, r: FigureEdgeRole) ],
     })
 }
 
@@ -147,113 +148,113 @@ fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
 
 fn figure_rules() -> List<BuildRule> {
   [
-    StaticRule { selector: ".mark-point", decls: [ role_decl(prop: "fill", r: FigureRole) ] },
-    StaticRule { selector: ".mark-sink", decls: [ role_decl(prop: "fill", r: FocusRole) ] },
-    StaticRule { selector: ".mark-halo", decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "opacity", value: "0.16") ] },
-    StaticRule { selector: ".mark-halo-sink", decls: [ role_decl(prop: "fill", r: FocusRole) ] },
-    StaticRule { selector: ".mark-edge", decls: [ role_decl(prop: "stroke", r: FigureEdgeRole) ] },
-    StaticRule { selector: ".sky-edge", decls: [ role_decl(prop: "stroke", r: FigureEdgeRole) ] },
-    StaticRule { selector: ".star-halo", decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "opacity", value: "0.1") ] },
+    StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
+    StaticRule { selector: ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    StaticRule { selector: ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    StaticRule { selector: ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
   ]
 }
 
 fn static_rules() -> List<BuildRule> {
   [
-    StaticRule { selector: "body", decls: [
-      role_decl(prop: "background", r: CanvasRole),
-      role_decl(prop: "color", r: TextRole),
-      decl(prop: "font-family", value: "'Noto Sans', system-ui, sans-serif"),
-      decl(prop: "margin", value: "0"),
-      decl(prop: "line-height", value: "1.55"),
+    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      role_decl(prop: Background, r: CanvasRole),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: LineHeight, value: "1.55"),
     ] },
-    StaticRule { selector: "main", decls: [
-      decl(prop: "max-width", value: "54rem"),
-      decl(prop: "margin", value: "0 auto"),
-      decl(prop: "padding", value: "3rem 1.5rem 4rem"),
+    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      decl(prop: MaxWidth, value: "54rem"),
+      decl(prop: Margin, value: "0 auto"),
+      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    StaticRule { selector: ".wordmark", decls: [
-      decl(prop: "font-size", value: "1.4rem"),
-      decl(prop: "font-weight", value: "500"),
-      decl(prop: "letter-spacing", value: "0.01em"),
+    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+      decl(prop: FontSize, value: "1.4rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: LetterSpacing, value: "0.01em"),
     ] },
-    StaticRule { selector: ".thesis", decls: [
-      role_decl(prop: "color", r: TextDimRole),
-      decl(prop: "margin", value: "0.25rem 0 0"),
+    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    StaticRule { selector: "section", decls: [
-      decl(prop: "margin-top", value: "3rem"),
+    StaticRule { selector: ElementSelector { tag: "section" }, decls: [
+      decl(prop: MarginTop, value: "3rem"),
     ] },
-    StaticRule { selector: "h2", decls: [
-      decl(prop: "font-size", value: "0.85rem"),
-      decl(prop: "font-weight", value: "500"),
-      decl(prop: "letter-spacing", value: "0.08em"),
-      decl(prop: "text-transform", value: "lowercase"),
-      role_decl(prop: "color", r: TextDimRole),
+    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      decl(prop: FontSize, value: "0.85rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: LetterSpacing, value: "0.08em"),
+      decl(prop: TextTransform, value: "lowercase"),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ".panel", decls: [
-      role_decl(prop: "background", r: SurfaceRole),
-      decl(prop: "border", value: "1px solid var(--border)"),
-      decl(prop: "border-radius", value: "3px"),
-      decl(prop: "padding", value: "1.1rem 1.25rem"),
+    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "1.1rem 1.25rem"),
     ] },
-    StaticRule { selector: ".mono", decls: [
-      decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
-      decl(prop: "font-size", value: "0.82em"),
+    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      decl(prop: FontSize, value: "0.82em"),
     ] },
-    StaticRule { selector: ".mark", decls: [
-      decl(prop: "height", value: "3rem"),
-      decl(prop: "margin-right", value: "1.5rem"),
+    StaticRule { selector: ClassSelector { name: "mark" }, decls: [
+      decl(prop: Height, value: "3rem"),
+      decl(prop: MarginRight, value: "1.5rem"),
     ] },
-    StaticRule { selector: ".constellation", decls: [
-      decl(prop: "width", value: "100%"),
-      decl(prop: "height", value: "auto"),
+    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "auto"),
     ] },
-    StaticRule { selector: ".hero", decls: [
-      decl(prop: "margin", value: "0"),
+    StaticRule { selector: ClassSelector { name: "hero" }, decls: [
+      decl(prop: Margin, value: "0"),
     ] },
-    StaticRule { selector: ".legend", decls: [
-      decl(prop: "list-style", value: "none"),
-      decl(prop: "padding", value: "0"),
-      decl(prop: "font-size", value: "0.85rem"),
-      role_decl(prop: "color", r: TextDimRole),
+    StaticRule { selector: ClassSelector { name: "legend" }, decls: [
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: FontSize, value: "0.85rem"),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ".legend-key", decls: [
-      decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
-      role_decl(prop: "color", r: TextRole),
+    StaticRule { selector: ClassSelector { name: "legend-key" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ".swatch", decls: [
-      decl(prop: "display", value: "inline-block"),
-      decl(prop: "border-radius", value: "3px"),
-      decl(prop: "padding", value: "0.3rem"),
-      decl(prop: "margin", value: "0 0.5rem 0.25rem 0"),
+    StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "0.3rem"),
+      decl(prop: Margin, value: "0 0.5rem 0.25rem 0"),
     ] },
-    StaticRule { selector: ".chip-inline", decls: [
-      decl(prop: "display", value: "inline-block"),
-      decl(prop: "width", value: "2.4rem"),
-      decl(prop: "height", value: "1.2rem"),
-      decl(prop: "border-radius", value: "2px"),
-      decl(prop: "border", value: "1px solid var(--border)"),
-      decl(prop: "vertical-align", value: "middle"),
-      decl(prop: "margin-right", value: "0.5rem"),
+    StaticRule { selector: ClassSelector { name: "chip-inline" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Width, value: "2.4rem"),
+      decl(prop: Height, value: "1.2rem"),
+      decl(prop: BorderRadius, value: "2px"),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: VerticalAlign, value: "middle"),
+      decl(prop: MarginRight, value: "0.5rem"),
     ] },
-    StaticRule { selector: ".ledger", decls: [
-      decl(prop: "width", value: "100%"),
-      decl(prop: "border-collapse", value: "collapse"),
-      decl(prop: "font-size", value: "0.85rem"),
+    StaticRule { selector: ClassSelector { name: "ledger" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: BorderCollapse, value: "collapse"),
+      decl(prop: FontSize, value: "0.85rem"),
     ] },
-    StaticRule { selector: ".ledger td", decls: [
-      decl(prop: "padding", value: "0.45rem 0.75rem 0.45rem 0"),
-      decl(prop: "border-bottom", value: "1px solid var(--border)"),
-      decl(prop: "vertical-align", value: "top"),
+    StaticRule { selector: RawSelector { text: ".ledger td" }, decls: [
+      decl(prop: Padding, value: "0.45rem 0.75rem 0.45rem 0"),
+      decl(prop: BorderBottom, value: "1px solid var(--border)"),
+      decl(prop: VerticalAlign, value: "top"),
     ] },
-    StaticRule { selector: ".boundary", decls: [
-      decl(prop: "border-left", value: "2px solid var(--boundary)"),
-      decl(prop: "padding-left", value: "1rem"),
+    StaticRule { selector: ClassSelector { name: "boundary" }, decls: [
+      decl(prop: BorderLeft, value: "2px solid var(--boundary)"),
+      decl(prop: PaddingLeft, value: "1rem"),
     ] },
-    StaticRule { selector: ".foot", decls: [
-      decl(prop: "margin-top", value: "4rem"),
-      decl(prop: "font-size", value: "0.78rem"),
-      role_decl(prop: "color", r: TextDimRole),
+    StaticRule { selector: ClassSelector { name: "foot" }, decls: [
+      decl(prop: MarginTop, value: "4rem"),
+      decl(prop: FontSize, value: "0.78rem"),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
   ]
 }
