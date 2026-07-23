@@ -21,12 +21,12 @@ import v2.std.resolution_policy {
 }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
-  dag_surface_module_header_metadata_edge
-}
-import v2.compiler.namespace_graft {
-  qualified_name_from_module_node_graft_aware,
+  dag_surface_module_header_metadata_edge,
   namespace_graft_already_grafted,
   namespace_graft_spine_segment_edge_optional,
+  qualified_name_from_module_node
+}
+import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -197,7 +197,7 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
           ModuleRootsProjectionRejected { diagnostics: d }
         ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
           if well_formed(n: root) {
-            match qualified_name_from_module_node_graft_aware(root: root) {
+            match qualified_name_from_module_node(root: root) {
               Rejected { diagnostics: d } =>
                 ModuleRootsProjectionRejected {
                   diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
@@ -260,7 +260,7 @@ fn module_root_find(
             ManyPassingCandidates =>
               Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
-              match qualified_name_from_module_node_graft_aware(root: root) {
+              match qualified_name_from_module_node(root: root) {
                 Rejected { diagnostics: d } =>
                   Rejected { diagnostics: d }
                 Accepted { value: candidate, diagnostics: _ } =>
