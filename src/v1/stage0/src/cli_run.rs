@@ -1191,8 +1191,7 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // `witness_exclusion_rows_from_module_source` below when the host consumes an emitted
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
-// tracked with NON_FOLD_RESIDUE_ROSTER's re-home in
-// `gunbc.roster_registry.roster_registry_visibility_note`).
+// same marker family as `non_fold_residue_units_from_module_source`).
 const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
@@ -21899,224 +21898,142 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
 // Host-fed; DISSOLUTION: folds into a pure `.dag` Node-tree reader (match nodes + scrutinee type)
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
-const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    // 2026-07-18 backfill: four sites that landed unrostered on main while the affected-set
-    // selection predict-skipped the corpus-read nfr witness for their landing diffs (same
-    // masking class as the dated blocks below). Their files predate this PR and this PR does
-    // not touch them; they surfaced here only because this PR edits the roster (a .rs change),
-    // which re-runs the whole-corpus nfr_roster_receipt under the nextest gate — the same role
-    // the nightly cold sweep plays. Declared so the ratchet re-arms. local_tidy landed with the
-    // shell->dag bash de-fork (#6751), a one-special-variant dispatch (LocalTidyCargoFmtCheck
-    // special, else the glob fallback) — burns down with local_tidy_spec's fold migration. The
-    // three *_eq rows are structural equality (param scrutinee, off-variant `_ => false`),
-    // siblings to the std eq rows below; dissolve with derived equality from inhabitance
-    // (dag/std/algebra, DESIGN §3/§4).
-    "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
-    "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
-    "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
-    "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
-    // 2026-07-19 backfill: #6857 (effect-reach census lens) landed this site unrostered on
-    // main — same masking class as the 2026-07-18 block above (affected-set selection
-    // predict-skipped the corpus-read nfr witness for its landing diff; surfaced here when
-    // the namespace branch's .rs edits re-ran the whole-corpus receipt). Structural equality
-    // (param scrutinee, off-variant `_ => false`), sibling to the *_eq rows above; dissolves
-    // with derived equality from inhabitance (dag/std/algebra, DESIGN §3/§4).
-    "src/v2/lens/effect_reach.dag::sink_kind_eq",
-    // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
-    // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
-    // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
-    // (third instance of the masking class receipted on #6530). Declared here so the ratchet
-    // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
-    // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
-    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
-    // 2026-07-14 backfill: the shell->dag P2b/P4 slices landed orch_emit_let_step with a
-    // one-special-variant dispatch (ExprCmdSubst -> cmdsubst_assign; every other Expr through
-    // the uniform spelling path) — enumerating all Expr variants would clone the general arm.
-    // The nfr witness is a corpus-read host-fed row, so the landing PR predict-skipped it and
-    // the red surfaced on the 2026-07-14 nightly cold sweep (masking receipt #9; live-read
-    // classification P1/P2, in flight, is the structural fix). Burns down with the
-    // orchestration-emit fold migration.
-    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
-    // 2026-07-14 (no row): fleet_converge_cli.dag::converge_cli_applied_knob_count went
-    // wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to
-    // 15 on an independent base — green alone, red together; main went compile-red). The fn
-    // is one-special-variant dispatch (ConvergePlan knob count; else fallback). The nfr lens
-    // scans param-scrutinee matches only, so a field-scrutinee (`intent.effect`) site is
-    // lens-invisible and a row here would be STALE — recorded as a lens-precision note, not
-    // a roster entry.
-    // 2026-07-14: #6582 (live-read P1) landed two nested structural-equality fns (param
-    // scrutinee, off-variant arm returns false) — same green-alone/red-together class as the
-    // rest of this batch (nfr is corpus-read; the landing PR predict-skipped it). Siblings to
-    // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
-    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
-    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
-    // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
-    // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
-    // re-arms; each burns down with its owning file's fold migration.
-    "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status",
-    "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic",
-    "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation",
-    "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id",
-    "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant",
-    "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded",
-    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active",
-    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire",
-    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located",
-    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_known",
-    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_parse_tree_opaque",
-    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_unknown",
-    "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for",
-    "dag/extdeps/languages/markdown.dag::md_nested",
-    "dag/gunbc/generated_artifact.dag::artifact_eq",
-    "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
-    "dag/gunbc/commit_workflow.dag::gate_eq",
-    "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
-    // 2026-07-22 backfill (falsifier red since 2026-07-16, alert #7032): the scheduled
-    // cold falsifier surfaced 3 unrostered sites per-PR affected-set selection never ran
-    // the nfr witnesses for at landing time — the same masking class as the #6533/#6530
-    // and 2026-07-14 blocks above. The host_converge_slice1 rows landed with #7009, the
-    // reaper row with #7026. Declared so the ratchet re-arms; each burns down with its
-    // owning file's fold migration.
-    //   - host_result_applied_count / host_result_all_valid: projections over the legacy
-    //     HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_
-    //     legacy_result) — off-variant arms reduce to the identity (0 / false), so
-    //     enumerating clones the arm per variant. Dissolve when the legacy slice-1
-    //     result carrier is deleted in favor of the per-unit outcome model.
-    //   - action_kills_build_cache_server: two-axis discriminating predicate
-    //     (occupant × action) with `_ => false` off-variant arms — the reaper witnesses'
-    //     oracle, same shape as the std `*_eq` rows below. Dissolves with derived
-    //     equality from inhabitance (DESIGN §3/§4), with its siblings.
-    "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid",
-    "dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_applied_count",
-    "dag/gunbc/host_hygiene_reaper.dag::action_kills_build_cache_server",
-    "dag/gunbc/os_install_deduction.dag::runtime_verdict_from_kvm_attestation",
-    "dag/gunbc/runner_unit_live_read.dag::converge_target_live_verdict",
-    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_factory",
-    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_secret_ref",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_boot_override_consumed_or_weak",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_post_boot",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_observed",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_ready",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_weak_kvm_or_inconclusive",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_router_not_installed",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_serve_ready",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_boot_override_consumed_failure",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_os_installed",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_ready_to_boot",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::install_has_progress_evidence",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::parse_virtual_media_session_observation",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::router_lacks_os_installed_lease",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::sol_has_autoinstall_evidence",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_boot_override_consumed",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_os_installed",
-    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_ready_to_boot",
-    "dag/std/change.dag::keyed_diff_hunks_equal",
-    "dag/std/computation.dag::constant_bound_value",
-    "dag/std/computation.dag::is_constant_bound",
-    // NamespaceTree structural `==` residue (nested `_ => false` off-variant arm),
-    // same class as the std `*_eq` rows below; landed unrostered with effect_grant.dag
-    // in #6817 (P-A), surfaced when this PR brought effect_grant.dag into the affected
-    // set. Dissolves with derived equality from inhabitance (DESIGN §3/§4), with its siblings.
-    "dag/std/effect_grant.dag::namespace_tree_eq",
-    // 2026-07-20 STALE-ROW REMOVAL: `create_double_init_collapsible` and
-    // `create_effect_is_dedupable` were rostered here AND declared kernel-permanent in
-    // `cla_is_kernel_permanent_fn`, so the analyzer never reports them as live sites and the
-    // two rows could only ever count as stale. DESIGN §6 makes them mutually exclusive — a
-    // non-fold residue is "either a named irreducible kernel or un-migrated modeling, there is
-    // no third" — so a declared kernel must not also carry a burn-down row. The kernel
-    // declaration is the authority; these rows were the duplicate.
-    //
-    // Attribution (checked, not assumed): main was already red on
-    // `non_fold_residue_clean_holds` / `non_fold_residue_no_unrostered_or_stale` before #6848
-    // merged — the scheduled cold falsifier failed on exactly these two witnesses at
-    // 2026-07-20T14:12Z on main at 73eea76dd7 (#6914). Main's per-PR `ci` stayed green because
-    // affected-set selection did not run the corpus-read nfr witnesses for those diffs; #6848
-    // surfaced it by running them, which is the masking class the dated blocks above describe.
-    "dag/std/effects.dag::key_source_eq",
-    "dag/std/encoding.dag::encoding_lattice_join",
-    "dag/std/encoding.dag::encoding_lattice_meet",
-    "dag/std/filesystem.dag::is_text_encoding",
-    "dag/std/induction.dag::compose_sub_value",
-    "dag/std/induction.dag::compose_sub_value_relations",
-    "dag/std/induction.dag::is_strict_style_structural",
-    "dag/std/induction.dag::recursion_shape_eq",
-    "dag/std/induction.dag::shrink_factor_eq",
-    "dag/std/induction.dag::sub_value_structural_eq",
-    "dag/std/reducible.dag::reduce_verdict_combine",
-    "dag/std/termination.dag::descent_evidence_lattice_join",
-    "dag/std/termination.dag::descent_evidence_lattice_meet",
-    "dag/std/termination.dag::promote_to_strict",
-    "dag/tools/ci_gates.dag::exit_ok",
-    "dag/tools/generated_artifact_gate.dag::exit_ok",
-    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
-    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
-    "src/v2/compiler/05_eval.dag::eval_loop_node",
-    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
-    "src/v2/compiler/05_eval.dag::eval_transform_node",
-    "src/v2/compiler/05_eval.dag::eval_value_node",
-    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
-    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
-    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
-    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
-    "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
-    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
-    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
-    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_false",
-    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_true",
-    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_value_as_int",
-    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
-    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
-    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
-    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
-    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
-    "src/v2/std/node.dag::connective_edge_discipline_for_children",
-    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
-    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
-    "src/v2/lens/complexity.dag::complexity_bound_dominates",
-    "src/v2/lens/complexity.dag::complexity_bound_from_class",
-    "src/v2/lens/cost.dag::asymptotic_class_dominates",
-    "src/v2/lens/cost.dag::multiply_classes",
-    "src/v2/lens/cost.dag::symbolic_cost_dominates",
-    "src/v2/lens/cost.dag::symbolic_cost_witness",
-    "src/v2/lens/cost.dag::symbolic_max",
-    "src/v2/lens/cost.dag::symbolic_product",
-    "src/v2/lens/cost.dag::symbolic_sequential",
-    "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom",
-    "src/v2/lens/idempotency.dag::idempotency_verdict_eq",
-    "src/v2/lens/ownership.dag::ownership_mode_eq",
-    "src/v2/lens/parallelism.dag::parallelism_relation_eq",
-    "src/v2/lens/registry.dag::lens_id_v0_eq",
-    "src/v2/lens/unused_parameters.dag::use_relation_eq",
-    "src/v2/program.dag::program_runtime_bool_false",
-    "src/v2/program.dag::program_runtime_bool_true",
-    "src/v2/std/compilers/target_model.dag::source_atom_value_as_bool",
-    "src/v2/std/compilers/target_model.dag::source_atom_value_as_char",
-    "src/v2/std/compilers/target_model.dag::source_atom_value_as_string",
-    "src/v2/std/compilers/target_model.dag::source_atom_value_as_symbol",
-    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
-    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
-    "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
-    "src/v2/std/float.dag::float_body_is_nan",
-    "src/v2/std/node_minimal.dag::node_superset_field_eq",
-    "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
-    "src/v2/std/qualified_name.dag::qn_fold_step",
-    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
-    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
-    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
-    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
-    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
-    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
-    // owning file's fold migration.
-    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
-    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
-    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
-    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
-    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
-    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
-    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
-    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
-];
+const NON_FOLD_RESIDUE_AUTHORITY_REL: &str = "dag/gunbc/non_fold_residue.dag";
+const NON_FOLD_RESIDUE_FRONTIER_DATA_NAME: &str = "non_fold_residue_frontier";
+
+/// Project the `unit` site keys out of the typed `non_fold_residue_frontier` rows of the
+/// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
+/// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
+/// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
+/// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
+/// def, a non-record element, a missing/non-literal `unit` field, a duplicate unit, or an
+/// empty roster is a loud panic, never a silent fallback.
+// 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
+// `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
+// the rows (module-binding supply-carrier pattern), and with the scan below into a pure
+// `.dag` Node-tree lens at gunbc#5364.
+pub(crate) fn non_fold_residue_units_from_module_source(
+    module_rel_path: &str,
+    content: &str,
+) -> Vec<String> {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+
+    let filename = module_rel_path.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let source_indices = std::rc::Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "nfr frontier reader: parse error in {module_rel_path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
+    let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
+    for item in module.children.iter() {
+        if item.name != data_name
+            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+        {
+            continue;
+        }
+        let body = item.body.as_ref().unwrap_or_else(|| {
+            panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+        });
+        if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
+            panic!(
+                "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
+                 literal"
+            );
+        }
+        let mut units = Vec::new();
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for el in body.children.iter() {
+            if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+                panic!(
+                    "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
+                     not a record literal (refusing — rows must stay directly host-readable)"
+                );
+            }
+            let mut unit: Option<String> = None;
+            for field in el.children.iter() {
+                let fname = crate::v1_std_core::field_init_node_name_at(
+                    field.clone(),
+                    source_indices.clone(),
+                );
+                if fname != "unit" {
+                    continue;
+                }
+                let value = crate::v1_std_core::field_init_node_value(field.clone());
+                match value.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                        LiteralValue::LitStr { value: s } => unit = Some(s.clone()),
+                        _ => panic!(
+                            "nfr frontier reader: `unit` in a `{data_name}` row of \
+                             {module_rel_path} is not a string literal"
+                        ),
+                    },
+                    _ => panic!(
+                        "nfr frontier reader: `unit` in a `{data_name}` row of \
+                         {module_rel_path} is not a literal"
+                    ),
+                }
+            }
+            let unit = unit.unwrap_or_else(|| {
+                panic!(
+                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+                     `unit` field"
+                )
+            });
+            if !seen.insert(unit.clone()) {
+                panic!(
+                    "nfr frontier reader: duplicate unit {unit:?} in `{data_name}` of \
+                     {module_rel_path} (the const this replaced tolerated duplicates; the \
+                     typed roster refuses them)"
+                );
+            }
+            units.push(unit);
+        }
+        if units.is_empty() {
+            panic!(
+                "nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)"
+            );
+        }
+        return units;
+    }
+    panic!("nfr frontier reader: no `data {data_name}` def in {module_rel_path}")
+}
+
+fn non_fold_residue_roster_entries() -> &'static [String] {
+    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        let path = process_workspace_root().join(NON_FOLD_RESIDUE_AUTHORITY_REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "nfr frontier reader: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)
+    })
+}
+
+fn non_fold_residue_roster_set() -> &'static std::collections::BTreeSet<&'static str> {
+    static SET: std::sync::OnceLock<std::collections::BTreeSet<&'static str>> =
+        std::sync::OnceLock::new();
+    SET.get_or_init(|| {
+        non_fold_residue_roster_entries()
+            .iter()
+            .map(|s| s.as_str())
+            .collect()
+    })
+}
 
 fn nfr_strip_comments(content: &str) -> String {
     content
@@ -22411,8 +22328,7 @@ pub fn non_fold_residue_count() -> i64 {
 }
 
 pub fn non_fold_residue_unrostered_count() -> i64 {
-    let roster: std::collections::BTreeSet<&str> =
-        NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
+    let roster = non_fold_residue_roster_set();
     nfr_build_report()
         .sites
         .iter()
@@ -22421,7 +22337,7 @@ pub fn non_fold_residue_unrostered_count() -> i64 {
 }
 
 pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
-    NON_FOLD_RESIDUE_ROSTER.contains(&site)
+    non_fold_residue_roster_set().contains(site)
 }
 
 pub fn non_fold_residue_stale_roster_count() -> i64 {
@@ -22430,9 +22346,9 @@ pub fn non_fold_residue_stale_roster_count() -> i64 {
         .iter()
         .map(|s| s.as_str())
         .collect();
-    NON_FOLD_RESIDUE_ROSTER
+    non_fold_residue_roster_entries()
         .iter()
-        .filter(|s| !live.contains(*s))
+        .filter(|s| !live.contains(s.as_str()))
         .count() as i64
 }
 
@@ -22445,7 +22361,7 @@ pub fn non_fold_residue_live_sites() -> &'static [String] {
 }
 
 pub fn non_fold_residue_roster_size() -> i64 {
-    NON_FOLD_RESIDUE_ROSTER.len() as i64
+    non_fold_residue_roster_entries().len() as i64
 }
 
 #[cfg(test)]
@@ -22519,11 +22435,11 @@ mod nfr_tests {
                 "unrostered: {site}"
             );
         }
-        for entry in NON_FOLD_RESIDUE_ROSTER {
-            if !live.contains(entry) {
+        for entry in non_fold_residue_roster_entries() {
+            if !live.contains(entry.as_str()) {
                 eprintln!("stale roster entry: {entry}");
             }
-            assert!(live.contains(entry), "stale roster: {entry}");
+            assert!(live.contains(entry.as_str()), "stale roster: {entry}");
         }
     }
 
@@ -22586,6 +22502,64 @@ mod nfr_tests {
         assert!(
             sites.contains(&"m.dag::f".to_string()),
             "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow {\n\
+                 unit: \"synthetic/a.dag::f\",\n\
+                 reason: shared_reason,\n\
+                 dissolve_on: \"synthetic trigger\"\n\
+               },\n\
+               FrontierRow {\n\
+                 unit: \"synthetic/b.dag::g\",\n\
+                 reason: \"inline reason\",\n\
+                 dissolve_on: shared_trigger\n\
+               }\n\
+             ]\n";
+        assert_eq!(
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic),
+            vec![
+                "synthetic/a.dag::f".to_string(),
+                "synthetic/b.dag::g".to_string()
+            ],
+            "the frontier reader must FOLLOW the authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_duplicate_unit() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r\", dissolve_on: \"d\" },\n\
+               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r2\", dissolve_on: \"d2\" }\n\
+             ]\n";
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+        }))
+        .is_err();
+        assert!(
+            refused,
+            "a duplicate unit key must refuse loudly (fail-closed)"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_missing_unit_field() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { reason: \"r\", dissolve_on: \"d\" }\n\
+             ]\n";
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+        }))
+        .is_err();
+        assert!(
+            refused,
+            "a row without a `unit` field must refuse loudly (fail-closed)"
         );
     }
 }
