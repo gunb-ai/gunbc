@@ -21,6 +21,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
 
@@ -132,7 +134,16 @@ fn bmc_remote_target(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptySt
   join([bmc_ssh_target(plan: plan) as String, ":", bmc_netboot_staged_path(plan: plan, name: name) as String], "") as NonEmptyStr
 }
 
-data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — realization driver sequences the staging manifest + serve over shell.Exec.Run / bmc.Ssh.PutFile / Filesystem.Write; the BMC commands go through the extdeps.exec.command seam (no bespoke blob) but the per-file sequencing is hand-unrolled for the known plan. DISSOLVES WHEN a host_effect_apply binds the staging manifest fold generically; retire medium_structure_exception_roster entry for dag/gunbc/bmc_netboot_serve.dag"
+data bmc_netboot_provision_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.bmc_netboot_serve",
+    decl_name: "bmc_netboot_provision_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — realization driver sequences the staging manifest + serve over shell.Exec.Run / bmc.Ssh.PutFile / Filesystem.Write; the BMC commands go through the extdeps.exec.command seam (no bespoke blob) but the per-file sequencing is hand-unrolled for the known plan. DISSOLVES WHEN a host_effect_apply binds the staging manifest fold generically and dag/gunbc/bmc_netboot_serve.dag retires its hand-unrolled sequencing"
 
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> ProcessExit
   uses net: Network

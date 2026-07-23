@@ -26,6 +26,15 @@ data entropy_count_bytes_unit_debt: Disposition = Scaffold {
   }
 }
 
+data entropy_password_count_chars_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
+
 service Urandom {
   operation ReadBytes {
     input { count: Int }

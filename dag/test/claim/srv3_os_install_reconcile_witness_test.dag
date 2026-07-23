@@ -1,76 +1,16 @@
 module test.claim.srv3_os_install_reconcile
 
-<<<<<<< HEAD
-import std.logic { Bool }
-import std.types { NonEmptyStr, Timestamp }
-import std.temporal_effect {
-  PlanAwaitApproval,
-  PlanApply,
-  GrantAbsent,
-  GrantActive,
-  DurableApprovalGrant,
-  NoPriorReceipt,
-}
-import gunbc.os_install_deduction {
-  CompleteForUnattended,
-  KvmFirmwareIdleObserved,
-}
-import gunbc.srv3_os_install_reconcile {
-  reconcile_srv3_os_install_dry_run_fixture,
-  srv3_held_lease_from_serve,
-  boot_once_apply_read_back_ok,
-  parse_durable_approval_grant_file,
-  plan_boot_once_cd_step,
-  parse_observed_at_from_stdout,
-}
-import gunbc.srv3_os_install_reconcile_types {
-  DeductionRuntimePresent,
-  srv3_install_effect_attempt_intent,
-}
-import gunbc.srv3_os_install_reconcile_receipt {
-  srv3_install_reconcile_receipt_line,
-  srv3_install_reconcile_full_receipt,
-}
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  Srv3InstallDebugObservation,
-  ServeObserved,
-  ServeProcessesPresent,
-  ServePortListening,
-  TokenPresent,
-  IsoPresent,
-  WebsocketUpgradeAccepted,
-  AttachedToExpectedServe,
-  BootOverrideConsumedNoInstallEvidence,
-  RedfishBootObservation,
-  BootProgressNone,
-  SolConsoleContentObservation,
-}
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
-import gunbc.network_identity_subsumption { srv3_pre_install_lease_table }
-import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, BootOverrideOnce, BootTargetCd, On }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
-import std.measure { byte_size }
-=======
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
->>>>>>> origin/main
 
 data witness_uefi_stuck_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: ServeObserved {
     process: ServeProcessesPresent,
     port: ServePortListening {
-<<<<<<< HEAD
-      port: srv3_nbd_proxy_local_port,
-      owner_matches_expected: true,
-    },
-    session: TokenPresent,
-=======
       port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
       owner_matches_expected: true,
     },
     session: gunbc.srv3_os_install_diagnostic.TokenPresent,
->>>>>>> origin/main
     iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
   },
   bmc_websocket: WebsocketUpgradeAccepted,

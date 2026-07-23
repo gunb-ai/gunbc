@@ -46,6 +46,15 @@ data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
 
 data bmc_secrets_gcp_project: GcpProjectId = "gunbai-secrets"
 
+data bmc_credential_length_chars_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
+
 data bmc_credential_length_chars: Int = 16
 
 fn netrc_content(host: String, account: String, password: String) -> String {

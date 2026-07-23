@@ -11,11 +11,7 @@ import gunbc.os_install_deduction {
   OsInstallRuntimeDiagnosticVerdict,
 }
 import gunbc.srv3_os_install_diagnostic { Srv3InstallDiagnostic }
-<<<<<<< HEAD
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
-=======
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
->>>>>>> origin/main
 
 type DeductionRuntimeHint
   = DeductionRuntimeAbsent

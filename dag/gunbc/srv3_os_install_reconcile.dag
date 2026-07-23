@@ -1,141 +1,10 @@
 module gunbc.srv3_os_install_reconcile
 
-<<<<<<< HEAD
-import std.types { String, NonEmptyStr, ContentHash, Timestamp, Bool, Int }
-import std.temporal_effect {
-  EffectAttemptIntent,
-  EffectStepReceipt,
-  AppliedEffectRef,
-  NoEffectApplied,
-  EffectApplied,
-  HeldLease,
-  HeldLeaseObservedState,
-  LeaseAbsent,
-  LeaseRunningExpected,
-  LeaseRunningStale,
-  LeasePortForeign,
-  LeaseInaccessible,
-  DurableApprovalGrant,
-  GrantAbsent,
-  GrantActive,
-  GrantConsumed,
-  PriorStepReceipt,
-  NoPriorReceipt,
-  PriorReceipt,
-  NextStepPlan,
-  PlanNoop,
-  PlanApply,
-  PlanRefuse,
-  PlanAwaitApproval,
-  PlanDrainThenStart,
-  plan_next_step_from_prior_receipt_and_lease,
-  approval_grant_covers_intent,
-}
-import gunbc.workflow_escalation {
-  WorkflowApprovalState,
-  ApprovalGranted,
-  PendingApproval,
-}
-import gunbc.srv3_boot_once_cd { srv3_boot_once_cd_gated }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_deduction {
-  TargetDiskState,
-  ForeignOsPresent,
-  OsInstallPreflightVerdict,
-  OsInstallPreflightPlan,
-  OsInstallRuntimeDiagnosticVerdict,
-  KvmOperatorAttestation,
-  KvmObservedScreen,
-  FirmwareSetup,
-  UefiBootMenu,
-  GrubMenu,
-  SubiquityStorageScreen,
-  fold_nbd_proxy_os_install_preflight_verdict,
-  plan_for_os_install_preflight_verdict,
-  runtime_verdict_from_kvm_attestation,
-}
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  OsInstallAttemptIntent,
-  Srv3InstallDebugObservation,
-  Srv3InstallDiagnostic,
-  NbdServeObservation,
-  NbdServeProcessObservation,
-  NbdServePortObservation,
-  BmcSessionTokenObservation,
-  IsoServeReadinessObservation,
-  ServeUnknown,
-  ServeObserved,
-  NbdkitAbsent,
-  WebsocatAbsent,
-  ServeProcessesPresent,
-  ServePortAbsent,
-  ServePortConflict,
-  ServePortListening,
-  IsoMissing,
-  IsoPresent,
-  TokenMissing,
-  TokenPresent,
-  BootOverrideConsumedNoInstallEvidence,
-  InstallerProbablyRunning,
-  RedfishBootObservation,
-  BmcWebsocketObservation,
-  WebsocketUpgradeAccepted,
-  WebsocketUnavailable,
-  VirtualMediaSessionObservation,
-  AttachedToExpectedServe,
-  NoAttachedServe,
-  VirtualMediaSessionUnknown,
-  classify_router_lease_table,
-  Srv3OsLeasePresent,
-  Srv3OsLeaseAbsent,
-  OnlyBmcLeasePresent,
-  WrongHostnameLeasePresent,
-  diagnose_srv3_install,
-  srv3_install_diagnostic_wire,
-  srv3_install_diagnostic_recommended_action_wire,
-  install_serve_session_active,
-  srv3_install_pre_boot_ready_to_boot,
-}
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, BootOverrideOnce, BootTargetCd }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
-import gunbc.srv3_os_install_actuate_workflow { srv3_boot_once_cd_escalation }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
-import gunbc.srv3_os_install_reconcile_types {
-  Srv3InstallReconcileResult,
-  DeductionRuntimeHint,
-  srv3_boot_once_cd_step_id,
-  srv3_boot_once_approval_grant_path,
-  srv3_boot_once_apply_read_back_sleep,
-  srv3_install_reconcile_default_disk,
-  srv3_nbd_proxy_lease_key,
-  srv3_install_effect_attempt_intent,
-  srv3_install_reconcile_dry_run_observed_at,
-}
-
-data srv3_os_install_reconcile_doc: String = "srv3-install-reconcile-a — folds os_install_deduction preflight + srv3_os_install_diagnostic + std.temporal_effect next-step plan. Dry-run (T3) and apply+read-back (T4) entrypoints on srv1 actuator."
-
-data srv3_os_install_reconcile_shell_runner_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3_os_install_reconcile",
-    decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
-data srv3_os_install_reconcile_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_os_install_reconcile shell runner glue — dry_run/apply/record_approval orchestrate via shell.Exec.Run over concat-built observe meta, durable-approval grant write, grant read, read-back sleep, and receipt echo scripts (srv3_install_record_boot_once_approval_script, srv3_install_reconcile_observe_meta_script); receipt echo via shell_printf_line (printf '%s\\n' + bash double-quote escape — not naive echo single-quote concat); diagnostic observer concat freeze is on srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger (post-merge bound, not retroactive); next node is typed Observe* effect rows + Srv3InstallObserveViaShell handler only; DISSOLVES WHEN host_effect_apply binds Srv3InstallReconcileObserve + DurableApprovalGrantRecord + Srv3InstallReconcileApply without shell_exec_via_bash runner glue; retire medium_structure_exception_roster entries for dag/gunbc/srv3_os_install_reconcile*.dag"
-
-=======
 
 data srv3_os_install_reconcile_shell_runner_scaffold: Disposition = std.disposition.Terminal {
   reason: "P5a discharged (2026-07-14): dry_run/apply/record_approval call sites migrated to srv3_host_effect_apply typed HostEffect rows — no shell.Exec.Run or shell_exec_via_bash in those modules. Remaining concat transport debt is centralized in gunbc.srv3_host_effect_script (srv3_host_effect_script_dissolution_trigger; bash-emit #5828 Wave 4 residue)."
 }
 
->>>>>>> origin/main
 fn held_lease_observed_from_serve(serve: NbdServeObservation) -> HeldLeaseObservedState {
   match serve {
     ServeUnknown => LeaseInaccessible
@@ -358,15 +227,9 @@ fn reconcile_temporal_plan(
 fn workflow_approval_from_durable_grant(grant: DurableApprovalGrant) -> WorkflowApprovalState {
   match grant {
     GrantActive { escalation_id: eid, intent_hash: _, granted_by: gb, granted_at: _, expires_at: _ } =>
-<<<<<<< HEAD
-      ApprovalGranted { escalation_id: eid, granted_by: gb }
-    _ =>
-      PendingApproval { escalation: srv3_boot_once_cd_escalation }
-=======
       gunbc.workflow_escalation.ApprovalGranted { escalation_id: eid, granted_by: gb }
     _ =>
       gunbc.workflow_escalation.PendingApproval { escalation: srv3_boot_once_cd_escalation }
->>>>>>> origin/main
   }
 }
 
@@ -434,15 +297,6 @@ fn parse_observed_at_from_stdout(stdout: String) -> String? {
   }
 }
 
-<<<<<<< HEAD
-fn srv3_install_reconcile_observe_meta_script() -> String {
-  concat(
-    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=git branch=$(git branch --show-current 2>/dev/null || echo unknown) commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n",
-  )
-}
-
-=======
->>>>>>> origin/main
 fn sol_has_new_installer_markers(
   pre: Srv3InstallDebugObservation,
   post: Srv3InstallDebugObservation,
