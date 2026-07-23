@@ -387,12 +387,15 @@ fn floor_discovery_owned_data_row_from_record(rec: OwnedDataDeclRecord) -> Optio
       if (entry == "") || (function == "") {
         optional_absent()
       } else {
+        let witness_content = filesystem_read(path: entry).content
         optional_present(
           value: FloorDiscoveryRow {
             label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
             entry: entry,
             function: function,
-            reads_live_tree: ReadsLiveTree
+            reads_live_tree: floor_discovery_entry_reads_live_tree_default(
+              content: witness_content
+            )
           }
         )
       }

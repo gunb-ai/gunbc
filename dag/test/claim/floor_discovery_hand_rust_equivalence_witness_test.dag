@@ -101,6 +101,13 @@ fn floor_discovery_first_row_label(rows: List<FloorDiscoveryRow>) -> String {
   }
 }
 
+fn floor_discovery_first_row_reads_substrate_only(rows: List<FloorDiscoveryRow>) -> Bool {
+  match list_head(xs: rows) {
+    HeadFound { value: row } => row.reads_live_tree == SubstrateInputsOnly
+    HeadAbsent => false
+  }
+}
+
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
   string_contains(s: floor_discovery_dissolve_trigger, pattern: "floor_discovery_producer")
     && string_contains(s: floor_discovery_dissolve_trigger, pattern: "LANDED")
@@ -125,6 +132,7 @@ test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
           function: fixture_witness_function
         )
         && (floor_discovery_first_row_label(rows: rows) == "floor_discovery_fixture")
+        && floor_discovery_first_row_reads_substrate_only(rows: rows)
     FloorDiscoveryRefused { reason: _ } => false
   }
 }
