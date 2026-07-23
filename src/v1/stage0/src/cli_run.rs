@@ -8457,7 +8457,30 @@ fn witness_entry_eligibility_execution_leg_from_tsv(entry: &str) -> Option<Strin
         .cloned()
 }
 
+/// Data-row count in the committed census TSV (excludes comment + header).
+pub fn witness_entry_eligibility_census_tsv_data_row_count() -> usize {
+    witness_entry_eligibility_execution_legs_by_entry().len()
+}
+
+fn witness_entry_eligibility_census_declared_entry_count_from_authority(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<i64, String> {
+    match v1_interpreter::run_in_context(
+        ctx,
+        "witness_entry_eligibility_census_declared_entry_count",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) => Ok(n),
+        Ok(other) => Err(format!(
+            "witness_entry_eligibility_census_declared_entry_count returned {}, expected Int",
+            ctx.format_value(other)
+        )),
+        Err(e) => Err(format!("witness_entry_eligibility_census_declared_entry_count: {e}")),
+    }
+}
+
 fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: Filesystem.List walk in pure `.dag` fold).
     let root = process_workspace_root();
     let mut entries = BTreeSet::new();
     for rel_root in ["dag/test/claim", "src/v2/test/claim"] {
@@ -8594,10 +8617,34 @@ pub fn emit_witness_entry_eligibility_census(
         hist.push_str(&format!("{disposition}\t{reason}\t{count}\n"));
     }
     std::fs::write(hist_path, hist).map_err(|e| format!("write {}: {e}", hist_path.display()))?;
+    let declared = match v1_interpreter::run_in_context(
+        &ctx,
+        "witness_entry_eligibility_census_declared_entry_count",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) => n,
+        Ok(other) => {
+            return Err(format!(
+                "witness_entry_eligibility_census_declared_entry_count returned {}, expected Int",
+                ctx.format_value(&other)
+            ));
+        }
+        Err(e) => {
+            return Err(format!(
+                "witness_entry_eligibility_census_declared_entry_count: {e}"
+            ));
+        }
+    };
+    if rows.len() as i64 != declared {
+        return Err(format!(
+            "census emit: roster has {} entries but witness_entry_eligibility_census_entry_count={declared} — update the .dag constant then regen"
+        ));
+    }
     Ok(rows.len())
 }
 
 fn chrono_lite_utc_stamp() -> String {
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: stamp from pure `.dag` emit fold / host clock intrinsic).
     std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%dT%H:%MZ"])
         .output()
