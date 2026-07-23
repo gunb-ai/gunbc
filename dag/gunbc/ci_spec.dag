@@ -453,6 +453,23 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
+data ci_regen_validate_function: String = "main"
+
+data ci_regen_validate_note: String = "The regen VALIDATE invoke (non-main-push events — PR, merge_group, workflow_dispatch): gunbc run on the generated-artifact drift gate's `main` (run_generated_artifact_drift_gate_body), which reads every committed_generated_artifacts() path and fails (exit_failure) if any drifted from its authority. This is the drift gate lifted OUT of the ci floor and up into the regen job (operator-directed 2026-07-23: regen upstream of ci, ci depends on regen passing). On a drifted PR this step FAILS → the regen job fails → the ci job (needs regen) is skipped → no merge-admission receipt is stamped and the regen check is red, so drift is a hard pre-merge wall exactly as the floor gate was, now enforced upstream once instead of validated in the floor AND healed in a parallel lane. On main pushes this step is skipped; the heal step owns main (produce, not validate) so a healed push never trips a floor drift red on the pre-push checkout (the cross-checkout red the standalone parallel job would have caused). It is the VALIDATE direction of the same regen authority the heal step produces from (§4 one authority, read two directions)."
+
+fn gunbc_ci_regen_validate_invoke() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: ci_heal_generated_artifact_gate_entry,
+      function: ci_regen_validate_function,
+      rooted: true,
+      claim_run: false
+    )
+  )
+}
+
 data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH step: a GitHub Actions run: foreign-executor context (the shell-intent design's bootstrap/foreign-executor case that renders through bash), so the git commit/push is a hand-authored shell string like the deploy invoke and the release-bins unpack script beside it. COMMIT SCOPE IS ARTIFACT-ONLY BY CONSTRUCTION (review 41703, DESIGN §5 no-silent-widen): staging is `git add` over EXACTLY committed_generated_artifact_paths() (the registry the drift gate guards and the exact set main_wet writes) — never `git add -A`, so an incidental dirty file on the runner (checkout residue, line-ending normalization, leftover state) can never be swept into an unattended push to main. The commit fires ONLY when `git diff --cached --quiet` reports a staged change — i.e. only when main_wet actually healed a registry artifact — so a clean tree is a no-op, and the byte-idempotent fixed point makes the healed commit's own re-run a no-op that terminates the loop. The push authenticates with the job's GITHUB_TOKEN (persisted by actions/checkout) and needs the job-scoped contents:write grant; it is deliberately NOT [skip ci] so the healed commit triggers a normal run whose drift gate re-passes green — the fixed point is verified by execution, not assumed. A concurrent main advance makes the push a non-fast-forward that fails LOUDLY (never a force-push), and the next main run retries."
 
 data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {

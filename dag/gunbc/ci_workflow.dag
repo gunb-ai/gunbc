@@ -12,11 +12,12 @@ import gunbc.ci_spec {
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
+  gunbc_ci_regen_validate_invoke,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_validate_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_materialization {
