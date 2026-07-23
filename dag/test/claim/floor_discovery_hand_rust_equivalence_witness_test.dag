@@ -13,6 +13,9 @@ import v2.compiler.discovery_enumeration {
 }
 import v2.workflow.floor_discovery {
   FloorDiscoveryRow,
+  FloorDiscoverySidecarViolation,
+  TestMarkedDecl,
+  WireContractDecl,
   floor_discovery_test_decl_sidecar_violation
 }
 import v2.workflow.floor_discovery_producer {
@@ -24,8 +27,13 @@ import v2.workflow.floor_discovery_producer {
   floor_discovery_wire_contract_sidecar_refusal_for_content,
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
   floor_filename_hygiene_refusal_for_paths,
+  floor_discovery_sidecar_refusal_reason,
   floor_discovery_surface_text_scan_scaffold,
   floor_discovery_surface_text_scan_dissolve_on
+}
+import v2.workflow.floor_naming_hygiene {
+  floor_test_sidecar_suffix,
+  floor_wire_contract_sidecar_suffix
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -283,6 +291,25 @@ test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> B
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
     Absent => false
   }
+}
+
+test fn floor_discovery_sidecar_combined_refusal_reports_both_holds() -> Bool {
+  let msg = floor_discovery_sidecar_refusal_reason(violations: [
+    FloorDiscoverySidecarViolation {
+      entry_path: fixture_misplaced_entry,
+      kind: TestMarkedDecl,
+      required_suffix: floor_test_sidecar_suffix
+    },
+    FloorDiscoverySidecarViolation {
+      entry_path: fixture_misplaced_wire_contract_entry,
+      kind: WireContractDecl,
+      required_suffix: floor_wire_contract_sidecar_suffix
+    }
+  ])
+  string_contains(s: msg, pattern: "`test`-marked")
+    && string_contains(s: msg, pattern: fixture_misplaced_entry)
+    && string_contains(s: msg, pattern: "wire-contract decls")
+    && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
 }
 
 test fn floor_discovery_live_tree_malformed_variant_refuses_red_control() -> Bool {

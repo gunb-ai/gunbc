@@ -684,16 +684,23 @@ fn floor_discovery_sidecar_refusal_reason(
     violations: violations,
     kind: TestMarkedDecl
   )
-  if test_paths != "" {
+  let wire_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: WireContractDecl
+  )
+  if test_paths != "" && wire_paths != "" {
+    concat(
+      "`test`-marked decls must live in `*_test.dag` files; found in: ",
+      test_paths,
+      "; wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+      wire_paths
+    )
+  } else if test_paths != "" {
     concat(
       "`test`-marked decls must live in `*_test.dag` files; found in: ",
       test_paths
     )
   } else {
-    let wire_paths = floor_discovery_paths_for_sidecar_kind(
-      violations: violations,
-      kind: WireContractDecl
-    )
     concat(
       "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
       wire_paths
