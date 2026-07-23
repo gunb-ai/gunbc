@@ -3,6 +3,7 @@ module v2.workflow.ci_floor_plan
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
+import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -906,8 +907,51 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   )
 }
 
+data gunbc_pr_native_batch_note: String = "Per-PR native batch (P6 routing consumption, 2026-07-22): explicit entries = the equals_eval agreement legs of families the native-routing frontier marks NativeRouted — nothing else. The frontier is the ONE authority for both sides of the floor (this batch enrolls exactly the routed set; nothing else changes), and flips are parity-window-gated data, so at landing the routed set is empty and this appends no batch: zero behavior change until receipts flip a family. Wet profile: the admitted transport cargo-builds cold or runs warm against GUNBC_NATIVE_CACHE_ROOT."
+
+fn gunbc_pr_native_entries() -> List<ScheduleWitnessEntry> {
+  fold(
+    native_routed_rows(),
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [
+        ScheduleWitnessEntry {
+          entry: row.agreement_entry,
+          function: row.agreement_function,
+          kind: ExecutionWitnessKind
+        }
+      ])
+    }
+  )
+}
+
+fn gunbc_pr_native_batch_enrolled() -> Bool {
+  length(xs: gunbc_pr_native_entries()) > 0
+}
+
+fn gunbc_pr_native_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: gunbc_pr_native_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
-  gunbc_ci_floor_realization_plan().schedule
+  falsifier_batches_append_if_enrolled(
+    acc: gunbc_ci_floor_realization_plan().schedule,
+    enrolled: gunbc_pr_native_batch_enrolled(),
+    batch: gunbc_pr_native_batch()
+  )
 }
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_batches, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
