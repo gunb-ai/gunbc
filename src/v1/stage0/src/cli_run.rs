@@ -1181,11 +1181,26 @@ pub fn compile_dag_rust_emit_check(
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
-const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
-const WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
-    "witness_admission_offline_exclusion_substrings";
-const WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
-    "witness_admission_fixture_exclusion_substrings";
+const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
+/// The `WitnessConsumerCadence` variant names a `witness_exclusion_frontier` row may carry
+/// (`std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
+/// exclusion row claiming discovery is a contradiction and the reader refuses it.
+// 🟡 dissolve-on: this array is a hand-copied projection of the closed `.dag` coproduct
+// `std.witness_admission.WitnessConsumerCadence` (drift is loud — an unknown name panics
+// the reader — but the representation is still dual). Dissolves with
+// `witness_exclusion_rows_from_module_source` below when the host consumes an emitted
+// manifest of the frontier rows instead of parsing the authority source (the same
+// module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
+// tracked with NON_FOLD_RESIDUE_ROSTER's re-home in
+// `gunbc.roster_registry.roster_registry_visibility_note`).
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
+    "OfflineLocalRecipe",
+    "FixtureExplicitRoster",
+    "BinWitnessWet",
+    "QuarantineProbeExpectRed",
+    "FalsifierSelfHostWet",
+    "NoConsumer",
+];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
@@ -1310,9 +1325,155 @@ pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<Stri
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
 }
 
-/// Project `witness_exclusion_substrings` out of the ci_layer_roots authority.
+/// One `witness_exclusion_frontier` row as the host reads it: the discovery-exclusion
+/// pattern plus its consumer classification (a `WitnessConsumerCadence` variant name).
+/// `reason` / `dissolve_on` are `.dag`-side facts the host does not consume.
+pub(crate) struct WitnessExclusionRowRaw {
+    pub pattern: String,
+    pub classification: String,
+}
+
+/// Project the typed `witness_exclusion_frontier` rows out of a `.dag` module's SOURCE TEXT
+/// via the real front-end (`tokenize` + `parse`) — the record-literal sibling of
+/// `string_list_data_from_module_source`. Fail-closed: a parse error, a missing data def,
+/// a non-record element, a missing/non-literal `pattern` field, or an unrecognized
+/// classification name is a loud panic, never a silent fallback.
+// 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves when the host
+// consumes an emitted manifest of the frontier rows (rows supplied at the boundary, no
+// host-side source parse), together with WITNESS_EXCLUSION_CLASSIFICATIONS above; the
+// scaffold classification is carried at the model authority in
+// `gunbc.roster_registry.roster_registry_visibility_note`.
+pub(crate) fn witness_exclusion_rows_from_module_source(
+    module_rel_path: &str,
+    content: &str,
+) -> Vec<WitnessExclusionRowRaw> {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+
+    let filename = module_rel_path.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let source_indices = std::rc::Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "exclusion frontier reader: parse error in {module_rel_path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result.module.as_ref().unwrap_or_else(|| {
+        panic!("exclusion frontier reader: {module_rel_path} parsed to no module")
+    });
+    let data_name = WITNESS_EXCLUSION_FRONTIER_DATA_NAME;
+    for item in module.children.iter() {
+        if item.name != data_name
+            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+        {
+            continue;
+        }
+        let body = item.body.as_ref().unwrap_or_else(|| {
+            panic!("exclusion frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+        });
+        if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
+            panic!(
+                "exclusion frontier reader: `data {data_name}` in {module_rel_path} is not a \
+                 list literal"
+            );
+        }
+        let mut rows = Vec::new();
+        for el in body.children.iter() {
+            if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+                panic!(
+                    "exclusion frontier reader: an element of `{data_name}` in \
+                     {module_rel_path} is not a record literal (refusing — rows must stay \
+                     directly host-readable)"
+                );
+            }
+            let mut pattern: Option<String> = None;
+            let mut classification: Option<String> = None;
+            for field in el.children.iter() {
+                let fname = crate::v1_std_core::field_init_node_name_at(
+                    field.clone(),
+                    source_indices.clone(),
+                );
+                let value = crate::v1_std_core::field_init_node_value(field.clone());
+                match fname.as_str() {
+                    "pattern" => match value.expr_data.as_ref() {
+                        ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                            LiteralValue::LitStr { value: s } => pattern = Some(s.clone()),
+                            _ => panic!(
+                                "exclusion frontier reader: `pattern` in a `{data_name}` row \
+                                 of {module_rel_path} is not a string literal"
+                            ),
+                        },
+                        _ => panic!(
+                            "exclusion frontier reader: `pattern` in a `{data_name}` row of \
+                             {module_rel_path} is not a literal"
+                        ),
+                    },
+                    "classification" => {
+                        let name = crate::v1_std_core::field_init_node_name_at(
+                            value.clone(),
+                            source_indices.clone(),
+                        );
+                        if !WITNESS_EXCLUSION_CLASSIFICATIONS.contains(&name.as_str()) {
+                            panic!(
+                                "exclusion frontier reader: unrecognized classification \
+                                 {name:?} in a `{data_name}` row of {module_rel_path} \
+                                 (recognized: {WITNESS_EXCLUSION_CLASSIFICATIONS:?})"
+                            );
+                        }
+                        classification = Some(name);
+                    }
+                    _ => {}
+                }
+            }
+            let pattern = pattern.unwrap_or_else(|| {
+                panic!(
+                    "exclusion frontier reader: a `{data_name}` row in {module_rel_path} has \
+                     no `pattern` field"
+                )
+            });
+            let classification = classification.unwrap_or_else(|| {
+                panic!(
+                    "exclusion frontier reader: row {pattern:?} in {module_rel_path} has no \
+                     `classification` field"
+                )
+            });
+            rows.push(WitnessExclusionRowRaw {
+                pattern,
+                classification,
+            });
+        }
+        if rows.is_empty() {
+            panic!(
+                "exclusion frontier reader: `{data_name}` in {module_rel_path} is empty \
+                 (fail-closed)"
+            );
+        }
+        return rows;
+    }
+    panic!("exclusion frontier reader: no `data {data_name}` def in {module_rel_path}")
+}
+
+fn witness_exclusion_frontier_rows() -> &'static [WitnessExclusionRowRaw] {
+    static ROWS: OnceLock<Vec<WitnessExclusionRowRaw>> = OnceLock::new();
+    ROWS.get_or_init(|| {
+        witness_exclusion_rows_from_module_source(
+            CI_LAYER_ROOTS_AUTHORITY_REL,
+            ci_layer_roots_authority_content(),
+        )
+    })
+}
+
+/// Project the discovery-exclusion patterns out of the typed frontier rows.
 pub(crate) fn witness_exclusion_substrings_from_source(content: &str) -> Vec<String> {
-    string_list_data_from_ci_layer_roots_source(content, WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME)
+    witness_exclusion_rows_from_module_source(CI_LAYER_ROOTS_AUTHORITY_REL, content)
+        .into_iter()
+        .map(|r| r.pattern)
+        .collect()
 }
 
 /// Project `whole_tree_strict_resolve_exclusion_substrings` out of the ci_layer_roots authority.
@@ -10310,28 +10471,20 @@ pub fn collect_deferred_discovery_rows(
     Ok(out)
 }
 
+fn witness_exclusion_patterns_with_classification(classification: &str) -> Vec<String> {
+    witness_exclusion_frontier_rows()
+        .iter()
+        .filter(|r| r.classification == classification)
+        .map(|r| r.pattern.clone())
+        .collect()
+}
+
 fn witness_admission_offline_exclusion_substrings() -> Vec<String> {
-    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
-    PATTERNS
-        .get_or_init(|| {
-            string_list_data_from_ci_layer_roots_source(
-                ci_layer_roots_authority_content(),
-                WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME,
-            )
-        })
-        .clone()
+    witness_exclusion_patterns_with_classification("OfflineLocalRecipe")
 }
 
 fn witness_admission_fixture_exclusion_substrings() -> Vec<String> {
-    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
-    PATTERNS
-        .get_or_init(|| {
-            string_list_data_from_ci_layer_roots_source(
-                ci_layer_roots_authority_content(),
-                WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME,
-            )
-        })
-        .clone()
+    witness_exclusion_patterns_with_classification("FixtureExplicitRoster")
 }
 
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
@@ -24907,6 +25060,59 @@ mod module_path_index_tests {
         assert!(
             ws.join(sample).is_file(),
             "indexed rel path must resolve under workspace_root()"
+        );
+    }
+
+    #[test]
+    fn exclusion_frontier_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/offline_test.dag\",\n\
+                 classification: OfflineLocalRecipe,\n\
+                 reason: shared_reason,\n\
+                 dissolve_on: \"synthetic trigger\"\n\
+               },\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/bin_test.dag\",\n\
+                 classification: BinWitnessWet,\n\
+                 reason: \"inline reason\",\n\
+                 dissolve_on: shared_trigger\n\
+               }\n\
+             ]\n";
+        let rows = super::witness_exclusion_rows_from_module_source("synthetic.dag", synthetic);
+        assert_eq!(
+            rows.iter().map(|r| r.pattern.as_str()).collect::<Vec<_>>(),
+            vec!["synthetic/offline_test.dag", "synthetic/bin_test.dag"],
+            "the frontier reader must FOLLOW the authority, not a hardcoded copy"
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| r.classification.as_str())
+                .collect::<Vec<_>>(),
+            vec!["OfflineLocalRecipe", "BinWitnessWet"],
+            "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn exclusion_frontier_reader_refuses_unrecognized_classification() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
+               WitnessExclusionRow {\n\
+                 pattern: \"synthetic/x_test.dag\",\n\
+                 classification: DiscoverySelection,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::witness_exclusion_rows_from_module_source("synthetic.dag", synthetic)
+        }))
+        .is_err();
+        assert!(
+            refused,
+            "an exclusion row claiming DiscoverySelection must refuse loudly (fail-closed)"
         );
     }
 

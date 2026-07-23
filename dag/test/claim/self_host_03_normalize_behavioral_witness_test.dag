@@ -1,12 +1,19 @@
 module test.claim.self_host_03_normalize_behavioral_witness
 
-import tools.self_host_03_normalize_behavioral_transport { sn_behavioral_receipt_holds }
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+import tools.self_host_03_normalize_declared_source_refs { declared_source_refs }
+import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip (03_normalize): tools.self_host_03_normalize_behavioral_transport emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). Enrolled on nightly falsifier when frontier row is SelfEmitted. Selection: declared_source_refs on the transport (hand-verified complete per docs/plans/declared-source-ref-selection-design.md §5.1) joined through ModuleStorageIndex — selected on emitter-touch, skipped on unrelated diffs."
+data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip (03_normalize): tools.self_host_module_behavioral_transport_roster's compiler_module_behavioral_receipt_for emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). Enrolled on nightly falsifier when frontier row is SelfEmitted. Selection: tools.self_host_03_normalize_declared_source_refs's declared_source_refs (hand-verified complete per docs/plans/declared-source-ref-selection-design.md §5.1, imported here so it lands in this entry's closure only) — selected on emitter-touch, skipped on unrelated diffs."
 
 test fn self_host_03_normalize_behavioral_receipt_holds() -> Bool {
-  sn_behavioral_receipt_holds()
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/03_normalize.dag")
+}
+
+test fn self_host_03_normalize_declared_source_refs_complete_holds() -> Bool {
+  length(xs: declared_source_refs) == 12
 }

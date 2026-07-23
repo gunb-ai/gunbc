@@ -1,0 +1,49 @@
+module test.claim.ci_concurrency_policy_witness_test
+
+import gunbc.ci_workflow { ci_workflow }
+import gunbc.ci_workflow_expressions {
+  ci_concurrency_cancel_in_progress_if,
+  ci_concurrency_cancel_in_progress_expression,
+}
+import extdeps.github.actions {
+  ConcurrencyMappingQueueNotMax,
+  CancelInProgressExpression,
+}
+import v2.std.collection { Present }
+import v2.std.text { String }
+
+fn ci_concurrency_cancel_expression_holds() -> Bool {
+  ci_concurrency_cancel_in_progress_expression() == ci_concurrency_cancel_in_progress_if
+}
+
+fn ci_concurrency_event_scoped_stop_policy_holds() -> Bool {
+  match ci_workflow.concurrency {
+    Present { value: spec } =>
+      match spec {
+        ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: cip, explicit_single: _ } =>
+          match cip {
+            Present { value: c } =>
+              match c {
+                CancelInProgressExpression { expression: e } =>
+                  e == "${{ github.event_name != 'merge_group' }}"
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn ci_concurrency_stop_policy_discriminates_merge_group() -> Bool {
+  ci_concurrency_cancel_in_progress_if != "true"
+    && ci_concurrency_cancel_in_progress_if != "false"
+    && ci_concurrency_cancel_in_progress_if != "github.event_name != 'merge_group'"
+}
+
+test fn ci_concurrency_policy_witness_holds() -> Bool {
+  ci_concurrency_cancel_expression_holds()
+    && ci_concurrency_event_scoped_stop_policy_holds()
+    && ci_concurrency_stop_policy_discriminates_merge_group()
+}
