@@ -9139,7 +9139,8 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
     emit_cargo_dep(name: "stacker", version: "0.1", features: []),
     emit_cargo_dep(name: "clap", version: "4", features: ["derive"]),
     emit_cargo_dep(name: "lazy_static", version: "1", features: []),
-    emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
+    emit_cargo_dep(name: "ureq", version: "2", features: ["json"]),
+    emit_cargo_dep(name: "libc", version: "0.2", features: [])
   ]
   let async_deps = if has_services {
     [

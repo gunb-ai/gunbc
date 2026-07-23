@@ -1,0 +1,11 @@
+module test.claim.emit_cargo_toml_libc
+
+import v1.compiler.emit_rust { emit_cargo_toml }
+
+data emit_cargo_toml_libc_witness_note: String = "Execution witness (not a src_has text scan): RUN emit_cargo_toml through the interpreter over the live .dag and assert the emitted [dependencies] block declares libc. The copied host-physics v1_interpreter.rs uses libc::clock_gettime for the fast-lane eval budget, so the emitted crate is cargo-RED (3xE0433) without this dep. RED control: drop the libc row from emit_cargo_toml's base_deps and this witness goes red."
+
+test fn emit_cargo_toml_declares_libc() -> Bool {
+  let toml = emit_cargo_toml(crate_name: "v1_compiler", has_services: false)
+  string_contains(s: toml.content, pattern: "libc = \"0.2\"")
+    && string_contains(s: toml.content, pattern: "ureq = { version = \"2\"")
+}
