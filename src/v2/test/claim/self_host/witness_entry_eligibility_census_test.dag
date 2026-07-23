@@ -12,11 +12,11 @@ import v2.compiler.self_host.witness_bulk_routing {
 }
 import v2.std.algebra { length }
 
-data witness_entry_eligibility_census_test_note: String = "Census receipt: discovery-aligned roster (672 hermetic closures + 50 execution-grain explicit-roster entries = 722; floor >=600 via witness_entry_eligibility_census_meets_floor) strictly exceeds the 16-entry stratified sample. ROADMAP 2a 744 totality is the bulk-flip dissolve trigger, not this Lane B landing witness."
+data witness_entry_eligibility_census_test_note: String = "Census receipt: full witness_layer_roots roster (857 entry closures; floor >=600 via witness_entry_eligibility_census_meets_floor) strictly exceeds the 16-entry stratified sample. Discovery exclusions do not shrink the census carrier — explicit-roster grains (execution/, long/, etc.) still need leg rows. ROADMAP 2a 744 totality is the bulk-flip dissolve trigger, not this Lane B landing witness."
 
 test fn witness_entry_eligibility_census_count_holds() -> Bool {
   witness_entry_eligibility_census_meets_floor()
-    && witness_entry_eligibility_census_entry_count == 722
+    && witness_entry_eligibility_census_entry_count == 857
     && witness_entry_eligibility_census_entry_count > witness_bulk_entry_count_expected
     && length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
 }
