@@ -34,8 +34,8 @@ fn witness_unlisted_family_has_no_row() -> Bool {
 }
 
 fn witness_routed_and_retained_split() -> Bool {
-  (length(xs: native_routed_rows()) == 2)
-    && (length(xs: interpreted_retained_rows()) == 7)
+  (length(xs: native_routed_rows()) == 0)
+    && (length(xs: interpreted_retained_rows()) == 9)
 }
 
 fn witness_flips_cite_parity_evidence() -> Bool {
