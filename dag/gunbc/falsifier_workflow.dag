@@ -144,7 +144,8 @@ fn falsifier_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 

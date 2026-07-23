@@ -1162,11 +1162,19 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
       if n == 0 {
         NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
       } else {
-        reconcile_grounded(
-          apply_effect: intent,
-          show_read: ReadObserved { value: out },
-          grounding: Grounds { evidence: ConvergePlanApplied { exit_code: 0, stdout: out } }
-        )
+        let observed = run_shell_transport(script: out, transport: LocalShell)
+        if observed.success {
+          reconcile_grounded(
+            apply_effect: intent,
+            show_read: ReadObserved { value: observed.stdout },
+            grounding: Grounds { evidence: ConvergePlanApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+          )
+        } else {
+          NotConverged {
+            reason: concat("host_effect: converge apply failed (nonzero exit); stderr: ", observed.stderr),
+            applied: intent,
+          }
+        }
       }
   }
 }

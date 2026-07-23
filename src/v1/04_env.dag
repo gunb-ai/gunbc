@@ -1,6 +1,6 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr }
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 
 import std.types { SourceSpan, is_kernel_type }
 
@@ -554,6 +554,58 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
   }
 }
 
+data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default OFF = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous)."
+
+fn global_bare_chain_candidates(env_module_path: String, candidates: List<GlobalBareCandidate>) -> List<GlobalBareCandidate> {
+  let env_segs = module_path_segments(path: env_module_path)
+  candidates |> filter(cand =>
+    let cand_segs = module_path_segments(path: cand.module_path)
+    segment_lcp_len(a: cand_segs, b: env_segs) == (cand_segs |> count)
+  )
+}
+
+fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
+  let chain = global_bare_chain_candidates(env_module_path: env_module_path, candidates: candidates)
+  match (chain |> count) == 1 {
+    true => chain |> first
+    false => Absent
+  }
+}
+
+fn global_bare_policy_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
+  if name_resolution_policy_is_namespace_only() {
+    global_bare_unique_chain_candidate(env_module_path: env_module_path, candidates: candidates)
+  } else {
+    global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates)
+  }
+}
+
+fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<String> {
+  if name_resolution_policy_is_namespace_only() == false {
+    return []
+  }
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
+      if (chain |> count) == 1 {
+        []
+      } else {
+        let pool = if (chain |> count) >= 2 { chain } else { cands }
+        pool |> map(c => concat(c.module_path, ".", name))
+      }
+    _ => []
+  }
+}
+
+fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> CompilerDiagnostic {
+  let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
+  if cands |> count > 0 {
+    AmbiguousReference { name: name, candidates: cands, span: span }
+  } else {
+    UnresolvedType { name: name, span: span }
+  }
+}
+
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
@@ -562,7 +614,7 @@ fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: Strin
         false => Absent
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      match global_bare_nearest_ancestor_candidate(env_module_path: owner_module_path, candidates: cands) {
+      match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
         Present { value: cand } =>
           match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
             true => Present { value: cand.module_path }
@@ -709,10 +761,17 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
-      if resolution_silent_pick_is_enabled() && (cands |> count) >= 2 {
-        record_global_bare_ambiguous_silent_pick(env_module_path: env.module_path, name: name, cands: cands)
+      if name_resolution_policy_is_namespace_only() {
+        match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
+          Present { value: cand } => Present { value: cand.binding }
+          Absent => Absent
+        }
+      } else {
+        if resolution_silent_pick_is_enabled() && (cands |> count) >= 2 {
+          record_global_bare_ambiguous_silent_pick(env_module_path: env.module_path, name: name, cands: cands)
+        }
+        global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
       }
-      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
     }
     Absent => Absent
   }
@@ -721,7 +780,11 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
+      if name_resolution_policy_is_namespace_only() {
+        global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) == none
+      } else {
+        global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
+      }
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
     Absent => false
   }

@@ -1,21 +1,14 @@
 module tools.extdeps_external_authority_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.extdeps_external_authority_transport {
-  run_extdeps_external_authority_uri_witnesses,
-  run_extdeps_external_authority_live_corpus_witness,
-  run_extdeps_external_authority_lens_unit_red
-}
+import tools.extdeps_external_authority_transport { run_extdeps_external_authority_claims }
 
 func run_extdeps_external_authority_gate_body() -> ProcessExit {
-  let uri_ok = run_extdeps_external_authority_uri_witnesses()
-  let live_ok = run_extdeps_external_authority_live_corpus_witness()
-  let red_ok = run_extdeps_external_authority_lens_unit_red()
-  return if uri_ok && live_ok && red_ok {
+  return if run_extdeps_external_authority_claims() {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "extdeps external authority gate failed: uri witnesses, live corpus, and/or RED perturb receipts"
+      reason: "extdeps external authority gate failed: uri witnesses, live corpus, and/or RED perturb receipts (failing claim named in the pooled claim_batch FAIL lines)"
     )
   }
 }

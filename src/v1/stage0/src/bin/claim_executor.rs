@@ -1601,6 +1601,72 @@ fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     }
 }
 
+/// The (entry, execution_mode) pairs some runnable resolves on the memo path (heavy
+/// whole-tree profile) in ANY batch of the walk. The partition routes every
+/// SharedClaims group matching one of these keys to the memo path too — negligible
+/// profile or not — so one entry resolves exactly once per walk. Derived from the
+/// plan's own declared profiles; no schedule fact is added or reordered here.
+fn memo_path_entry_keys(
+    batches: &[Vec<Runnable>],
+) -> std::collections::HashSet<(String, ExecutionMode)> {
+    batches
+        .iter()
+        .flatten()
+        .filter_map(|r| match r {
+            Runnable::SingleClaim {
+                entry,
+                use_walk_memo: true,
+                execution_mode,
+                ..
+            } if !entry.is_empty() => Some((entry.clone(), *execution_mode)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum UnitLane {
+    Memo,
+    MainThread,
+    Spawned,
+}
+
+/// Lane decision for one resolve-group. Memo lane (main thread, shared
+/// `walk_memo`/`process_shared_index`) if (a) the group's profile declares heavy
+/// whole-tree resolve, (b) its entry is already in `walk_memo` from a prior batch,
+/// or (c) some unit in ANY batch resolves the same (entry, mode) on the memo path
+/// (`memo_path_entry_keys`) — one entry, one resolve, across batches. Discovery
+/// pumps run on the MAIN thread: `process_shared_index` is thread-local (Rc-based,
+/// !Send), and the eagerly-installed compile-clean receipt (see the install before
+/// run_walk) warmed THIS thread's index — routing the pump here is what lets
+/// batch-2's witness resolves read the gate's content-keyed typed store instead of
+/// re-typechecking the tree (lever 1, PR #6766). No wall-clock loss: the main
+/// thread previously idled at the join while the one Discovery unit ran on a
+/// spawned thread. Everything else spawns.
+fn batch_unit_lane(
+    unit: &BatchUnit,
+    walk_memo: &std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+) -> UnitLane {
+    match unit {
+        BatchUnit::SharedClaims {
+            use_walk_memo: true,
+            ..
+        } => UnitLane::Memo,
+        BatchUnit::SharedClaims {
+            entry,
+            execution_mode,
+            ..
+        } if walk_memo.contains_key(&(entry.clone(), *execution_mode))
+            || memo_path_entries.contains(&(entry.clone(), *execution_mode)) =>
+        {
+            UnitLane::Memo
+        }
+        BatchUnit::Discovery { .. } => UnitLane::MainThread,
+        _ => UnitLane::Spawned,
+    }
+}
+
 fn run_walk(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
@@ -1623,6 +1689,7 @@ fn run_walk(
     // source_root sets, the key must grow a source_roots_hash component.
     let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
+    let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
@@ -1634,35 +1701,16 @@ fn run_walk(
             governor.current_target_width()
         );
         let batch_start = Instant::now();
-        // Partition units: memo units stay on the main thread; others spawn.
-        // A unit goes to the memo path if (a) its profile declares heavy whole-tree
-        // resolve, or (b) its entry is already in walk_memo from a prior batch — in
-        // which case re-resolving would be redundant regardless of profile.
+        // Partition units into lanes (decision table: `batch_unit_lane`): memo and
+        // Discovery units stay on the main thread; others spawn.
         let mut memo_units: Vec<BatchUnit> = Vec::new();
         let mut main_thread_units: Vec<BatchUnit> = Vec::new();
         let mut thread_units: Vec<BatchUnit> = Vec::new();
         for unit in units {
-            match &unit {
-                BatchUnit::SharedClaims {
-                    use_walk_memo: true,
-                    ..
-                } => memo_units.push(unit),
-                BatchUnit::SharedClaims {
-                    entry,
-                    execution_mode,
-                    ..
-                } if walk_memo.contains_key(&(entry.clone(), *execution_mode)) => {
-                    memo_units.push(unit)
-                }
-                // Discovery pumps run on the MAIN thread: `process_shared_index` is
-                // thread-local (Rc-based, !Send), and the eagerly-installed compile-clean
-                // receipt (see the install before run_walk) warmed THIS thread's index —
-                // routing the pump here is what lets batch-2's witness resolves read the
-                // gate's content-keyed typed store instead of re-typechecking the tree
-                // (lever 1, PR #6766). No wall-clock loss: the main thread previously
-                // idled at the join while the one Discovery unit ran on a spawned thread.
-                BatchUnit::Discovery { .. } => main_thread_units.push(unit),
-                _ => thread_units.push(unit),
+            match batch_unit_lane(&unit, &walk_memo, &memo_path_entries) {
+                UnitLane::Memo => memo_units.push(unit),
+                UnitLane::MainThread => main_thread_units.push(unit),
+                UnitLane::Spawned => thread_units.push(unit),
             }
         }
         // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
@@ -2137,11 +2185,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plan evaluation, so a naming violation is the cheapest possible failure.
     {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        if let Err(msg) = v1_compiler::cli_run::check_floor_filename_hygiene(&source_roots)
-            .and_then(|_| {
-                v1_compiler::cli_run::discover_floor_corpus_rows(&source_roots, &[], &excludes)
-                    .map(|_| ())
-            })
+        if let Err(msg) =
+            v1_compiler::cli_run::discover_floor_witness_roster(&source_roots, &[], &excludes, &[])
+                .map(|_| ())
         {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
@@ -2339,6 +2385,85 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // One entry, one resolve (lane clause (c)): a negligible-profile SharedClaims
+    // group whose (entry, mode) some batch resolves on the memo path is itself
+    // routed to the memo lane, so the entry's closure resolves once on the main
+    // thread (thread-local `process_shared_index`) instead of cold on a spawned
+    // thread — the #7088 cheap-gate batch-0 shape (resolve receipt 4).
+    #[test]
+    fn same_entry_shared_claims_promote_to_memo_lane_across_batches() {
+        let cheap = |f: &str| Runnable::SingleClaim {
+            entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            function: f.to_string(),
+            use_walk_memo: false,
+            execution_mode: ExecutionMode::Wet,
+        };
+        let heavy = Runnable::SingleClaim {
+            entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            function: "dag_compile_clean_gate_passes".to_string(),
+            use_walk_memo: true,
+            execution_mode: ExecutionMode::Wet,
+        };
+        let batches = vec![
+            vec![
+                cheap("layering_imports_gate_passes"),
+                cheap("extdeps_external_authority_gate_passes"),
+                cheap("generated_artifact_drift_gate_passes"),
+            ],
+            vec![heavy],
+        ];
+        let keys = memo_path_entry_keys(&batches);
+        assert!(keys.contains(&(
+            "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            ExecutionMode::Wet
+        )));
+        let empty_memo = std::collections::HashMap::new();
+        let cheap_units = group_batch_units(&batches[0]);
+        assert_eq!(
+            cheap_units.len(),
+            1,
+            "same-entry claims coalesce into one resolve-group"
+        );
+        assert_eq!(
+            batch_unit_lane(&cheap_units[0], &empty_memo, &keys),
+            UnitLane::Memo,
+            "batch-0 group must ride the memo lane when a later batch resolves the same entry there"
+        );
+        // RED control — the promotion is exactly the heavy same-entry declaration:
+        // without it the group spawns (the pre-fix behavior).
+        let no_heavy = memo_path_entry_keys(&batches[..1]);
+        assert!(no_heavy.is_empty());
+        assert_eq!(
+            batch_unit_lane(&cheap_units[0], &empty_memo, &no_heavy),
+            UnitLane::Spawned
+        );
+    }
+
+    // Mode is part of the promotion key: a Hermetic group must not share a Wet
+    // entry's memo context (the cached InterpContext carries its effect envelope).
+    #[test]
+    fn memo_lane_promotion_is_mode_keyed() {
+        let batches = vec![vec![Runnable::SingleClaim {
+            entry: "dag/x.dag".to_string(),
+            function: "f".to_string(),
+            use_walk_memo: true,
+            execution_mode: ExecutionMode::Wet,
+        }]];
+        let keys = memo_path_entry_keys(&batches);
+        let hermetic_units = group_batch_units(&[Runnable::SingleClaim {
+            entry: "dag/x.dag".to_string(),
+            function: "g".to_string(),
+            use_walk_memo: false,
+            execution_mode: ExecutionMode::Hermetic,
+        }]);
+        let empty_memo = std::collections::HashMap::new();
+        assert_eq!(
+            batch_unit_lane(&hermetic_units[0], &empty_memo, &keys),
+            UnitLane::Spawned,
+            "a Wet memo entry must not promote a Hermetic group on the same entry"
+        );
+    }
 
     #[test]
     fn floor_arm_time_budget_refusal_plan_functions_match_dag_seed_roster() {

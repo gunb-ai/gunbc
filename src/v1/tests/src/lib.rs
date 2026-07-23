@@ -106,6 +106,8 @@ mod measure_value_arg_unit_collapse_test;
 mod module_authority_resolution_test;
 mod namespace_alias_decl_test;
 #[cfg(test)]
+mod namespace_unique_on_chain_policy_test;
+#[cfg(test)]
 mod nested_fold_generic_param_emit_test;
 mod nested_list_alias_emit_test;
 #[cfg(test)]

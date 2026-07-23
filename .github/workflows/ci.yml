@@ -111,7 +111,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
-    timeout-minutes: 600
+    timeout-minutes: 130
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -149,7 +149,7 @@ jobs:
             fi
           fi
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
-        timeout-minutes: 270
+        timeout-minutes: 15
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
@@ -174,7 +174,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 270
+        timeout-minutes: 55
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
@@ -190,8 +190,8 @@ jobs:
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
           n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
-          if test "$n" -ne 4; then echo "floor resolve count $n differs from declared 4: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
-          echo "floor resolve count $n matches declared 4 (declared cold-resolve receipt)"
+          if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
+          echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
         timeout-minutes: 5
       - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
         run: |
@@ -252,3 +252,46 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+  heal_generated_artifacts:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [build]
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+        timeout-minutes: 5
+      - name: Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/generated_artifact_gate.dag --function main_wet
+        timeout-minutes: 5
+      - name: Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)
+        run: |
+          git config user.name "gunbc-ci-auto-heal"
+          git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
+          git add ".github/workflows/ci.yml" ".github/workflows/falsifier.yml" ".gitignore" "ROADMAP.md" "DESIGN.md" ".githooks/pre-push" ".githooks/pre-commit" "dag/gunbc/stage0_crate_layout_generated.dag" "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs" "dag/gunbc/stage0_crate_partition_generated.dag" ".github/live-deploy-srv1-apply.sh" ".github/live-deploy-srv1-retract.sh" "docs/plans/idea-machine.md" "docs/plans/algebraic-rewrite-optimization.md" "docs/plans/dag-v2-defork-audit.md" "docs/plans/v2-self-hosting.md" "docs/plans/m5-fixture-store-consolidation.md" "docs/plans/model-realization-fork.md" "docs/plans/ci-merge-freshness.md" "docs/plans/seed-debt-bundle-item-2.md" "docs/plans/axiom-syllogism-lens.md" "docs/plans/invert-hand-maintained.md" "docs/plans/fail-closed-lockdown.md" "docs/plans/format-model-reconciliation.md" "docs/plans/regime2-shared-emission-fold.md" "docs/plans/shell-emission-model.md" "docs/plans/construction-justification-rule.md" "docs/plans/emission-ingestion-inverse.md" "docs/plans/testgen-oracle.md" "docs/plans/disposition-carrier.md" "docs/plans/fold-ergonomics.md" "docs/plans/m4-universal-hermetic-corpus.md" "docs/plans/wiring-liveness-preflight.md" "docs/plans/interpreter-kernel-d.md" "docs/plans/inert-layer-lens.md" "docs/plans/compile-clean-forcecheck.md" "docs/plans/expressibility-frontier.md" "docs/plans/p1-where-clause-lowering.md" "docs/plans/intent-linearity-design-draft.md" "docs/plans/solve-higher-order-design.md" "docs/plans/language-target-self-host-frontier.md" "docs/plans/self-applying-lenses.md" "docs/plans/budget-tree.md" "docs/plans/cardinality-refinement.md" "docs/plans/compute-envelope-model.md" "docs/plans/input-envelope-roadmap.md" "docs/plans/ci-selection-vs-scheduling.md" "docs/plans/ci-process-end-to-end.md" "docs/plans/ci-oom-reclassification.md" "docs/plans/bounded-input-cost-envelope-scheduling.md" "docs/plans/ci-humming.md" "docs/plans/edge-b-rust-dag-provenance-brief.md" "docs/plans/resolver-type-name-collision-wall.md" "docs/plans/realization-measurement-loop.md" "docs/plans/host-effect-orchestration.md" "docs/plans/ci-floor-fractal-gantt.md" "docs/plans/resolver-pathology-profile-receipt.md" "docs/plans/representation-minimization.md" "docs/plans/reference-grounding-migration.md" "docs/plans/typescript-gap-census.md" "docs/plans/cli-run-hollowing-plan.md" "docs/plans/fleet-acceptance-criteria.md" "docs/plans/structural-quadratic-wall-coverage-audit.md" "docs/plans/ci-performance-tanking-evidence.md"
+          if git diff --cached --quiet; then
+            echo "chore-heal: no generated-artifact drift on this tree; nothing to commit"
+          else
+            git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            git push origin HEAD:main
+            echo "chore-heal: pushed regenerated generated artifacts to main"
+          fi
+        timeout-minutes: 5

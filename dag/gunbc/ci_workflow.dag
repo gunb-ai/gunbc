@@ -11,6 +11,7 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_invoke,
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
+  gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -42,7 +43,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
   checkout_action, setup_rust_action, cache_action,
   upload_artifact_action, download_artifact_action
@@ -397,9 +398,13 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
-data gunbc_ci_floor_step_timeout_minutes: Duration = 270
+data gunbc_ci_floor_step_timeout_minutes: Duration = 55
 
-data gunbc_ci_floor_step_timeout_discovery_flip_note: String = "-> 270 restored 2026-07-12 on #6512 after 60m fail-fast regressed merge CI (receipt run 29197126623 @ 35f212fa5d: 60m step kill with 0 witness FAILs — batch-1 compile-clean PASS @ 15:01, batch-2 skip walk ~26m to recompute_trace_probe_test, then ~34m silent eval until kill; same serial-floor-wall class as 29183446733). Prior -> 60 operator ruling 2026-07-12: lower floor step cap from 270m so CI fails fast while the serial floor wall is debugged separately (receipt run 29183446733 @ 2e856a5617: 270m kill with 0 witness FAILs, batch-2 still in discovery SKIP walk). Prior -> 270 at PR #6464 receipt run 29151777611 (2026-07-11): 180m step cap still timed out mid batch 2 — 1535 SKIP rows finished @ 12:35:43, then ~147m silent witness-execution phase until the 180m kill @ 15:03:12 with batch 2 never completing (~177m in-batch from 12:06:38; ~443 non-skipped rows in roster of 1978). Prior -> 180 at run 29148344466 (~116m in-batch, ~87m post-skip). Prior -> 120 at run 29145270700. Prior -> 90 at run 29141663541. Prior -> 90 at body_lowering normalize hook (#6459 receipt run 29148735992 @ 3a372b7: floor step timed out at 60m MID discovery corpus after ~320 SKIP lines — batch-1 compile-clean normalize reconcile ~263s with body_lowering_fold in the normalize import closure; discovery still resolves every unique entry file before skip, so resolve->normalize pulled the ~1.3k-line scaffold into most closure walks). Structural fix on the same lane: NormalizedTree moved to v2.compiler.normalized_tree so v2.compiler.resolve no longer imports normalize (dissolve-on: skip-before-resolve so skipped rows never pay entry resolve). Prior step budget -> 60 at the discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note; authored as 30 -> 60 on #6403, main had meanwhile bumped 30 -> 45 with the #6422 enrollments): the corpus discovery batch adds a whole-tree resolve plus the always-run live-tree rows to the floor step. Discovery corpus spawn_width_cap stays pinned to 1 (ci_corpus_discovery_spawn_width_cap in v2.workflow.ci_floor_plan): at width W the executor holds the parent's process-shared index PLUS W private shard indexes ((1+W) x whole-tree residency; width=2 OOM receipt run 28999086030), while width=1 runs rows on the main thread against the ONE shared index (union-resolve S1). CORRECTED RECEIPT (2026-07-10): run 29000557166's floor did NOT complete - the executor was host-OOM-killed ~8min in, MID discovery corpus (the log's later ExitSuccess belongs to the merge-admission STAMP tool, which stamped CI_FLOOR_EXIT=137); no flipped corpus has completed in CI yet - the only completion receipt is local (33.5GiB container, ~40min at width 5). The kill vector is host-level oversubscription (see gunbc_falsifier_plan_spawn_width_note), not this width model. #6475 receipt run 29143617420 @ 0c0f73: batch-1 compile-clean ~4m green; batch-2 discovery killed at 90m step cap mid-manual (last skip rust_wire_serde @ 07:47:49; ~15GiB peak). #6475 receipt run 29146814967 @ 6a61fce: same stall at 120m (last skip rust_wire_serde @ 09:34:49; ~85m silent eval). #6475 receipt run 29150477894 @ 6cd5326: same stall at 180m (last skip rust_wire_serde @ 11:43:46; ~88m silent eval) — local gunbc run on s1_closure_parses_holds reads 3/40 closure paths in 10m before timeout, matching the silent-eval class (live filesystem_read per path, not a skip-logged row). #6475 receipt run 29161709373 @ 9d9852c: batch-1 compile-clean refused — gunbc_ci_floor_step_timeout_discovery_flip_note string literal terminated early at col 2043 (body_lowering suffix spliced after closing quote during rebase merge); restored single-line literal on rebase to main #6464 note. Revisit down when floor memoization / resolver graph-major shrink the resolve wall; the affected-set selection receipts (skip counts per PR) are the cost dial to watch."
+data gunbc_ci_regen_step_timeout_minutes: Duration = 15
+
+data gunbc_ci_regen_step_timeout_note: String = "The regen step gets its OWN budget (operator main-timeout ruling 2026-07-23): it measured ~5min on every recent green run, and it previously borrowed the floor step's cap — which double-counted the floor budget in the job backstop sum and let a wedged regen sit for hours. 15m = 3x the measured envelope; a regen that exceeds it is a defect to diagnose, never headroom to grant."
+
+data gunbc_ci_floor_step_timeout_discovery_flip_note: String = "-> 55 operator ruling 2026-07-23 (main wall ~75m: 'even 1 hour is absolutely ridiculous'): the 270 cap legalized a 4.5-hour crawl — receipt run 29976854620 @ 76fa6548e killed by hand at t=227m with current=16.3G pinned at memory.high, swap=34.4G, high_events=37,096,823, psi_some_avg10=33.82, oom_kill=0, governor 'hard back-off 1->1' every few seconds: the memory.high throttle-crawl class (retention finally exceeded the slot cap; the prior 40-50m greens were already pinned at 15.2-16.1G with zero headroom), and 8 subsequent main pushes wedged identically behind it fleet-wide. Recent green floors run 39-45m, so 55 is a real ceiling not a target; the regression ledger to hold onto: ~8m pre-#6848 -> ~18m (#6848) -> 40-50m (retention accreting to the cap) -> 4h (cap lost) — one disease (retention, not footprint), never an accepted baseline. Named follow-ups so this cap becomes the backstop rather than the diagnostic: the governor gains a terminal crawl-refusal arm (sustained high_events storm at width=1 -> typed FloorRefusedMemoryBudget naming batch/peak/swap, minutes not hours), and the #7106-attributed levers (one-tree-one-resolve, #6848 once-per-entry fixpoint, M2 eviction) bring the floor back under the cap with margin. Superseded main runs are NOT cancelled by policy (operator 2026-07-23): the per-commit verdict history is bisection evidence — the timeout IS the bound. PRIOR HISTORY: -> 270 restored 2026-07-12 on #6512 after 60m fail-fast regressed merge CI (receipt run 29197126623 @ 35f212fa5d: 60m step kill with 0 witness FAILs — batch-1 compile-clean PASS @ 15:01, batch-2 skip walk ~26m to recompute_trace_probe_test, then ~34m silent eval until kill; same serial-floor-wall class as 29183446733). Prior -> 60 operator ruling 2026-07-12: lower floor step cap from 270m so CI fails fast while the serial floor wall is debugged separately (receipt run 29183446733 @ 2e856a5617: 270m kill with 0 witness FAILs, batch-2 still in discovery SKIP walk). Prior -> 270 at PR #6464 receipt run 29151777611 (2026-07-11): 180m step cap still timed out mid batch 2 — 1535 SKIP rows finished @ 12:35:43, then ~147m silent witness-execution phase until the 180m kill @ 15:03:12 with batch 2 never completing (~177m in-batch from 12:06:38; ~443 non-skipped rows in roster of 1978). Prior -> 180 at run 29148344466 (~116m in-batch, ~87m post-skip). Prior -> 120 at run 29145270700. Prior -> 90 at run 29141663541. Prior -> 90 at body_lowering normalize hook (#6459 receipt run 29148735992 @ 3a372b7: floor step timed out at 60m MID discovery corpus after ~320 SKIP lines — batch-1 compile-clean normalize reconcile ~263s with body_lowering_fold in the normalize import closure; discovery still resolves every unique entry file before skip, so resolve->normalize pulled the ~1.3k-line scaffold into most closure walks). Structural fix on the same lane: NormalizedTree moved to v2.compiler.normalized_tree so v2.compiler.resolve no longer imports normalize (dissolve-on: skip-before-resolve so skipped rows never pay entry resolve). Prior step budget -> 60 at the discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note; authored as 30 -> 60 on #6403, main had meanwhile bumped 30 -> 45 with the #6422 enrollments): the corpus discovery batch adds a whole-tree resolve plus the always-run live-tree rows to the floor step. Discovery corpus spawn_width_cap stays pinned to 1 (ci_corpus_discovery_spawn_width_cap in v2.workflow.ci_floor_plan): at width W the executor holds the parent's process-shared index PLUS W private shard indexes ((1+W) x whole-tree residency; width=2 OOM receipt run 28999086030), while width=1 runs rows on the main thread against the ONE shared index (union-resolve S1). CORRECTED RECEIPT (2026-07-10): run 29000557166's floor did NOT complete - the executor was host-OOM-killed ~8min in, MID discovery corpus (the log's later ExitSuccess belongs to the merge-admission STAMP tool, which stamped CI_FLOOR_EXIT=137); no flipped corpus has completed in CI yet - the only completion receipt is local (33.5GiB container, ~40min at width 5). The kill vector is host-level oversubscription (see gunbc_falsifier_plan_spawn_width_note), not this width model. #6475 receipt run 29143617420 @ 0c0f73: batch-1 compile-clean ~4m green; batch-2 discovery killed at 90m step cap mid-manual (last skip rust_wire_serde @ 07:47:49; ~15GiB peak). #6475 receipt run 29146814967 @ 6a61fce: same stall at 120m (last skip rust_wire_serde @ 09:34:49; ~85m silent eval). #6475 receipt run 29150477894 @ 6cd5326: same stall at 180m (last skip rust_wire_serde @ 11:43:46; ~88m silent eval) — local gunbc run on s1_closure_parses_holds reads 3/40 closure paths in 10m before timeout, matching the silent-eval class (live filesystem_read per path, not a skip-logged row). #6475 receipt run 29161709373 @ 9d9852c: batch-1 compile-clean refused — gunbc_ci_floor_step_timeout_discovery_flip_note string literal terminated early at col 2043 (body_lowering suffix spliced after closing quote during rebase merge); restored single-line literal on rebase to main #6464 note. Revisit down when floor memoization / resolver graph-major shrink the resolve wall; the affected-set selection receipts (skip counts per PR) are the cost dial to watch."
 
 data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -431,7 +436,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_regen_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
@@ -454,12 +459,76 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
 fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
+}
+
+fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn ci_heal_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)" },
+    id: none,
+    run: gunbc_ci_heal_regen_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_heal_commit_push_step() -> Step {
+  RunStep {
+    name: Present { value: "Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)" },
+    id: none,
+    run: gunbc_ci_heal_commit_push_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class (ci-chores lane, operator-directed 2026-07-23: 'the priority is getting heal working'). A generated-artifact drift is a red whose remedy is a pure function of the tree — regenerate the projection from its .dag authority — so the pipeline heals it without a human. The job runs on main pushes only (ci_deploy_push_to_main_if, the same guard the srv1 deploy job uses), needs only build (the release gunbc binary), and is deliberately independent of the ci job's verdict: the drift gate lives IN ci, so a heal gated on ci passing would be skipped exactly when it is needed. It downloads+unpacks the release bins like the deploy job, runs main_wet to rewrite drifted artifacts, then commits+pushes ONLY if git diff shows a change. contents:write is scoped to THIS job (least privilege, DESIGN §5): the workflow default stays contents:read, so the whole-corpus ci floor never runs with a push-capable token — only this ten-line regen+push job does. Fail-closed: main_wet stops on the first write failure. The loop terminates by construction, NOT by a re-run — a GITHUB_TOKEN-pushed commit does not trigger a new workflow (GitHub's cascade-prevention), so there is no self-verifying second run; loop-safety rests on the byte-idempotent fixed point proven pre-merge by witness_committed_is_fixed_point (generated_artifact_drift_test.dag) with its RED control, so a heal that regenerated a still-drifting artifact would already have failed the drift gate before landing. Judgment-class reds (producer bugs, roster staleness) are untouched — this job only re-derives what the registry already declares generatable, never a human decision. main is unprotected today (verified 2026-07-23) so no branch-protection grant is needed for the push; protecting main later is a separate deliberate step that must add this job's identity to the push allowance."
+
+fn ci_heal_generated_artifacts_job() -> Job {
+  Job {
+    id: "heal_generated_artifacts",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_deploy_push_to_main_if },
+    strategy: none,
+    timeout_minutes: Present { value: gunbc_ci_heal_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermWrite },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none
+      }
+    }
+  }
 }
 
 fn ci_build_job() -> Job {
@@ -475,7 +544,8 @@ fn ci_build_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -492,7 +562,8 @@ fn ci_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -506,7 +577,7 @@ fn ci_regen_floor_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_regen_step_timeout_minutes }
   }
 }
 
@@ -546,5 +617,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_job()], ci_deploy_jobs())
+  jobs: concat([ci_build_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job()]))
 }

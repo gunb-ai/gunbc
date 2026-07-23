@@ -128,6 +128,24 @@ fn item_against_prs_drifts() -> Bool {
   item_drifts_against_prs(item: item, committed_box: false, prs: [pr_5445, pr_open_9999])
 }
 
+fn witness_superseded_is_done_and_names_successor() -> Bool {
+  let item = SupersededLine { by: "dag/gunbc/v1_deletion_plan.dag", content: "old lane row" }
+  item_is_done(item: item, merged: [])
+    && item_superseded_by(item: item) == "dag/gunbc/v1_deletion_plan.dag"
+}
+
+fn witness_superseded_underivable_no_drift() -> Bool {
+  let item = SupersededLine { by: "successor-node", content: "old lane row" }
+  is_underivable(v: status_drift(item: item, committed_box: true, merged: []))
+    && !item_drifted(item: item, committed_box: false, merged: [5445])
+}
+
+fn witness_non_superseded_has_no_successor() -> Bool {
+  item_superseded_by(item: authored(done: false, content: "live row")) == ""
+    && item_superseded_by(item: derivable(prs: [5445], title: "bound row")) == ""
+    && item_superseded_by(item: PlainLine { content: "prose row" }) == ""
+}
+
 test fn roadmap_status_witnesses() -> Bool {
   witness_merged_pr_is_merged()
     && witness_open_pr_not_merged()
@@ -145,4 +163,7 @@ test fn roadmap_status_witnesses() -> Bool {
     && witness_derivable_unmerged_box_todo_clean()
     && witness_derivable_partial_multi_todo_clean()
     && item_against_prs_drifts()
+    && witness_superseded_is_done_and_names_successor()
+    && witness_superseded_underivable_no_drift()
+    && witness_non_superseded_has_no_successor()
 }
