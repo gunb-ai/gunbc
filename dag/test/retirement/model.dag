@@ -3,6 +3,7 @@ module test.retirement.model
 type RetirementDisposition
   = DeleteRedundant { covered_by: String }
   | DeleteLowValue { reason: String }
+  | RetainedNonMigratable { reason: String }
 
 type TestModuleRetirement {
   module: String
