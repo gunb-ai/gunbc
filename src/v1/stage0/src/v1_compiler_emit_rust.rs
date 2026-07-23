@@ -794,6 +794,10 @@ pub fn type_leaf_name_for_collapse(
     }
 }
 
+pub fn is_machine_width_phantom_token(name: String) -> bool {
+    name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
+}
+
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -801,6 +805,10 @@ pub fn rust_type_arg_renders_as_unit(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_width_nat_type_literal(n.clone())
+        || is_machine_width_phantom_token(type_leaf_name_for_collapse(
+            n.clone(),
+            source_indices.clone(),
+        ))
         || is_value_variant_type_arg(
             generic_param_names.clone(),
             variant_to_enum.clone(),
@@ -1698,10 +1706,8 @@ pub fn render_rust_alias_rhs_type(
                     None => match rust_opaque_kernel_alias_carrier(name.clone()) {
                         Some(carrier) => carrier.clone(),
                         None => {
-                            let rendered = rust_render_type_leaf_name(
-                                name.clone(),
-                                variant_to_enum.clone(),
-                            );
+                            let rendered =
+                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
                             render_rust_shared_type_if_needed(
                                 name.clone(),
                                 rendered.clone(),
