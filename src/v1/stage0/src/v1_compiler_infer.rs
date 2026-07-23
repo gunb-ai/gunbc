@@ -158,21 +158,22 @@ pub use crate::v1_std_core::{
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, float_type, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_container_type, is_error_diagnostic, is_kernel_type, is_property_contraction,
-    is_tree_size_reducing, kernel_type_set, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_span,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    field_node_type_expr, find_child_named, find_property_string, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_kernel_type,
+    is_property_contraction, is_tree_size_reducing, kernel_type_set, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, none_type, param_node_name_at,
+    param_node_type_expr, qualified_last_segment, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -785,6 +786,39 @@ pub fn namespace_root_from_properties(
         }
         None => name,
     }
+}
+
+pub fn namespace_alias_target_path(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    find_property_string(
+        item.properties.clone(),
+        "namespace_alias_target".to_string(),
+        source_indices.clone(),
+    )
+}
+
+pub fn is_namespace_alias_item(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+pub fn namespace_alias_binding_for_target(
+    item: Rc<Node>,
+    target_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    Rc::new(TypeBinding {
+        name: authored_name_at(source_indices.clone(), item.clone()),
+        resolved: target_node.clone(),
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    })
 }
 
 pub fn expr_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
@@ -13222,53 +13256,27 @@ pub fn local_binding_for_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
-    {
-        let has_structure = (item.connective.clone() != Connective::NoConnective);
-        if has_structure.clone() {
-            {
-                let type_node = Rc::new(Node {
-                    name: item.name.clone(),
-                    span: item.span.clone(),
-                    ident_span: item.ident_span.clone(),
-                    children: item.children.clone(),
-                    connective: item.connective.clone(),
-                    params: item.params.clone(),
-                    inferred: None,
-                    return_cardinality: item.return_cardinality.clone(),
-                    uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
-                    properties: item.properties.clone(),
-                    type_annotation: None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                });
-                Some(Rc::new(TypeBinding {
-                    name: authored_name_at(source_indices.clone(), item.clone()),
-                    resolved: type_node.clone(),
-                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                }))
-            }
-        } else {
-            if ((item.body.clone() != None) && (item.transport.clone() == None)) {
+    if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+        None
+    } else {
+        {
+            let has_structure = (item.connective.clone() != Connective::NoConnective);
+            if has_structure.clone() {
                 {
-                    let fn_node = Rc::new(Node {
+                    let type_node = Rc::new(Node {
                         name: item.name.clone(),
                         span: item.span.clone(),
                         ident_span: item.ident_span.clone(),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
+                        children: item.children.clone(),
+                        connective: item.connective.clone(),
                         params: item.params.clone(),
-                        inferred: item.inferred.clone(),
+                        inferred: None,
                         return_cardinality: item.return_cardinality.clone(),
                         uses: Rc::new(vec![]),
                         body: None,
                         transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: item.type_annotation.clone(),
+                        properties: item.properties.clone(),
+                        type_annotation: None,
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: None,
@@ -13277,29 +13285,27 @@ pub fn local_binding_for_item(
                     });
                     Some(Rc::new(TypeBinding {
                         name: authored_name_at(source_indices.clone(), item.clone()),
-                        resolved: fn_node.clone(),
+                        resolved: type_node.clone(),
                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
                     }))
                 }
             } else {
-                if (((item.inferred.clone() != None) && ((item.params.clone().len() as i64) == 0))
-                    && (item.body.clone() == None))
-                {
+                if ((item.body.clone() != None) && (item.transport.clone() == None)) {
                     {
-                        let alias_node = Rc::new(Node {
+                        let fn_node = Rc::new(Node {
                             name: item.name.clone(),
                             span: item.span.clone(),
                             ident_span: item.ident_span.clone(),
                             children: Rc::new(vec![]),
                             connective: Connective::NoConnective,
-                            params: Rc::new(vec![]),
+                            params: item.params.clone(),
                             inferred: item.inferred.clone(),
                             return_cardinality: item.return_cardinality.clone(),
                             uses: Rc::new(vec![]),
                             body: None,
                             transport: None,
                             properties: Rc::new(vec![]),
-                            type_annotation: None,
+                            type_annotation: item.type_annotation.clone(),
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: None,
@@ -13308,72 +13314,108 @@ pub fn local_binding_for_item(
                         });
                         Some(Rc::new(TypeBinding {
                             name: authored_name_at(source_indices.clone(), item.clone()),
-                            resolved: alias_node.clone(),
+                            resolved: fn_node.clone(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }))
                     }
                 } else {
-                    if ((item.transport.clone() == None)
-                        && ((item.children.clone().len() as i64) > 0))
+                    if (((item.inferred.clone() != None)
+                        && ((item.params.clone().len() as i64) == 0))
+                        && (item.body.clone() == None))
                     {
                         {
-                            let ref_node = nominal_ref_node(
-                                authored_name_at(source_indices.clone(), item.clone()),
-                                item.span.clone(),
-                                item.ident_span.clone(),
-                            );
+                            let alias_node = Rc::new(Node {
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            });
                             Some(Rc::new(TypeBinding {
                                 name: authored_name_at(source_indices.clone(), item.clone()),
-                                resolved: ref_node.clone(),
+                                resolved: alias_node.clone(),
                                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                             }))
                         }
                     } else {
-                        if (((((item.params.clone().len() as i64) > 0)
-                            && (item.connective.clone() == Connective::NoConnective))
-                            && (item.body.clone() == None))
-                            && (item.transport.clone() == None))
+                        if ((item.transport.clone() == None)
+                            && ((item.children.clone().len() as i64) > 0))
                         {
                             {
-                                let bare_node = Rc::new(Node {
-                                    name: item.name.clone(),
-                                    span: item.span.clone(),
-                                    ident_span: item.ident_span.clone(),
-                                    children: Rc::new(vec![]),
-                                    connective: Connective::NoConnective,
-                                    params: item.params.clone(),
-                                    inferred: item.inferred.clone(),
-                                    return_cardinality: item.return_cardinality.clone(),
-                                    uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
-                                    properties: Rc::new(vec![]),
-                                    type_annotation: None,
-                                    is_self_recursive: false,
-                                    has_non_tail_self_call: false,
-                                    match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                });
+                                let ref_node = nominal_ref_node(
+                                    authored_name_at(source_indices.clone(), item.clone()),
+                                    item.span.clone(),
+                                    item.ident_span.clone(),
+                                );
                                 Some(Rc::new(TypeBinding {
                                     name: authored_name_at(source_indices.clone(), item.clone()),
-                                    resolved: bare_node.clone(),
+                                    resolved: ref_node.clone(),
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                 }))
                             }
                         } else {
-                            if ((((((item.properties.clone().len() as i64) > 0)
+                            if (((((item.params.clone().len() as i64) > 0)
                                 && (item.connective.clone() == Connective::NoConnective))
+                                && (item.body.clone() == None))
                                 && (item.transport.clone() == None))
-                                && (item.inferred.clone() == None))
-                                && ((item.params.clone().len() as i64) == 0))
                             {
-                                Some(nominal_type_binding(authored_name_at(
-                                    source_indices.clone(),
-                                    item.clone(),
-                                )))
+                                {
+                                    let bare_node = Rc::new(Node {
+                                        name: item.name.clone(),
+                                        span: item.span.clone(),
+                                        ident_span: item.ident_span.clone(),
+                                        children: Rc::new(vec![]),
+                                        connective: Connective::NoConnective,
+                                        params: item.params.clone(),
+                                        inferred: item.inferred.clone(),
+                                        return_cardinality: item.return_cardinality.clone(),
+                                        uses: Rc::new(vec![]),
+                                        body: None,
+                                        transport: None,
+                                        properties: Rc::new(vec![]),
+                                        type_annotation: None,
+                                        is_self_recursive: false,
+                                        has_non_tail_self_call: false,
+                                        match_pattern: None,
+                                        expr_data: Rc::new(ExprData::NoExprData),
+                                        ident: None,
+                                    });
+                                    Some(Rc::new(TypeBinding {
+                                        name: authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ),
+                                        resolved: bare_node.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }))
+                                }
                             } else {
-                                None
+                                if ((((((item.properties.clone().len() as i64) > 0)
+                                    && (item.connective.clone() == Connective::NoConnective))
+                                    && (item.transport.clone() == None))
+                                    && (item.inferred.clone() == None))
+                                    && ((item.params.clone().len() as i64) == 0))
+                                {
+                                    Some(nominal_type_binding(authored_name_at(
+                                        source_indices.clone(),
+                                        item.clone(),
+                                    )))
+                                } else {
+                                    None
+                                }
                             }
                         }
                     }
@@ -13390,10 +13432,30 @@ pub fn symbol_index_insert_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
     {
-        let with_decl = match local_binding_for_item(item.clone(), source_indices.clone()) {
-            None => index.clone(),
-            Some(binding) => {
-                symbol_index_insert_decl(index.clone(), module_path.clone(), binding.clone())
+        let with_decl = if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+            match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+                None => index.clone(),
+                Some(target_path) => {
+                    match symbol_index_lookup(index.clone(), target_path.clone()) {
+                        None => index.clone(),
+                        Some(target_node) => symbol_index_insert_decl(
+                            index.clone(),
+                            module_path.clone(),
+                            namespace_alias_binding_for_target(
+                                item.clone(),
+                                target_node.clone(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                    }
+                }
+            }
+        } else {
+            match local_binding_for_item(item.clone(), source_indices.clone()) {
+                None => index.clone(),
+                Some(binding) => {
+                    symbol_index_insert_decl(index.clone(), module_path.clone(), binding.clone())
+                }
             }
         };
         if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
@@ -14763,20 +14825,74 @@ pub fn build_type_env(
             }
             __result
         });
+        let namespace_alias_diags = Rc::new({
+            let mut __result = Vec::new();
+            for item in module_items(module.module.clone()).iter().cloned() {
+                __result.extend(
+                    (*if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                        match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+                            None => Rc::new(vec![]),
+                            Some(target_path) => {
+                                match symbol_index_lookup(symbol_index.clone(), target_path.clone())
+                                {
+                                    Some(_) => Rc::new(vec![]),
+                                    None => Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::UnresolvedType {
+                                            name: target_path.clone(),
+                                            span: item.span.clone(),
+                                        }),
+                                        module_name_str.clone(),
+                                    )]),
+                                }
+                            }
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| match local_binding_for_item(
-                item.clone(),
-                source_indices.clone(),
-            ) {
-                Some(binding) => v1_rt::rc_map_insert(
-                    acc.clone(),
-                    intern(intern_table.clone(), binding.name.clone())
-                        .id
-                        .clone(),
-                    binding.clone(),
-                ),
-                None => acc.clone(),
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
+                if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                    match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+                        None => acc.clone(),
+                        Some(target_path) => {
+                            match symbol_index_lookup(symbol_index.clone(), target_path.clone()) {
+                                None => acc.clone(),
+                                Some(target_node) => {
+                                    let binding = namespace_alias_binding_for_target(
+                                        item.clone(),
+                                        target_node.clone(),
+                                        source_indices.clone(),
+                                    );
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        intern(intern_table.clone(), binding.name.clone())
+                                            .id
+                                            .clone(),
+                                        binding.clone(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        Some(binding) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            intern(intern_table.clone(), binding.name.clone())
+                                .id
+                                .clone(),
+                            binding.clone(),
+                        ),
+                        None => acc.clone(),
+                    }
+                }
             },
         );
         let param_bindings = module_items(module.module.clone()).iter().cloned().fold(
@@ -15069,7 +15185,10 @@ pub fn build_type_env(
         Rc::new(BuildTypeEnvResult {
             env: final_env.clone(),
             cache: type_env_cache.clone(),
-            diagnostics: v1_rt::concat(import_diags.clone(), resolved_diags.clone()),
+            diagnostics: v1_rt::concat(
+                v1_rt::concat(import_diags.clone(), namespace_alias_diags.clone()),
+                resolved_diags.clone(),
+            ),
             binding_forks: binding_forks.clone(),
         })
     }
@@ -15260,91 +15379,39 @@ pub fn build_type_env_unresolved(
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
-                let item_ident = intern(
-                    intern_table.clone(),
-                    authored_name_at(source_indices.clone(), item.clone()),
-                )
-                .id
-                .clone();
-                let has_structure = (item.connective.clone() != Connective::NoConnective);
-                if has_structure.clone() {
-                    {
-                        let type_node = Rc::new(Node {
-                            name: item.name.clone(),
-                            span: item.span.clone(),
-                            ident_span: item.ident_span.clone(),
-                            children: item.children.clone(),
-                            connective: item.connective.clone(),
-                            params: Rc::new(vec![]),
-                            inferred: None,
-                            return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: Rc::new(vec![]),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
-                        });
-                        v1_rt::rc_map_insert(
-                            acc.clone(),
-                            item_ident.clone(),
-                            Rc::new(TypeBinding {
-                                name: authored_name_at(source_indices.clone(), item.clone()),
-                                resolved: type_node.clone(),
-                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            }),
-                        )
-                    }
+                if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                    acc.clone()
                 } else {
-                    if (((item.inferred.clone() != None)
-                        && ((item.params.clone().len() as i64) == 0))
-                        && (item.body.clone() == None))
                     {
-                        {
-                            let alias_node = Rc::new(Node {
-                                name: item.name.clone(),
-                                span: item.span.clone(),
-                                ident_span: item.ident_span.clone(),
-                                children: Rc::new(vec![]),
-                                connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
-                                inferred: item.inferred.clone(),
-                                return_cardinality: item.return_cardinality.clone(),
-                                uses: Rc::new(vec![]),
-                                body: None,
-                                transport: None,
-                                properties: Rc::new(vec![]),
-                                type_annotation: None,
-                                is_self_recursive: false,
-                                has_non_tail_self_call: false,
-                                match_pattern: None,
-                                expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                            });
-                            v1_rt::rc_map_insert(
-                                acc.clone(),
-                                item_ident.clone(),
-                                Rc::new(TypeBinding {
-                                    name: authored_name_at(source_indices.clone(), item.clone()),
-                                    resolved: alias_node.clone(),
-                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                }),
-                            )
-                        }
-                    } else {
-                        if ((item.transport.clone() == None)
-                            && ((item.children.clone().len() as i64) > 0))
-                        {
+                        let item_ident = intern(
+                            intern_table.clone(),
+                            authored_name_at(source_indices.clone(), item.clone()),
+                        )
+                        .id
+                        .clone();
+                        let has_structure = (item.connective.clone() != Connective::NoConnective);
+                        if has_structure.clone() {
                             {
-                                let ref_node = nominal_ref_node(
-                                    authored_name_at(source_indices.clone(), item.clone()),
-                                    item.span.clone(),
-                                    item.ident_span.clone(),
-                                );
+                                let type_node = Rc::new(Node {
+                                    name: item.name.clone(),
+                                    span: item.span.clone(),
+                                    ident_span: item.ident_span.clone(),
+                                    children: item.children.clone(),
+                                    connective: item.connective.clone(),
+                                    params: Rc::new(vec![]),
+                                    inferred: None,
+                                    return_cardinality: item.return_cardinality.clone(),
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                });
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
                                     item_ident.clone(),
@@ -15353,28 +15420,94 @@ pub fn build_type_env_unresolved(
                                             source_indices.clone(),
                                             item.clone(),
                                         ),
-                                        resolved: ref_node.clone(),
+                                        resolved: type_node.clone(),
                                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                     }),
                                 )
                             }
                         } else {
-                            if ((((((item.properties.clone().len() as i64) > 0)
-                                && (item.connective.clone() == Connective::NoConnective))
-                                && (item.transport.clone() == None))
-                                && (item.inferred.clone() == None))
+                            if (((item.inferred.clone() != None)
                                 && ((item.params.clone().len() as i64) == 0))
+                                && (item.body.clone() == None))
                             {
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    item_ident.clone(),
-                                    nominal_type_binding(authored_name_at(
-                                        source_indices.clone(),
-                                        item.clone(),
-                                    )),
-                                )
+                                {
+                                    let alias_node = Rc::new(Node {
+                                        name: item.name.clone(),
+                                        span: item.span.clone(),
+                                        ident_span: item.ident_span.clone(),
+                                        children: Rc::new(vec![]),
+                                        connective: Connective::NoConnective,
+                                        params: Rc::new(vec![]),
+                                        inferred: item.inferred.clone(),
+                                        return_cardinality: item.return_cardinality.clone(),
+                                        uses: Rc::new(vec![]),
+                                        body: None,
+                                        transport: None,
+                                        properties: Rc::new(vec![]),
+                                        type_annotation: None,
+                                        is_self_recursive: false,
+                                        has_non_tail_self_call: false,
+                                        match_pattern: None,
+                                        expr_data: Rc::new(ExprData::NoExprData),
+                                        ident: None,
+                                    });
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        item_ident.clone(),
+                                        Rc::new(TypeBinding {
+                                            name: authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            resolved: alias_node.clone(),
+                                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                        }),
+                                    )
+                                }
                             } else {
-                                acc.clone()
+                                if ((item.transport.clone() == None)
+                                    && ((item.children.clone().len() as i64) > 0))
+                                {
+                                    {
+                                        let ref_node = nominal_ref_node(
+                                            authored_name_at(source_indices.clone(), item.clone()),
+                                            item.span.clone(),
+                                            item.ident_span.clone(),
+                                        );
+                                        v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            item_ident.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: authored_name_at(
+                                                    source_indices.clone(),
+                                                    item.clone(),
+                                                ),
+                                                resolved: ref_node.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                            }),
+                                        )
+                                    }
+                                } else {
+                                    if ((((((item.properties.clone().len() as i64) > 0)
+                                        && (item.connective.clone() == Connective::NoConnective))
+                                        && (item.transport.clone() == None))
+                                        && (item.inferred.clone() == None))
+                                        && ((item.params.clone().len() as i64) == 0))
+                                    {
+                                        v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            item_ident.clone(),
+                                            nominal_type_binding(authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            )),
+                                        )
+                                    } else {
+                                        acc.clone()
+                                    }
+                                }
                             }
                         }
                     }

@@ -2517,7 +2517,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
 }),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error("expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
+    err: Some(parse_error("expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
 }),
 }
     }
@@ -2758,6 +2758,9 @@ pub fn parse_item_by_form(
             }
             BodyKind::ValueBody => {
                 parse_data_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
+            }
+            BodyKind::AliasBody => {
+                parse_alias_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
             }
             BodyKind::NoBody => {
                 let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
@@ -9507,6 +9510,126 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             });
         }
         parse_data_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
+    }
+}
+
+pub fn parse_alias_after_kw(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    start_span: Rc<SourceSpan>,
+) -> Rc<ItemResult> {
+    {
+        let dummy = Rc::new(Node {
+            name: "".to_string(),
+            span: start_span.clone(),
+            ident_span: None,
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            connective: Connective::NoConnective,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = expect_ident(tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let name = r.name.clone();
+        let name_span = r.span.clone();
+        let named_dummy = Rc::new(Node {
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            connective: Connective::NoConnective,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let r = parse_dotted_ident(r.tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let target_path = r.name.clone();
+        let target_prop = make_field_init_node(
+            "namespace_alias_target".to_string(),
+            make_expr_node(
+                Rc::new(ExprData::ExprLiteral {
+                    value: Rc::new(LiteralValue::LitStr {
+                        value: target_path.clone(),
+                    }),
+                }),
+                Rc::new(vec![]),
+                None,
+                r.span.clone(),
+            ),
+            start_span.clone(),
+            no_span(),
+        );
+        let item = Rc::new(Node {
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            connective: Connective::NoConnective,
+            transport: None,
+            properties: Rc::new(vec![target_prop.clone()]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(ItemResult {
+            item: item.clone(),
+            tokens: skip_newlines(r.tokens.clone()),
+            ctx: ctx.clone(),
+            err: None,
+        })
     }
 }
 

@@ -21915,6 +21915,16 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
     "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
+    // 2026-07-23 backfill: #7088 (CI fail-fast cheap-gate early batch) landed two sites
+    // unrostered on main — same masking class as the dated blocks below (the landing PR's
+    // affected-set selection predict-skipped the corpus-read nfr witness), surfaced on the
+    // first post-#7085 always-on PR-time receipt (PR #7110's floor) and confirmed by worktree
+    // bisect: unrostered_count 0 at #7092 -> 2 at #7088. Both are structural equality with an
+    // off-variant `_ =>` arm (Gate membership/enrollment tests), siblings to the *_eq rows in
+    // the 2026-07-18 block; dissolve with derived equality from inhabitance (dag/std/algebra,
+    // DESIGN §3/§4) or with #7088's own cheap-gate membership fold migration.
+    "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
+    "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
     // 2026-07-19 backfill: #6857 (effect-reach census lens) landed this site unrostered on
     // main — same masking class as the 2026-07-18 block above (affected-set selection
     // predict-skipped the corpus-read nfr witness for its landing diff; surfaced here when
