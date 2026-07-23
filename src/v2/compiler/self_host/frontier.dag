@@ -23,6 +23,7 @@ import v2.compiler.self_host.frontier_probe_types {
   curated_cargo_probe_generic_type_render_reason,
   curated_cargo_probe_type_ref_import_missing_reason,
   gate_a_flip_probe_witness_std_dup_reason,
+  gate_a_flip_probe_unresolved_compiler_error_reason,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
@@ -324,7 +325,7 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -333,7 +334,7 @@ data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measur
   closure_reads: 52,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -349,7 +350,7 @@ data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = execution_measur
   closure_reads: 51,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -358,7 +359,7 @@ data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_m
   closure_reads: 51,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -426,7 +427,7 @@ data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow =
   closure_reads: 35,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -456,7 +457,7 @@ data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execut
   closure_reads: 58,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
