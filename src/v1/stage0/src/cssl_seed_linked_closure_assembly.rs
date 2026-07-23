@@ -197,23 +197,7 @@ fn dedupe_pub_use_symbols(content: &str) -> String {
 }
 
 fn sanitize_emit_artifact_content(content: &str) -> String {
-    let deduped = dedupe_pub_use_symbols(content);
-    let replaced = deduped
-        .replace("std.algebra._empty", "crate::v2_std_algebra::freemonoid_empty()")
-        .replace("QualifiedName<String>", "QualifiedName");
-    replaced
-        .lines()
-        .filter(|line| {
-            let t = line.trim();
-            !matches!(
-                t,
-                "pub use crate::v2_std_integer::GroupCompletion;"
-                    | "pub use crate::v2_std_collection::List;"
-                    | "pub use crate::v2_std_collection::Map;"
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    dedupe_pub_use_symbols(content)
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
@@ -765,7 +749,7 @@ mod tests {
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&out);
-        let compile_ok = std::process::Command::new(&gunbc)
+        let compile_status = std::process::Command::new(&gunbc)
             .args([
                 "compile",
                 "--source-root",
@@ -782,13 +766,17 @@ mod tests {
                 "primary-precedence",
             ])
             .current_dir(&root)
-            .status()
-            .expect("gunbc compile")
-            .success();
-        if !compile_ok {
-            return;
+            .output()
+            .expect("gunbc compile spawn");
+        if !compile_status.status.success() {
+            panic!(
+                "RED-control setup refused: gunbc compile failed (exit={:?}):\n{}\n{}",
+                compile_status.status.code(),
+                String::from_utf8_lossy(&compile_status.stdout),
+                String::from_utf8_lossy(&compile_status.stderr)
+            );
         }
-        let assemble_ok = std::process::Command::new(&assemble_bin)
+        let assemble_status = std::process::Command::new(&assemble_bin)
             .args([
                 "--out-dir",
                 &out.to_string_lossy(),
@@ -800,11 +788,15 @@ mod tests {
                 "dag/tools/self_host_std_bridge_shims",
             ])
             .current_dir(&root)
-            .status()
-            .expect("cssl_assemble")
-            .success();
-        if !assemble_ok {
-            return;
+            .output()
+            .expect("cssl_assemble spawn");
+        if !assemble_status.status.success() {
+            panic!(
+                "RED-control setup refused: cssl_assemble failed (exit={:?}):\n{}\n{}",
+                assemble_status.status.code(),
+                String::from_utf8_lossy(&assemble_status.stdout),
+                String::from_utf8_lossy(&assemble_status.stderr)
+            );
         }
         for entry in fs::read_dir(&shim_dir).expect("shim dir") {
             let entry = entry.expect("entry");

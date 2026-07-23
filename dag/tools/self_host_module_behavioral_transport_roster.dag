@@ -74,7 +74,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/claim/manual/structured_body_dispatch.dag",
         function: "structured_body_dispatch_accepts_transform_call"
       }
-    ]
+    ],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_ingest.dag",
@@ -145,7 +146,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_03_normalize_shims/witness_main.rs",
     pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [],
-    run_closure_assembly: false
+    run_closure_assembly: true
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_resolve.dag",
@@ -167,7 +168,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/compiler/pipeline/infer_stage_test.dag",
         function: "pipeline_infer_add_fixture_relationship_green"
       }
-    ]
+    ],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/07_target_carriers.dag",
@@ -180,7 +182,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/claim/manual/target_carriers_fidelity_test.dag",
         function: "target_carriers_declared_loss_fidelity_holds"
       }
-    ]
+    ],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/discovery_enumeration.dag",
@@ -193,7 +196,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/claim/discovery_enumeration_test.dag",
         function: "discovery_enumeration_unified_claim_arm_modules_holds"
       }
-    ]
+    ],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/materialization_carriers.dag",
@@ -220,7 +224,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/claim/parse_engine_hooks_test.dag",
         function: "parse_engine_hooks_symbols_match_grammar_productions"
       }
-    ]
+    ],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_assembly.dag",
@@ -277,7 +282,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         entry_rel: "src/v2/test/claim/use_site_verdict_test.dag",
         function: "use_site_verdict_absent_edge_is_distinguishable_from_unclassified"
       }
-    ]
+    ],
+    run_closure_assembly: false
   }
 ]
 
