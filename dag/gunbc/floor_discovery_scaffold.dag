@@ -5,3 +5,7 @@ import std.types { String }
 data floor_discovery_dissolve_trigger: String = "LANDED: discover_floor_corpus_rows_inner_rust_legacy deleted; floor_discovery_producer.dag is the sole roster authority (witness: dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag)."
 
 data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"
+
+data floor_discovery_equivalence_test_sidecar_misplaced: String = "misplaced_wire_contract_decl_drives_discover_to_err"
+
+data floor_discovery_equivalence_test_scan_wire_contract: String = "scan_detects_coproduct_wire_contract_data"

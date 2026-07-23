@@ -27,17 +27,6 @@ type FloorDiscoverySidecarViolation {
   required_suffix: String
 }
 
-fn floor_discovery_row_is_live_tree(row: FloorDiscoveryRow) -> Bool {
-  match row.reads_live_tree {
-    ReadsLiveTree => true
-    SubstrateInputsOnly => false
-  }
-}
-
-fn floor_discovery_row_is_selection_eligible(row: FloorDiscoveryRow) -> Bool {
-  !floor_discovery_row_is_live_tree(row: row)
-}
-
 fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
   if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
     optional_absent()

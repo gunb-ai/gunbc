@@ -3,13 +3,103 @@ module test.claim.floor_discovery_hand_rust_equivalence_witness
 import gunbc.floor_discovery_scaffold {
   floor_discovery_dissolve_trigger,
   floor_discovery_producer_entry,
+  floor_discovery_equivalence_test_sidecar_misplaced,
+  floor_discovery_equivalence_test_scan_wire_contract,
 }
+import v2.compiler.discovery_enumeration {
+  OwnedBoolWitnessClaimInit,
+  OwnedDataDeclRecord
+}
+import v2.workflow.floor_discovery {
+  FloorDiscoveryRow,
+  floor_discovery_test_decl_sidecar_violation
+}
+import v2.workflow.floor_discovery_producer {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryRefused,
+  discover_floor_corpus_rows_from_host_facts,
+  floor_discovery_scan_test_decl_names,
+  floor_filename_hygiene_refusal_for_paths
+}
+import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
+import v2.std.collection { Absent, List, Optional, Present, fold_list }
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data floor_discovery_hand_rust_equivalence_note: String = "Receipt that the HAND-RUST discover_floor_corpus_rows_inner roster walk was deleted after floor_discovery_producer.dag dual-run equivalence went green. The .dag producer is now the sole live authority; cli_run.rs retains only the thin Wet realize bridge (discover_floor_corpus_rows_from_dag_producer + post-validation)."
+data floor_discovery_hand_rust_equivalence_note: String = "Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename hygiene, test-decl scan, sidecar placement) with RED perturbation controls. Rust bridge cross-checks are named in gunbc.floor_discovery_scaffold (sidecar_placement_hygiene_tests in cli_run.rs)."
+
+data fixture_witness_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
+data fixture_test_fn_content: String = "test fn floor_discovery_roster_fixture_witness() -> Bool { true }\n"
+data fixture_test_data_content: String = "test data floor_discovery_data_fixture: Bool = true\n"
+data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
+data fixture_hygiene_clean_path: String = "dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag"
+data fixture_hygiene_bad_path: String = "dag/test/claim/bad__hygiene.dag"
+
+fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
+  OwnedDataDeclRecord {
+    entry: "dag/gunbc/floor_discovery_scaffold.dag",
+    module: "gunbc.floor_discovery_scaffold",
+    decl_name: "unified_claim_floor_discovery_fixture",
+    initializer: OwnedBoolWitnessClaimInit {
+      witness_entry: fixture_witness_entry,
+      witness_function: fixture_witness_function
+    }
+  }
+}
+
+fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
+  OwnedDataDeclRecord {
+    entry: "dag/gunbc/floor_discovery_scaffold.dag",
+    module: "gunbc.floor_discovery_scaffold",
+    decl_name: "unified_claim_floor_discovery_fixture_empty",
+    initializer: OwnedBoolWitnessClaimInit {
+      witness_entry: "",
+      witness_function: ""
+    }
+  }
+}
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(found, x) {
+      if found {
+        true
+      } else {
+        x == needle
+      }
+    }
+  )
+}
+
+fn floor_discovery_rows_contain_entry_function(
+  rows: List<FloorDiscoveryRow>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      if found {
+        true
+      } else {
+        (row.entry == entry) && (row.function == function)
+      }
+    }
+  )
+}
+
+fn floor_discovery_first_row_label(rows: List<FloorDiscoveryRow>) -> String {
+  match list_head(xs: rows) {
+    HeadFound { value: row } => row.label
+    HeadAbsent => ""
+  }
+}
 
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
   string_contains(s: floor_discovery_dissolve_trigger, pattern: "floor_discovery_producer")
@@ -18,4 +108,93 @@ test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
 
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {
   floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
+}
+
+test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
+  match discover_floor_corpus_rows_from_host_facts(
+    source_roots: [],
+    scan_dirs: [],
+    exclude_substrings: [],
+    owned_data_records: [fixture_bool_witness_record()]
+  ) {
+    FloorDiscoveryAccepted { rows: rows } =>
+      (length(xs: rows) == 1)
+        && floor_discovery_rows_contain_entry_function(
+          rows: rows,
+          entry: fixture_witness_entry,
+          function: fixture_witness_function
+        )
+        && (floor_discovery_first_row_label(rows: rows) == "floor_discovery_fixture")
+    FloorDiscoveryRefused { reason: _ } => false
+  }
+}
+
+test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
+  match discover_floor_corpus_rows_from_host_facts(
+    source_roots: [],
+    scan_dirs: [],
+    exclude_substrings: [],
+    owned_data_records: [fixture_bool_witness_record_empty_transport()]
+  ) {
+    FloorDiscoveryAccepted { rows: rows } => length(xs: rows) == 0
+    FloorDiscoveryRefused { reason: _ } => false
+  }
+}
+
+test fn floor_discovery_filename_hygiene_clean_holds() -> Bool {
+  match floor_filename_hygiene_refusal_for_paths(dag_paths: [fixture_hygiene_clean_path]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn floor_discovery_filename_hygiene_double_underscore_red_control() -> Bool {
+  match floor_filename_hygiene_refusal_for_paths(dag_paths: [fixture_hygiene_bad_path]) {
+    Present { value: msg } =>
+      string_contains(s: msg, pattern: "__")
+        && string_contains(s: msg, pattern: fixture_hygiene_bad_path)
+    Absent => false
+  }
+}
+
+test fn floor_discovery_scan_test_fn_decl_holds() -> Bool {
+  list_contains_string(
+    xs: floor_discovery_scan_test_decl_names(content: fixture_test_fn_content),
+    needle: fixture_witness_function
+  )
+}
+
+test fn floor_discovery_scan_test_data_decl_holds() -> Bool {
+  list_contains_string(
+    xs: floor_discovery_scan_test_decl_names(content: fixture_test_data_content),
+    needle: "floor_discovery_data_fixture"
+  )
+}
+
+test fn floor_discovery_sidecar_test_decl_misplaced_red_control() -> Bool {
+  match floor_discovery_test_decl_sidecar_violation(entry_path: fixture_misplaced_entry) {
+    Present { value: v } =>
+      (v.entry_path == fixture_misplaced_entry)
+        && string_contains(s: v.required_suffix, pattern: "_test.dag")
+    Absent => false
+  }
+}
+
+test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
+  match floor_discovery_test_decl_sidecar_violation(
+    entry_path: "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
+  string_contains(
+    s: floor_discovery_equivalence_test_sidecar_misplaced,
+    pattern: "misplaced_wire_contract_decl_drives_discover_to_err"
+  ) && string_contains(
+    s: floor_discovery_equivalence_test_scan_wire_contract,
+    pattern: "scan_detects_coproduct_wire_contract_data"
+  )
 }
