@@ -454,7 +454,8 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -475,7 +476,8 @@ fn ci_build_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -492,7 +494,8 @@ fn ci_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
