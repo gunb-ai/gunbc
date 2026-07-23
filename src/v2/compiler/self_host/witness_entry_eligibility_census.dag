@@ -25,7 +25,7 @@ data witness_entry_eligibility_census_histogram_path: String = "docs/probes/witn
 
 data witness_entry_eligibility_census_entry_count: Int = 762
 
-data witness_entry_eligibility_census_stamp: String = "2026-07-23T07:20Z"
+data witness_entry_eligibility_census_stamp: String = "2026-07-23T07:25Z"
 
 fn witness_entry_subject(entry_module: String) -> DeclarationRef {
   DeclarationRef {

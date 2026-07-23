@@ -4,7 +4,7 @@ import v2.compiler.self_host.witness_entry_eligibility_census {
   witness_entry_eligibility_census_entry_count,
   witness_entry_eligibility_census_meets_floor,
   witness_entry_eligibility_census_tsv_path,
-  witness_entry_eligibility_histogram_path
+  witness_entry_eligibility_census_histogram_path
 }
 import v2.compiler.self_host.witness_bulk_routing {
   witness_bulk_routing_sample_roster,
@@ -23,7 +23,7 @@ test fn witness_entry_eligibility_census_count_holds() -> Bool {
 
 test fn witness_entry_eligibility_census_carrier_paths_holds() -> Bool {
   witness_entry_eligibility_census_tsv_path != ""
-    && witness_entry_eligibility_histogram_path != ""
+    && witness_entry_eligibility_census_histogram_path != ""
 }
 
 test fn witness_entry_eligibility_census_witnesses() -> Bool {
