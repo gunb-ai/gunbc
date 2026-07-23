@@ -3,20 +3,13 @@ module v2.compiler.self_host.witness_bulk_routing
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.algebra { length }
+import v2.std.algebra { Cons, Empty, length, filter }
 import v2.std.witness_execution_routing {
   WitnessExecutionDisposition,
   InterpretedRetained,
   EmitIneligible,
-  EmitIneligibleCause,
-  CensusPending,
   LongLaneScheduled,
-  OfflineLocalRecipe,
-  ReadsLiveTreeCarrier,
-  HostEffectTransportMissing,
-  disposition_is_native,
-  disposition_is_interpreted_retained,
-  disposition_is_emit_ineligible
+  OfflineLocalRecipe
 }
 
 data witness_bulk_routing_note: String = "Entry-grain bulk-native routing machine (ROADMAP 2a Lane B, 2026-07-23): the 744-entry discovery roster's routing frontier authority. Landing state is ALL InterpretedRetained or EmitIneligible — zero NativeRouted rows (flips last). The 16-entry stratified sample below is the first census slice; the full 744 sweep on srvN produces the per-entry first-error TSV whose classes populate EmitIneligibleCause. Hard ceiling from measurement: 77 ReadsLiveTree + 35 host-effect entries stay InterpretedRetained host_fed until native host-effect transport is its own lane. Family-grain emit-on-demand routing (9 rows) remains on native_routing_frontier until group-5a Derived membership subsumes those entries. Dissolve-on: this roster grows to totality (no entry unlisted) and retires hand frontier rows when closure-derived Group membership lands."
@@ -26,7 +19,52 @@ type WitnessEntryRoutingRow {
   disposition: WitnessExecutionDisposition
 }
 
+type WitnessEntryRoutingPartition {
+  native_routed: List<WitnessEntryRoutingRow>
+  interpreted_retained: List<WitnessEntryRoutingRow>
+  emit_ineligible: List<WitnessEntryRoutingRow>
+}
+
 data witness_bulk_entry_count_expected: Int = 16
+
+fn witness_entry_routing_partition_empty() -> WitnessEntryRoutingPartition {
+  WitnessEntryRoutingPartition {
+    native_routed: [],
+    interpreted_retained: [],
+    emit_ineligible: []
+  }
+}
+
+fn partition_witness_entry_routing_roster(
+  rows: List<WitnessEntryRoutingRow>
+) -> WitnessEntryRoutingPartition {
+  fold(
+    rows,
+    init: witness_entry_routing_partition_empty(),
+    f: fn(part, row) {
+      match row.disposition {
+        NativeRouted =>
+          WitnessEntryRoutingPartition {
+            native_routed: Cons { head: row, tail: part.native_routed },
+            interpreted_retained: part.interpreted_retained,
+            emit_ineligible: part.emit_ineligible
+          }
+        InterpretedRetained { reason: _, dissolve_on: _ } =>
+          WitnessEntryRoutingPartition {
+            native_routed: part.native_routed,
+            interpreted_retained: Cons { head: row, tail: part.interpreted_retained },
+            emit_ineligible: part.emit_ineligible
+          }
+        EmitIneligible { cause: _, detail: _ } =>
+          WitnessEntryRoutingPartition {
+            native_routed: part.native_routed,
+            interpreted_retained: part.interpreted_retained,
+            emit_ineligible: Cons { head: row, tail: part.emit_ineligible }
+          }
+      }
+    }
+  )
+}
 
 fn retained_pending_census(entry: String) -> WitnessEntryRoutingRow {
   WitnessEntryRoutingRow {
@@ -135,64 +173,32 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
   retained_pending_census(entry: "src/v2/test/claim/self_host/native_routing_frontier_test.dag")
 ]
 
+fn witness_bulk_routing_sample_partition() -> WitnessEntryRoutingPartition {
+  partition_witness_entry_routing_roster(rows: witness_bulk_routing_sample_roster)
+}
+
 fn native_routed_entry_rows() -> List<WitnessEntryRoutingRow> {
-  fold(
-    witness_bulk_routing_sample_roster,
-    init: [],
-    f: fn(acc, row) {
-      if disposition_is_native(d: row.disposition) {
-        concat(acc, [row])
-      } else {
-        acc
-      }
-    }
-  )
+  witness_bulk_routing_sample_partition().native_routed
 }
 
 fn interpreted_retained_entry_rows() -> List<WitnessEntryRoutingRow> {
-  fold(
-    witness_bulk_routing_sample_roster,
-    init: [],
-    f: fn(acc, row) {
-      if disposition_is_interpreted_retained(d: row.disposition) {
-        concat(acc, [row])
-      } else {
-        acc
-      }
-    }
-  )
+  witness_bulk_routing_sample_partition().interpreted_retained
 }
 
 fn emit_ineligible_entry_rows() -> List<WitnessEntryRoutingRow> {
-  fold(
-    witness_bulk_routing_sample_roster,
-    init: [],
-    f: fn(acc, row) {
-      if disposition_is_emit_ineligible(d: row.disposition) {
-        concat(acc, [row])
-      } else {
-        acc
-      }
-    }
-  )
+  witness_bulk_routing_sample_partition().emit_ineligible
 }
 
 fn routing_row_for_entry(entry: String) -> List<WitnessEntryRoutingRow> {
-  fold(
-    witness_bulk_routing_sample_roster,
-    init: [],
-    f: fn(acc, row) {
-      if row.entry == entry {
-        concat(acc, [row])
-      } else {
-        acc
-      }
-    }
+  filter(
+    xs: witness_bulk_routing_sample_roster,
+    predicate: fn(row) { row.entry == entry }
   )
 }
 
 fn witness_bulk_routing_total_holds() -> Bool {
-  let split_total = length(xs: native_routed_entry_rows()) + length(xs: interpreted_retained_entry_rows()) + length(xs: emit_ineligible_entry_rows())
+  let part = witness_bulk_routing_sample_partition()
+  let split_total = length(xs: part.native_routed) + length(xs: part.interpreted_retained) + length(xs: part.emit_ineligible)
   length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
     && split_total == witness_bulk_entry_count_expected
 }

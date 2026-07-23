@@ -14,8 +14,8 @@ import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.witness_execution_routing {
-  disposition_is_interpreted_retained,
-  disposition_is_emit_ineligible
+  InterpretedRetained,
+  EmitIneligible
 }
 
 fn witness_sample_roster_total_holds() -> Bool {
@@ -51,7 +51,10 @@ fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
     interpreted_retained_entry_rows(),
     init: true,
     f: fn(acc, row) {
-      acc && disposition_is_interpreted_retained(d: row.disposition)
+      acc && match row.disposition {
+        InterpretedRetained { reason: _, dissolve_on: _ } => true
+        _ => false
+      }
     }
   )
 }
@@ -61,7 +64,10 @@ fn witness_ineligible_rows_carry_typed_cause() -> Bool {
     emit_ineligible_entry_rows(),
     init: true,
     f: fn(acc, row) {
-      acc && disposition_is_emit_ineligible(d: row.disposition)
+      acc && match row.disposition {
+        EmitIneligible { cause: _, detail: _ } => true
+        _ => false
+      }
     }
   )
 }

@@ -33,29 +33,7 @@ type WitnessExecutionLeg
 
 data witness_execution_leg_note: String = "Per-witness execution-leg attribution (ROADMAP 2a executor seams): floor receipts name which leg ran — interpreted v1 tree-walk, native family crate (family key cites native_routing_frontier), native direct entry closure, or a typed refusal. Without this axis the bulk flip is unobservable. Dissolve-on: claim_executor receipt lines derive WitnessExecutionLeg from the routing frontier row at run time (construction), replacing post-hoc log inference."
 
-fn disposition_is_native(d: WitnessExecutionDisposition) -> Bool {
-  match d {
-    NativeRouted => true
-    InterpretedRetained { reason: _, dissolve_on: _ } => false
-    EmitIneligible { cause: _, detail: _ } => false
-  }
-}
-
-fn disposition_is_interpreted_retained(d: WitnessExecutionDisposition) -> Bool {
-  match d {
-    NativeRouted => false
-    InterpretedRetained { reason: _, dissolve_on: _ } => true
-    EmitIneligible { cause: _, detail: _ } => false
-  }
-}
-
-fn disposition_is_emit_ineligible(d: WitnessExecutionDisposition) -> Bool {
-  match d {
-    NativeRouted => false
-    InterpretedRetained { reason: _, dissolve_on: _ } => false
-    EmitIneligible { cause: _, detail: _ } => true
-  }
-}
+data witness_execution_disposition_predicate_dissolution_note: String = "disposition_is_native / disposition_is_interpreted_retained / disposition_is_emit_ineligible dissolved per review 41625 — roster consumers partition WitnessExecutionDisposition in one pass (WitnessEntryRoutingPartition) or match the coproduct directly; no sibling Bool predicates in std/."
 
 fn execution_leg_is_native(leg: WitnessExecutionLeg) -> Bool {
   match leg {
