@@ -487,17 +487,18 @@ session messages).** #6968 merged the graft carrier + normalize/`validate_module
 export-admission header filter removed; graft-aware QN reader sweep), witnessed green
 (zero-metadata graft output, graft shape, marker strip, normalize long-lane). **The step-1
 receipt bar is NOT yet met**: the bar is both bolt-ons *dissolved into ordinary containment
-fill*, not merely dead-in-corpus behind the graft. Open dissolves, in stern-newt's leverage
-order:
+fill*, not merely dead-in-corpus behind the graft. Dissolves, in stern-newt's leverage order:
 
-1. **QN-reader collapse ("C6" second half)** — `qualified_name_from_module_node_graft_aware`
-   is an interim dual-arm reader (`Scaffold → SingleAuthority`); dissolve = route grafted roots
-   through the nesting-position spine walk inside `v2.extdeps.languages.dag`
-   `qualified_name_from_module_node`, break the `std ↔ extdeps` import cycle (lift spine
-   helpers to std OR split pre-graft ingress to a parse-only boundary), delete the wrapper +
-   `namespace_graft_pre_graft_module_qn`. **Independent of the strip lane / pool-membership
-   blocker** (confirmed: touches only namespace_graft + the extdeps QN fn; no PR-5b, no
-   ci_layer_roots, no census machinery).
+1. **LANDED (#7101, 2026-07-23) — QN-reader collapse ("C6" second half).** The interim
+   dual-arm reader `qualified_name_from_module_node_graft_aware` (`Scaffold → SingleAuthority`)
+   and `namespace_graft_pre_graft_module_qn` are deleted; `v2.extdeps.languages.dag`
+   `qualified_name_from_module_node` is the single collapsed reader (graft-aware internally;
+   spine cluster relocated into extdeps so the `v2.compiler.namespace_graft ↔
+   v2.extdeps.languages.dag` cycle never forms). Witness:
+   `src/v2/test/claim/namespace_graft/collapsed_reader_test.dag` (grafted spine agreement,
+   pre-graft header agreement, bare-Conj RED refusal) + pre-existing namespace_graft witnesses
+   green. Brief-A wrapup verdict: **AcceptedWithResidue** — residue rows 2–6 below stay open;
+   v1 seed regen (row 2) is the immediate successor.
 2. **"C6" first half — v1 seed regen** after the wrapper deletion. Previously scoped ONLY in
    the dashboard C1–C7 lane sequence (sunny-wolf green-light; "C6 regen + interim wrapper
    dissolution remain on plan under nimble-owl shepherding"); #6968 merged WITHOUT it. This
