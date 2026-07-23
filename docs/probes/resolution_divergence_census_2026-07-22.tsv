@@ -1,0 +1,54 @@
+[resolution-divergence-census] scope=dag+src/v2 modules_resolved=1309 modules_excluded=0
+[resolution-divergence-census] sites_checked=40592
+[resolution-divergence-census] agree=33422
+[resolution-divergence-census] diverge=0
+[resolution-divergence-census] containment_ambiguous=38
+[resolution-divergence-census] containment_unresolved=0
+[resolution-divergence-census] import_unresolved=4099
+[resolution-divergence-census] neither_bound=3033
+[resolution-divergence-census] neither_bound_subclass builtin_or_intrinsic=1422 local_or_param=1607 genuinely_unbound=4
+[resolution-divergence-census] silent_pick global_bare_lcp=1045 global_bare_lcp_tie=13692 fn_parent_first_hit=1
+[resolution-divergence-census] agree_global_unique_owner_rows=16246 owner_mismatch=0
+[resolution-divergence-census] import_unresolved_infer_cross_check agree=4099 mismatch=0
+[resolution-divergence-census] cost_shape hits=37521 lexical_only=17176 global_unique=20345 lexical_steps_histogram={1: 17175, 2: 1}
+
+CONTAINMENT_AMBIGUOUS	module=std.layout	caller=render_go	callee=repeat_string	at=/workspace/dag/std/layout.dag@949	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.formats.dnsmasq	caller=serialize_dnsmasq	callee=render	at=/workspace/dag/extdeps/formats/dnsmasq.dag@1829	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=extdeps.git.versioning	caller=git_release_version_compare	callee=nat_compare	at=/workspace/dag/extdeps/git/versioning.dag@1535	via=n/a	import_chain=std.nat (std.nat.nat_compare)
+CONTAINMENT_AMBIGUOUS	module=extdeps.git.versioning	caller=git_release_version_compare	callee=nat_compare	at=/workspace/dag/extdeps/git/versioning.dag@1592	via=n/a	import_chain=std.nat (std.nat.nat_compare)
+CONTAINMENT_AMBIGUOUS	module=extdeps.git.versioning	caller=git_release_version_compare	callee=nat_compare	at=/workspace/dag/extdeps/git/versioning.dag@1645	via=n/a	import_chain=std.nat (std.nat.nat_compare)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.yaml.emit	caller=serialize_yaml	callee=render	at=/workspace/dag/extdeps/languages/yaml/emit.dag@6462	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=extdeps.version.semver	caller=semver_compare_non_negative_int	callee=nat_compare	at=/workspace/dag/extdeps/version/semver.dag@996	via=n/a	import_chain=std.nat (std.nat.nat_compare)
+CONTAINMENT_AMBIGUOUS	module=test.claim.machine_shape_catalog_integration_witness	caller=cpu_catalog_shape	callee=shape_from_catalog	at=/workspace/dag/test/claim/machine_shape_catalog_integration_witness_test.dag@1032	via=n/a	import_chain=extdeps.cpu.machine_shape (extdeps.cpu.machine_shape.shape_from_catalog)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@4946	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@5738	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@5878	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@6010	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@6169	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@6309	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_item	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@6433	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.languages.markdown	caller=md_block	callee=repeat_string	at=/workspace/dag/extdeps/languages/markdown.dag@10260	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=extdeps.render.terminal	caller=serialize_line	callee=repeat_string	at=/workspace/dag/extdeps/render/terminal.dag@3854	via=n/a	import_chain=std.render (std.render.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=test.claim.machine_shape_witness	caller=shape_from_rtx5090_catalog	callee=shape_from_catalog	at=/workspace/dag/test/claim/machine_shape_witness_test.dag@1817	via=n/a	import_chain=extdeps.gpu.machine_shape (extdeps.gpu.machine_shape.shape_from_catalog)
+CONTAINMENT_AMBIGUOUS	module=test.claim.machine_shape_witness	caller=shape_from_m5_catalog	callee=shape_from_catalog	at=/workspace/dag/test/claim/machine_shape_witness_test.dag@3041	via=n/a	import_chain=extdeps.gpu.machine_shape (extdeps.gpu.machine_shape.shape_from_catalog)
+CONTAINMENT_AMBIGUOUS	module=gunbc.gitignore_emit	caller=expected_gitignore	callee=render	at=/workspace/dag/gunbc/gitignore_emit.dag@10701	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=v2.lens.cost	caller=nat_dominates	callee=nat_compare	at=/workspace/src/v2/lens/cost.dag@6949	via=n/a	import_chain=v2.std.nat (v2.std.nat.nat_compare)
+CONTAINMENT_AMBIGUOUS	module=gunbc.runner_deploy_emit	caller=expected_runner_deploy_manifest	callee=render	at=/workspace/dag/gunbc/runner_deploy_emit.dag@7785	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.runner_deploy_emit	caller=expected_runner_deploy_manifest_json	callee=render	at=/workspace/dag/gunbc/runner_deploy_emit.dag@8105	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.runner_deploy_emit	caller=expected_runner_deploy_manifest_json	callee=render	at=/workspace/dag/gunbc/runner_deploy_emit.dag@8278	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.emit_module	caller=emit_module_append_decl	callee=emit	at=/workspace/src/v2/compiler/emit_module.dag@692	via=n/a	import_chain=v2.compiler.emit (v2.compiler.emit.emit)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.emit_module	caller=emit_family_append_member	callee=emit	at=/workspace/src/v2/compiler/emit_module.dag@2425	via=n/a	import_chain=v2.compiler.emit (v2.compiler.emit.emit)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.emit_orchestration	caller=orch_emit_from_registry	callee=emit	at=/workspace/src/v2/compiler/05_emit_orchestration.dag@3842	via=n/a	import_chain=v2.compiler.emit (v2.compiler.emit.emit)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.emit_orchestration	caller=orch_emit_node_spelling	callee=emit	at=/workspace/src/v2/compiler/05_emit_orchestration.dag@4130	via=n/a	import_chain=v2.compiler.emit (v2.compiler.emit.emit)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.source_authority	caller=semantic_ir_from_ast_with_model	callee=resolve	at=/workspace/src/v2/compiler/source_authority.dag@17318	via=n/a	import_chain=v2.compiler.resolve (v2.compiler.resolve.resolve)
+CONTAINMENT_AMBIGUOUS	module=v2.compiler.emit_host	caller=run_test_claim_emit_vs_eval_for_claim	callee=emit	at=/workspace/src/v2/compiler/emit_host.dag@18124	via=n/a	import_chain=v2.compiler.emit (v2.compiler.emit.emit)
+CONTAINMENT_AMBIGUOUS	module=tools.emit_host_transport	caller=expected_stdout_nul_run	callee=repeat_string	at=/workspace/dag/tools/emit_host_transport.dag@4201	via=n/a	import_chain=std.render_repeat_string_bootstrap (std.render_repeat_string_bootstrap.repeat_string)
+CONTAINMENT_AMBIGUOUS	module=gunbc.live_deploy.emit	caller=apply_systemd_unit_write_step	callee=render	at=/workspace/dag/gunbc/live_deploy/emit.dag@8368	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.live_deploy.emit	caller=apply_tree_sync_unit_write_step	callee=render	at=/workspace/dag/gunbc/live_deploy/emit.dag@11075	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.live_deploy.emit	caller=live_deploy_systemd_unit_for	callee=render	at=/workspace/dag/gunbc/live_deploy/emit.dag@28767	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.live_deploy.emit	caller=live_deploy_tree_sync_unit_for	callee=render	at=/workspace/dag/gunbc/live_deploy/emit.dag@28916	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.falsifier_workflow	caller=native_cache_cold_control_invoke	callee=ci_repo_root_shell	at=/workspace/dag/gunbc/falsifier_workflow.dag@5533	via=n/a	import_chain=gunbc.ci_spec (gunbc.ci_spec.ci_repo_root_shell)
+CONTAINMENT_AMBIGUOUS	module=gunbc.fleet_converge_emit	caller=fleet_converge_sh_for	callee=render	at=/workspace/dag/gunbc/fleet_converge_emit.dag@8529	via=n/a	import_chain=std.layout (std.layout.render)
+CONTAINMENT_AMBIGUOUS	module=gunbc.host_runner_memory_cap_plan_emit	caller=expected_runner_memory_cap_apply_sheet	callee=render	at=/workspace/dag/gunbc/host_runner_memory_cap_plan_emit.dag@4119	via=n/a	import_chain=std.layout (std.layout.render)
+
+SILENT_PICK_FN_PARENT_FIRST_HIT	module=gunbc.falsifier_workflow	name=ci_repo_root_shell	parent_matches=2	chosen_parent=gunbc.ci_spec

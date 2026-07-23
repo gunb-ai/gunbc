@@ -24,6 +24,10 @@ data nic_consumer_partial_import_source: String = "module witness.pilot.emit_con
 
 data nic_consumer_partial_import_type_source: String = "module witness.pilot.emit_consumer_partial_type\n\nimport witness.pilot.emit_provider { PilotColor }\n\nfn pilot_consumer_partial_type_default() -> PilotWidget \{ pilot_provider_widget_default() \}\n"
 
+data nic_local_homonym_arm_note: String = "Discriminating arm for the local-decl exclusion in reference_derived_use_lines (the E0255 std_dup emitter root, fixed 2026-07-23 smart-crane-730): the consumer DECLARES a type alias whose name collides with a provider enum (PilotColor — mirroring dag/std types.dag List/Map vs their src/v2/std twins) and references it bare in a signature. The bare-name registry row for PilotColor belongs to the provider, so before the exclusion the pass synthesized `pub use crate::witness_pilot_emit_provider::PilotColor;` INTO a module that also emits `pub type PilotColor = ...` — rustc E0255, cargo refuses. With the exclusion the module's own declaration wins and no use-line is synthesized. Verified by execution in both directions 2026-07-23: post-fix binary emits no PilotColor use-line and the crate builds; the pre-fix binary (origin/main control worktree) emits the self-colliding line. Regressing the exclusion turns this arm red by the same E0255."
+
+data nic_consumer_local_homonym_source: String = "module witness.pilot.emit_consumer_local_homonym\n\ntype PilotColor = PilotWidget\n\nfn pilot_local_default() -> PilotColor \{ pilot_provider_widget_default() \}\n"
+
 data nic_scratch_under_workspace_root_note: String = "The fixture SOURCE tree is mktemp'd under the workspace root (target/, already gitignored), not under /tmp, because the v1 CLI's repo-path grant refuses a source path outside the process workspace root (cli_run repo_relative_path_normalized, modeled by gunbc.cli_run_repo_grant) — a bare mktemp -d source root panics the emit. The OUTPUT dir has no such constraint and stays a plain mktemp. target/ rather than a fixed path so concurrent runs cannot collide and so a mid-run auto-commit can never capture the fixture (.gitignore is itself a generated artifact — hand-editing it drifts the artifact gate)."
 
 fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: String, consumer_source: String, consumer_rel: String) -> Bool {
@@ -96,6 +100,13 @@ fn nic_behavioral_receipt_holds() -> Bool {
     consumer_source: nic_consumer_partial_import_type_source,
     consumer_rel: "/witness/pilot/emit_consumer_partial_type.dag"
   )
+  let local_homonym_arm = nic_emitted_crate_builds(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    provider_source: nic_provider_source,
+    consumer_source: nic_consumer_local_homonym_source,
+    consumer_rel: "/witness/pilot/emit_consumer_local_homonym.dag"
+  )
   let red_arm = nic_emitted_crate_builds(
     root: root.path,
     gunbc_bin: gunbc_bin,
@@ -104,5 +115,6 @@ fn nic_behavioral_receipt_holds() -> Bool {
     consumer_rel: "/witness/pilot/emit_consumer.dag"
   )
 
-  gunbc_built && green_arm && partial_import_arm && partial_import_type_arm && (red_arm == false)
+  gunbc_built && green_arm && partial_import_arm && partial_import_type_arm
+    && local_homonym_arm && (red_arm == false)
 }

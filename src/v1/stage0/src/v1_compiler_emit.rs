@@ -38,7 +38,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
+pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -656,7 +656,11 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())
+    func_sig_if_resolved(lookup_func_sig(
+        scope.func_env.clone(),
+        scope.type_env.clone(),
+        name.clone(),
+    ))
 }
 
 pub fn typed_named_arg_matches(

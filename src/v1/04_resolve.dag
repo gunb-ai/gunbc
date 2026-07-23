@@ -43,7 +43,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings
+  env_with_type_variable_bindings, bare_name_miss_diagnostic
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -599,7 +599,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
               Absent =>
                 NodeResolveResult {
                   resolved: n,
-                  diagnostics: [make_error_node(diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
+                  diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
                 }
             }
           }

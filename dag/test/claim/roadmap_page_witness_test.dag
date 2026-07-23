@@ -130,6 +130,17 @@ fn witness_signed_off_node_doc_has_no_button() -> Bool {
   !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
+fn superseded_dispatch_node() -> RoadmapNode {
+  gunbc.roadmap_authority.superseded(id: "disp1", by: "successor-lane", content: "dispatch-me")
+}
+
+fn witness_superseded_node_marked_no_button() -> Bool {
+  let h = dispatch_doc_html_for(rn: superseded_dispatch_node())
+  string_contains(s: h, pattern: "node node-superseded")
+    && string_contains(s: h, pattern: "→ successor-lane")
+    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
@@ -140,4 +151,5 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_open_node_doc_emits_button_and_script()
     && witness_dispatch_script_reads_belt_b_status_contract()
     && witness_signed_off_node_doc_has_no_button()
+    && witness_superseded_node_marked_no_button()
 }

@@ -332,6 +332,9 @@ values `{ import-scoped (§1c, today) , namespace-only-X , namespace-only-Y }`. 
 
 1. Land `resolve(name, position)` + the `Ambiguous`/`Unresolved` outcomes beside the current
    resolver, gated by the policy row (import-scoped stays the default → zero corpus churn).
+   **LANDED 2026-07-22** in the executing v1 seed under the §13 unique-on-chain semantics
+   (which supersede this section's original nearest-wins wording) — see the §13 "STEP 1
+   LANDED" entry for the mechanism, edit sites, and the discriminating witness.
 2. The **precise census is already run** (§5.1, declared `module` paths): the exact
    forced-qualification residue and the fork worklist are its outputs — steps 3–4 act on them,
    no re-run.
@@ -629,7 +632,9 @@ from *build a fourth resolver* into *delete a fork*.
   ancestor walk; the tree is materialized once by fill (§7.5's fill-once discipline), so §6's
   "bare minimum cost" is satisfied by construction rather than by measurement. *This is the
   claim most worth falsifying before implementation — it is the difference between a cheap
-  substitution and a rewrite.*
+  substitution and a rewrite.* **FALSIFICATION RUN — the claim held (2026-07-22, §12.4
+  delivery):** lexical_steps_histogram={1: 17175, 2: 1} over 37,521 containment hits — a
+  substitution, not a rewrite.
 - **Migration rides §8 unchanged.** When a subtree flips to `namespace-only-Y`, its runtime
   dispatch keys on the same index in the same motion. The two cannot drift because there is only
   one thing; a flip that moved resolution without moving dispatch would re-open the fork.
@@ -691,6 +696,23 @@ and the lane's shape changes. This is the cheapest moment to find out.
 **Do not** flip any policy, edit any resolver, or change dispatch as part of this. The census is an
 artifact the rest of the lane consumes; §8 step 1 starts after it, informed by it.
 
+**DELIVERED — and §8 step 1 has consumed it (2026-07-22).** The census shipped as
+`resolution_divergence_census` (#6936 slice 1, #6967 slice 2); the fresh pre-step-1 run
+(whole tree, `dag` + `src/v2`; raw rows in
+`docs/probes/resolution_divergence_census_2026-07-22.tsv`): modules_resolved=1309,
+sites_checked=40592 — **agree=33422 / diverge=0 / containment_ambiguous=38 /
+containment_unresolved=0**, import_unresolved=4099 (walk-vs-infer cross-check
+mismatch=0), neither_bound=3033 (builtin_or_intrinsic=1422, local_or_param=1607,
+genuinely_unbound=4), agree-global-unique owner_mismatch=0. Cost shape (the §12.3
+falsification): containment hits=37521, lexical_steps_histogram={1: 17175, 2: 1},
+global_unique=20345 — the walk is O(chain depth) map hits with depth almost always 1,
+so the fold is a **substitution, not a rewrite**; the claim held. One genuine §13
+fail-open surfaced by the silent-pick join (both whole-tree and closure-scoped scopes,
+pre-existing on main): `gunbc.falsifier_workflow` bare `ci_repo_root_shell` first-hits
+`gunbc.ci_spec` over the identical duplicate decl in `gunbc.merge_admission_produce`
+(fn_parent_first_hit=1) — a real §3 fork needing consolidation or qualification, and
+the live specimen of the class §8 step 1's refusal arm makes loud under the flip.
+
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
 
 ## 13. Resolution is unique-on-chain, not nearest (operator ruling, ratified 2026-07-21)
@@ -730,19 +752,42 @@ target is encoded **once** (no dual representation), an unused alias is lintable
 surface form is a grammar row (DESIGN.md §4, one grammar read both directions). **Import→alias
 transmutation** is the migration mechanism — an `import` becomes an alias node at the importing
 position, and the **source of truth is the walk's resolved target**, with the old import list
-demoted to a cross-check. Grounded by #6936's buckets: agree=38138 / import_unresolved=1854 /
-neither_bound=739 / ambiguous=53.
+demoted to a cross-check. Grounded by the census buckets (#6936 first run: agree=38138 /
+import_unresolved=1854 / neither_bound=739 / ambiguous=53; refreshed 2026-07-22 pre-step-1:
+agree=33422 / import_unresolved=4099 / neither_bound=3033 / ambiguous=38, diverge=0 —
+`docs/probes/resolution_divergence_census_2026-07-22.tsv`).
 
 **`global_bare` dies as a mechanism.** The terminal state **deletes**
 `symbol_index_global_unique_lookup` / `GlobalBareLookup` as *resolution* mechanisms — they survive
 only as a migration oracle (computing the §12.4 divergence census), then are removed. This
 supersedes §7's "the wall moves to *is it unique?*": the wall is *is it unique **on your chain?***
 The executing seed's two interim gaps are named, not hidden: the fn path (`lookup_resolved_sig`,
-`v1_compiler_infer_sigs.rs:111-117` — first-hit over `func_env.parents`, **no refusal arm at all**)
+`v1_compiler_infer_sigs.rs` — first-hit over `func_env.parents`, **no refusal arm at all**)
 and the type/data LCP nearest-arm (`global_bare_lookup`, `v1_compiler_infer_env.rs` — refuses only
 on an exact tie). The §5 interim backstop plus still-hawk-65's slice-2 per-class silent-pick counts
 gate any widening (§12.4; do not widen blind — refusing where nothing refuses today reds latent
 homonyms at scale, and fn is the larger class since it has *no* refusal today).
+
+**§8 STEP 1 LANDED (2026-07-22) — both gaps now have policy-gated strict arms in the executing
+seed.** A thread-local `NameResolutionPolicy` gate (`name_resolution_policy_is_namespace_only`,
+`v1_rt`, host-setter only, **default OFF = ImportScoped byte-for-byte**) forks both paths:
+the type/value path (`global_bare_lookup` / `global_bare_is_ambiguous`,
+`src/v1/04_env.dag`) resolves a homonym to the **unique binder on the ancestor chain**
+(exactly-one resolves; zero-or-multiple refuses — zero-on-chain whole-pool homonyms are
+`Ambiguous`, census-walk parity, never a fabricated bind), and the fn path is rewritten to the
+3-state `FuncSigLookup = FuncSigResolved | FuncSigUnresolved | FuncSigAmbiguous{candidates}`
+(`src/v1/04_sigs.dag` / `04_lookup.dag`) so a refusal finally **has somewhere to go** — the
+`Absent`-as-"keep-looking" straddle is dead as a class, and `FuncSigAmbiguous` never falls
+through to the census fallback. Refusals surface as the typed, located
+`AmbiguousReference { name, candidates, span }` diagnostic (`00_core.dag`) at the reference
+site with the full candidate fix-menu. Analysis-only consumers (provenance/descent) project
+through `func_sig_if_resolved` — conservative no-enrichment, never a fabricated bind; the
+semantic bind sites (`04_infer.dag` ExprVar/ExprCall) match the full outcome. Discriminating
+witness: `src/v1/tests/src/namespace_unique_on_chain_policy_test.rs` — the same homonym
+fixtures compile clean under ImportScoped and refuse (typed, full candidate list) under
+NamespaceOnlyY on both paths, with unique-on-chain-still-resolves and
+unbound-stays-`UnresolvedType` controls. No subtree is flipped; the flip (step 4) still
+gates on import→alias transmutation landing with-or-before it.
 
 **Builtins bind at root.** The root namespace is on **every** chain, so builtins bound at root are
 unique-on-chain everywhere — this **structurally dissolves** the prelude-shaped `neither_bound`

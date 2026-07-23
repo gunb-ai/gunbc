@@ -1,0 +1,9 @@
+module test.retirement.namespace_unique_on_chain_policy_retained
+
+
+data namespace_unique_on_chain_policy_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "namespace_unique_on_chain_policy_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "The namespace-resolution-design.md section-13 keystone witness toggles the host thread-local NameResolutionPolicy gate (v1_rt.name_resolution_policy_set_namespace_only) between ImportScoped and NamespaceOnlyY, then compiles homonym fixtures and asserts the strict policy refuses with AmbiguousReference where the default resolves. That thread-local process-state toggle is host-Rust-only and is unreachable from a dag witness (a substrate program has no handle to flip the seed interpreter's resolution policy), so this module cannot migrate to an exact-stem test dag floor witness. It is therefore RETAINED as rs, not migration debt and not a delete candidate. This retention dissolves when src/v1 is deleted at v2 self-host, at which point the policy gate and its host toggle cease to exist."
+  }
+}
