@@ -6,6 +6,7 @@ data witness_admission_authority_note: String = "Phase 0(b) admission invariant 
 type WitnessConsumerCadence
   = DiscoverySelection
   | FalsifierSelfHostWet
+  | FalsifierRehomedBinWet
   | BinWitnessWet
   | QuarantineProbeExpectRed
   | OfflineLocalRecipe

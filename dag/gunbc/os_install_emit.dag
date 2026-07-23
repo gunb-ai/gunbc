@@ -9,6 +9,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
 }
+import extdeps.access.ssh { SshPublicKey, ssh_public_key_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
@@ -38,6 +39,8 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     append(base, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(payload.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
+        kv(key: "allow-pw", value: yaml_bool(b: payload.ssh_password_auth)),
       ])),
     ])
   } else {

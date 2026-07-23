@@ -30,3 +30,20 @@ data samsung_970_evo_plus_2tb_catalog: NvmeDeviceCatalogRow = samsung_970_evo_pl
   part_number: "MZ-V7S2T0BW",
   capacity_bytes: byte_size(2000398934016),
 )
+
+fn samsung_970_evo(part_number: NonEmptyStr, capacity_bytes: ByteSize) -> NvmeDeviceCatalogRow {
+  NvmeDeviceCatalogRow {
+    part_number: part_number,
+    manufacturer: samsung,
+    capacity_bytes: capacity_bytes,
+    pcie_link: PcieLink { generation: Gen3, lane_count: 4 },
+    form_factor: M2_2280,
+    sequential_read: bandwidth(3400000000),
+    sequential_write: bandwidth(2300000000),
+  }
+}
+
+data samsung_970_evo_500gb_catalog: NvmeDeviceCatalogRow = samsung_970_evo(
+  part_number: "MZ-V7E500BW",
+  capacity_bytes: byte_size(500107862016),
+)

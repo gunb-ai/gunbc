@@ -26,6 +26,15 @@ data entropy_count_bytes_unit_debt: Disposition = Scaffold {
   }
 }
 
+data entropy_password_count_chars_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
+
 service Urandom {
   operation ReadBytes {
     input { count: Int }
@@ -35,6 +44,17 @@ service Urandom {
     exit {
       0 => Unit
       nonzero => String "Urandom.ReadBytes: /dev/urandom or base64 failed"
+    }
+  }
+
+  operation ReadPassword {
+    input { count: Int }
+    output { password: String from "stdout" }
+    readonly
+    transport shell { argv: ["sh", "-c", "U=$(LC_ALL=C tr -dc 'A-Z' </dev/urandom | head -c1); L=$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c1); D=$(LC_ALL=C tr -dc '0-9' </dev/urandom | head -c1); S=$(LC_ALL=C tr -dc '_.@#%-' </dev/urandom | head -c1); R=$(LC_ALL=C tr -dc 'A-Za-z0-9_.@#%-' </dev/urandom | head -c {count}); printf '%s%s%s%s%s' \"$U\" \"$L\" \"$D\" \"$S\" \"$R\" | head -c {count}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Urandom.ReadPassword: /dev/urandom failed"
     }
   }
 }

@@ -2,7 +2,7 @@ module gunbc.commit_workflow
 
 import gunbc.ci_gate {
   Gate,
-  EmitHostGate, LayeringImportsGate,
+  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
@@ -60,6 +60,10 @@ data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
 data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitHostGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: CheapClaimPoolGate },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
@@ -246,6 +250,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       span: SpanUndeclared
     },
     surfaces: [GitPrePushHook]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+      check_fns: [
+        "emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family",
+        "emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family",
+        "emitted_binary_effect_confinement_authority_points_at_host_transport"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -551,6 +568,7 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
 fn gate_eq(a: Gate, b: Gate) -> Bool {
   match a {
     EmitHostGate => match b { EmitHostGate => true  _ => false }
+    CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
     LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
     ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }

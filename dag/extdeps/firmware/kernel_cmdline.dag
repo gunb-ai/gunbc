@@ -1,0 +1,27 @@
+module extdeps.firmware.kernel_cmdline
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html"
+  }
+}
+
+type KernelCmdlineArg
+  = KernelFlag { name: NonEmptyStr }
+  | KernelKeyValue { key: NonEmptyStr, value: String }
+
+fn kernel_cmdline_arg_wire(arg: KernelCmdlineArg) -> String {
+  match arg {
+    KernelFlag { name: n } => n as String
+    KernelKeyValue { key: k, value: v } => concat(k as String, concat("=", v))
+  }
+}
+
+fn kernel_cmdline_render(args: List<KernelCmdlineArg>) -> String {
+  join(map(args, a => kernel_cmdline_arg_wire(arg: a)), " ")
+}

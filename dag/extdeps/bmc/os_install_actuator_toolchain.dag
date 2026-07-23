@@ -62,3 +62,21 @@ fn srv3_os_install_actuator_toolchain_is_complete() -> Bool {
     requirement: os_install_actuator_toolchain_requirement,
   )
 }
+
+data bmc_credential_actuator_toolchain_requirement: ActuatorToolchainRequirement = ActuatorToolchainRequirement {
+  required_tools: [
+    curl_cli_tool,
+    gcloud_cli_tool,
+  ],
+}
+
+fn bmc_credential_actuator_toolchain_is_complete() -> Bool {
+  actuator_toolchain_requirement_includes_tool(
+    requirement: bmc_credential_actuator_toolchain_requirement,
+    tool_name: curl_cli_tool.name,
+  )
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: bmc_credential_actuator_toolchain_requirement,
+      tool_name: gcloud_cli_tool.name,
+    )
+}

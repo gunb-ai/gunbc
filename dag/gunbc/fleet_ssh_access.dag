@@ -1,0 +1,61 @@
+module gunbc.fleet_ssh_access
+
+import std.types { List, NonEmptyStr }
+import extdeps.access.ssh { SshPublicKey, Ed25519 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
+
+data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+
+
+data operator_macbook_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
+  comment: "macbook-m4",
+}
+
+data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
+  comment: "fleet-automation@gunbc",
+}
+
+data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "fleet-automation-ssh-key" as NonEmptyStr,
+  version: "latest",
+  hash_state: HashPending,
+}
+
+type SecretOwner {
+  secret: SecretRef
+  accessor_sa: ServiceAccountEmail
+  binding_provenance: NonEmptyStr
+}
+
+data fleet_automation_privkey_owner: SecretOwner = SecretOwner {
+  secret: fleet_automation_ssh_privkey_secret,
+  accessor_sa: fleet_automation_sa_email,
+  binding_provenance: "secretAccessor bound out-of-band 2026-07-21 (least-privilege, mirrors bmc-assimilator); full WIF SecretAccessGrant modeling is follow-up",
+}
+
+type SshAccessPrincipal {
+  posix_account: FleetPosixAccountKey
+  public_key: SshPublicKey
+}
+
+data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
+  posix_account: FleetAccountOperator,
+  public_key: operator_macbook_ssh_key,
+}
+
+data fleet_authorized_keys: List<SshPublicKey> = [
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+]
+
+fn fleet_host_authorized_keys() -> List<SshPublicKey> {
+  fleet_authorized_keys
+}

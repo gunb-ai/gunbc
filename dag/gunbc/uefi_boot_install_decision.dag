@@ -1,0 +1,158 @@
+module gunbc.uefi_boot_install_decision
+
+import std.types { NonEmptyStr, String, Bool, List }
+import extdeps.firmware.uefi_shell {
+  UefiShellEnvironment,
+  UefiNetworkInterface,
+  UefiDeviceMapping,
+  MediaPresent,
+  MediaDisconnected,
+  uefi_ipv4_unspecified,
+  uefi_ipv4_link_local_prefix,
+  uefi_shell_removable_media_device_path_tokens,
+  UefiShellCommand,
+  MapDevices,
+  BcfgDump,
+  BcfgAdd,
+  BcfgBoot,
+  Ifconfig,
+  IfconfigSetDhcp,
+  Reset,
+  ResetWarm,
+}
+
+type DesiredOutcome
+  = | InstalledFleetNode
+
+type BootInstallSituation
+  = InstallMediaReady { boot_file: NonEmptyStr }
+  | NetworkReady { interface: NonEmptyStr }
+  | NetworkUpNeedsDhcp { interface: NonEmptyStr }
+  | NoBootSourceAvailable { reason: NonEmptyStr }
+
+fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
+  starts_with(ipv4 as String, prefix: uefi_ipv4_link_local_prefix)
+}
+
+fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
+  ipv4 as String == uefi_ipv4_unspecified
+    || ipv4_link_local(ipv4: ipv4)
+}
+
+fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
+  fold(
+    uefi_shell_removable_media_device_path_tokens,
+    init: false,
+    f: (acc, token) => acc || string_contains(s: m.device_path as String, pattern: token),
+  )
+}
+
+type MediaScan {
+  found: Bool
+  boot_file: NonEmptyStr
+}
+
+fn scan_install_media(env: UefiShellEnvironment) -> MediaScan {
+  fold(
+    env.mappings,
+    init: MediaScan { found: false, boot_file: "none" },
+    f: (acc, m) =>
+      if acc.found { acc }
+      else if mapping_is_removable_install_media(m: m) {
+        MediaScan { found: true, boot_file: concat(m.fs_alias, ":\\EFI\\BOOT\\BOOTAA64.EFI") as NonEmptyStr }
+      } else { acc }
+  )
+}
+
+type IfaceScan {
+  found: Bool
+  name: NonEmptyStr
+  routable: Bool
+}
+
+type IfaceScanRanked {
+  rank: Int
+  name: NonEmptyStr
+}
+
+data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) > linked link-local (1) > no link (0)."
+
+fn iface_dhcp_rank(iface: UefiNetworkInterface) -> Int {
+  match iface.media {
+    MediaDisconnected => 0
+    MediaPresent =>
+      if !ipv4_unconfigured(ipv4: iface.ipv4) { 3 }
+      else if ipv4_link_local(ipv4: iface.ipv4) { 1 }
+      else { 2 }
+  }
+}
+
+fn scan_up_interface(env: UefiShellEnvironment) -> IfaceScan {
+  let best = fold(
+    env.interfaces,
+    init: IfaceScanRanked { rank: 0, name: "none" },
+    f: (acc, i) =>
+      if iface_dhcp_rank(iface: i) > acc.rank {
+        IfaceScanRanked { rank: iface_dhcp_rank(iface: i), name: i.name }
+      } else { acc }
+  )
+  IfaceScan { found: best.rank > 0, name: best.name, routable: best.rank == 3 }
+}
+
+fn diagnose_boot_install(env: UefiShellEnvironment) -> BootInstallSituation {
+  let media = scan_install_media(env: env)
+  if media.found {
+    InstallMediaReady { boot_file: media.boot_file }
+  } else {
+    let iface = scan_up_interface(env: env)
+    if iface.found {
+      if iface.routable {
+        NetworkReady { interface: iface.name }
+      } else {
+        NetworkUpNeedsDhcp { interface: iface.name }
+      }
+    } else {
+      NoBootSourceAvailable {
+        reason: "no removable install media mapped and no network interface with link — cannot reach an installer",
+      }
+    }
+  }
+}
+
+type BootInstallAction
+  = BootFromMappedMedia { boot_file: NonEmptyStr }
+  | DhcpThenNetworkBoot { interface: NonEmptyStr }
+  | RefuseNoSource { reason: NonEmptyStr }
+
+fn decide_boot_install(situation: BootInstallSituation, goal: DesiredOutcome) -> BootInstallAction {
+  match goal {
+    InstalledFleetNode =>
+      match situation {
+        InstallMediaReady { boot_file: f } => BootFromMappedMedia { boot_file: f }
+        NetworkReady { interface: i } => DhcpThenNetworkBoot { interface: i }
+        NetworkUpNeedsDhcp { interface: i } => DhcpThenNetworkBoot { interface: i }
+        NoBootSourceAvailable { reason: r } => RefuseNoSource { reason: r }
+      }
+  }
+}
+
+fn boot_install_commands(action: BootInstallAction) -> List<UefiShellCommand>? {
+  match action {
+    BootFromMappedMedia { boot_file: f } =>
+      Present {
+        value: [
+          MapDevices { refresh: true },
+          BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as NonEmptyStr },
+          Reset { mode: ResetWarm },
+        ]
+      }
+    DhcpThenNetworkBoot { interface: i } =>
+      Present {
+        value: [
+          Ifconfig { action: IfconfigSetDhcp { interface: i } },
+          BcfgDump { target: BcfgBoot },
+        ]
+      }
+    RefuseNoSource { reason: _ } => Absent
+  }
+}
