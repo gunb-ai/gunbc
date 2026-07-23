@@ -572,7 +572,7 @@ fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: S
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  let type_name = authored_name_at(source_indices: source_indices, node: n)
+  let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
@@ -586,14 +586,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
   match applied_overlay {
     Present { value: applied } =>
-      let outer_name = authored_name_at(source_indices: source_indices, node: n)
+      let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
         render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
       } else {
         render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       }
     Absent =>
-      let name = authored_name_at(source_indices: source_indices, node: n)
+      let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
@@ -705,7 +705,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
-        let outer_name = authored_name_at(source_indices: source_indices, node: n)
+        let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
         if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
           render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {

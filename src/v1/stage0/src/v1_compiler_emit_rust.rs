@@ -1095,7 +1095,7 @@ pub fn render_rust_applied_type_shared(
             variant_to_enum.clone(),
             env.clone(),
         );
-        let type_name = authored_name_at(source_indices.clone(), n.clone());
+        let type_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         render_rust_shared_type_with_optional(
             n.clone(),
             type_name.clone(),
@@ -1135,7 +1135,7 @@ pub fn render_rust_decl_type(
         };
         match applied_overlay.clone() {
             Some(applied) => {
-                let outer_name = authored_name_at(source_indices.clone(), n.clone());
+                let outer_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
                 if (((((((outer_name.clone() != "".to_string())
                     && (outer_name.clone() != "fn".to_string()))
                     && !is_container_type(outer_name.clone()))
@@ -1166,7 +1166,7 @@ pub fn render_rust_decl_type(
                 }
             }
             None => {
-                let name = authored_name_at(source_indices.clone(), n.clone());
+                let name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
                 if (((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) == 0))
                     && {
@@ -1471,7 +1471,7 @@ pub fn render_rust_fn_sig_type(
                 env.clone(),
             );
         }
-        let name = authored_name_at(source_indices.clone(), n.clone());
+        let name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()))
@@ -1545,7 +1545,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
         Some(applied) => {
             if ((applied.children.clone().len() as i64) > 0) {
                 {
-                    let outer_name = authored_name_at(source_indices.clone(), n.clone());
+                    let outer_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
                     if (((((((outer_name.clone() != "".to_string())
                         && (outer_name.clone() != "fn".to_string()))
                         && !is_container_type(outer_name.clone()))
@@ -1604,6 +1604,22 @@ pub fn alias_rhs_container_arg(
         }
         _ => arg,
     }
+}
+
+pub fn rust_fn_sig_leaf_name_dotted_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the dotted-render class in FN-SIG TYPE position (sibling of coerce_primitive_type_dotted_fallback_note for primitives and emit_typed_record_lit's bare_qualified_name for record-lit construction). render_rust_fn_sig_type / render_rust_fn_sig_type_applied_binding / render_rust_decl_type all extract a leaf type's name via authored_name_at and then both (a) key lookups against is_container_type/shared_types/rust_fn_sig_peel_closed_alias and (b) pass that same string as literal Rust output via render_rust_shared_type_with_optional's `rendered` argument. A namespace-qualified closure-param or aliased-decl type (e.g. impl Fn(v2.lens.complexity_accumulator_copy.Finding) -> bool) previously reached (b) verbatim -- dots and all, an invalid Rust token sequence rustc reports as 'expected one of !, (, +, ::, or <, found .'. Since every lookup in (a) is keyed on the bare declared name (same reasoning as alias_rhs_qualified_name_routing_note below), the fix is to route the leaf-name extraction through rust_fn_sig_leaf_name (which wraps authored_name_at with qualified_last_segment, the single authority) so both the lookup key and the emitted text are bare together -- not a second dotted-name fallback forked per call site. Every already-bare name renders exactly as before.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_fn_sig_leaf_name(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Rc<Node>,
+) -> String {
+    qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()))
 }
 
 pub fn alias_rhs_qualified_name_routing_note() -> String {
