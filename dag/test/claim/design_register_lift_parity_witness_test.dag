@@ -14,7 +14,7 @@ data lift_parity_note: String = "Phase-A emission-identical witness (design-regi
 data moodboard_css_lift_parity_digest: String = "5f2596b1693465d7"
 data moodboard_html_lift_parity_digest: String = "9252e67e6cf24375"
 data accent_study_html_lift_parity_digest: String = "90e876af9e5173db"
-data roadmap_css_lift_parity_digest: String = "b314972719a0ed4e"
+data roadmap_css_lift_parity_digest: String = "28052f4fb9e52624"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {
