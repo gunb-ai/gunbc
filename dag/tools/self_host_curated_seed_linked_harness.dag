@@ -179,7 +179,8 @@ fn cssl_seed_linked_behavioral_receipt(
   shim_writes: List<CuratedSeedLinkedShimWrite>,
   driver_rel: String,
   pass_marker: String,
-  claim_runs: List<CuratedSeedLinkedClaimRun>
+  claim_runs: List<CuratedSeedLinkedClaimRun>,
+  run_closure_assembly: Bool
 ) -> Bool {
   let root = git.Core.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
@@ -205,12 +206,17 @@ fn cssl_seed_linked_behavioral_receipt(
   )
 
   let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
-  let generic_assembly_ok = cssl_run_generic_closure_assembly(
-    root: root.path,
-    out_dir: out_dir.path,
-    source_rel: source_rel,
-    cssl_assemble_bin: cssl_assemble_bin
-  )
+  let hand_shim_path = cssl_uses_hand_shim_fast_path(shim_lib_rel: shim_lib_rel, shim_writes: shim_writes)
+  let generic_assembly_ok = if hand_shim_path && !run_closure_assembly {
+    true
+  } else {
+    cssl_run_generic_closure_assembly(
+      root: root.path,
+      out_dir: out_dir.path,
+      source_rel: source_rel,
+      cssl_assemble_bin: cssl_assemble_bin
+    )
+  }
   let lib_written = cssl_write_shim_lib_from_repo(root: root.path, out_dir: out_dir.path, shim_lib_rel: shim_lib_rel)
   let shims_written = cssl_write_shims_from_repo(root: root.path, out_dir: out_dir.path, shims: shim_writes)
   let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: cssl_v1_compiled_cargo_toml(root: root.path))

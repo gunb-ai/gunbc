@@ -19,6 +19,7 @@ type ModuleBehavioralTransportConfig {
   driver_rel: String
   pass_marker: String
   claim_runs: List<CuratedSeedLinkedClaimRun>
+  run_closure_assembly: Bool
 }
 
 data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransportConfig> = [
@@ -28,7 +29,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_00_compile_shims/witness_main.rs",
     pass_marker: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/01_tokenize.dag",
@@ -36,7 +38,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_01_tokenize_shims/witness_main.rs",
     pass_marker: "SELF_HOST_01_TOKENIZE_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/02_parse.dag",
@@ -44,7 +47,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_02_parse_shims/witness_main.rs",
     pass_marker: "SELF_HOST_02_PARSE_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_body_producer.dag",
@@ -78,7 +82,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_03_ingest_shims/witness_main.rs",
     pass_marker: "SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_normalize.dag",
@@ -139,7 +144,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     ],
     driver_rel: "dag/tools/self_host_03_normalize_shims/witness_main.rs",
     pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_resolve.dag",
@@ -147,7 +153,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_03_resolve_shims/witness_main.rs",
     pass_marker: "SELF_HOST_03_RESOLVE_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/04_infer.dag",
@@ -194,7 +201,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_materialization_carriers_shims/witness_main.rs",
     pass_marker: "SELF_HOST_MATERIALIZATION_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/parse_engine_hooks.dag",
@@ -220,7 +228,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_program_assembly_shims/witness_main.rs",
     pass_marker: "SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_partition.dag",
@@ -228,7 +237,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_program_partition_shims/witness_main.rs",
     pass_marker: "SELF_HOST_PROGRAM_PARTITION_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/source_authority.dag",
@@ -236,7 +246,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [],
     driver_rel: "dag/tools/self_host_source_authority_shims/witness_main.rs",
     pass_marker: "SELF_HOST_SOURCE_AUTHORITY_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: []
+    claim_runs: [],
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/use_site_verdict.dag",
@@ -302,7 +313,8 @@ fn compiler_module_behavioral_receipt_for(module_path: String) -> Bool {
       shim_writes: cfg.shim_writes,
       driver_rel: cfg.driver_rel,
       pass_marker: cfg.pass_marker,
-      claim_runs: cfg.claim_runs
+      claim_runs: cfg.claim_runs,
+      run_closure_assembly: cfg.run_closure_assembly
     )
     Absent => false
   }
