@@ -232,13 +232,70 @@ fn floor_discovery_malformed_disposition_reason(
   )
 }
 
-fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
-  if string_contains(s: line, pattern: "SubstrateInputsOnly") {
-    optional_present(value: SubstrateInputsOnly)
-  } else if string_contains(s: line, pattern: "ReadsLiveTree") {
-    optional_present(value: ReadsLiveTree)
+fn floor_discovery_after_first_equals(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "="),
+    init: "__SKIP__",
+    f: fn(acc, seg) {
+      if acc == "__SKIP__" {
+        "__TAKE_NEXT__"
+      } else if acc == "__TAKE_NEXT__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_last_dot_segment(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "."),
+    init: "",
+    f: fn(acc, seg) {
+      if seg == "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+}
+
+fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: String) -> Bool {
+  let trimmed = trim(rest)
+  if trimmed == token {
+    true
+  } else if starts_with(s: trimmed, prefix: token) {
+    let tail = trim(
+      substring(
+        s: trimmed,
+        start: string_length(s: token),
+        end: string_length(s: trimmed)
+      )
+    )
+    tail == ""
   } else {
+    false
+  }
+}
+
+fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
+  let init_rest = trim(seg: floor_discovery_after_first_equals(s: line))
+  let first_token = floor_discovery_first_token_before_space(seg: init_rest)
+  if (first_token == "")
+    || !floor_discovery_initializer_rest_is_strict_single_token(rest: init_rest, token: first_token)
+  {
     optional_absent()
+  } else {
+    let variant = floor_discovery_last_dot_segment(s: first_token)
+    if variant == "SubstrateInputsOnly" {
+      optional_present(value: SubstrateInputsOnly)
+    } else if variant == "ReadsLiveTree" {
+      optional_present(value: ReadsLiveTree)
+    } else {
+      optional_absent()
+    }
   }
 }
 

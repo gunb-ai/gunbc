@@ -79,6 +79,12 @@ fn fixture_live_tree_duplicate_decl_content() -> String {
   )
 }
 
+fn fixture_live_tree_trailing_comment_content() -> String {
+  concat(
+    "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree // was SubstrateInputsOnly\n"
+  )
+}
+
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
     entry: "dag/gunbc/floor_discovery_scaffold.dag",
@@ -294,6 +300,16 @@ test fn floor_discovery_live_tree_duplicate_decl_refuses_red_control() -> Bool {
     content: fixture_live_tree_duplicate_decl_content()
   ) {
     Present { value: msg } => string_contains(s: msg, pattern: "more than once")
+    Absent => false
+  }
+}
+
+test fn floor_discovery_live_tree_trailing_comment_refuses_red_control() -> Bool {
+  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+    entry_path: fixture_live_tree_entry,
+    content: fixture_live_tree_trailing_comment_content()
+  ) {
+    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
     Absent => false
   }
 }
