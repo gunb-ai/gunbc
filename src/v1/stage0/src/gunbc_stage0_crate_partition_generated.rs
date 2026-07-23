@@ -56,7 +56,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-std-core".to_string(),
         crate_dir: "src/v1/stage0_std_core".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["std_content_hash".to_string(), "std_coercion".to_string(), "std_decl_ref".to_string(), "std_disposition".to_string(), "std_error_primitives".to_string(), "std_http_path".to_string(), "std_emit_model".to_string(), "std_magnitude".to_string(), "std_measure".to_string(), "std_types".to_string(), "std_lens_verdict".to_string(), "std_algebra".to_string(), "std_nat".to_string(), "std_node".to_string(), "std_syntax".to_string(), "std_computation".to_string(), "std_termination".to_string(), "std_induction".to_string(), "std_iteration".to_string(), "std_graph".to_string(), "v1_std_core".to_string()]),
+        modules: Rc::new(vec!["std_content_hash".to_string(), "std_coercion".to_string(), "std_currency".to_string(), "std_decl_ref".to_string(), "std_disposition".to_string(), "std_error_primitives".to_string(), "std_http_path".to_string(), "std_emit_model".to_string(), "std_magnitude".to_string(), "std_measure".to_string(), "std_types".to_string(), "std_lens_verdict".to_string(), "std_algebra".to_string(), "std_nat".to_string(), "std_node".to_string(), "std_syntax".to_string(), "std_computation".to_string(), "std_termination".to_string(), "std_induction".to_string(), "std_iteration".to_string(), "std_graph".to_string(), "v1_std_core".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {
