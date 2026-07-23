@@ -14,9 +14,9 @@ data lift_parity_note: String = "Phase-A emission-identical witness (design-regi
 data moodboard_css_lift_parity_digest: String = "5f2596b1693465d7"
 data moodboard_html_lift_parity_digest: String = "9252e67e6cf24375"
 data accent_study_html_lift_parity_digest: String = "90e876af9e5173db"
-data roadmap_css_digest_repin_note: String = "Re-pinned for the P2 token migration (px/font literals -> gunbc.design.scale var tokens). Proven visually-neutral by execution: resolving every var(--scale-token) back to its value reproduces the pre-P2 CSS byte-for-byte (the token :root block carries the same literals). The rendered surface is identical; only the source bytes moved onto the scale, so this drift receipt is re-pinned to the tokenized output. The behavioral receipt (roadmap_register_keystone) and the untokened-length census remain the substance."
+data roadmap_css_digest_repin_note: String = "Re-pinned twice in the UI-model migration. P2 (token migration, px/font -> gunbc.design.scale var tokens) was proven visually-neutral by execution: resolving every var(--scale-token) reproduced the pre-P2 CSS byte-for-byte. P3 (presentation mapping) then INTENTIONALLY adds styling: the dispatch button's reserved min-width (derived from the longest wire label, in ch) and the ok/refusal/requested chip material rules (each painting the P0 state's role). That is a deliberate new-styling change, not neutral, so the drift receipt is re-pinned to the P3 output. The behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) and the untokened-length census remain the substance; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "bde723955c44b23c"
+data roadmap_css_lift_parity_digest: String = "d429082785865b86"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

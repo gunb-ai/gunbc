@@ -73,6 +73,41 @@ fn dispatch_button_terminal_count() -> Int {
   count(component_terminal_states(c: dispatch_button_component()))
 }
 
+data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the label authority, not a hand pixel (P3): min-width is the longest wire label (in ch, the mono-font character unit the button uses) plus a fixed gutter for border+padding. Because every terminal renders its wire label as the button text, reserving the longest label's width up front means a text swap (dispatch -> dispatching... -> already_done_signed_off) never reflows the row — the layout jump dies as a class. Add a longer wire arm and the reserved width grows by derivation; there is no pixel to re-tune."
+
+data dispatch_button_ch_gutter: Int = 2
+
+fn longest_label_len(labels: List<String>) -> Int {
+  fold(labels, init: 0, f: (acc, l) =>
+    if string_length(s: l) > acc { string_length(s: l) } else { acc })
+}
+
+fn dispatch_reserved_ch_for(labels: List<String>) -> Int {
+  longest_label_len(labels: labels) + dispatch_button_ch_gutter
+}
+
+fn dispatch_reserved_ch() -> Int {
+  dispatch_reserved_ch_for(labels: belt_dispatch_all_status_labels())
+}
+
+fn dispatch_reserved_width() -> String {
+  join([to_string(dispatch_reserved_ch()), "ch"], "")
+}
+
+data dispatch_class_requested: String = "dispatch-requested"
+data dispatch_class_ok: String = "dispatch-ok"
+data dispatch_class_refused: String = "dispatch-refused"
+
+data dispatch_state_class_note: String = "The single authority for a state's CSS modifier class, consumed by the client script (which flips classes on the live button), the stylesheet (which paints each class through the state's role material), and the P4 gallery (which renders each state statically) — three consumers, one class vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier); the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label distinction living in the text, not the color."
+
+fn dispatch_state_class(state: ComponentState) -> String {
+  match state.kind {
+    IdleState => ""
+    RequestedState => dispatch_class_requested
+    TerminalState { wire_label: _, ok } => if ok { dispatch_class_ok } else { dispatch_class_refused }
+  }
+}
+
 data dispatch_client_program_note: String = "The dispatch button's client behavior, modeled in native .dag as ONE TsProgram (extdeps.languages.typescript.program) — never a hand-concatenated JS string (the dispatch-button incident's root class, §5). It is EMITTED as an external served asset (gunbc.roadmap_dispatch_asset_path, served by belt B) and referenced by <script src>, the same shape gunbc.site.moodboard uses for reframe_watcher_js — NOT inlined into the HTML (an inline <script> text node escapes '>' under std.markup EscapeHtml, corrupting an arrow's `=>`; external emission has no such hazard, so arrows are free). The ok-predicate is a ts_binop `||` chain DERIVED from belt_dispatch_ok_status_labels (the wire authority), so a label crossing the ok/refusal line moves the predicate by derivation — the retired belt-A ok/node read is gone and cannot return (the page witness holds a RED on j.ok)."
 
 data roadmap_dispatch_asset_path: String = "/assets/roadmap-dispatch.js"
@@ -83,6 +118,17 @@ fn js_b_member(name: String) -> TsExpr {
 
 fn js_j_status() -> TsExpr {
   ts_member(object: ts_ident(name: "j"), property: "status")
+}
+
+fn js_j_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: "j"), property: name)
+}
+
+fn js_classlist_call(method: String, arg: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: method),
+    args: [arg],
+  ))
 }
 
 fn dispatch_ok_status_comparison(wire_label: String) -> TsExpr {
@@ -118,14 +164,35 @@ fn dispatch_fetch_url_expr() -> TsExpr {
 fn dispatch_response_handler_body() -> TsStmt {
   ts_block(stmts: [
     ts_const(name: "ok", value: dispatch_ok_predicate_expr()),
-    ts_const(name: "st", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status"))),
     ts_expr_stmt(expr: ts_binop(
       left: js_b_member(name: "textContent"),
       op: "=",
+      right: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status")),
+    )),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_ok)),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_refused)),
+    js_classlist_call(method: "add", arg: ts_cond(
+      test: ts_ident(name: "ok"),
+      consequent: ts_lit_str(value: dispatch_class_ok),
+      alternate: ts_lit_str(value: dispatch_class_refused),
+    )),
+    ts_const(name: "d", value: ts_binop(left: js_j_member(name: "detail"), op: "||", right: ts_lit_str(value: ""))),
+    ts_expr_stmt(expr: ts_binop(
+      left: js_b_member(name: "title"),
+      op: "=",
       right: ts_cond(
-        test: ts_ident(name: "ok"),
-        consequent: js_j_status(),
-        alternate: ts_binop(left: ts_lit_str(value: "failed: "), op: "+", right: ts_ident(name: "st")),
+        test: js_j_member(name: "step"),
+        consequent: ts_binop(
+          left: ts_binop(left: js_j_member(name: "step"), op: "+", right: ts_lit_str(value: ": ")),
+          op: "+",
+          right: ts_ident(name: "d"),
+        ),
+        alternate: ts_binop(
+          left: ts_binop(left: js_j_member(name: "reason"), op: "||", right: js_j_status()),
+          op: "||",
+          right: ts_lit_str(value: "no status"),
+        ),
       ),
     )),
     ts_if(
@@ -146,6 +213,10 @@ fn dispatch_click_handler_body() -> TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "dispatching..."))),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_ok)),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_refused)),
+    js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_requested)),
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "title"), op: "=", right: ts_lit_str(value: ""))),
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
         object: ts_call(
