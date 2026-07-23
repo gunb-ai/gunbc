@@ -12,6 +12,7 @@ import v2.std.host_transport {
   TargetEmitHostRuntimeRow
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
