@@ -1,0 +1,22 @@
+module test.claim.uefi_shell_over_sol
+
+import std.logic { Bool }
+import gunbc.uefi_shell_over_sol {
+  srv4_uefi_boot_config_sol_send_intent,
+  uefi_boot_config_sol_send_script,
+}
+import gunbc.uefi_boot_config { srv4_uefi_install_boot }
+
+test fn srv4_sol_send_carries_bcfg_over_serial() -> Bool {
+  let intent = srv4_uefi_boot_config_sol_send_intent
+  string_contains(s: intent.input, pattern: "bcfg boot add 0 fs0:\\EFI\\BOOT\\BOOTAA64.EFI")
+    && string_contains(s: intent.input, pattern: "\\r")
+    && string_contains(s: intent.input, pattern: "reset -w")
+}
+
+test fn srv4_sol_send_script_uses_ipmitool_sol() -> Bool {
+  let s = uefi_boot_config_sol_send_script(bmc_host: "192.168.1.195", username: "root", desired: srv4_uefi_install_boot)
+  string_contains(s: s, pattern: "ipmitool -I lanplus -H \"192.168.1.195\" -U \"root\" -E sol activate")
+    && string_contains(s: s, pattern: "sol deactivate")
+    && string_contains(s: s, pattern: "printf '%b'")
+}

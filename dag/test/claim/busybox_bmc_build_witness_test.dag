@@ -1,0 +1,17 @@
+module test.claim.busybox_bmc_build
+
+import std.logic { Bool }
+import std.types { list_length }
+import extdeps.exec.command { shell_command_render }
+import gunbc.busybox_bmc_build { bmc_busybox_build_plan, busybox_build_commands }
+
+test fn busybox_build_is_modeled_and_grounded() -> Bool {
+  let cmds = busybox_build_commands(plan: bmc_busybox_build_plan)
+  let all = fold(cmds, init: "", f: (acc, c) => join([acc, shell_command_render(command: c), "\n"], ""))
+  string_contains(s: all, pattern: "busybox.net/downloads/busybox-1.36.1.tar.bz2")
+    && string_contains(s: all, pattern: "'CROSS_COMPILE=arm-linux-gnueabi-'")
+    && string_contains(s: all, pattern: "'EXTRA_CFLAGS=-march=armv5te -mfloat-abi=soft'")
+    && string_contains(s: all, pattern: "CONFIG_STATIC=y")
+    && string_contains(s: all, pattern: "/var/lib/gunbc/artifacts/netboot/busybox")
+    && list_length(items: cmds) == 8
+}

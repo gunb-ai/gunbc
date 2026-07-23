@@ -12,7 +12,7 @@ test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
 }
 
 test fn fleet_intent_network_topology_endpoint_count_holds() -> Bool {
-  list_length(items: fleet_intent_network.endpoints) == 8
+  list_length(items: fleet_intent_network.endpoints) == 10
 }
 
 test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
