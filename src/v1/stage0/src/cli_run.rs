@@ -8484,10 +8484,23 @@ fn witness_entry_eligibility_census_declared_entry_count_from_authority(
     }
 }
 
+fn census_discovery_exclusion_applies(rel: &str, pattern: &str) -> bool {
+    // Execution-grain entries are excluded from hermetic discovery scan but still
+    // scheduled via explicit rosters (pr-native agreement legs, native routing frontier).
+    // Census must cover them so `witness_execution_leg_label` does not panic before
+    // agreement failure receipts can fire (review 41820).
+    if pattern == "test/claim/execution/" {
+        return false;
+    }
+    rel.contains(pattern)
+}
+
 fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
     // SCAFFOLD (§7 HAND-RUST — dissolve-on: discovery-roster projection in pure `.dag` fold).
-    // Entry paths must match floor discovery's unique `DiscoveryRow.entry` set (sidecar
-    // `*_test.dag` files with `test fn`/`test data` under witness_layer_roots).
+    // Entry paths must cover every floor row `witness_execution_leg_label` may attribute:
+    // hermetic discovery's unique `DiscoveryRow.entry` set (sidecar `*_test.dag` with
+    // `test fn`/`test data` under witness_layer_roots) PLUS execution-grain entries
+    // excluded from discovery scan but enrolled via explicit rosters.
     let root = process_workspace_root();
     let excludes = witness_exclusion_substrings();
     let mut entries = BTreeSet::new();
@@ -8500,7 +8513,10 @@ fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
             if !rel.ends_with("_test.dag") || rel.contains("/generated/") {
                 continue;
             }
-            if excludes.iter().any(|sub| rel.contains(sub.as_str())) {
+            if excludes
+                .iter()
+                .any(|sub| census_discovery_exclusion_applies(&rel, sub.as_str()))
+            {
                 continue;
             }
             let content = std::fs::read_to_string(&path)

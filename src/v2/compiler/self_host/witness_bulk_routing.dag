@@ -195,7 +195,7 @@ data witness_bulk_routing_census_forward_constructors_note: String = "Forward ce
 
 data witness_bulk_routing_cssl_family_extension_note: String = "Cssl/family routing extension (Lane B substance): emit-on-demand family entries classify via census_emit_on_demand_family_grain (family-grain native_routing_frontier authority until Derived Group membership subsumes); all other pending rows use census_pending_interpreted_retained until the srvN cssl sweep names ImportClosureCargoRefuse / NamespaceQualifiedRustEmit / TypeRefImportMissing first-error classes. Full roster count = witness_entry_eligibility_census_entry_count (TSV carrier); sample roster remains the 16-entry stratified slice until bulk flip."
 
-data witness_bulk_routing_census_totality_note: String = "Lane B landing: totality witness gates on witness_entry_eligibility_census_meets_floor (discovery-aligned roster, currently 672). ROADMAP 744 claim-only count is the bulk-flip dissolve trigger (srvN sweep), not this PR's pinned authority — retargeted review 41817."
+data witness_bulk_routing_census_totality_note: String = "Lane B landing: totality witness gates on witness_entry_eligibility_census_meets_floor (discovery-aligned roster + execution-grain explicit-roster entries, currently 722). ROADMAP 744 claim-only count is the bulk-flip dissolve trigger (srvN sweep), not this PR's pinned authority — retargeted review 41817."
 
 fn witness_bulk_routing_census_totality_holds() -> Bool {
   witness_entry_eligibility_census_meets_floor()
