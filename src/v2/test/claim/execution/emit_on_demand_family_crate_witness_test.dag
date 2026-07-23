@@ -283,6 +283,14 @@ fn optional_divergence_to_list(
   }
 }
 
+fn family_crate_emit_family_rejected_divergence() -> NativeAgreementDivergence {
+  NativeAgreementDivergence {
+    member_id: "emit_family",
+    interpreted_value: "emit_rejected",
+    native_value: "emit_rejected"
+  }
+}
+
 fn family_crate_pr_native_agreement_divergences() -> List<NativeAgreementDivergence> {
   let members = family_crate_members()
   let workspace = native_cache_workspace_root(
@@ -322,7 +330,7 @@ fn family_crate_pr_native_agreement_divergences() -> List<NativeAgreementDiverge
           )
         )
       )
-    Rejected { diagnostics: _ } => []
+    Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
   }
 }
 
@@ -491,6 +499,10 @@ data family_crate_pr_native_note: String = "Per-PR native carrier (routing front
 
 test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {
   length(xs: family_crate_pr_native_agreement_divergences()) == 0
+}
+
+test fn family_crate_emit_family_rejected_divergence_holds() -> Bool {
+  format_native_agreement_divergence(d: family_crate_emit_family_rejected_divergence()) == "member=emit_family interpreted=emit_rejected native=emit_rejected"
 }
 
 fn emit_on_demand_family_crate_pr_native_agreement_failure_receipt() -> String {

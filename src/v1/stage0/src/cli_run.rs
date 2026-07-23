@@ -8393,8 +8393,12 @@ pub fn run_claim_failure_receipt(
 /// `witness_entry_eligibility_census_emit`). dissolve-on: claim_executor derives
 /// `WitnessExecutionLeg` from the routing frontier row at runtime (construction).
 pub fn witness_execution_leg_label(entry: &str) -> String {
-    witness_entry_eligibility_execution_leg_from_tsv(entry)
-        .unwrap_or_else(|| "InterpretedLeg".to_string())
+    witness_entry_eligibility_execution_leg_from_tsv(entry).unwrap_or_else(|| {
+        panic!(
+            "witness execution leg: no census TSV row for entry {entry:?} \
+             (refuse — regenerate docs/probes/witness_entry_eligibility_census.tsv)"
+        )
+    })
 }
 
 const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
@@ -8439,7 +8443,9 @@ fn parse_witness_entry_eligibility_execution_legs(content: &str) -> HashMap<Stri
             .nth(6)
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .unwrap_or("InterpretedLeg");
+            .unwrap_or_else(|| {
+                panic!("witness execution leg TSV: entry {entry:?} has empty execution_leg column")
+            });
         legs.insert(entry.to_string(), leg.to_string());
     }
     legs
