@@ -117,6 +117,14 @@ fn witness_open_node_doc_emits_button_and_script() -> Bool {
     && string_contains(s: h, pattern: "fetch('/dispatch/")
 }
 
+fn witness_dispatch_script_reads_belt_b_status_contract() -> Bool {
+  let h = dispatch_doc_html_for(rn: open_dispatch_node())
+  string_contains(s: h, pattern: "j.status==='spawned'")
+    && string_contains(s: h, pattern: "j.status==='already_live'")
+    && !string_contains(s: h, pattern: "j.ok")
+    && !string_contains(s: h, pattern: "j.node)")
+}
+
 fn witness_signed_off_node_doc_has_no_button() -> Bool {
   let h = dispatch_doc_html_for(rn: signed_off_dispatch_node())
   !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
@@ -130,5 +138,6 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_depth_cap_fails_honest()
     && witness_bold_title_renders_strong()
     && witness_open_node_doc_emits_button_and_script()
+    && witness_dispatch_script_reads_belt_b_status_contract()
     && witness_signed_off_node_doc_has_no_button()
 }
