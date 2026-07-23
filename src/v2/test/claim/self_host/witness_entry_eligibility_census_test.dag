@@ -16,7 +16,7 @@ data witness_entry_eligibility_census_test_note: String = "Census receipt: the m
 
 test fn witness_entry_eligibility_census_count_holds() -> Bool {
   witness_entry_eligibility_census_meets_floor()
-    && witness_entry_eligibility_census_entry_count == 763
+    && witness_entry_eligibility_census_entry_count == 764
     && witness_entry_eligibility_census_entry_count > witness_bulk_entry_count_expected
     && length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
 }
