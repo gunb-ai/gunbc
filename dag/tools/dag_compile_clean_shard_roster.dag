@@ -1,5 +1,6 @@
 module tools.dag_compile_clean_shard_roster
 
+import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition {
   CompileCleanModuleShard,
   compile_clean_partition_boundary
@@ -12,7 +13,7 @@ type CompileCleanModuleDeclFact {
 }
 
 fn compile_clean_entry_module_facts() -> List<CompileCleanModuleDeclFact> {
-  module_declaration_facts(pool_roots: [compile_clean_partition_boundary().entry_root])
+  module_declaration_facts(pool_roots: compile_clean_partition_boundary().entry_roots)
 }
 
 fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> CompileCleanModuleShard {
@@ -54,7 +55,6 @@ fn compile_clean_shard_roster_paths_duplicate_free() -> Bool {
   })
 }
 
-fn witness_shard_roster_boundary_is_entry_root_only() -> Bool {
-  list_length(items: [compile_clean_partition_boundary().entry_root]) == 1
-    && compile_clean_partition_boundary().entry_root == "dag"
+fn witness_shard_roster_boundary_is_witness_layer_roots() -> Bool {
+  compile_clean_partition_boundary().entry_roots == witness_layer_roots
 }

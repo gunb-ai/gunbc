@@ -2177,13 +2177,17 @@ fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bo
 
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+/// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
+/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
+/// (see its note: a roster that is a strict subset of the compiled tree both widened
+/// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
+/// scoped runs).
 fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
-    let entry_root = witness_layer_roots()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "dag".to_string());
-    let abs_entry_root = anchor_source_root(&entry_root);
-    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+    let entry_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|root| anchor_source_root(root))
+        .collect();
+    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
         .collect();
@@ -24292,6 +24296,36 @@ mod witness_layer_roots_compile_clean_tests {
                 &departed,
             );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Roster covers the whole compiled tree (lever 8): a diff touching only
+    /// `src/v2/**.dag` scopes to its own entry closure instead of falling to the
+    /// "no shard intersection" whole-tree baseline (pre-fix the roster enumerated
+    /// `dag/`-declared entries only, so this exact shape widened — baseline run
+    /// 29976989996), and a `dag/std` touch selects its affected `src/v2` importers
+    /// (pre-fix they were never in the roster, so scoped runs under-covered them).
+    #[test]
+    fn floor_fast_plan_scopes_src_v2_entries_both_directions() {
+        with_workspace_cwd(|| {
+            let v2_leaf = "src/v2/std/witness_execution_routing.dag".to_string();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[v2_leaf.clone(), "dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            let CompileCleanScopePlan::Scoped { entry_paths } = plan else {
+                panic!("expected Scoped for a selectable .dag-only diff, got {plan:?}");
+            };
+            assert!(
+                entry_paths.contains(&v2_leaf),
+                "touched src/v2 module must select its own entry"
+            );
+            assert!(
+                entry_paths
+                    .iter()
+                    .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
+                "a dag/std touch must select affected src/v2 importers"
+            );
         });
     }
 
