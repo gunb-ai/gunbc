@@ -19,7 +19,8 @@ fn faithful_freemonoid_vec_alias_eligible_in_faithful_repr() {
 
 #[test]
 fn faithful_container_base_grounds_list_to_vec() {
-    let base = rust_seed_host_container_base("List".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
+    let base =
+        rust_seed_host_container_base("List".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
     assert_eq!(
         base.as_deref(),
         Some("Vec"),
@@ -48,7 +49,8 @@ fn faithful_optional_carrier_alias_eligible() {
 
 #[test]
 fn optional_coproduct_emits_native_option_alias() {
-    let source = "module optsig.fixture\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n";
+    let source =
+        "module optsig.fixture\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n";
     let emitted = compile_dag_target(source, RenderTarget::Rust)
         .files
         .iter()

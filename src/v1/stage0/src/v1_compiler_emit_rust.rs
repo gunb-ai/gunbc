@@ -10428,7 +10428,8 @@ pub fn emit_type_def_from_connective(
                         ">;".to_string(),
                     )
                 }
-            } else if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone()) {
+            } else if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone())
+            {
                 {
                     let elem_csv = Rc::new({
                         let mut __result = Vec::new();
