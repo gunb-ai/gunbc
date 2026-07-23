@@ -2071,9 +2071,38 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
   concat(from_ann, concat(from_params, from_inferred))
 }
 
-fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>) -> List<String> {
+fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match scrutinee.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let is_optional = rt.return_cardinality == CardOptional
+      if is_optional {
+        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
+      } else { authored_name_at(source_indices: source_indices, node: rt) }
+    _ => ""
+  }
+}
+
+fn collect_match_pattern_parent_enums(expr: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  match expr.expr_data {
+    ExprMatch =>
+      let scrut = match_scrutinee(texpr: expr)
+      let scrut_type = emit_scrutinee_type_name(scrutinee: scrut, source_indices: source_indices)
+      let from_scrut = if scrut_type != "" { [scrut_type] } else { [] }
+      let from_arms = match_arm_nodes(texpr: expr) |> flat_map(arm =>
+        match arm_resolved_parent_enum(arm: arm, scrut_type: scrut_type, type_summaries: type_summaries) {
+          Present { value: parent } => if parent != "" { [parent] } else { [] }
+          Absent => []
+        }
+      )
+      unique_strings(items: concat(from_scrut, from_arms))
+    _ => []
+  }
+}
+
+fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
   let self_names = match n.expr_data {
     ExprRecordLit { parent_enum: _ } => record_lit_ref_names(n: n, source_indices: source_indices)
+    ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
     _ =>
       let nm = authored_name_at(source_indices: source_indices, node: n)
       match map_get(variant_to_enum, nm) {
@@ -2083,28 +2112,28 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
   }
   let child_names = concat(
     concat(
-      n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum)),
-      n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum))
+      n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
+      n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
     ),
     concat(
-      n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum)),
-      n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum))
+      n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
+      n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
     )
   )
   let opt_names = concat(
-    match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum)  Absent => [] },
+    match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)  Absent => [] },
     concat(
-      match n.transport { Present { value: t } => collect_value_emit_type_surface_names(n: t, source_indices: source_indices, variant_to_enum: variant_to_enum)  Absent => [] },
+      match n.transport { Present { value: t } => collect_value_emit_type_surface_names(n: t, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)  Absent => [] },
       match n.type_annotation { Present { value: t } => collect_type_node_import_surface_names(n: t, source_indices: source_indices)  Absent => [] }
     )
   )
   unique_strings(items: concat(self_names, concat(child_names, opt_names)))
 }
 
-fn collect_item_emit_surface_names(item: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>) -> List<String> {
+fn collect_item_emit_surface_names(item: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
   let from_signature = collect_item_type_surface_names(item: item, source_indices: source_indices)
   let from_body = match item.body {
-    Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum)
+    Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
     Absent => []
   }
   unique_strings(items: concat(from_signature, from_body))
@@ -2132,7 +2161,7 @@ data reference_derived_use_lines_note: String = "emit_import_closure_root (§5).
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
-    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum)))
+    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, type_summaries: emit_info.type_summaries)))
     let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
