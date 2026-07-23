@@ -264,3 +264,38 @@ qualifies it and extends it:
 - **Bench heuristic worth keeping:** Pi/srv stretch ~8x = CPU-shaped; 25–78x =
   memory-shaped. This single signal killed the ingest-bin myth (sub-second on the Pi)
   and exposed the pooling/footprint trade.
+
+### 9.2 Independent reproduction (2026-07-23, third leg) — count fix, the plumbing-PR cost profile, and the green-run pegging receipt
+
+A from-scratch verification (code paths read, logs re-derived to the second, counterfactual
+rebuilt on an uncontended VM: 12 cold children 243.2s vs one pooled process 53.9s, 4.5x —
+same shape as srv1's 5.1x) confirms every §9 claim it could test, and adds:
+
+- **Count fix:** the precise claim-child census is **25** (batch 1: layering 7 + extdeps 5
+  + drift 0; batch 6: 3+3+6 across the ingest sub-gates; batch 7: 1); the 26th process is
+  batch-7's `regen_stage0` sibling, not a claim child. §9's "~26" stands as written but
+  the split is now exact. Also exact: the serial-children walls sum to 479.6s, and the
+  no-short-circuit property is a LANGUAGE fact — the v1 interpreter evaluates both
+  operands of every binary op (v1_interpreter.rs ~1918), so `acc && child` can never
+  skip; every claim always runs. Fail-closed by construction, priced accordingly.
+- **The plumbing-PR cost profile (reads on #7122's 52-min wet spike):** that spike was
+  the affected set working CORRECTLY on a PR touching host_prelude/cli_run — plumbing in
+  nearly every bin-witness closure, so 46 of 55 heavyweight self-host rows ran instead
+  of 8. Not a pooling regression, and not fully the enrolled-witness story either: ANY
+  plumbing PR legitimately pays the whole self-host roster. Consequence for reading
+  receipts: on plumbing PRs, only per-batch residuals are the honest post-fix metric —
+  headline walls are affected-set artifacts. Consequence for the ledger: plumbing PRs
+  have a structurally different cost profile; a future budget wall must denominate
+  per-batch, not per-run, or every touch of cli_run reds spuriously.
+- **The green-run pegging receipt (strengthens §9.1's cliff):** even the green anchor
+  run pegs its 16GiB cgroup from MID-DISCOVERY onward (swap 3.2GB by discovery end,
+  9.4GB by regen, 4,785 throttle events on a green run). Children spawn inside the
+  already-pegged cgroup — plausibly why CI children run 35–73s where an uncontended VM
+  takes 19–26s. The crawl was always one straw away, on every green run.
+- **The remaining gap, decomposed:** #7122 pools per-CALL, not per-gate — batch 1 still
+  spawns 6 pooled children (Σ=250s) and ingest 4. Batch-1's calls share identical
+  source roots, so per-gate/per-batch pooling is feasible there (the one-process run of
+  all 12 claims is the existence proof); the ingest gate's mktemp overlay roots are the
+  GENUINE constraint keeping its 4 calls separate — named, not hand-waved. The durable
+  fix past that remains the cross-process content-keyed store (W3), already the
+  declared dissolve-on.
