@@ -48,6 +48,56 @@ fn read_positive_budget_ms(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FloorBatchStopPolicy {
+    StopBeforeDependents,
+    FullLedger,
+}
+
+fn plan_uses_floor_batch_stop_policy(plan_function: &str) -> bool {
+    matches!(
+        plan_function,
+        "gunbc_ci_floor_batches" | "gunbc_ci_plan_artifact_batches" | "gunbc_falsifier_batches"
+    )
+}
+
+fn resolve_floor_batch_stop_policy(
+    plan_ctx: &InterpContext,
+    plan_function: &str,
+) -> FloorBatchStopPolicy {
+    if !plan_uses_floor_batch_stop_policy(plan_function) {
+        return FloorBatchStopPolicy::StopBeforeDependents;
+    }
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    match run_in_context_with_args(
+        plan_ctx,
+        "gunbc_ci_floor_batch_stop_policy_for_github_event",
+        &[(Some("event".to_string()), Value::Str(event))],
+        true,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            if plan_ctx.sym_eq(variant_name, "StopBeforeDependents") {
+                FloorBatchStopPolicy::StopBeforeDependents
+            } else if plan_ctx.sym_eq(variant_name, "FullLedger") {
+                FloorBatchStopPolicy::FullLedger
+            } else {
+                eprintln!(
+                    "claim_executor: unrecognized FloorBatchStopPolicy variant \
+                     (defaulting to FullLedger, fail-closed)"
+                );
+                FloorBatchStopPolicy::FullLedger
+            }
+        }
+        Err(msg) => {
+            eprintln!(
+                "claim_executor: floor batch stop policy unavailable \
+                 (defaulting to FullLedger, fail-closed): {msg}"
+            );
+            FloorBatchStopPolicy::FullLedger
+        }
+    }
+}
+
 #[derive(Clone)]
 enum Runnable {
     SingleClaim {
@@ -1523,6 +1573,7 @@ fn run_walk(
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
+    stop_policy: FloorBatchStopPolicy,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1699,11 +1750,21 @@ fn run_walk(
             results: batch_results,
         });
         if any_failed {
-            eprintln!(
-                "claim_executor: batch {} had failures — stopping before dependent batches",
-                bi + 1
-            );
-            break;
+            match stop_policy {
+                FloorBatchStopPolicy::StopBeforeDependents => {
+                    eprintln!(
+                        "claim_executor: batch {} had failures — stopping before dependent batches",
+                        bi + 1
+                    );
+                    break;
+                }
+                FloorBatchStopPolicy::FullLedger => {
+                    eprintln!(
+                        "claim_executor: batch {} had failures — continuing (FullLedger stop policy)",
+                        bi + 1
+                    );
+                }
+            }
         }
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
@@ -1915,6 +1976,7 @@ fn run_perturb_check(
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
+        FloorBatchStopPolicy::StopBeforeDependents,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -2139,6 +2201,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         FalsifierSelfHostWetBudgets::default()
     };
+    let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
     drop(plan_ctx);
     phase_mark("plan evaluated");
 
@@ -2200,6 +2263,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
+        batch_stop_policy,
     );
     match peak_rss_bytes() {
         Some(bytes) => {

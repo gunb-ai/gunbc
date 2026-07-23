@@ -30,6 +30,12 @@ import v2.workflow.ci_floor_plan {
   gunbc_floor_arm_time_budget_refusal_applies,
   witness_floor_arm_time_budget_refusal_plan_roster_authority,
   witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed,
+  witness_cheap_gates_precede_all_corpus_batches,
+  witness_floor_schedule_preserves_enrolled_set,
+  witness_non_cheap_gate_absent_from_early_batch,
+  witness_floor_stop_policy_pr_is_fail_fast,
+  witness_floor_stop_policy_push_is_full_ledger,
+  witness_floor_stop_policy_unknown_defaults_full_ledger,
   gunbc_falsifier_self_host_wet_receipt_wall_budget_ms,
   gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
   gunbc_ci_fast_lane_eval_budget_ms,
@@ -464,6 +470,12 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_cheap_gates_are_resource_anchors() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
     witness_cheap_gates_precede_compile_root() &&
+    witness_cheap_gates_precede_all_corpus_batches() &&
+    witness_floor_schedule_preserves_enrolled_set() &&
+    witness_non_cheap_gate_absent_from_early_batch() &&
+    witness_floor_stop_policy_pr_is_fail_fast() &&
+    witness_floor_stop_policy_push_is_full_ledger() &&
+    witness_floor_stop_policy_unknown_defaults_full_ledger() &&
     gunbc_ci_floor_schedule_lens_holds() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&

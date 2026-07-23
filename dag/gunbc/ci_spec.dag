@@ -57,6 +57,10 @@ import v2.std.diagnostic { EmitDirective, SeverityWarning }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
+type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
+
+data gunbc_ci_floor_batch_stop_policy_note: String = "Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request → StopBeforeDependents (fail-fast: a cheap-gate red stops before compile/corpus). push (main) and schedule (falsifier) → FullLedger (record batch failure and continue; exit non-zero at end). Unknown/unrecognized events default to FullLedger — never silently stop-early and lose ledger (the absorbing fallback). Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan; consumer: claim_executor.rs run_walk."
+
 type DiffPolicy {
   base: String
   head: String
