@@ -1,0 +1,83 @@
+module test.claim.host_axis_caps
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String, List, list_length }
+import gunbc.host_axis_caps {
+  CapMember,
+  desired_cap_member,
+  cap_dropin_content,
+  caps_effects,
+  caps_upsert_count,
+  caps_teardown_count,
+  caps_refusal_count,
+}
+import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+}
+
+data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
+data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr
+data foreign_path: NonEmptyStr = "/etc/systemd/system/actions-runner@.service.d/99-foreign.conf"
+data mem_max: NonEmptyStr = "MemoryMax"
+data swap_max: NonEmptyStr = "MemorySwapMax"
+data bytes16g: NonEmptyStr = "17179869184"
+data bytes32g: NonEmptyStr = "34359738368"
+data bytes8g: NonEmptyStr = "8589934592"
+
+fn srv_caps_desired() -> List<CapMember> {
+  [
+    desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+  ]
+}
+
+test fn caps_idempotence_zero_effects() -> Bool {
+  let d = srv_caps_desired()
+  caps_upsert_count(desired: d, observed: d) == 0
+    && caps_teardown_count(desired: d, observed: d) == 0
+    && caps_refusal_count(desired: d, observed: d) == 0
+    && match caps_effects(desired: d, observed: d) {
+         EffectsReady { effects: e } => list_length(items: e) == 0
+         ApplyRefused { refusals: _ } => false
+       }
+}
+
+test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
+  let d = srv_caps_desired()
+  let observed = [
+    CapMember { dropin_path: path20, content: cap_dropin_content(property: mem_max, bytes_value: bytes8g) },
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+  ]
+  caps_upsert_count(desired: d, observed: observed) == 1
+    && caps_teardown_count(desired: d, observed: observed) == 0
+    && caps_refusal_count(desired: d, observed: observed) == 0
+    && caps_upsert_count(desired: d, observed: d) == 0
+}
+
+test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
+  let d = srv_caps_desired()
+  let foreign = CapMember { dropin_path: foreign_path, content: "[Service]\nMemoryMax=1\n" }
+  let observed = [
+    desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+    foreign,
+  ]
+  caps_refusal_count(desired: d, observed: observed) == 1
+    && caps_teardown_count(desired: d, observed: observed) == 0
+    && match caps_effects(desired: d, observed: observed) {
+         ApplyRefused { refusals: r } => list_length(items: r) == 1
+         EffectsReady { effects: _ } => false
+       }
+    && caps_teardown_count(
+         desired: [desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g)],
+         observed: d,
+       ) == 1
+}
+
+test fn caps_content_is_derived_not_handspelled() -> Bool {
+  cap_dropin_content(property: mem_max, bytes_value: bytes16g) == "[Service]\nMemoryMax=17179869184\n"
+    && cap_dropin_content(property: swap_max, bytes_value: bytes32g) == "[Service]\nMemorySwapMax=34359738368\n"
+    && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
+}
