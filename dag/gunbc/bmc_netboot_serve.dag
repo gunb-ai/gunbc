@@ -140,7 +140,7 @@ data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   }
 }
 
-data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run + bmc.Ssh.PutFile glue on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue"
+data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run rendering of scp_command (extdeps.exec.command, the single ssh/scp posture authority — no forked argv) on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue"
 
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> ProcessExit
   uses net: Network
