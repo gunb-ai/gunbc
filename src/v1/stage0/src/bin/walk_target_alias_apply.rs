@@ -23,12 +23,10 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::{
     build_module_path_index, make_eval_context, resolution_divergence_census_source_roots,
-    resolve_entry_graph_shared, walk_target_alias_plan_live,
-    whole_tree_probe_exclusion_substrings, WalkTargetAliasPlanClass, WalkTargetAliasPlanRow,
+    resolve_entry_graph_shared, walk_target_alias_plan_live, whole_tree_probe_exclusion_substrings,
+    WalkTargetAliasPlanClass, WalkTargetAliasPlanRow,
 };
-use v1_compiler::v1_interpreter::{
-    run_in_context_with_args, ExecutionMode, InterpContext, Value,
-};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
 
 const APPLY_ENTRY: &str = "dag/tools/walk_target_alias_apply.dag";
 const APPLY_FN: &str = "walk_target_alias_apply_module_fold";
@@ -85,7 +83,10 @@ fn plan_row_value(ctx: &InterpContext, row: &WalkTargetAliasPlanRow) -> Value {
         "WalkTargetAliasPlanRowKey",
         vec![
             ("class", class),
-            ("declaring_module", Value::Str(row.key.declaring_module.clone())),
+            (
+                "declaring_module",
+                Value::Str(row.key.declaring_module.clone()),
+            ),
             ("binding", Value::Str(row.key.binding.clone())),
             (
                 "walk_target_qualified_path",
@@ -189,7 +190,11 @@ fn value_list_items(ctx: &InterpContext, value: &Value) -> Vec<Value> {
 fn diagnostics_head_reason(ctx: &InterpContext, diagnostics: &Value) -> String {
     if let Value::Record { fields, .. } = diagnostics {
         if let Some(head) = ctx.field(fields, "head") {
-            if let Value::Record { fields: head_fields, .. } = head {
+            if let Value::Record {
+                fields: head_fields,
+                ..
+            } = head
+            {
                 if let Some(reason) = ctx.field(head_fields, "reason") {
                     return value_str(ctx, reason);
                 }
@@ -233,14 +238,13 @@ struct SpliceRow {
 /// fold is the shared authority for what the right answer is.
 fn run_marshal_probe(ws: &PathBuf) -> Result<ExitCode, ExitCode> {
     let dag_roots: Vec<String> = resolution_divergence_census_source_roots(ws);
-    let (graph, indices) = resolve_entry_graph_shared(
-        &dag_roots,
-        &ws.join(APPLY_ENTRY).to_string_lossy(),
-    )
-    .map_err(|e| {
-        eprintln!("walk_target_alias_apply: resolve failed for {APPLY_ENTRY}:\n{e}");
-        ExitCode::from(2)
-    })?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(&dag_roots, &ws.join(APPLY_ENTRY).to_string_lossy()).map_err(
+            |e| {
+                eprintln!("walk_target_alias_apply: resolve failed for {APPLY_ENTRY}:\n{e}");
+                ExitCode::from(2)
+            },
+        )?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let fixture_source =
         "module v2.test.walk_target_alias_apply.probe\nimport v2.std.algebra { Cons, Empty }\n";
@@ -426,14 +430,13 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // In-process `.dag` call: the fold decides everything.
     let dag_roots: Vec<String> = resolution_divergence_census_source_roots(&ws);
-    let (graph, indices) = resolve_entry_graph_shared(
-        &dag_roots,
-        &ws.join(APPLY_ENTRY).to_string_lossy(),
-    )
-    .map_err(|e| {
-        eprintln!("walk_target_alias_apply: resolve failed for {APPLY_ENTRY}:\n{e}");
-        ExitCode::from(2)
-    })?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(&dag_roots, &ws.join(APPLY_ENTRY).to_string_lossy()).map_err(
+            |e| {
+                eprintln!("walk_target_alias_apply: resolve failed for {APPLY_ENTRY}:\n{e}");
+                ExitCode::from(2)
+            },
+        )?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let inputs: Vec<Value> = module_sources
         .iter()
@@ -521,7 +524,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 .field(fields, "rel_source_path")
                 .map(|v| value_str(&ctx, v))
                 .unwrap_or_default();
-            let offset = ctx.field(fields, "splice_offset").map(value_int).unwrap_or(-1);
+            let offset = ctx
+                .field(fields, "splice_offset")
+                .map(value_int)
+                .unwrap_or(-1);
             let insert_text = ctx
                 .field(fields, "insert_text")
                 .map(|v| value_str(&ctx, v))
@@ -623,7 +629,10 @@ mod tests {
         // char offset of the closing `}` of the import block, exclusive end
         let offset = src.find("}\n\nfn").expect("anchor") + 1;
         let out = apply_splice_char_offset(src, offset, "\n\nalias X = a.b.C").expect("splice");
-        assert_eq!(out, "module m.p\nimport a.b { C }\n\nalias X = a.b.C\n\nfn f() {}\n");
+        assert_eq!(
+            out,
+            "module m.p\nimport a.b { C }\n\nalias X = a.b.C\n\nfn f() {}\n"
+        );
     }
 
     #[test]
