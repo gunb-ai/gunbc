@@ -6,6 +6,7 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
