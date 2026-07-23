@@ -1,4 +1,4 @@
-module v2.workflow.orchestration_while_emit_test
+module v2.test.long.orchestration_while_emit
 
 import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }

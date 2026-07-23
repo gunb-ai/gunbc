@@ -5050,14 +5050,15 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      if is_optional_variant_name(name: n) && is_optional_parent(parent_enum: parent_enum) {
+      let bare_n = qualified_last_segment(name: n)
+      if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
           match fbs |> first {
             Present { value: fb } =>
               let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               RcPatternAnalysis {
                 matches_rc_variant: false,
-                matches_option_rc_variant: n == "Present" && inner.matches_rc_variant,
+                matches_option_rc_variant: bare_n == "Present" && inner.matches_rc_variant,
                 needs_rc_pattern: inner.needs_rc_pattern,
                 ref_bound_fields: []
               }
@@ -5065,7 +5066,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
           }
         } else { empty_rc_pattern_analysis() }
       } else {
-        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+        let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
           Absent => false
@@ -5073,7 +5074,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         let ref_bound_fields = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let inner_scrut = if fb_name == "0" {
-            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: bare_n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
           } else { "" }
           if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: inner_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
             [fb_name]
@@ -6848,7 +6849,7 @@ fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<St
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
-      pattern_parent_enum(name: n, parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
+      pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
     _ => none
   }
 }
@@ -7309,7 +7310,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         Present { value: rt_name }
       } else { none }
   }
-  match qualified_name {
+  let bare_qualified_name = match qualified_name {
+    Present { value: qn } => Present { value: qualified_last_segment(name: qn) }
+    Absent => none
+  }
+  let bare_parent_enum = match parent_enum {
+    Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
+    Absent => none
+  }
+  match bare_qualified_name {
     Absent =>
       let is_product = is_product_type(n: resolved_type)
       if is_product && resolved_type.ident_span == none {
@@ -7380,18 +7389,18 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
-          let rt_name = authored_name_at(source_indices: si, node: resolved_type)
+          let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
           if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
             && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
-            parent_enum
+            bare_parent_enum
           }
       }
       let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
@@ -7407,7 +7416,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
+      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
         if tn == "Present" { "Some" } else { "None" }
       } else { tn }
@@ -7444,7 +7453,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           match fields |> first {
             Present { value: f } =>
               let f_value = field_init_node_value(n: f)
-              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
               let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: "0")
                 && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
               let field_val = if needs_wrap {
@@ -7457,7 +7466,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
-          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
             && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
           let field_val = if needs_wrap {
