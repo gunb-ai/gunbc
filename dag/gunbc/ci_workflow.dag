@@ -11,6 +11,7 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_invoke,
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
+  gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -42,7 +43,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
   checkout_action, setup_rust_action, cache_action,
   upload_artifact_action, download_artifact_action
@@ -458,12 +459,76 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
 fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
+}
+
+fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn ci_heal_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)" },
+    id: none,
+    run: gunbc_ci_heal_regen_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_heal_commit_push_step() -> Step {
+  RunStep {
+    name: Present { value: "Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)" },
+    id: none,
+    run: gunbc_ci_heal_commit_push_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class (ci-chores lane, operator-directed 2026-07-23: 'the priority is getting heal working'). A generated-artifact drift is a red whose remedy is a pure function of the tree — regenerate the projection from its .dag authority — so the pipeline heals it without a human. The job runs on main pushes only (ci_deploy_push_to_main_if, the same guard the srv1 deploy job uses), needs only build (the release gunbc binary), and is deliberately independent of the ci job's verdict: the drift gate lives IN ci, so a heal gated on ci passing would be skipped exactly when it is needed. It downloads+unpacks the release bins like the deploy job, runs main_wet to rewrite drifted artifacts, then commits+pushes ONLY if git diff shows a change. contents:write is scoped to THIS job (least privilege, DESIGN §5): the workflow default stays contents:read, so the whole-corpus ci floor never runs with a push-capable token — only this ten-line regen+push job does. Fail-closed: main_wet stops on the first write failure. The loop terminates by construction, NOT by a re-run — a GITHUB_TOKEN-pushed commit does not trigger a new workflow (GitHub's cascade-prevention), so there is no self-verifying second run; loop-safety rests on the byte-idempotent fixed point proven pre-merge by witness_committed_is_fixed_point (generated_artifact_drift_test.dag) with its RED control, so a heal that regenerated a still-drifting artifact would already have failed the drift gate before landing. Judgment-class reds (producer bugs, roster staleness) are untouched — this job only re-derives what the registry already declares generatable, never a human decision. main is unprotected today (verified 2026-07-23) so no branch-protection grant is needed for the push; protecting main later is a separate deliberate step that must add this job's identity to the push allowance."
+
+fn ci_heal_generated_artifacts_job() -> Job {
+  Job {
+    id: "heal_generated_artifacts",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_deploy_push_to_main_if },
+    strategy: none,
+    timeout_minutes: Present { value: gunbc_ci_heal_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermWrite },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none
+      }
+    }
+  }
 }
 
 fn ci_build_job() -> Job {
@@ -479,7 +544,8 @@ fn ci_build_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -496,7 +562,8 @@ fn ci_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
@@ -550,5 +617,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_job()], ci_deploy_jobs())
+  jobs: concat([ci_build_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job()]))
 }

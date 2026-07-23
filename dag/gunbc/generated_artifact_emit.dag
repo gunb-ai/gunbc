@@ -4,7 +4,7 @@ module gunbc.generated_artifact_emit
 import gunbc.generated_artifact {
   GeneratedArtifact,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
-  RunnerDeployArtifact, FleetConvergeArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact,
+  RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
@@ -18,7 +18,6 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.os_install_emit { autoinstall_user_data }
@@ -46,7 +45,6 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     GithooksPrePushArtifact => expected_githooks_pre_push_sh()
     GithooksPreCommitArtifact => expected_githooks_pre_commit_sh()
     RunnerDeployArtifact => expected_runner_deploy_manifest()
-    FleetConvergeArtifact => expected_fleet_converge_sh()
     Stage0CrateLayoutGeneratedDagArtifact => expected_stage0_crate_layout_generated_dag()
     Stage0CrateLayoutGeneratedRsArtifact => expected_stage0_crate_layout_generated_rs()
     Stage0CratePartitionGeneratedDagArtifact => expected_stage0_crate_partition_generated_dag()
@@ -68,7 +66,6 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     RunnerDeployArtifact => true
-    FleetConvergeArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true

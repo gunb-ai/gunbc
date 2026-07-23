@@ -68,15 +68,6 @@ fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
         m == "gunbc.fleet_converge_apply" && d == "fleet_converge_thin_invocation"
       _ => false
     }
-    && match emit_artifact_then_thin_run_transport_scaffold {
-      Scaffold {
-        dissolves_to: RealizationDispatch,
-        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
-      } =>
-        m == "gunbc.fleet_converge_emit"
-          && d == "fleet_converge_steady_state_doc_projection_dissolution_trigger"
-      _ => false
-    }
 }
 
 fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {

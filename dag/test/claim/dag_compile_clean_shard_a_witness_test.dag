@@ -7,7 +7,7 @@ data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard
 ) != ShardClean
 
 test fn compile_clean_partition_boundary_matches_compile_clean_source_roots() -> Bool {
-  witness_partition_entry_root_is_first_witness_layer_root()
+  witness_partition_entry_roots_are_witness_layer_roots()
     && witness_partition_pool_roots_are_compile_clean_source_roots()
 }
 
