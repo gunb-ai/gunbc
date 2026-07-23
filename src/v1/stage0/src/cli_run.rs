@@ -8485,32 +8485,30 @@ fn witness_entry_eligibility_census_declared_entry_count_from_authority(
 }
 
 fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
-    // SCAFFOLD (§7 HAND-RUST — dissolve-on: Filesystem.List walk in pure `.dag` fold).
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: discovery-roster projection in pure `.dag` fold).
+    // Entry paths must match floor discovery's unique `DiscoveryRow.entry` set (sidecar
+    // `*_test.dag` files with `test fn`/`test data` under witness_layer_roots).
     let root = process_workspace_root();
+    let excludes = witness_exclusion_substrings();
     let mut entries = BTreeSet::new();
-    for rel_root in ["dag/test/claim", "src/v2/test/claim"] {
-        let output = std::process::Command::new("find")
-            .arg(root.join(rel_root))
-            .arg("-name")
-            .arg("*_test.dag")
-            .arg("!")
-            .arg("-path")
-            .arg("*/generated/*")
-            .output()
-            .map_err(|e| format!("find {rel_root}: {e}"))?;
-        if !output.status.success() {
-            return Err(format!("find {rel_root} failed"));
-        }
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let path = line.trim();
-            if path.is_empty() {
+    for rel_root in witness_layer_roots() {
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(&root.join(&rel_root), &mut dag_files);
+        for path in dag_files {
+            let abs = path.to_string_lossy();
+            let rel = repo_relative_dag_path(&abs);
+            if !rel.ends_with("_test.dag") || rel.contains("/generated/") {
                 continue;
             }
-            let rel = path
-                .strip_prefix(root.to_str().unwrap_or(""))
-                .unwrap_or(path)
-                .trim_start_matches('/');
-            entries.insert(rel.to_string());
+            if excludes.iter().any(|sub| rel.contains(sub.as_str())) {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if scan_test_decl_lines(&content).is_empty() {
+                continue;
+            }
+            entries.insert(rel);
         }
     }
     Ok(entries.into_iter().collect())
@@ -8590,7 +8588,7 @@ pub fn emit_witness_entry_eligibility_census(
     }
     rows.sort();
     let mut tsv = format!(
-        "# witness_entry_eligibility_census stamp={stamp} grain=entry_closure roots=dag/test/claim,src/v2/test/claim\n"
+        "# witness_entry_eligibility_census stamp={stamp} grain=entry_closure roots=witness_layer_roots(test.dag with test fn/data)\n"
     );
     tsv.push_str(
         "entry\tmodule_path\tsubject_module\tsubject_decl\tdisposition\tretained_or_ineligible_reason\tfirst_error_class\texecution_leg\n",
