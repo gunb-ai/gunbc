@@ -672,6 +672,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn walk_target_alias_apply_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER,
+            "cli_run_walk_target_alias_apply"
+        );
+    }
+
+    #[test]
     fn layer_prefix_from_dotted_module_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER,
@@ -20152,6 +20160,19 @@ pub struct WalkTargetAliasPlan {
 // ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER: &str =
     "cli_run_walk_target_alias_plan";
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
+// Host-boundary transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`
+// (`walk_target_alias_apply` bin). Apply authority lives in `.dag`; the bin only projects
+// module→path→text, calls the fold in-process, and realizes splices at `--write`.
+// 🟡 dissolve-on: self-emit of this bin (or v2 bash-emit of the driver capability) from
+// `tools.walk_target_alias_apply_transport` (mirror of the plan bin's retirement row).
+// Until then: dry-run + typed write refusal (v1 alias parse gap; see
+// walk_target_alias_apply_corpus_write_gated_reason).
+// Receipt: `rg walk_target_alias_apply src/v1/stage0` until transport self-emission lands;
+// ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md §13).
+pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER: &str =
+    "cli_run_walk_target_alias_apply";
 
 /// Format plan scope from caller-supplied source roots (relative to workspace when possible).
 pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {

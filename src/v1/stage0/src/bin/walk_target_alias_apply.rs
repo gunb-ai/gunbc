@@ -1,5 +1,14 @@
 #![allow(clippy::disallowed_macros)]
 
+//! SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
+//! Host-boundary transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`.
+//! Apply authority lives in `.dag`; this bin is argv → plan rows → path/text projection →
+//! in-process fold call → stdout/splice realization only (DESIGN §3 transport-is-a-handler).
+//!
+//! 🟡 dissolve-on: self-emit of this bin (or v2 bash-emit of the driver capability) from
+//! `tools.walk_target_alias_apply_transport` (mirror of `cli_run_walk_target_alias_plan`).
+//! Receipt carrier: `CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER` in `cli_run.rs`.
+//!
 //! §13 walk-target alias codemod — APPLY driver (namespace-resolution-design §13).
 //!
 //! Thin host transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`:

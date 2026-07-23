@@ -141,6 +141,10 @@ path = "src/bin/resolution_divergence_census.rs"
 name = "walk_target_alias_plan"
 path = "src/bin/walk_target_alias_plan.rs"
 
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST — authority: namespace-resolution-design.md §13):
+# Host-boundary transport for `tools.walk_target_alias_apply` (apply authority in `.dag`).
+# DISSOLUTION: self-emit of this bin (or v2 bash-emit of the driver capability) from
+# `tools.walk_target_alias_apply_transport`; carrier `CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER`.
 [[bin]]
 name = "walk_target_alias_apply"
 path = "src/bin/walk_target_alias_apply.rs"
