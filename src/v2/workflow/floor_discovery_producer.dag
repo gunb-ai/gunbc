@@ -659,7 +659,6 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
 
 fn discover_floor_corpus_rows_from_host_facts(
   source_roots: List<String>,
-  scan_dirs: List<String>,
   exclude_substrings: List<String>,
   owned_data_records: List<OwnedDataDeclRecord>
 ) -> FloorDiscoveryProducerResult {
@@ -724,7 +723,7 @@ fn floor_filename_hygiene_refusal_for_paths(
   )
 }
 
-data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
 
 data floor_discovery_directory_candidate_dissolve_on: String = "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty)."
 

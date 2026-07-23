@@ -11075,10 +11075,6 @@ fn invoke_floor_discovery_producer(
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
-    let scan_dir_values: Vec<v1_interpreter::Value> = scan_dirs
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
     let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
@@ -11091,10 +11087,6 @@ fn invoke_floor_discovery_producer(
         (
             Some("source_roots".to_string()),
             list_value_from_vec(source_root_values),
-        ),
-        (
-            Some("scan_dirs".to_string()),
-            list_value_from_vec(scan_dir_values),
         ),
         (
             Some("exclude_substrings".to_string()),
