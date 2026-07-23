@@ -111,7 +111,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
-    timeout-minutes: 600
+    timeout-minutes: 130
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -149,7 +149,7 @@ jobs:
             fi
           fi
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
-        timeout-minutes: 270
+        timeout-minutes: 15
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
@@ -174,7 +174,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 270
+        timeout-minutes: 55
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
