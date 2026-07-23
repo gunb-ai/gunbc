@@ -1193,12 +1193,13 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 7] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
     "QuarantineProbeExpectRed",
     "FalsifierSelfHostWet",
+    "FalsifierRehomedBinWet",
     "NoConsumer",
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
@@ -10893,11 +10894,12 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 4] = [
+    let heads: [(&str, &str); 5] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
+        ("RehomedBinWetRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
@@ -11029,7 +11031,8 @@ fn refuse_unexecuted_deferred_witnesses(
         "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
          witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
          admission invariant); each excluded row must be on falsifier_self_host_wet, \
-         bin_witness_wet, known_red_probe, offline, or fixture explicit roster: {}",
+         bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, offline, or fixture \
+         explicit roster: {}",
         orphans.len(),
         lines.join("; ")
     ))
@@ -25932,6 +25935,29 @@ mod module_path_index_tests {
                 .collect::<Vec<_>>(),
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn rehomed_bin_wet_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type RehomedBinWetRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [\n\
+               RehomedBinWetRow {\n\
+                 entry: \"dag/test/claim/x_test.dag\",\n\
+                 function: \"x_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
+            "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 

@@ -10,6 +10,7 @@ import std.witness_admission {
   WitnessConsumerCadence,
   DiscoverySelection,
   FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
@@ -35,6 +36,10 @@ type WitnessExclusionRow {
 data excl_bin_wet_reason: String = "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs) the hermetic envelope refuses by construction; they run every PR as the declared bin-witness wet batch via bin_witness_wet_entries (bin_witness_wet_note)"
 
 data excl_bin_wet_dissolve: String = "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)"
+
+data excl_rehomed_bin_wet_reason: String = "bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they run as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in falsifier_rehomed_bin_wet_rows)"
+
+data excl_rehomed_bin_wet_dissolve: String = "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet"
 
 data excl_behavioral_receipt_reason: String = "emit->compile->run->equals-seed self-host behavioral receipt class: enrolled fns run on the falsifier nightly Wet cadence (wet_receipt_enrollment / falsifier_self_host_wet_note); non-enrolled fns run by local recipe"
 
@@ -361,9 +366,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "floor_skip_discovery_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
+    classification: FalsifierRehomedBinWet,
+    reason: excl_rehomed_bin_wet_reason,
+    dissolve_on: excl_rehomed_bin_wet_dissolve
   },
   WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
@@ -492,6 +497,7 @@ fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
     OfflineLocalRecipe => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     FixtureExplicitRoster => false
@@ -504,6 +510,7 @@ fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
     FixtureExplicitRoster => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
@@ -515,7 +522,21 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
   match row.classification {
     DiscoverySelection => true
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
+  match row.classification {
+    FalsifierRehomedBinWet => true
+    BinWitnessWet => false
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -528,6 +549,7 @@ fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
     BinWitnessWet => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -540,6 +562,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
     QuarantineProbeExpectRed => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -550,6 +573,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
 fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierSelfHostWet => true
+    FalsifierRehomedBinWet => false
     DiscoverySelection => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
@@ -564,6 +588,7 @@ fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
     NoConsumer => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
