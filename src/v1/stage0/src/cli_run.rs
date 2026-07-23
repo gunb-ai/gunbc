@@ -6253,10 +6253,20 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
             }
         }
     }
-    *index.schedule_retention.borrow_mut() = Some(ScheduleRetention::armed(
-        per_entry,
-        schedule_retention_evict_enabled(),
-    ));
+    let evict_enabled = schedule_retention_evict_enabled();
+    if !evict_enabled {
+        // Loud, once per armed run: an accidentally-set env must not silently revert the
+        // M2 memory win in CI. Without this line the receipt's `schedule_evictions=0` is
+        // the only tell, and a zero reads as "nothing to evict" rather than "eviction off".
+        eprintln!(
+            "[floor-drain] SCHEDULE-RETENTION EVICTION DISABLED \
+             (GUNBC_SCHEDULE_RETENTION_EVICT=0): arming + counting only, dropping NOTHING — \
+             the retain-all measurement pole (pre-M2 process-lifetime retention). \
+             schedule_evictions will be 0 BY CONSTRUCTION; unset the env to restore eviction."
+        );
+    }
+    *index.schedule_retention.borrow_mut() =
+        Some(ScheduleRetention::armed(per_entry, evict_enabled));
 }
 
 /// Record a reconciled module's cache keys with the armed schedule retention (no-op
