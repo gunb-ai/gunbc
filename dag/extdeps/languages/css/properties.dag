@@ -1,0 +1,119 @@
+module extdeps.languages.css.properties
+
+import std.types { String, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/Style/CSS/all-properties.en.html"
+  }
+}
+
+data css_property_note: String = "Cited upstream: the W3C CSS property index (the union of the CSS module specs — box, fonts, flexbox, backgrounds-and-borders, ...). This is the BOUNDED grain (D5): CssPropertyName enumerates EXACTLY the properties the register emits today (upstream spellings), so a property name is a typed row, not a raw string inside an otherwise-typed rule — the wall makes a misspelled property unwritable for the modeled set. It is deliberately NOT the whole CSS property ocean (DESIGN section 6, priced by displaced cost, not completeness). Two escapes, each honest: CustomProperty carries a --custom-property author-defined name (CSS Custom Properties / cascading variables, the register's token/theme vars — an open namespace, correctly not enumerable); RawProperty is a COUNTED frontier for a name outside the modeled set (today: the single non-standard 'code-spacing' in the accent study — a raw property is a flag that its name is unmodeled or invalid, dissolving as the set grows or the site lane fixes it). The full CSS VALUE grammar (a decl's right-hand side) stays a named arc, out of scope."
+
+type CssPropertyName
+  = AlignItems
+  | Background
+  | Border
+  | BorderBottom
+  | BorderCollapse
+  | BorderColor
+  | BorderLeft
+  | BorderRadius
+  | BorderStyle
+  | BoxSizing
+  | Color
+  | ColorScheme
+  | Cursor
+  | Display
+  | Fill
+  | Flex
+  | FlexDirection
+  | FlexWrap
+  | FontFamily
+  | FontSize
+  | FontStyle
+  | FontVariantNumeric
+  | FontWeight
+  | Gap
+  | Height
+  | JustifyContent
+  | LetterSpacing
+  | LineHeight
+  | ListStyle
+  | Margin
+  | MarginBottom
+  | MarginLeft
+  | MarginRight
+  | MarginTop
+  | MaxWidth
+  | MinWidth
+  | Opacity
+  | Overflow
+  | Padding
+  | PaddingLeft
+  | Stroke
+  | TextAlign
+  | TextDecoration
+  | TextTransform
+  | Transition
+  | VerticalAlign
+  | Width
+  | CustomProperty { name: String }
+  | RawProperty { name: String }
+
+fn css_property_wire(p: CssPropertyName) -> String {
+  match p {
+    AlignItems => "align-items"
+    Background => "background"
+    Border => "border"
+    BorderBottom => "border-bottom"
+    BorderCollapse => "border-collapse"
+    BorderColor => "border-color"
+    BorderLeft => "border-left"
+    BorderRadius => "border-radius"
+    BorderStyle => "border-style"
+    BoxSizing => "box-sizing"
+    Color => "color"
+    ColorScheme => "color-scheme"
+    Cursor => "cursor"
+    Display => "display"
+    Fill => "fill"
+    Flex => "flex"
+    FlexDirection => "flex-direction"
+    FlexWrap => "flex-wrap"
+    FontFamily => "font-family"
+    FontSize => "font-size"
+    FontStyle => "font-style"
+    FontVariantNumeric => "font-variant-numeric"
+    FontWeight => "font-weight"
+    Gap => "gap"
+    Height => "height"
+    JustifyContent => "justify-content"
+    LetterSpacing => "letter-spacing"
+    LineHeight => "line-height"
+    ListStyle => "list-style"
+    Margin => "margin"
+    MarginBottom => "margin-bottom"
+    MarginLeft => "margin-left"
+    MarginRight => "margin-right"
+    MarginTop => "margin-top"
+    MaxWidth => "max-width"
+    MinWidth => "min-width"
+    Opacity => "opacity"
+    Overflow => "overflow"
+    Padding => "padding"
+    PaddingLeft => "padding-left"
+    Stroke => "stroke"
+    TextAlign => "text-align"
+    TextDecoration => "text-decoration"
+    TextTransform => "text-transform"
+    Transition => "transition"
+    VerticalAlign => "vertical-align"
+    Width => "width"
+    CustomProperty { name: n } => join(["--", n], "")
+    RawProperty { name: n } => n
+  }
+}

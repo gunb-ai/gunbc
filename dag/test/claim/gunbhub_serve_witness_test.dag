@@ -38,7 +38,7 @@ fn witness_static_table_browse_row_matches_host_contract() -> Bool {
           && path_matches_template(template: browse_tpl, path: "/")
           && row.body == expected_browse_html()
           && row.content_type == gunbhub_html_content_type()
-          && http_content_type_wire_label(gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && media_type_wire_label(m: gunbhub_html_content_type()) == "text/html; charset=utf-8"
           && row.status_on_hit == 200
       }
   )
@@ -59,7 +59,7 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
           && path_matches_template(template: repo_tpl, path: "/README.md")
           && row.body == expected_readme_html()
           && row.content_type == gunbhub_html_content_type()
-          && http_content_type_wire_label(gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && media_type_wire_label(m: gunbhub_html_content_type()) == "text/html; charset=utf-8"
           && row.status_on_hit == 200
       }
   )

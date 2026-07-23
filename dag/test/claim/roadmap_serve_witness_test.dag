@@ -3,12 +3,14 @@ module test.claim.roadmap_serve_witness
 import gunbc.roadmap_serve {
   RoadmapServeHandler,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
-  DispatchJsonHandler, HealthzHandler, BeltDispatchHandler,
+  DispatchJsonHandler, HealthzHandler, BeltDispatchHandler, DispatchAssetHandler,
+  SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
   roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
+  roadmap_serve_invoke,
   roadmap_serve_respond,
   belt_dispatch_status,
 }
@@ -17,6 +19,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
 }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
   ServedRouteTable,
@@ -24,6 +27,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
+  media_type_wire_label,
 }
 import std.http_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
@@ -52,7 +56,24 @@ fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
     && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
     && selects(method: GET, path: "/healthz", want: HealthzHandler)
+    && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
+    && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
+    && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
+    && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+}
+
+fn witness_asset_route_serves_modeled_js() -> Bool {
+  let r = roadmap_serve_invoke(
+    handler: DispatchAssetHandler,
+    params: [],
+    request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
+  )
+  r.status == 200
+    && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
+    && r.body == dispatch_client_js_source()
+    && string_contains(s: r.body, pattern: "j.status === 'spawned'")
+    && !string_contains(s: r.body, pattern: "j.ok")
 }
 
 fn witness_dispatch_param_bound() -> Bool {
@@ -99,9 +120,9 @@ fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
 }
 
-fn witness_live_table_builds_ready_six_routes() -> Bool {
+fn witness_live_table_builds_ready_ten_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 6
+    RoadmapServeTable { table: t } => count(t.routes) == 10
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }
@@ -151,7 +172,8 @@ test fn roadmap_serve_witnesses() -> Bool {
     && witness_unknown_path_folds_404_response()
     && witness_405_response_carries_allowed()
     && witness_dispatch_status_total()
-    && witness_live_table_builds_ready_six_routes()
+    && witness_asset_route_serves_modeled_js()
+    && witness_live_table_builds_ready_ten_routes()
     && witness_malformed_route_literal_refuses_table()
     && witness_unknown_method_refuses()
     && witness_unknown_method_folds_501_response()
