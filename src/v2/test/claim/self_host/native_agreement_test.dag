@@ -3,7 +3,8 @@ module v2.test.claim.self_host.native_agreement_test
 import v2.std.native_agreement {
   NativeAgreementDivergence,
   format_native_agreement_divergence,
-  native_agreement_failure_receipt
+  native_agreement_failure_receipt,
+  octet_display
 }
 
 test fn native_agreement_divergence_format_holds() -> Bool {
@@ -28,8 +29,14 @@ test fn native_agreement_failure_receipt_names_divergence_holds() -> Bool {
   native_agreement_failure_receipt(divergences: [d]) == "member=join interpreted=1 native=0"
 }
 
+test fn native_agreement_octet_display_names_raw_byte_holds() -> Bool {
+  octet_display(octet: 2) == "2"
+    && octet_display(octet: 42) == "42"
+}
+
 test fn native_agreement_witnesses() -> Bool {
   native_agreement_divergence_format_holds()
     && native_agreement_failure_receipt_empty_when_clean_holds()
     && native_agreement_failure_receipt_names_divergence_holds()
+    && native_agreement_octet_display_names_raw_byte_holds()
 }

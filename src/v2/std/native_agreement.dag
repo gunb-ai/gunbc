@@ -3,6 +3,7 @@ module v2.std.native_agreement
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List, Optional, Present, Absent, list_at_optional }
 import v2.std.logic { Bool }
+import v2.std.integer { integer_nat_to_decimal_string }
 import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
 import v2.std.text { String }
 
@@ -15,7 +16,13 @@ type NativeAgreementDivergence {
 data native_agreement_authority_note: String = "Native-vs-interpreted agreement loudness (ROADMAP 2a Lane B, 2026-07-23): when emit_on_demand family-crate per-PR agreement redds, the floor receipt MUST name the failing member and BOTH runtime answers — the srv2-05 revert (#7091, routed_flip_reverted_note) carried compile_skipped=true x3 then Bool(false) with member and values unknown. This module is the typed divergence carrier + formatter; claim_executor invokes the companion *_failure_receipt fn on Bool(false) witnesses. Verdict-to-divergence extraction lives in v2.compiler.self_host.native_agreement_support (layering: std must not import compiler)."
 
 fn octet_display(octet: Int) -> String {
-  if octet == 0 { "0" } else { if octet == 1 { "1" } else { "?" } }
+  if octet == 0 {
+    "0"
+  } else if octet == 1 {
+    "1"
+  } else {
+    integer_nat_to_decimal_string(value: octet)
+  }
 }
 
 fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
