@@ -79,8 +79,8 @@ fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots
 }
 
-fn compile_clean_entry_root() -> String {
-  compile_clean_partition_boundary().entry_root
+fn compile_clean_entry_roots() -> List<String> {
+  compile_clean_partition_boundary().entry_roots
 }
 
 fn compile_clean_affected_entry_paths_from_roster(
@@ -195,8 +195,8 @@ fn witness_pool_roots_match_witness_layer_roots() -> Bool {
   })
 }
 
-fn witness_entry_root_is_first_witness_layer_root() -> Bool {
-  compile_clean_entry_root() == witness_layer_roots.first()
+fn witness_entry_roots_are_witness_layer_roots() -> Bool {
+  compile_clean_entry_roots() == witness_layer_roots
 }
 
 fn witness_empty_touched_skips() -> Bool {
@@ -322,7 +322,7 @@ fn witness_docs_only_departure_still_skips() -> Bool {
 fn lever_a_local_receipts_hold() -> Bool {
   witness_empty_touched_skips()
     && witness_touched_path_dispositions_hold()
-    && witness_entry_root_is_first_witness_layer_root()
+    && witness_entry_roots_are_witness_layer_roots()
     && witness_pool_roots_match_witness_layer_roots()
     && witness_mixed_rs_and_dag_requires_whole_tree()
     && witness_departed_dag_path_requires_whole_tree()

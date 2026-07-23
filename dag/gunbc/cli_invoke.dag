@@ -84,6 +84,26 @@ fn gunbc_run_transport_argv(
   }
 }
 
+data cli_claim_spec_grammar_note: String = "One pooled-claim row on the `gunbc run` argv: `ENTRY::FUNCTION`, exactly one `::` separator. This fn is the EMIT half of that row grammar; the decode half is the seed's `parse_pooled_claim_spec` (cli_run.rs) — one grammar, read in both directions, so the pair must stay inverses. Entry paths and function names never contain `::`, and the decoder refuses a spec with more than one separator loudly."
+
+fn cli_claim_spec(entry: String, function: String) -> String {
+  concat(entry, concat("::", function))
+}
+
+fn claim_spec_transport_argv(claim_specs: List<String>) -> List<String> {
+  fold(claim_specs, init: [], f: (acc, s) => concat(acc, ["--claim", s]))
+}
+
+fn gunbc_run_claims_transport_argv(
+  source_roots: List<String>,
+  claim_specs: List<String>
+) -> List<String> {
+  concat(
+    concat(["run"], source_root_transport_argv(roots: source_roots)),
+    claim_spec_transport_argv(claim_specs: claim_specs)
+  )
+}
+
 fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
   match claim_executor_notice_title_normalized(notice_title: notice_title) {
     Present { value: title } => concat(concat(" --notice-title \"", title), "\"")

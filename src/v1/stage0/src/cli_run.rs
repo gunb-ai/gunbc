@@ -2176,13 +2176,17 @@ fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bo
 
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+/// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
+/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
+/// (see its note: a roster that is a strict subset of the compiled tree both widened
+/// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
+/// scoped runs).
 fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
-    let entry_root = witness_layer_roots()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "dag".to_string());
-    let abs_entry_root = anchor_source_root(&entry_root);
-    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+    let entry_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|root| anchor_source_root(root))
+        .collect();
+    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
         .collect();
@@ -8831,6 +8835,119 @@ pub fn handle_run_with_options(
             }
         }
     });
+}
+
+/// One `--claim` row: `ENTRY::FUNCTION`, exactly one `::` separator. Decoder half of
+/// the claim-spec grammar; the emit half is `gunbc.cli_invoke.cli_claim_spec` — the
+/// two must stay inverses (one grammar, read in both directions).
+fn parse_pooled_claim_spec(spec: &str) -> Result<(String, String), String> {
+    match spec.split_once("::") {
+        Some((entry, function))
+            if !entry.is_empty() && !function.is_empty() && !function.contains("::") =>
+        {
+            Ok((entry.to_string(), function.to_string()))
+        }
+        _ => Err(format!(
+            "malformed --claim `{spec}` — expected ENTRY::FUNCTION with exactly one `::`"
+        )),
+    }
+}
+
+/// Pooled claim runner (`gunbc run --claim ENTRY::FUNCTION ...`): every row in ONE
+/// process, resolved through `resolve_entry_graph` (the per-thread
+/// `process_shared_index` store), so N claims over K distinct entries pay K entry
+/// resolves against one shared pool index + typed-module cache instead of N cold
+/// per-process resolves — the transport half of the floor's consumes-receipt rewire
+/// (`gunbc.ci_materialization` `ci_floor_resolve_receipt_note`). The residue a pooled
+/// child still pays — one pool build per process, one closure resolve per distinct
+/// entry — is the necessary first touch of its composed input (tree ⊕ any per-run
+/// overlay roots); dissolve-on: the cross-process content-keyed typed-module store
+/// (compile-wall-endgame W3).
+///
+/// Verdict semantics per row are the floor's `run_claim` (Bool or ProcessExit); a
+/// non-verdict return is a type error and exits 2 loudly. A false verdict, runtime
+/// error, or entry-resolve failure is recorded and the remaining rows still run
+/// (full ledger, exit 1 at the end) — the same run-all-then-fail shape as the
+/// one-process-per-claim fold this replaces.
+pub fn handle_run_claims_pooled(source_roots: Vec<String>, claim_specs: Vec<String>) {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    if claim_specs.is_empty() {
+        eprintln!("error: --claim requires at least one ENTRY::FUNCTION row");
+        std::process::exit(1);
+    }
+    let mut entry_order: Vec<String> = Vec::new();
+    let mut functions_by_entry: HashMap<String, Vec<String>> = HashMap::new();
+    for spec in &claim_specs {
+        match parse_pooled_claim_spec(spec) {
+            Ok((entry, function)) => {
+                if !functions_by_entry.contains_key(&entry) {
+                    entry_order.push(entry.clone());
+                }
+                functions_by_entry.entry(entry).or_default().push(function);
+            }
+            Err(msg) => {
+                eprintln!("error: {msg}");
+                std::process::exit(2);
+            }
+        }
+    }
+    let mut failed: Vec<String> = Vec::new();
+    let mut ran = 0usize;
+    for entry in &entry_order {
+        let functions = &functions_by_entry[entry];
+        let (graph, source_indices) = match resolve_entry_graph(&source_roots, entry) {
+            Ok(pair) => pair,
+            Err(msg) => {
+                eprintln!("claim ERROR {entry}: resolve failed: {msg}");
+                for function in functions {
+                    ran += 1;
+                    failed.push(format!("{entry}::{function}"));
+                }
+                continue;
+            }
+        };
+        let ctx = make_eval_context(&graph, source_indices, v1_interpreter::ExecutionMode::Wet);
+        v1_interpreter::with_active_context(&ctx, || {
+            for function in functions {
+                ran += 1;
+                match run_claim(&ctx, function) {
+                    ClaimOutcome::Pass => eprintln!("claim PASS {entry}::{function}"),
+                    ClaimOutcome::Fail => {
+                        eprintln!("claim FAIL {entry}::{function}");
+                        failed.push(format!("{entry}::{function}"));
+                    }
+                    ClaimOutcome::NotBool { got } => {
+                        eprintln!(
+                            "error: claim `{entry}::{function}` returned `{got}` — with \
+                             --claim the entry must return Bool or ProcessExit"
+                        );
+                        std::process::exit(2);
+                    }
+                    ClaimOutcome::RuntimeError { message } => {
+                        eprintln!("claim ERROR {entry}::{function}: {message}");
+                        failed.push(format!("{entry}::{function}"));
+                    }
+                }
+                // Witness frame exit: the memo must not retain values across
+                // rows sharing this ctx (byte-unbounded retention class).
+                v1_interpreter::eval_call_memo_frame_exit(&ctx);
+            }
+        });
+        v1_interpreter::print_eval_recompute_trace(&ctx);
+    }
+    if failed.is_empty() {
+        eprintln!("pooled claims: {ran} PASS");
+    } else {
+        eprintln!(
+            "pooled claims: {} of {ran} FAILED: {}",
+            failed.len(),
+            failed.join(", ")
+        );
+        std::process::exit(1);
+    }
 }
 
 /// `gunbc serve` — the thin host seam for the gunbc-served dashboard
@@ -24219,6 +24336,22 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Selectable-universe guard: a mixed diff carrying a non-.dag non-docs path (compiler
     /// seed `.rs`) keeps the whole-tree baseline even though a `.dag` path also intersects.
+    /// The pooled `--claim` row grammar: decoder half of `gunbc.cli_invoke.cli_claim_spec`
+    /// — exactly one `::`, both sides non-empty; anything else refuses loudly.
+    #[test]
+    fn pooled_claim_spec_parses_and_refuses() {
+        assert_eq!(
+            parse_pooled_claim_spec("dag/tools/x.dag::witness_holds"),
+            Ok(("dag/tools/x.dag".to_string(), "witness_holds".to_string()))
+        );
+        for malformed in ["no-separator", "::fn_only", "entry_only::", "a::b::c", ""] {
+            assert!(
+                parse_pooled_claim_spec(malformed).is_err(),
+                "spec `{malformed}` must refuse"
+            );
+        }
+    }
+
     #[test]
     fn floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch() {
         with_workspace_cwd(|| {
@@ -24244,6 +24377,36 @@ mod witness_layer_roots_compile_clean_tests {
                 &departed,
             );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Roster covers the whole compiled tree (lever 8): a diff touching only
+    /// `src/v2/**.dag` scopes to its own entry closure instead of falling to the
+    /// "no shard intersection" whole-tree baseline (pre-fix the roster enumerated
+    /// `dag/`-declared entries only, so this exact shape widened — baseline run
+    /// 29976989996), and a `dag/std` touch selects its affected `src/v2` importers
+    /// (pre-fix they were never in the roster, so scoped runs under-covered them).
+    #[test]
+    fn floor_fast_plan_scopes_src_v2_entries_both_directions() {
+        with_workspace_cwd(|| {
+            let v2_leaf = "src/v2/std/witness_execution_routing.dag".to_string();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[v2_leaf.clone(), "dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            let CompileCleanScopePlan::Scoped { entry_paths } = plan else {
+                panic!("expected Scoped for a selectable .dag-only diff, got {plan:?}");
+            };
+            assert!(
+                entry_paths.contains(&v2_leaf),
+                "touched src/v2 module must select its own entry"
+            );
+            assert!(
+                entry_paths
+                    .iter()
+                    .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
+                "a dag/std touch must select affected src/v2 importers"
+            );
         });
     }
 

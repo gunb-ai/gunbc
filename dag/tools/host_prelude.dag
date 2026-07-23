@@ -6,7 +6,7 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import gunbc.cli_services
-import gunbc.cli_invoke { gunbc_run_transport_argv }
+import gunbc.cli_invoke { cli_claim_spec }
 import std.logic { Bool }
 
 data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
@@ -157,15 +157,6 @@ type ClaimRun {
   function: String
 }
 
-fn gunbc_claim_run_args(source_roots: List<String>, claim: ClaimRun) -> List<String> {
-  gunbc_run_transport_argv(
-    source_roots: source_roots,
-    entry: claim.entry,
-    function: claim.function,
-    claim_run: true
-  )
-}
-
 fn gunbc_claims_readiness() -> WitnessBinReadiness {
   let root = git.Core.Toplevel()
   witness_bin_ensure_built_typed(
@@ -174,19 +165,22 @@ fn gunbc_claims_readiness() -> WitnessBinReadiness {
   )
 }
 
+data run_gunbc_claims_pooled_note: String = "One child process per CALL, not per claim (2026-07-23, the floor redundant-work ledger's lever-2/3 transport half): the per-claim fold spawned one `gunbc run --claim-run` process per row, and every process re-derived the whole dependency pool cold — N claims paid N pool builds for one shared tree. `gunbc.Cli.RunClaims` runs all rows in ONE process against one per-process resolve store (`resolve_entry_graph` / `process_shared_index`), so N rows over K distinct entries pay one pool build + K entry resolves. The Bool is unchanged by construction: the child runs every row (full ledger) and exits nonzero if any failed — the same conjunction the fold computed across processes. What a pooled child still pays — one pool build per call, one closure resolve per distinct entry — is the necessary first touch of that call's composed input (the tree plus any per-run overlay roots the caller supplies); dissolve-on: the cross-process content-keyed typed-module store (docs/plans/compile-wall-endgame.md W3), which serves those resolves from the floor's own compile receipt."
+
+fn claim_spec_rows(claims: List<ClaimRun>) -> List<String> {
+  fold(claims, init: [], f: (acc, c) =>
+    concat(acc, [cli_claim_spec(entry: c.entry, function: c.function)]))
+}
+
 fn run_gunbc_claims_ready(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
   let root = git.Core.Toplevel()
-  fold(claims, init: true, f: (acc, c) => {
-    let result = gunbc.Cli.Run(
-      workdir: root.path,
-      bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
-      source_roots: source_roots,
-      entry: c.entry,
-      function: c.function,
-      claim_run: true
-    )
-    acc && result.success
-  })
+  let result = gunbc.Cli.RunClaims(
+    workdir: root.path,
+    bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+    source_roots: source_roots,
+    claim_specs: claim_spec_rows(claims: claims)
+  )
+  result.success
 }
 
 fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
