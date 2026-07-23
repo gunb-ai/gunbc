@@ -9,8 +9,9 @@ use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
+    authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
+    is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
+    lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1739,19 +1740,33 @@ pub fn resolve_node_bounded(
                                                         diagnostics: Rc::new(vec![]),
                                                     })
                                                 } else {
-                                                    match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
-    Some(phantom) => Rc::new(NodeResolveResult {
-    resolved: phantom.clone(),
-    diagnostics: Rc::new(vec![]),
-}),
-    None => Rc::new(NodeResolveResult {
-    resolved: n.clone(),
-    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
-    name: authored_name(env.clone(), n.clone()),
-    span: n.span.clone(),
-}), module_name.clone())]),
-}),
-}
+                                                    match lookup_unit_variant_phantom_type(
+                                                        env.clone(),
+                                                        authored_name(env.clone(), n.clone()),
+                                                    ) {
+                                                        Some(phantom) => {
+                                                            Rc::new(NodeResolveResult {
+                                                                resolved: phantom.clone(),
+                                                                diagnostics: Rc::new(vec![]),
+                                                            })
+                                                        }
+                                                        None => Rc::new(NodeResolveResult {
+                                                            resolved: n.clone(),
+                                                            diagnostics: Rc::new(vec![
+                                                                make_error_node(
+                                                                    bare_name_miss_diagnostic(
+                                                                        env.clone(),
+                                                                        authored_name(
+                                                                            env.clone(),
+                                                                            n.clone(),
+                                                                        ),
+                                                                        n.span.clone(),
+                                                                    ),
+                                                                    module_name.clone(),
+                                                                ),
+                                                            ]),
+                                                        }),
+                                                    }
                                                 }
                                             }
                                         }

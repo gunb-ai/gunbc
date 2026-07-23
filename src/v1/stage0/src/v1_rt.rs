@@ -155,6 +155,23 @@ pub fn resolution_silent_pick_record_global_bare_lcp_tie(
     });
 }
 
+// NameResolutionPolicy gate (namespace-resolution-design.md 13, 8 step 1): default
+// false = ImportScoped (today's resolver, byte-for-byte). True = NamespaceOnlyY —
+// strict unique-on-chain in the type/value path and exactly-one across the fn
+// parent closure, with typed Ambiguous refusals. Host-side setter only; no .dag
+// surface can flip it (no escape hatch — a flip is an explicit host decision).
+thread_local! {
+    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn name_resolution_policy_set_namespace_only(enabled: bool) {
+    NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.set(enabled));
+}
+
+pub fn name_resolution_policy_is_namespace_only() -> bool {
+    NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.get())
+}
+
 pub fn resolution_silent_pick_record_fn_parent_first_hit(
     env_module_path: String,
     name: String,

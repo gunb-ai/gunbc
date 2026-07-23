@@ -113,6 +113,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row when its P1 lands" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-floor-time-45-72-band-attribution",
+    work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {

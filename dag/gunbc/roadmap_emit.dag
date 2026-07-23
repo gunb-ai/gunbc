@@ -11,12 +11,16 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 8 }
 
+fn node_is_superseded(rn: RoadmapNode) -> Bool {
+  !(item_superseded_by(item: rn.line) == "")
+}
+
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  signoff_accepts(s: rn.signoff)
+  signoff_accepts(s: rn.signoff) || node_is_superseded(rn: rn)
 }
 
 fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
@@ -24,13 +28,17 @@ fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
 }
 
 fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
-  if signoff_accepts(s: rn.signoff) {
-    [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+  if node_is_superseded(rn: rn) {
+    []
   } else {
-    if node_evidence_present(rn: rn, merged: merged) {
-      [TextInline { text: " — ⏳ awaiting sign-off" }]
+    if signoff_accepts(s: rn.signoff) {
+      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
     } else {
-      []
+      if node_evidence_present(rn: rn, merged: merged) {
+        [TextInline { text: " — ⏳ awaiting sign-off" }]
+      } else {
+        []
+      }
     }
   }
 }
@@ -67,6 +75,7 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
       )
     AuthoredLine { done: _, content } => [TextInline { text: content }]
     PlainLine { content } => [TextInline { text: content }]
+    SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
   }
 }
 
@@ -75,6 +84,7 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
     PlainLine { content: _ } => true
     DerivableLine { prs: _, title: _, description: _ } => false
     AuthoredLine { done: _, content: _ } => false
+    SupersededLine { by: _, content: _ } => false
   }
 }
 

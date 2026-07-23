@@ -18,16 +18,19 @@ pub use crate::v1_compiler_infer_emit_info::{
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_nearest_ancestor_candidate,
-    is_recursive_type, lookup_binding_by_name, lookup_binding_by_name_local, lookup_type,
-    lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+    authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
+    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
+    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
-pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+use crate::v1_compiler_infer_sigs::FuncSigLookup::{
+    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+};
+pub use crate::v1_compiler_infer_sigs::{FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
     kernel_profile_lookup, make_container_type, method_receiver_element_node,
@@ -91,10 +94,30 @@ pub fn lookup_func_sig(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
     name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
-    match lookup_resolved_sig(func_env.clone(), name.clone()) {
-        Some(sig) => Some(sig.clone()),
-        None => func_sig_from_global_bare(type_env.clone(), name.clone()),
+) -> Rc<FuncSigLookup> {
+    match (*lookup_resolved_sig(func_env.clone(), name.clone())).clone() {
+        FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
+            Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })
+        }
+        FuncSigLookup::FuncSigAmbiguous {
+            candidates: cands, ..
+        } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+            candidates: cands.clone(),
+        }),
+        FuncSigLookup::FuncSigUnresolved => {
+            match func_sig_from_global_bare(type_env.clone(), name.clone()) {
+                Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
+                None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+            }
+        }
+    }
+}
+
+pub fn func_sig_if_resolved(lookup: Rc<FuncSigLookup>) -> Option<Rc<ResolvedFuncSig>> {
+    match (*lookup.clone()).clone() {
+        FuncSigLookup::FuncSigResolved { sig: sig, .. } => Some(sig.clone()),
+        FuncSigLookup::FuncSigUnresolved => None,
+        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => None,
     }
 }
 
@@ -131,10 +154,7 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
             })),
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                 candidates: cands, ..
-            }) => match global_bare_nearest_ancestor_candidate(
-                type_env.module_path.clone(),
-                cands.clone(),
-            ) {
+            }) => match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone()) {
                 Some(cand) => Some(Rc::new(BorrowedCensusDecl {
                     owner_module_path: cand.module_path.clone(),
                     node: cand.binding.clone().resolved.clone(),
