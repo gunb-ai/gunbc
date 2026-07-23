@@ -5,6 +5,12 @@ fn non_fold_residue_clean_holds() -> Bool {
   non_fold_residue_unrostered_count() == 0 && non_fold_residue_stale_roster_count() == 0
 }
 
+fn nfr_roster_receipt_holds() -> Bool {
+  non_fold_residue_clean_holds()
+}
+
+data nfr_roster_receipt_dissolution_trigger: String = "Dissolve-on: per-PR affected-set selection runs this receipt without predict-skip (ReadsLiveTree enrollment on the witness entry) until enrollment is derived from discovery and unrostered live sites become unwritable (module-identity Phase-0 admission invariant). Each live site carries a roster row with reason + dissolution trigger (#6691 shape); detection-only — never auto-delete roster rows."
+
 fn non_fold_residue_live_count() -> Int {
   non_fold_residue_count()
 }

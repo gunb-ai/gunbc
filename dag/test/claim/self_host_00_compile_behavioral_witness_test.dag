@@ -1,9 +1,9 @@
 module test.claim.self_host_00_compile_behavioral_witness
 
-import tools.self_host_00_compile_behavioral_transport { sc_behavioral_receipt_holds }
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
 data self_host_00_compile_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 Gate-A flip (00_compile): compares gunbc-emitted vs seed required_lens_grain_note (00_compile.dag module authority constant); --inject-fault perturbs emitted comparison (not driver flag). Full compile-tree walk deferred until emit surface greens (#6775). Live host effects — enroll when frontier flips SelfEmitted with binding."
 
 test fn self_host_00_compile_behavioral_receipt_holds() -> Bool {
-  sc_behavioral_receipt_holds()
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/00_compile.dag")
 }
