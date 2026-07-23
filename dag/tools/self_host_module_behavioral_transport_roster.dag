@@ -146,7 +146,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_03_normalize_shims/witness_main.rs",
     pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [],
-    run_closure_assembly: true
+    run_closure_assembly: false
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_resolve.dag",

@@ -744,10 +744,8 @@ mod tests {
                 shim_dir.is_dir()
             );
         }
-        let out = std::env::temp_dir().join(format!(
-            "cssl_normalize_stale_red_{}",
-            std::process::id()
-        ));
+        let out =
+            std::env::temp_dir().join(format!("cssl_normalize_stale_red_{}", std::process::id()));
         let _ = fs::remove_dir_all(&out);
         let compile_status = std::process::Command::new(&gunbc)
             .args([
