@@ -221,8 +221,8 @@ test fn floor_discovery_equivalence_wire_contract_variant_scan_holds() -> Bool {
 
 test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> Bool {
   match discover_floor_corpus_rows_from_host_facts(
-    source_roots: [],
-    scan_dirs: [fixture_misplaced_wire_contract_scan_dir],
+    source_roots: [fixture_misplaced_wire_contract_scan_dir],
+    scan_dirs: [],
     exclude_substrings: [],
     owned_data_records: []
   ) {
