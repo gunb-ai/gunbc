@@ -48,6 +48,68 @@ fn read_positive_budget_ms(
     }
 }
 
+/// THE COST WALL (CI floor endgame D5 — authority `gunbc.ci_spec.gunbc_ci_floor_batch_wall_budget_seconds`
+/// + `gunbc_ci_floor_batch_wall_budget_note`): per-batch wall budgets for the floor plan, read
+/// fail-closed at arm time from the plan ctx (the fast-lane-budget pattern). Budgets are
+/// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock
+/// term (the ruling split reconciled in the carrier note). `GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`
+/// is the RED-control fault injection: it can only LOWER budgets (min), so it can force the
+/// refusal for a control run but can never open the gate — not an escape hatch by construction.
+fn read_floor_batch_wall_budgets_ms(
+    plan_ctx: &InterpContext,
+    batch_count: usize,
+) -> Result<Vec<u128>, String> {
+    let items = match run_value(plan_ctx, "gunbc_ci_floor_batch_wall_budgets_seconds") {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds must be a List<Int>,                  got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but                  gunbc_ci_floor_batch_wall_budgets_seconds is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut budgets_ms: Vec<u128> = Vec::new();
+    for item in items.iter() {
+        match item {
+            Value::Int(n) if *n > 0 => budgets_ms.push(*n as u128 * 1000),
+            other => {
+                return Err(format!(
+                    "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds rows must be                      positive Ints, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    if budgets_ms.len() != batch_count {
+        return Err(format!(
+            "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds has {} row(s) but the              plan schedules {} batch(es) — the budget list must cover the schedule exactly              (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            budgets_ms.len(),
+            batch_count
+        ));
+    }
+    if let Ok(tighten) = std::env::var("GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS") {
+        match tighten.parse::<u128>() {
+            Ok(t) => {
+                for b in budgets_ms.iter_mut() {
+                    *b = (*b).min(t);
+                }
+                eprintln!(
+                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS={t} — budgets tightened                      (RED-control injection; tighten-only, can never widen a budget)"
+                );
+            }
+            Err(_) => {
+                return Err(format!(
+                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS must parse as                      milliseconds, got {tighten:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    Ok(budgets_ms)
+}
+
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
 /// `gunbc.ci_spec.gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note`,
 /// type `gunbc.ci_spec.FloorBatchStopPolicy`):
@@ -1446,9 +1508,75 @@ struct BatchRecord {
 /// Returns false on a write error — the walk fails closed at the point of
 /// failure rather than relying only on the downstream missing-file gate.
 fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
+}
+
+/// Per-batch wall receipt (THE COST WALL, D5): typed rows — one wall/budget/verdict triple
+/// per batch — so the floor's time story is a receipt, not a log archaeology exercise.
+/// `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET refusals the
+/// walk printed; a budget-less run (falsifier/regen plans) records walls with
+/// `verdict=Unbudgeted`. Returns false on a write error — the walk fails closed here.
+fn write_batch_wall_receipt(
+    batch_records: &[BatchRecord],
+    batch_wall_budgets_ms: Option<&[u128]>,
+) -> bool {
+    write_batch_wall_receipt_at(
+        std::path::Path::new("target"),
+        batch_records,
+        batch_wall_budgets_ms,
+    )
+}
+
+fn write_batch_wall_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    batch_wall_budgets_ms: Option<&[u128]>,
+) -> bool {
+    let mut body = String::new();
+    let mut over_budget = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        let wall_ms = rec.wall_nanos / 1_000_000;
+        body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
+        match batch_wall_budgets_ms.and_then(|b| b.get(rec.batch_index)) {
+            Some(budget_ms) => {
+                let verdict = if wall_ms > *budget_ms {
+                    over_budget += 1;
+                    "OverBudget"
+                } else {
+                    "WithinBudget"
+                };
+                body.push_str(&format!("batch_{n}_budget_ms={budget_ms}\n"));
+                body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
+            }
+            None => {
+                body.push_str(&format!("batch_{n}_verdict=Unbudgeted\n"));
+            }
+        }
+    }
+    body.push_str(&format!("over_budget_batches={over_budget}\n"));
+    let path = base.join("floor-batch-wall-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write batch-wall receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor batch walls: {} batch(es), {} over budget (receipt: {})",
+        batch_records.len(),
+        over_budget,
+        path.display()
+    );
+    true
+}
+
+fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
     let mut discovery_corpus_resolve_ms: u128 = 0;
+    let mut discovery_corpus_eval_ms: u128 = 0;
     for rec in batch_records {
         for result in &rec.results {
             if result.resolve_nanos > 0 {
@@ -1456,13 +1584,15 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
                 resolve_ms_total += result.resolve_nanos / 1_000_000;
             }
             discovery_corpus_resolve_ms += result.corpus_resolve_nanos / 1_000_000;
+            discovery_corpus_eval_ms += result.corpus_eval_nanos / 1_000_000;
         }
     }
+    let discovery_phases = v1_compiler::cli_run::take_discovery_phase_totals_receipt_rows();
     let body = format!(
-        "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\n"
+        "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
-    let path = std::path::Path::new("target/floor-resolve-receipt.txt");
-    if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
+    let path = base.join("floor-resolve-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
             "claim_executor: failed to write resolve receipt {}: {e} — walk fails closed here (and the gate downstream fails closed on the missing file)",
             path.display()
@@ -1674,6 +1804,7 @@ fn run_walk(
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
+    batch_wall_budgets_ms: Option<&[u128]>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1826,6 +1957,31 @@ fn run_walk(
             any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
+        // THE COST WALL (D5): over-budget is a typed, located refusal — batch id, measured
+        // wall, budget row — that reds the walk. It never widens (no rerun, no scope change,
+        // no cap raise); witness verdicts inside the batch stand as evaluated (the budget is
+        // an admission/scheduling fact, not a verdict term — carrier note has the ruling split).
+        if let Some(budgets) = batch_wall_budgets_ms {
+            if let Some(budget_ms) = budgets.get(bi) {
+                let wall_ms = batch_wall_nanos / 1_000_000;
+                if wall_ms > *budget_ms {
+                    println!(
+                        "{}",
+                        paint(
+                            &format!(
+                                "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} budget_ms={}                                  (budget row: gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds[{}];                                  raising it requires an appended receipt note per                                  gunbc_ci_floor_batch_wall_budget_note — a refusal, never a widen)",
+                                bi + 1,
+                                wall_ms,
+                                budget_ms,
+                                bi
+                            ),
+                            sgr::ERROR
+                        )
+                    );
+                    any_failed = true;
+                }
+            }
+        }
         batch_records.push(BatchRecord {
             batch_index: bi,
             wall_nanos: batch_wall_nanos,
@@ -1852,12 +2008,16 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
+    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records, batch_wall_budgets_ms);
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
     let materialization_receipt_ok = write_materialization_receipt();
     WalkOutcome {
-        any_failed: any_failed || !resolve_receipt_ok || !materialization_receipt_ok,
+        any_failed: any_failed
+            || !resolve_receipt_ok
+            || !batch_wall_receipt_ok
+            || !materialization_receipt_ok,
         batches_run,
     }
 }
@@ -2059,6 +2219,7 @@ fn run_perturb_check(
         None,
         FalsifierSelfHostWetBudgets::default(),
         FloorBatchStopPolicy::StopBeforeDependents,
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -2282,6 +2443,21 @@ fn run() -> Result<ExitCode, ExitCode> {
         FalsifierSelfHostWetBudgets::default()
     };
     let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
+    // THE COST WALL (D5): the floor plan's per-batch wall budgets, read fail-closed at arm
+    // time (the fast-lane-budget pattern). Scoped to the full floor plan only: the
+    // plan-artifact shortcut runs a single batch of the same schedule and the falsifier
+    // carries its own receipt budgets, so neither reads this list.
+    let batch_wall_budgets_ms: Option<Vec<u128>> = if plan_function == "gunbc_ci_floor_batches" {
+        match read_floor_batch_wall_budgets_ms(&plan_ctx, batches.len()) {
+            Ok(v) => Some(v),
+            Err(msg) => {
+                eprintln!("{msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
     drop(plan_ctx);
     phase_mark("plan evaluated");
 
@@ -2344,6 +2520,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
         batch_stop_policy,
+        batch_wall_budgets_ms.as_deref(),
     );
     match peak_rss_bytes() {
         Some(bytes) => {
@@ -2361,11 +2538,35 @@ fn run() -> Result<ExitCode, ExitCode> {
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
-    if outcome.any_failed {
-        Ok(ExitCode::from(1))
+    floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
+}
+
+/// The walk outcome's process exit code — extracted so the fast-exit wiring is testable
+/// without exiting the test process.
+fn walk_exit_code(any_failed: bool) -> i32 {
+    if any_failed {
+        1
     } else {
-        Ok(ExitCode::SUCCESS)
+        0
     }
+}
+
+/// Terminal fast-exit for the floor walk (CI floor endgame D2): the executor retains a
+/// ~16GB store (process-shared index, typed caches, interner) whose Drop walk at process
+/// end measured 2.5–3.1 minutes, twice-confirmed (Pi bench: swap grows DURING Drop;
+/// run 30009199696: +3.1min between the last batch verdict and step end) — pure teardown
+/// of memory the process is about to abandon to the kernel anyway. After the receipts are
+/// written (inside `run_walk`, before it returns — their write failures are already folded
+/// into `any_failed`, so a truncated/unwritable receipt reds, never vanishes) and both
+/// streams are flushed, `process::exit` skips the Drop walk. This is the common tail of
+/// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
+/// through it; every refusal/error path above returns normally. The exit CODE is exactly
+/// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
+fn floor_terminal_fast_exit(code: i32) -> ! {
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    std::process::exit(code)
 }
 
 fn main() -> ExitCode {
@@ -2385,6 +2586,66 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // D2 wiring pin: the fast-exit consumes exactly this mapping, so the terminal
+    // process code stays behavior-identical to the ExitCode return it replaced.
+    #[test]
+    fn walk_exit_code_maps_failure_to_one_success_to_zero() {
+        assert_eq!(walk_exit_code(true), 1);
+        assert_eq!(walk_exit_code(false), 0);
+    }
+
+    // D2 RED control: a receipt that cannot be written REDS the walk (returns false,
+    // folded into any_failed → nonzero exit) — it never vanishes behind the fast exit.
+    // The base path is a FILE, so create_dir_all refuses.
+    #[test]
+    fn unwritable_receipt_base_reds_not_vanishes() {
+        let base =
+            std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
+        let _ = fs::remove_file(&base);
+        fs::write(&base, b"a file where the receipt dir should be").unwrap();
+        assert!(!write_resolve_receipt_at(&base, &[]));
+        assert!(!write_batch_wall_receipt_at(&base, &[], None));
+        let _ = fs::remove_file(&base);
+    }
+
+    // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
+    // counted; a within-budget batch records WithinBudget; a budget-less walk records
+    // Unbudgeted (falsifier/regen plans).
+    #[test]
+    fn batch_wall_receipt_verdicts_both_directions() {
+        let base =
+            std::env::temp_dir().join(format!("claim-executor-batch-wall-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let records = vec![
+            BatchRecord {
+                batch_index: 0,
+                wall_nanos: 5_000_000_000, // 5s
+                results: Vec::new(),
+            },
+            BatchRecord {
+                batch_index: 1,
+                wall_nanos: 1_000_000_000, // 1s
+                results: Vec::new(),
+            },
+        ];
+        let budgets_ms: Vec<u128> = vec![2_000, 2_000]; // 2s each: batch 1 over, batch 2 within
+        assert!(write_batch_wall_receipt_at(
+            &base,
+            &records,
+            Some(&budgets_ms)
+        ));
+        let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
+        assert!(body.contains("batch_1_wall_ms=5000"));
+        assert!(body.contains("batch_1_verdict=OverBudget"));
+        assert!(body.contains("batch_2_verdict=WithinBudget"));
+        assert!(body.contains("over_budget_batches=1"));
+        assert!(write_batch_wall_receipt_at(&base, &records, None));
+        let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
+        assert!(body.contains("batch_1_verdict=Unbudgeted"));
+        assert!(body.contains("over_budget_batches=0"));
+        let _ = fs::remove_dir_all(&base);
+    }
 
     // One entry, one resolve (lane clause (c)): a negligible-profile SharedClaims
     // group whose (entry, mode) some batch resolves on the memo path is itself
