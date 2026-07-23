@@ -46,13 +46,14 @@ fn witness_routed_and_retained_split() -> Bool {
     && (length(xs: interpreted_retained_rows()) == 9)
 }
 
-fn routed_subject_module_bound(module_path: String) -> Bool {
+fn family_crate_bound_subject(module_path: String) -> Bool {
   length(
     xs: fold(
-      native_routed_rows(),
+      native_routing_frontier_roster,
       init: [],
       f: fn(acc, row) {
-        if row.subject.module_path == module_path {
+        if (row.subject.module_path == module_path)
+          && (row.agreement_entry == "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag") {
           concat(acc, [row])
         } else {
           acc
@@ -65,8 +66,8 @@ fn routed_subject_module_bound(module_path: String) -> Bool {
 fn witness_flips_cite_parity_evidence() -> Bool {
   parity_flip_permitted(family: "meet_join", receipts: meet_join_local_receipts())
     && parity_flip_permitted(family: "complement", receipts: complement_local_receipts())
-    && routed_subject_module_bound(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
-    && routed_subject_module_bound(module_path: "v2.test.execution.emit_host_complement_equals_eval")
+    && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
+    && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_complement_equals_eval")
 }
 
 fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
