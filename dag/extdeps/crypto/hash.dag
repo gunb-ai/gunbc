@@ -1,0 +1,32 @@
+module extdeps.crypto.hash
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
+  }
+}
+
+type HashAlgorithm =
+  | Sha256
+
+data sha256_authority_note: NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
+
+type Digest {
+  algorithm: HashAlgorithm
+  hex: NonEmptyStr
+}
+
+fn sha256_digest(hex: NonEmptyStr) -> Digest {
+  Digest { algorithm: Sha256, hex: hex }
+}
+
+fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
+  match digest.algorithm {
+    Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
+  }
+}

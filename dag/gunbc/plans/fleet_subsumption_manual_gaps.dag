@@ -1,0 +1,184 @@
+module gunbc.plans.fleet_subsumption_manual_gaps
+
+import std.types { String, List }
+import std.markdown { MarkdownBlock }
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn fsmg_intro() -> List<MarkdownBlock> {
+  [
+    p(text: "Home: fleet subsumption (compute fabric). This doc is the receipt of the MANUAL steps taken to install and subsume srv4 (2026-07-22) that the modeling workflow did NOT cover. Each is a modeling gap: a step done by hand is a step the fleet cannot yet reproduce, verify, or retract through the model. The bar (per fleet_acceptance_criteria): a host must be install-able and subsume-able through the model with a read-back receipt, with zero hand-run shell. Until every item here dissolves, subsuming the next host (srv5) repeats the manual toil."),
+    quote(blocks: [p(text: "A step performed by hand is not modeled. It is not that the model is wrong; it is that the model is SILENT, and silence is the §5 fail-open of a workflow: the operator performs the missing step and the gap never surfaces as a diagnostic.")]),
+    p(text: "Two families: (A) credential handling — every temp credential file materialized on disk maps to a missing modeled secret-lifecycle effect; and (B) provisioning steps the model does not yet drive. Priority order at the end."),
+  ]
+}
+
+fn fsmg_secret_materialization() -> List<MarkdownBlock> {
+  [
+    h2(text: "A1 — Secret materialization lifecycle (the systemic credential gap)"),
+    p(text: "The model has SecretRef (a typed REFERENCE to a Secret Manager secret) but NOT the runtime effect that turns a reference into a usable credential and cleans it up. That effect, done by hand for every credential this session, is: fetch the SecretRef from Secret Manager, materialize it to a 0600 temp file or an env var, bind it to the transport that needs it, and shred it on completion."),
+    p(text: "Why materialization is unavoidable at point-of-use: ssh -i needs a key FILE; sudo -S and sshpass need the secret as a STRING; ipmitool needs a password. None can read a credential straight from Secret Manager. So the file/env is inherent — but its LIFECYCLE (fetch, scope, shred) must be modeled, not improvised. The ctrl deploy-runner-hosts.sh already does exactly this pattern (scp the PEM to a temp, use it, shred) — evidence the shape is known; it is just not a first-class modeled effect."),
+    h3(text: "Manual instances this session (each is one missing MaterializedSecret)"),
+    ul(items: [
+      li(text: "fleet-automation-ssh-key (Secret Manager) -> /tmp/fleet_key (0600) -> ssh -i, for every ssh/scp to srv4."),
+      li(text: "host-srv4-console (Secret Manager) -> /tmp/srv4_console_pw -> sudo -S, to bootstrap briansrls before passwordless sudo existed."),
+      li(text: "bmc-srv4-admin (Secret Manager) -> /tmp/bmcpw.env -> ipmitool / sshpass, for BMC + SOL."),
+      li(text: "ci-github-app-private-key (Secret Manager) -> /tmp/app.pem -> scp to host -> install-actions-runner.sh, for runner registration."),
+    ]),
+    h3(text: "Acceptance (target tier T2 wired, then T4 live)"),
+    ol(items: [
+      li(text: "A MaterializedSecret effect: given a SecretRef and a transport binding (SshKeyFile, EnvVar, StdinPassword), it fetches, writes 0600 to a scoped temp, yields a handle, and shreds on scope exit — shred is by construction (the handle drop), not a remembered step."),
+      li(text: "Every fleet transport that needs a secret (ssh, sudo, ipmitool, scp-of-key) consumes a MaterializedSecret, never a raw path — proof by consumption: remove the effect and the transport witness fails to resolve."),
+      li(text: "RED: a scope that exits without shred is a type error or a failing hygiene witness; a transport handed a raw temp path (not a MaterializedSecret handle) reds."),
+    ]),
+  ]
+}
+
+fn fsmg_reach_secrets() -> List<MarkdownBlock> {
+  [
+    h2(text: "A2 — Reach-secrets bootstrap (ADC / workload identity)"),
+    p(text: "The GCP access token is pasted by the operator every ~1h because the workflow has NO modeled way to authenticate to Secret Manager itself. This is the credential that unlocks A1, so it is the deeper enabler. It is already a DeclaredGap in host_standup (P0:reach-secrets-network; note: full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access (secretAccessor bound out-of-band 2026-07-21; full WIF SecretAccessGrant modeling is follow-up)."),
+    h3(text: "Acceptance"),
+    ol(items: [
+      li(text: "A modeled SecretAccessGrant / ADC identity the workflow assumes on the host it runs from (the dashboard/orchestrator), so reaching Secret Manager needs no operator-pasted token."),
+      li(text: "The grant is least-privilege and per-secret (mirrors the fleet-automation SA secretAccessor binding already done by hand), modeled as the accessor of each SecretRef."),
+      li(text: "RED: a workflow step that reads a SecretRef the running identity is not granted reds at plan time, not at a runtime 403."),
+    ]),
+  ]
+}
+
+fn fsmg_secret_liveness() -> List<MarkdownBlock> {
+  [
+    h2(text: "A3 — SecretRef liveness (existence is not validity)"),
+    p(text: "The model cited ci-github-app-private-key as truth, but Secret Manager held a REVOKED key (fingerprint 0c7a15..., deleted from the GitHub App) while the live key (64a8af...) lived only on the hosts. srv4 registration 401'd; I diagnosed and reconciled by hand (added the live key as a new SM version, disabled the dead one). The model verifies a SecretRef EXISTS but never that it is the credential the upstream (GitHub) actually ACCEPTS."),
+    p(text: "This is a §5 gap: a rotation that updates the hosts but skips Secret Manager leaves the cited authority stale, and nothing catches it until the next host deploy 401s at runtime."),
+    h3(text: "Acceptance"),
+    ol(items: [
+      li(text: "A liveness assertion on the App-key SecretRef: the key must mint a valid GitHub App JWT / installation token (a cheap, read-only probe), fail-closed if it does not."),
+      li(text: "The single rotation point is the SecretRef itself: hosts materialize FROM the SecretRef (A1), so host and Secret Manager cannot diverge by construction. Retire the canonical-key-on-dashboard-host copy that deploy-runner-hosts.sh uses today."),
+      li(text: "RED: point the SecretRef at a revoked key -> the liveness probe reds before any host is touched."),
+    ]),
+  ]
+}
+
+fn fsmg_slot_provisioning() -> List<MarkdownBlock> {
+  [
+    h2(text: "B1 — Runner slot provisioning (the width-INCREASE gap) — DONE ENTIRELY BY HAND"),
+    p(text: "This is the one that should never have been hand-work. RunnerHostDeploy (this PR) models the runner ENABLE step (runner_enable_command -> systemctl enable --now actions-runner@srv4-01..05) but NOT the provisioning of the per-slot runner directories those units point at. The whole slot install was manual. fleet-converge.sh already names this exact gap: width INCREASE $current->N needs slot provisioning (rsync from -01); run the install path -- converge only drains for DECREASE. So DECREASE (drain runners) is modeled/converged; INCREASE (add runners) is not."),
+    h3(text: "Exactly what I did by hand (the receipt)"),
+    ol(items: [
+      li(text: "Located the pinned runner artifact on srv1: /opt/actions-runner-cache/actions-runner-linux-arm64-2.334.0.tar.gz (runner v2.334.0). Its version + digest are NOT modeled — there is no ActionsRunnerRelease row analogous to the SccacheBinaryRelease this PR added (github.com/actions/runner/releases)."),
+      li(text: "sudo cp the tarball to /tmp, scp'd it srv1 -> srv4 (~132M). No modeled artifact staging."),
+      li(text: "sudo install -d -m 755 -o briansrls -g briansrls /opt/actions-runner and /opt/actions-runner-cache — the install-actions-runner.sh installer ASSUMES /opt/actions-runner exists (it writes jit-runner.sh into it) and fails on a fresh host without it. The base directory + its ownership are unmodeled."),
+      li(text: "For each of srv4-01..05: sudo rm -rf the dir, sudo mkdir, sudo tar xzf the tarball into it, sudo chown -R ghrunner:ghrunner. Five hand-unrolled extractions. The count (5) came from a decision, not from the modeled runner_deployment_plan feeding provisioning — the plan derives 10 (RAM-based) and I hand-capped to 5 for the 500G disk. The ownership split (briansrls owns /opt/actions-runner, ghrunner owns each slot dir) is the de-priv posture install-actions-runner.sh chown loop expects, but the DIR CREATION it does not do."),
+      li(text: "Only THEN did the modeled part run: systemctl daemon-reload + runner_enable_command."),
+    ]),
+    h3(text: "What the model is missing"),
+    ul(items: [
+      li(text: "ActionsRunnerRelease: a cited row (version 2.334.0, per-arch download URL + sha256, github.com/actions/runner/releases) — the runner tarball is a pinned upstream artifact and must be modeled + verified exactly like SccacheBinaryRelease, not copied from a neighbor host by hand."),
+      li(text: "RunnerSlot provisioning as a modeled effect: fetch/verify the release, ensure the /opt/actions-runner base dir + ownership, seed N slot dirs (extract per instance), set the ghrunner ownership, THEN enable. RunnerHostDeploy currently starts at enable and assumes the dirs exist."),
+      li(text: "Slot-COUNT reconcile (three-way, like host_converge): desired N vs observed slot dirs -> add the delta (seed new dirs) or drain the delta. Today only drain (DECREASE) is converged; INCREASE is the hand step. runner_deployment_plan derives the count but nothing consumes it to PROVISION — only to enable."),
+      li(text: "The disk-headroom term that made me hand-cap srv4 to 5: runner_deployment_plan derives count from RAM only, so it gave srv4 10; a per-host disk-headroom fold would make the 5 solver-derived, not a hand-pin (this PR leaves a note in runner_host_deploy but the solver still says 10)."),
+    ]),
+    h3(text: "Acceptance (target tier T4 — live apply + independent read-back)"),
+    ol(items: [
+      li(text: "A modeled RunnerSlotProvision consumes runner_deployment_plan's count for a host, ensures the ActionsRunnerRelease is present+verified, seeds exactly N slot dirs from it with correct ownership, and enables them — one fold, no hand-unrolled per-slot shell."),
+      li(text: "Live: run it on a real host; an INDEPENDENT read (ls -d /opt/actions-runner/<label>-* AND systemctl is-active per slot, never our own write echoed) shows exactly N active runners."),
+      li(text: "RED: change desired N and re-run -> exactly the delta of slot dirs is added/removed and enabled/drained; a wrong-arch or wrong-digest release reds at verify, before any extraction."),
+    ]),
+  ]
+}
+
+fn fsmg_runner_user() -> List<MarkdownBlock> {
+  [
+    h2(text: "B2 — Fleet runner-user provisioning"),
+    p(text: "The fleet expects a homogeneous runner user (briansrls on srv1/srv2). srv4's Ubuntu autoinstall created ubuntu. I created briansrls by hand: useradd -G sudo, a NOPASSWD sudoers.d drop-in, and copied the fleet authorized_keys. Neither the autoinstall identity model (os_install) nor RunnerHostDeploy models the fleet runner user — RunnerHostDeploy's runner_user field just ASSUMES the user exists (install-actions-runner.sh refuses if it does not)."),
+    h3(text: "Acceptance"),
+    ol(items: [
+      li(text: "The fleet runner user is modeled once and provisioned either by the autoinstall identity (create briansrls at install time) or by a RunnerHostDeploy prereq (ensure user + sudoers + fleet authorized_keys) — homogeneity by construction, not a hand useradd."),
+      li(text: "RED: a host whose runner_user is absent or lacks passwordless sudo / fleet keys reds a preflight, before the installer runs."),
+    ]),
+  ]
+}
+
+fn fsmg_fresh_host_prereqs() -> List<MarkdownBlock> {
+  [
+    h2(text: "B3 — Fresh-host prereqs the installer assumes"),
+    p(text: "install-actions-runner.sh refuses without ctrl-jobserver (its FIFO) and assumes /opt/actions-runner exists and docker-ce-rootless-extras + sccache are installed. This PR modeled the docker-ce + sccache prereqs (extdeps.container.docker_ce, extdeps.cache.sccache) and made the execution surface honest — but ctrl-jobserver install and the /opt/actions-runner base dir are still unmodeled (ran by hand). They belong in the same RunnerHostDeploy prereq chain as docker + sccache."),
+    h3(text: "Acceptance"),
+    ol(items: [
+      li(text: "RunnerHostDeploy's prereq chain covers ALL install-actions-runner.sh preconditions: ctrl-jobserver, base dir + ownership, docker-ce (done), sccache (done) — each cited, each a modeled ensure, ordered before the installer."),
+      li(text: "RED: a missing prereq reds a modeled preflight naming the exact missing precondition, not a mid-install installer refusal."),
+    ]),
+  ]
+}
+
+fn fsmg_install_actuator() -> List<MarkdownBlock> {
+  [
+    h2(text: "B4 — OS-install actuator + virtual-media lifecycle"),
+    p(text: "The BMC configfs virtual-media install (this PR models the pieces: nbd + usb_gadget + bmc_virtual_media + VirtualMediaIntent) was ORCHESTRATED by hand: stage the seeded ISO, start nbd-server (srv1), nbd-client + configfs gadget (BMC), power-cycle, watch POST/grub/install over SOL, and — critically — DETACH the gadget at the right moment so the host reboots into the installed NVMe and not back into the installer. No single srv4_os_install_actuate fold exists (srv3 has srv3_os_install_actuate for the nbd-proxy path; the configfs path has no actuator), and the detach-on-install-complete step is a hand-watched lifecycle, not a modeled reconcile."),
+    h3(text: "Acceptance"),
+    ol(items: [
+      li(text: "An install actuator for the configfs virtual-media path that folds stage -> serve -> attach -> boot -> detach, with the detach gated on an install-complete / first-installed-boot observation (independent read), so the media lifecycle cannot strand the host in a reinstall loop."),
+      li(text: "RED: an install that completes without the media being detached before the installed reboot reds (would otherwise re-enter the installer)."),
+    ]),
+  ]
+}
+
+fn fsmg_host_convergence() -> List<MarkdownBlock> {
+  [
+    h2(text: "C — Host convergence: the enrollment failure (srv4 OOM receipt, 2026-07-23)"),
+    p(text: "Follow-on: srv4 (put onto runners 2026-07-22) OOM-killed live PR CI the next day. The trace is sharper than any single missing step above: srv4 was never a member of the MODELED fleet at all. gunbc.fleet_intent declares exactly srv1, srv2, srv3, and every convergence value (per-slot MemoryMax/MemorySwapMax, oomd policy, slice cap) is DERIVED from that intent via ci_runner_placement.runner_deployment_plan then host_converge.fleet_converge_policy. The converge did not skip srv4 — its authority cannot NAME a host absent from the intent. The runner installer, an imperative script, was hand-pointed at srv4: a fleet member in GitHub's eyes, a ghost in the model. Membership by hand-action, not by row."),
+    h3(text: "Model without actuator, and the emit is unprovable"),
+    p(text: "The convergence is not un-modeled — it is modeled without a live actuator. host_runner_memory_provision refuses live apply at PerSlotMemoryCap KnobUnimplemented (plan-emit claims nothing; verify-only read-back is the close); oomd is gunbc.oomd_install; the per-slot drop-ins are the 20-fleet-width / 30-fleet-swap / 40-fleet-high files. But on 2026-07-23 gunbc.fleet_converge_emit did not compile at all (104 errors: unresolved Do/Pipeline/If, orch_emit_pipeline missing), so the modeled converge could neither APPLY nor EMIT. This incident is the displaced-cost pricing the actuation lane (roadmap 2-converge-reland, whose own words are: until it lands, every fabric model is paper) was waiting for."),
+    h3(text: "Interim actuation receipt (hand-applied from derived-equal values)"),
+    p(text: "Applied by hand to stop the live OOM, legitimate ONLY because srv4 and srv1 are the same board at 125 GiB RAM, so the RAM-derived per-slot caps are EQUAL (derived-equal, not transplanted); the slice cap was left as srv4's own installer-default 70 percent, never srv1's value. Each axis interim; dissolution = enrollment plus the converge-actuation lane:"),
+    ul(items: [
+      li(text: "swap: 8 GiB -> 127 GiB (a 120 GiB /swap2.img, swappiness 10, fstab-persisted). UNMODELED axis, even for srv1."),
+      li(text: "per-slot MemoryMax: infinity -> 16 GiB. Modeled (refuses to apply)."),
+      li(text: "per-slot MemorySwapMax: infinity -> 32 GiB. Modeled (refuses to apply)."),
+      li(text: "systemd-oomd: package absent -> installed + active. Modeled (oomd_install)."),
+      li(text: "ctrl-runner-reclaim.timer: missing -> active. Orphan ctrl-* axis, unmodeled even for srv1."),
+    ]),
+    p(text: "Effect: per-slot caps bound the balloon (an over-limit build memcg-OOMs its OWN job instead of global-OOM-killing an innocent runner mid-step), swap absorbs spill, and the actions/cache save_state Missing-file flake — OOM fallout — dies with it."),
+    h3(text: "The three fixes this prices (supersede/sharpen A-B above)"),
+    ol(items: [
+      li(text: "Actuation lane (2-converge-reland) is now priced by a real incident, not paper: model + emit + verify exists; the live-apply knob refuses and the emit is currently un-runnable. Landing it is the displaced cost."),
+      li(text: "Swap-device provisioning as a modeled axis: a SwapDevice / SwapFile member on the host-convergence spine (fallocate/mkswap/swapon/fstab as typed host effects, readback via /proc/swaps). The single most stability-critical fact is a hand-memory with no row anywhere, even for srv1."),
+      li(text: "Enrollment wall as CONSTRUCTION, not prose: the runner installer refuses on a host absent from gunbc.fleet_intent. That one refusal makes this entire incident class unwritable. Standing rule: a host takes no fleet work until it is an intent row with a converge receipt."),
+    ]),
+    p(text: "Enrollment prerequisite (why it is step 0, not bureaucracy): emit-and-run converge on an unenrolled host derives NOTHING for it, or worse stamps template drop-ins carrying other hosts' widths. An intent row with BMC-observed memory is where runner_deployment_plan's conservation wall gets the RAM to CHECK whether N runners at the declared caps even fit, refusing PlanUnsound if not — the OOM prevented by arithmetic instead of by swap."),
+  ]
+}
+
+fn fsmg_priority() -> List<MarkdownBlock> {
+  [
+    h2(text: "Priority"),
+    ol(items: [
+      li(text: "A1 (secret materialization) + B1 (runner slot provisioning) FIRST: A1 removes the temp-credential improvisation across ALL future host work; B1 closes the one runner step that is still entirely manual (and already a named width-INCREASE gap)."),
+      li(text: "A3 (SecretRef liveness) is cheap and prevents the exact 401 that cost time this session."),
+      li(text: "B2 (runner user) + B3 (fresh-host prereqs) are small and make a fresh host provisionable end-to-end."),
+      li(text: "A2 (reach-secrets ADC) is the deeper enabler of A1 but a bigger project; B4 (install actuator) is the most involved and can follow."),
+    ]),
+    p(text: "Test for done, per item: subsume srv5 with ZERO hand-run shell and zero operator-pasted token past the initial ADC — every step above driven and read-back-verified through the model."),
+  ]
+}
+
+fn fleet_subsumption_manual_gaps_body() -> List<MarkdownBlock> {
+  concat(fsmg_intro(),
+  concat(fsmg_secret_materialization(),
+  concat(fsmg_reach_secrets(),
+  concat(fsmg_secret_liveness(),
+  concat(fsmg_slot_provisioning(),
+  concat(fsmg_runner_user(),
+  concat(fsmg_fresh_host_prereqs(),
+  concat(fsmg_install_actuator(),
+  concat(fsmg_host_convergence(), fsmg_priority())))))))))
+}
+
+data fleet_subsumption_manual_gaps_plan: Plan = Plan {
+  slug: "fleet-subsumption-manual-gaps",
+  title: "Fleet subsumption — manual steps the modeling workflow does not yet cover (srv4 receipts, 2026-07-22 install + 2026-07-23 host-convergence OOM)",
+  body: fleet_subsumption_manual_gaps_body(),
+  dissolution: HasTrigger { text: "Dissolves item-by-item as each gap is modeled and consumed on the live path: A1 MaterializedSecret effect, A2 SecretAccessGrant/ADC, A3 SecretRef liveness probe, B1 RunnerSlotProvision + ActionsRunnerRelease, B2 fleet-runner-user provision, B3 prereq chain completion, B4 configfs install actuator, C enrollment wall + converge actuation lane + SwapDevice member. The canonical host-state rows land on the operator sheet (1a lane); this doc is the incident receipt. Fully retired when srv5 (the next host) is subsumed with zero hand-run shell and read-back receipts for every step, and a host absent from fleet_intent structurally cannot take fleet work." },
+}

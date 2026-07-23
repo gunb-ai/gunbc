@@ -1,0 +1,72 @@
+module extdeps.storage.nbd
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Port }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "manpages.debian.org/bookworm/nbd-server/nbd-server.5.en.html",
+  }
+}
+
+type NbdExport {
+  export_name: NonEmptyStr
+  backing_path: NonEmptyStr
+  port: Port
+  read_only: Bool
+}
+
+data nbd_server_config_render_dissolution_trigger: String = "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join."
+
+fn nbd_bool_word(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn nbd_server_config_text(export: NbdExport) -> String {
+  join(
+    [
+      "[generic]",
+      join(["    port = ", to_string(export.port)], ""),
+      "    allowlist = false",
+      join(["[", export.export_name as String, "]"], ""),
+      join(["    exportname = ", export.backing_path as String], ""),
+      join(["    readonly = ", nbd_bool_word(b: export.read_only)], ""),
+      "",
+    ],
+    "\n",
+  )
+}
+
+fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
+    argv: ["nbd-server", "-C", config_path as String],
+  }
+}
+
+type NbdClientAttach {
+  server: NonEmptyStr
+  port: Port
+  export_name: NonEmptyStr
+  device: NonEmptyStr
+}
+
+fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
+  ArgvCommand {
+    argv: [
+      "nbd-client",
+      "-N", attach.export_name as String,
+      attach.server as String,
+      to_string(attach.port),
+      attach.device as String,
+    ],
+  }
+}
+
+fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
+    argv: ["nbd-client", "-d", device as String],
+  }
+}

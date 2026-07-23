@@ -8,6 +8,7 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
+import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
 import std.cache_interface {
   NativeInternalLookup,
   OverwriteAllowed,
@@ -28,6 +29,8 @@ import std.cache_interface {
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr, String, List }
+import extdeps.toolchain.types { ToolchainCapability, SharedHomeAcrossJobs, CtrlBuild }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -37,6 +40,47 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data sccache_local_id: CacheInterfaceId = "sccache_local"
+
+data sccache_releases_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/mozilla/sccache/releases" }
+}
+
+type SccacheBinaryRelease {
+  version: NonEmptyStr
+  digest_aarch64: Digest
+  digest_x86_64: Digest
+}
+
+data sccache_release_0_15_0: SccacheBinaryRelease = SccacheBinaryRelease {
+  version: "v0.15.0",
+  digest_aarch64: sha256_digest(hex: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8"),
+  digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
+}
+
+data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
+  name: "sccache",
+  version: "0.15.0",
+  env_isolation: SharedHomeAcrossJobs,
+  build_wrapper: Present { value: CtrlBuild },
+  linked_cache_interface: Present { value: sccache_local_id },
+}
+
+data sccache_install_dissolution_trigger: String = "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf."
+
+fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
+  let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
+  let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
+  join([
+    "set -e",
+    join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
+    digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
+    "tar -xzf /tmp/sccache.tar.gz -C /tmp",
+    join(["sudo mv '/tmp/", dir, "/sccache' /usr/local/bin/sccache"], ""),
+    "sudo chmod +x /usr/local/bin/sccache",
+    join(["rm -rf /tmp/sccache.tar.gz '/tmp/", dir, "'"], ""),
+    "",
+  ], "\n")
+}
 
 data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
 

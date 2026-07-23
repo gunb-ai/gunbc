@@ -1,0 +1,45 @@
+module gunbc.srv4_seeded_install_media_artifact
+
+import extdeps.os.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.os.ubuntu_seeded_install_media {
+  UbuntuSeededInstallMediaArtifactRow,
+  ubuntu_seeded_install_media_default_nocloud_dir,
+  ubuntu_seeded_install_media_grub_kernel_cmdline,
+  seeded_install_media_content_hash,
+  ubuntu_seeded_install_media_install_path,
+}
+import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
+import gunbc.os_install_emit { autoinstall_user_data }
+import std.types { NonEmptyStr, ContentHash }
+
+data srv4_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
+  payload: srv4_ubuntu_autoinstall_on_iso,
+) as NonEmptyStr
+
+data srv4_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
+  hostname: srv4_ubuntu_autoinstall_on_iso.identity.hostname,
+)
+
+data srv4_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(
+  nocloud_dir: srv4_seeded_nocloud_dir_on_iso,
+)
+
+data srv4_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
+  stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
+  autoinstall_user_data_body: srv4_autoinstall_user_data_body,
+  grub_kernel_cmdline: srv4_seeded_grub_kernel_cmdline,
+  nocloud_dir_on_iso: srv4_seeded_nocloud_dir_on_iso,
+)
+
+data srv4_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {
+  stock_artifact: noble_numbat_2404_3_live_server_arm64,
+  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+  autoinstall_user_data_body: srv4_autoinstall_user_data_body,
+  grub_kernel_cmdline: srv4_seeded_grub_kernel_cmdline,
+  nocloud_dir_on_iso: srv4_seeded_nocloud_dir_on_iso,
+  content_hash: srv4_seeded_install_media_content_hash,
+}
+
+data srv4_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path(
+  artifact: srv4_seeded_install_media_artifact,
+)

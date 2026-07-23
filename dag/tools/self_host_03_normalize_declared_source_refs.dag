@@ -25,5 +25,9 @@ data declared_source_refs: List<SourceRef> = [
   source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"),
   source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"),
   source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"),
-  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs")
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/std_algebra.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/std_types.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_integer.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_namespace_graft.rs")
 ]

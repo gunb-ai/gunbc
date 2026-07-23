@@ -68,7 +68,7 @@ test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {
-  fleet_intent_offers.length() == 3
+  fleet_intent_offers.length() == 4
     && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
