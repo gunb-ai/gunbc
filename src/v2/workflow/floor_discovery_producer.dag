@@ -24,6 +24,8 @@ import v2.std.collection { Absent, List, Optional, Present, optional_absent, opt
 import v2.std.algebra { any, length, fold_list }
 import v2.std.logic { Bool }
 import std.types { String, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 type FloorDiscoveryProducerResult
@@ -727,3 +729,14 @@ data floor_discovery_producer_note: String = "Floor discovery producer: enrolled
 data floor_discovery_directory_candidate_dissolve_on: String = "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty)."
 
 data floor_discovery_live_tree_disposition_dissolve_on: String = "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold)."
+
+data floor_discovery_surface_text_scan_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.floor_discovery_producer",
+    decl_name: "floor_discovery_scan_test_decl_names",
+    field: WholeDeclaration
+  }
+}
+
+data floor_discovery_surface_text_scan_dissolve_on: String = "🟡 dissolve-on: floor_discovery_surface_text_scan — producer recovers test-decl names, live_tree_disposition rows, and CoproductWireContract markers via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler so structural reads are not forked from the ingester."

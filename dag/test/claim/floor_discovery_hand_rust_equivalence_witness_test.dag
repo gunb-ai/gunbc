@@ -23,9 +23,12 @@ import v2.workflow.floor_discovery_producer {
   floor_discovery_content_has_wire_contract_decl,
   floor_discovery_wire_contract_sidecar_refusal_for_content,
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
-  floor_filename_hygiene_refusal_for_paths
+  floor_filename_hygiene_refusal_for_paths,
+  floor_discovery_surface_text_scan_scaffold,
+  floor_discovery_surface_text_scan_dissolve_on
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.collection { Absent, List, Optional, Present, fold_list }
 import std.types { Bool, String }
 import std.disposition { Scaffold, SingleAuthority }
@@ -156,6 +159,18 @@ test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
   string_contains(s: floor_discovery_dissolve_trigger, pattern: "floor_discovery_producer")
     && string_contains(s: floor_discovery_dissolve_trigger, pattern: "dissolve-on")
+}
+
+test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
+  match floor_discovery_surface_text_scan_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn floor_discovery_surface_text_scan_dissolve_on_names_grammar_owned_reads() -> Bool {
+  string_contains(s: floor_discovery_surface_text_scan_dissolve_on, pattern: "dissolve-on")
+    && string_contains(s: floor_discovery_surface_text_scan_dissolve_on, pattern: "grammar-owned")
 }
 
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {

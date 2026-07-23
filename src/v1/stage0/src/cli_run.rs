@@ -2336,39 +2336,96 @@ fn compile_clean_scoping_active() -> bool {
 
 pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
 pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
+pub const RUN_FULL_FLOOR_SCOPING_INACTIVE_LABEL: &str = "run_full_floor_scoping_inactive";
+pub const RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL: &str =
+    "run_full_floor_diff_observation_failed";
+pub const RUN_FULL_FLOOR_EMPTY_DIFF_LABEL: &str = "run_full_floor_empty_diff";
+pub const RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL: &str = "run_full_floor_non_docs_change";
 
-/// CI floor admission label for the docs-only witness-corpus skip arm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentationOnlyFloorFullFloorCause {
+    ScopingInactive,
+    DiffObservationFailed { detail: String },
+    EmptyDiff,
+    NonDocsChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentationOnlyFloorSkipDisposition {
+    DocumentationOnlySkip,
+    RunFullFloor {
+        cause: DocumentationOnlyFloorFullFloorCause,
+    },
+}
+
+impl DocumentationOnlyFloorSkipDisposition {
+    pub fn witness_label(&self) -> &'static str {
+        match self {
+            Self::DocumentationOnlySkip => DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL,
+            Self::RunFullFloor { cause } => match cause {
+                DocumentationOnlyFloorFullFloorCause::ScopingInactive => {
+                    RUN_FULL_FLOOR_SCOPING_INACTIVE_LABEL
+                }
+                DocumentationOnlyFloorFullFloorCause::DiffObservationFailed { .. } => {
+                    RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL
+                }
+                DocumentationOnlyFloorFullFloorCause::EmptyDiff => RUN_FULL_FLOOR_EMPTY_DIFF_LABEL,
+                DocumentationOnlyFloorFullFloorCause::NonDocsChange => {
+                    RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL
+                }
+            },
+        }
+    }
+}
+
+/// CI floor admission disposition for the docs-only witness-corpus skip arm.
 /// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
-/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed widen).
+/// Each run-full-floor cause is a distinct typed variant so deficit frequency is countable.
 /// Predicate-authority failure returns `Err` (typed refusal — never widens to full floor).
 /// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
 /// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
-pub fn documentation_only_floor_skip_label_for_ci() -> Result<String, String> {
+pub fn documentation_only_floor_skip_label_for_ci(
+) -> Result<DocumentationOnlyFloorSkipDisposition, String> {
     if !compile_clean_scoping_active() {
-        return Ok(RUN_FULL_FLOOR_LABEL.to_string());
+        return Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+            cause: DocumentationOnlyFloorFullFloorCause::ScopingInactive,
+        });
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
             eprintln!(
-                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+                "documentation-only floor skip: diff observation failed ({msg}) — {}",
+                RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL
             );
-            Ok(RUN_FULL_FLOOR_LABEL.to_string())
+            Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                cause: DocumentationOnlyFloorFullFloorCause::DiffObservationFailed { detail: msg },
+            })
         }
         Ok((changed_paths, _departed)) => {
             if changed_paths.is_empty() {
-                eprintln!("documentation-only floor skip: empty diff — full floor");
-                return Ok(RUN_FULL_FLOOR_LABEL.to_string());
+                eprintln!(
+                    "documentation-only floor skip: empty diff — {}",
+                    RUN_FULL_FLOOR_EMPTY_DIFF_LABEL
+                );
+                return Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                    cause: DocumentationOnlyFloorFullFloorCause::EmptyDiff,
+                });
             }
             match compile_clean_all_touched_paths_docs_universe(&changed_paths) {
                 Ok(true) => {
                     eprintln!(
                         "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
                     );
-                    Ok(DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string())
+                    Ok(DocumentationOnlyFloorSkipDisposition::DocumentationOnlySkip)
                 }
                 Ok(false) => {
-                    eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
-                    Ok(RUN_FULL_FLOOR_LABEL.to_string())
+                    eprintln!(
+                        "documentation-only floor skip: {}",
+                        RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL
+                    );
+                    Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                        cause: DocumentationOnlyFloorFullFloorCause::NonDocsChange,
+                    })
                 }
                 Err(msg) => {
                     eprintln!("documentation-only floor skip: predicate authority refused ({msg})");
@@ -24151,8 +24208,12 @@ mod witness_layer_roots_compile_clean_tests {
                 "GUNBC_CI_DIFF_NAME_STATUS",
                 "M\\000docs/plans/example.md\\000",
             );
-            let label = documentation_only_floor_skip_label_for_ci().expect("docs-only label");
-            assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
+            let disposition =
+                documentation_only_floor_skip_label_for_ci().expect("docs-only label");
+            assert_eq!(
+                disposition,
+                DocumentationOnlyFloorSkipDisposition::DocumentationOnlySkip
+            );
         });
     }
 
