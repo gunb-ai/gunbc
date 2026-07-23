@@ -353,3 +353,18 @@ ordinary-diff wet/discovery profile per §2/§9.2.
 
 Floor cap 55 → 40 is proposed as a data change AFTER the post-merge receipts exist
 (operator signs; deliberately not in the endgame PR).
+
+**Process lesson (workflow lane, endgame rework push):** every endgame piece was proven
+by execution before the PR — executor battery, budget RED both directions, pooled child,
+plan witnesses, whole-tree compile — EXCEPT one full floor walk, and that is exactly the
+lane that redded (twice: the merge-tree ROADMAP drift, then #6866's admission invariant
+on the two re-homed D6 rows). Receipt freshness applies at the INTEGRATION grain too: the
+proof set must include one run of the composed thing, not only its parts.
+
+**On-call pre-positioning (operator, 2026-07-23):** batches 3 and 6 sit at 1.29×/1.45×
+headroom against their budget rows — inside the 1.3–1.5× slot-noise band — so expect the
+first ORGANIC `FLOOR-BATCH-OVER-BUDGET` on an innocent PR within days. That is the wall
+working, not a defect: D4's phase rows in the floor resolve receipt make the batch
+diagnosable, and the remedy is **diagnose-or-signed-raise** (the operator-signed raise
+discipline in `gunbc_ci_floor_batch_wall_budget_note`), never a rerun and never
+pre-widening the budgets to avoid the first firing.

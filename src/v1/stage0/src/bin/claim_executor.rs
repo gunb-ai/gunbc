@@ -2558,8 +2558,9 @@ fn walk_exit_code(any_failed: bool) -> i32 {
 /// of memory the process is about to abandon to the kernel anyway. After the receipts are
 /// written (inside `run_walk`, before it returns — their write failures are already folded
 /// into `any_failed`, so a truncated/unwritable receipt reds, never vanishes) and both
-/// streams are flushed, `process::exit` skips the Drop walk. Terminal path of the floor
-/// run only; every refusal/error path above returns normally. The exit CODE is exactly
+/// streams are flushed, `process::exit` skips the Drop walk. This is the common tail of
+/// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
+/// through it; every refusal/error path above returns normally. The exit CODE is exactly
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
 fn floor_terminal_fast_exit(code: i32) -> ! {
     use std::io::Write as _;
