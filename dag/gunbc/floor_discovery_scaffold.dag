@@ -1,0 +1,24 @@
+module gunbc.floor_discovery_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.floor_discovery_producer",
+    decl_name: "discover_floor_corpus_rows_from_host_facts",
+    field: WholeDeclaration
+  }
+}
+
+data floor_discovery_dissolve_trigger: String = "🟡 dissolve-on: floor_discovery_hand_rust_bridge — floor_discovery_producer.dag is roster authority; Rust host still realizes effect-reach reclassification (apply_effect_reach_derived_reads_live_tree), parallel tree walks for build_floor_lens_import_graph, and invoke_floor_discovery_producer interpreter transport via discover_floor_witness_roster; DISSOLVES WHEN discovery admission consumes v2.lens.effect_reach directly and lens-graph feed the .dag producer closure (witness: dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag). Legacy discover_floor_corpus_rows_inner_rust_legacy deleted; discover_floor_corpus_rows / check_floor_filename_hygiene / _inner / _scoped arms deleted."
+
+data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"
+
+data floor_discovery_equivalence_test_sidecar_misplaced: String = "misplaced_wire_contract_decl_drives_discover_to_err"
+
+data floor_discovery_equivalence_test_scan_wire_contract: String = "scan_detects_coproduct_wire_contract_data"
+
+data floor_discovery_scope_semantics_note: String = "discovery_scope_dirs semantics (intentional, review 41826): the producer walk (floor_discovery_walk_dir over all source_roots) applies tree-wide hygiene — filename __ refusal, test-marked-decl sidecar, wire-contract sidecar — before finalize. discover_floor_witness_roster applies discovery_scope_dirs only as a post-walk row filter (cli_run.rs apply_discovery_scope_dirs_filter), not as a pre-walk skip. Legacy build_floor_lens_hygiene_graph short-circuited sidecar checks outside scope; the new shape refuses on any hygiene violation anywhere under source_roots even when witness enrollment is scoped. Today ci_floor_plan discovery_scope_dirs is always [] so production CI is unchanged; non-empty scope is for narrowed roster projection only, not narrowed hygiene."

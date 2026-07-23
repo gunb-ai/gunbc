@@ -24,23 +24,25 @@ fn w_sql_migration_step_carries_dialect_enum() -> Bool {
 }
 
 fn w_http_content_type_html_label() -> Bool {
-  http_content_type_wire_label(TextHtmlUtf8) == "text/html; charset=utf-8"
+  media_type_wire_label(m: text_html_utf8) == "text/html; charset=utf-8"
 }
 
 fn w_http_content_type_plain_not_html() -> Bool {
-  http_content_type_wire_label(TextPlainUtf8) == "text/plain; charset=utf-8"
-    && http_content_type_wire_label(TextPlainUtf8) != http_content_type_wire_label(TextHtmlUtf8)
+  media_type_wire_label(m: text_plain_utf8) == "text/plain; charset=utf-8"
+    && media_type_wire_label(m: text_plain_utf8) != media_type_wire_label(m: text_html_utf8)
 }
 
-fn w_served_static_route_content_type_enum() -> Bool {
+fn w_served_static_route_content_type_media_type() -> Bool {
   let row = ServedStaticRoute {
     method: GET,
     path_pattern: PathTemplate { tokens: [] },
     body: "<html></html>",
-    content_type: TextHtmlUtf8,
+    content_type: text_html_utf8,
     status_on_hit: 200,
   }
-  row.content_type == TextHtmlUtf8
+  row.content_type.top_level == TopLevelText
+    && row.content_type.subtype == "html"
+    && media_type_wire_label(m: row.content_type) == "text/html; charset=utf-8"
 }
 
 fn w_sigv4_grounded_region_service() -> Bool {
@@ -168,7 +170,7 @@ test fn extdeps_round2_grounding_witnesses() -> Bool {
     && w_sql_migration_step_carries_dialect_enum()
     && w_http_content_type_html_label()
     && w_http_content_type_plain_not_html()
-    && w_served_static_route_content_type_enum()
+    && w_served_static_route_content_type_media_type()
     && w_sigv4_grounded_region_service()
     && w_sigv4_auth_scheme_carries_enums()
     && w_gcp_api_endpoint_service_enum()

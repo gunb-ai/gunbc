@@ -114,13 +114,13 @@ fn witness_provision_scope_binds_per_slot_memory_cap_realize_frontier() -> Bool 
   host_runner_memory_provision_scope_binds_realize_frontier()
 }
 
-fn witness_provision_apply_frontier_refuses_per_slot_memory_cap() -> Bool {
+fn witness_provision_apply_interprets_per_slot_memory_cap() -> Bool {
   match runner_memory_host_converge(host: operator_host_srv3) {
     Present { value: hc } =>
       fold(
         runner_memory_knobs_from(host: hc),
         init: true,
-        f: (acc, knob) => acc && runner_memory_knob_apply_frontier_is_unimplemented(knob: knob)
+        f: (acc, knob) => acc && runner_memory_knob_apply_interpreted(knob: knob)
       )
     Absent => false
   }
@@ -157,6 +157,6 @@ test fn srv3_runner_memory_converge_holds() -> Bool {
     && witness_srv3_memory_knobs_precede_runner_width_widen()
     && witness_provision_routes_through_host_effect_apply()
     && witness_provision_scope_binds_per_slot_memory_cap_realize_frontier()
-    && witness_provision_apply_frontier_refuses_per_slot_memory_cap()
+    && witness_provision_apply_interprets_per_slot_memory_cap()
     && witness_readback_verdict_drifts_RED_when_live_mismatch()
 }

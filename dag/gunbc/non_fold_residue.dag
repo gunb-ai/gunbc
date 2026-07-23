@@ -46,6 +46,10 @@ data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fol
 
 data nfr_dissolve_gate_membership: String = "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them"
 
+data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
+
+data nfr_dissolve_native_agreement_octet: String = "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     unit: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
@@ -646,6 +650,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     unit: "src/v2/std/float.dag::float_body_is_nan",
     reason: nfr_reason_mint_era,
     dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "src/v2/std/native_agreement.dag::runtime_value_discriminant_octet",
+    reason: nfr_reason_native_agreement_octet,
+    dissolve_on: nfr_dissolve_native_agreement_octet
   },
   FrontierRow {
     unit: "src/v2/std/node_minimal.dag::node_superset_field_eq",

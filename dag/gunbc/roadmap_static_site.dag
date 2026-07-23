@@ -8,9 +8,9 @@ import std.measure { Mebibyte, Millicore, mebibyte, millicore }
 import std.http_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
 import extdeps.http.server {
-  HttpContentType,
-  TextPlainUtf8,
-  ApplicationJsonUtf8,
+  MediaType,
+  text_plain_utf8,
+  application_json_utf8,
   ServedStaticRoute,
 }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
@@ -159,12 +159,12 @@ fn roadmap_site_healthz_route() -> ServedStaticRoute {
     method: GET,
     path_pattern: roadmap_site_path_template(raw: roadmap_site_health_path),
     body: roadmap_site_healthz_body(),
-    content_type: ApplicationJsonUtf8,
+    content_type: application_json_utf8,
     status_on_hit: 200,
   }
 }
 
-fn roadmap_site_text_route(artifact: SiteArtifact, content_type: HttpContentType) -> ServedStaticRoute {
+fn roadmap_site_text_route(artifact: SiteArtifact, content_type: MediaType) -> ServedStaticRoute {
   ServedStaticRoute {
     method: GET,
     path_pattern: roadmap_site_path_template(raw: artifact.url_path),
@@ -178,11 +178,11 @@ fn roadmap_site_text_static_routes() -> List<ServedStaticRoute> {
   [
     roadmap_site_text_route(
       artifact: roadmap_site_roadmap_md_artifact(),
-      content_type: TextPlainUtf8,
+      content_type: text_plain_utf8,
     ),
     roadmap_site_text_route(
       artifact: roadmap_site_dispatch_json_artifact(),
-      content_type: ApplicationJsonUtf8,
+      content_type: application_json_utf8,
     ),
     roadmap_site_healthz_route(),
   ]

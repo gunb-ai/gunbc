@@ -11,6 +11,7 @@ import gunbc.design.material {
   paint, paint_alpha,
   decl, css_block, CssDecl,
 }
+import extdeps.languages.css.properties { CssPropertyName }
 
 data theme_note: String = "Layer 2 theme machinery: total role-to-material binding, WCAG contrast law, night/day atlas rows. Lifted from gunbc.site.tokens (design-register-library.md Phase A)."
 type ThemeRole
@@ -208,14 +209,14 @@ fn assignment_paint(a: RoleAssignment) -> String {
   }
 }
 
-fn role_decl(prop: String, r: ThemeRole) -> CssDecl {
+fn role_decl(prop: CssPropertyName, r: ThemeRole) -> CssDecl {
   CssDecl { prop: prop, value: role_var(r: r) }
 }
 
 fn theme_var_decls(t: Theme) -> List<CssDecl> {
   concat(
-    map(t.assignments, a => decl(prop: concat("--", role_key(r: a.role)), value: assignment_paint(a: a))),
-    [decl(prop: "color-scheme", value: t.scheme)])
+    map(t.assignments, a => decl(prop: CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
+    [decl(prop: ColorScheme, value: t.scheme)])
 }
 
 fn theme_root_css(base: Theme, alternate: Theme) -> String {

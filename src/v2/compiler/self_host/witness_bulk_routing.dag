@@ -4,6 +4,10 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { Cons, Empty, length, filter }
+import v2.compiler.self_host.witness_entry_eligibility_census {
+  witness_entry_eligibility_census_entry_count,
+  witness_entry_eligibility_census_meets_floor
+}
 import v2.std.witness_execution_routing {
   WitnessExecutionDisposition,
   InterpretedRetained,
@@ -189,6 +193,15 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
 
 data witness_bulk_routing_census_forward_constructors_note: String = "Forward census constructors (review 41647): RetainedPendingLongLane and RetainedPendingOfflineRecipe are the retention-axis counterparts to EmitIneligible LongLaneScheduled / OfflineLocalRecipe — distinct variants on InterpretedRetainedReason, not string tags. Roster rows use record literals; helpers land with the 744-entry sweep."
 
+data witness_bulk_routing_cssl_family_extension_note: String = "Cssl/family routing extension (Lane B substance): emit-on-demand family entries classify via census_emit_on_demand_family_grain (family-grain native_routing_frontier authority until Derived Group membership subsumes); all other pending rows use census_pending_interpreted_retained until the srvN cssl sweep names ImportClosureCargoRefuse / NamespaceQualifiedRustEmit / TypeRefImportMissing first-error classes. Full roster count = witness_entry_eligibility_census_entry_count (TSV carrier); sample roster remains the 16-entry stratified slice until bulk flip."
+
+data witness_bulk_routing_census_totality_note: String = "Lane B landing: totality witness gates on witness_entry_eligibility_census_meets_floor (full witness_layer_roots roster, currently 857). ROADMAP 744 claim-only count is the bulk-flip dissolve trigger (srvN sweep), not this PR's pinned authority — retargeted review 41817."
+
+fn witness_bulk_routing_census_totality_holds() -> Bool {
+  witness_entry_eligibility_census_meets_floor()
+    && length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
+}
+
 fn retained_pending_long_lane(entry: String) -> WitnessEntryRoutingRow {
   WitnessEntryRoutingRow {
     entry: entry,
@@ -235,6 +248,7 @@ fn witness_bulk_routing_total_holds() -> Bool {
   let split_total = length(xs: part.native_routed) + length(xs: part.interpreted_retained) + length(xs: part.emit_ineligible)
   length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
     && split_total == witness_bulk_entry_count_expected
+    && witness_bulk_routing_census_totality_holds()
 }
 
 fn witness_bulk_routing_zero_native_at_landing_holds() -> Bool {

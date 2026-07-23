@@ -223,7 +223,8 @@ fn bmc_token_smoke_job() -> Job {
     strategy: none,
     timeout_minutes: Present { value: default_job_timeout_minutes },
     continue_on_error: none,
-    concurrency: none
+    concurrency: none,
+    permissions: none
   }
 }
 
