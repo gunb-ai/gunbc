@@ -79,6 +79,7 @@ fi
 CARGO_VERDICT="skip"
 FIRST_ERROR=""
 MAPPED_GATE=""
+ERROR_HISTOGRAM=""
 
 if [[ "$EMIT_OK" -eq 1 ]]; then
   if [[ "$STD_SEED_LINK" == "1" ]]; then
@@ -87,8 +88,8 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
       exit 0
     fi
   fi
@@ -109,16 +110,26 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     FIRST_ERROR="cssl harness authority unavailable"
     MAPPED_GATE="HARNESS_MISSING"
     VERDICT="HARNESS_REFUSE"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
     exit 0
   fi
 
   BUILD_LOG="$OUT/cargo.log"
   if (cd "$OUT" && RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0 cargo build --release --lib 2>"$BUILD_LOG"); then
     CARGO_VERDICT="green"
+    ERROR_HISTOGRAM="clean"
   else
     CARGO_VERDICT="refuse"
+    # Full residual histogram (operator requirement 2026-07-22): every rustc E-code
+    # + count, never first_error alone — rustc masks later layers behind the first.
+    ERROR_HISTOGRAM="$(grep -oE '^error\[E[0-9]+\]' "$BUILD_LOG" | sort | uniq -c | sort -rn | awk '{printf "%s%s:%s", sep, $2, $1; sep=" "}' || true)"
+    UNCODED_ERRORS="$(grep -E '^error: ' "$BUILD_LOG" | grep -cvE 'could not compile|aborting due to' || true)"
+    if [[ -z "$ERROR_HISTOGRAM" ]]; then
+      ERROR_HISTOGRAM="uncoded_only:${UNCODED_ERRORS}"
+    elif [[ "$UNCODED_ERRORS" != "0" ]]; then
+      ERROR_HISTOGRAM="$ERROR_HISTOGRAM uncoded:${UNCODED_ERRORS}"
+    fi
     FIRST_ERROR="$(grep -m1 -E '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || grep -m1 -E '^error:' "$BUILD_LOG" || head -1 "$BUILD_LOG" || true)"
     # RULE 1/2: classify from the first rustc error line only (not later log lines).
     if echo "$FIRST_ERROR" | grep -qE 'is defined multiple times|defined multiple times'; then
@@ -141,7 +152,14 @@ fi
 
 VERDICT="PENDING"
 if [[ "$CARGO_VERDICT" == "green" ]]; then
-  VERDICT="PHANTOM"
+  # No lane shim = the raw cssl-assembled closure built: a real cargo-green.
+  # With a lane shim the phantom-green hazard applies (shim lib.rs replaces the
+  # cssl lib.rs) — keep the suspicious verdict for shimmed greens.
+  if [[ -n "$SHIM_LIB_REL" ]]; then
+    VERDICT="PHANTOM"
+  else
+    VERDICT="CARGO_GREEN"
+  fi
 elif [[ "$CARGO_VERDICT" == "refuse" ]]; then
   if [[ "$MAPPED_GATE" == "HARNESS_ARTIFACT_std_dup" ]]; then
     VERDICT="HARNESS_ARTIFACT"
@@ -162,5 +180,5 @@ elif [[ "$EMIT_OK" -eq 0 ]]; then
   VERDICT="EMIT_REFUSE"
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM"
