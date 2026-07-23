@@ -6993,6 +6993,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let scope_parents = concat(import_parents, [kernel])
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+    if is_namespace_alias_item(item: item, source_indices: source_indices) {
+      acc
+    } else {
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
@@ -7008,6 +7011,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else {
       acc
+    }
     }
   )
   let kernel_cache = type_env_cache_from_bindings(
