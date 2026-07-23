@@ -16,6 +16,7 @@
     clippy::all
 )]
 #![deny(unreachable_patterns)]
+#![recursion_limit = "256"]
 
 pub use v1_stage0_runtime::*;
 
@@ -25,6 +26,9 @@ pub mod std_content_hash;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_currency.rs"]
+pub mod std_currency;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;

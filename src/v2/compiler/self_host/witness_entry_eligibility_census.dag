@@ -36,9 +36,9 @@ data witness_entry_eligibility_census_histogram_path: String = "docs/probes/witn
 
 data witness_entry_eligibility_census_carrier_path_dissolve_on: String = "cli_run/emit HAND-RUST rel literals mirror these rows until load-time projection (review 41784); delete mirrors when wired"
 
-data witness_entry_eligibility_census_entry_count: Int = 857
+data witness_entry_eligibility_census_entry_count: Int = 864
 
-data witness_entry_eligibility_census_stamp: String = "2026-07-23T07:25Z"
+data witness_entry_eligibility_census_stamp: String = "2026-07-23T16:10Z"
 
 fn witness_entry_subject(entry_module: String) -> DeclarationRef {
   DeclarationRef {
