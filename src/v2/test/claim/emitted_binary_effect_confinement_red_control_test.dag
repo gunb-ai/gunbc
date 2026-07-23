@@ -1,0 +1,73 @@
+module v2.test.claim.emitted_binary_effect_confinement_red_control
+
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  EmittedEffectFamily,
+  FilesystemReadFamily,
+  ShellExecRunFamily,
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent,
+  HostTransportDescriptor,
+  TargetEmitHostRuntimeRow,
+  emitted_family_runtime_row_gated
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.lens.common.construction_justification { WallNow, WallAfterGrounding, RatchetForever }
+import std.decl_ref { WholeDeclaration, NamedField }
+import v2.lens.emitted_binary_effect_confinement { construction_justification }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED control (neat-carp-312): construction-by-type (v2.std.host_transport.EmittedEffectFamily, a closed FilesystemReadFamily | ShellExecRunFamily sum) makes an unrostered family name unrepresentable rather than merely rejected -- there is no unrostered EmittedEffectFamily value to construct, so the RED witness is the positive control: both landed variants route through the exact same construction-site call (emitted_family_runtime_row_gated) the two landed families (rust_filesystem_read_family_runtime_row, rust_shell_exec_run_family_runtime_row) actually call in rust_test.dag, and the exhaustive match inside emitted_family_runtime_row_gated is the wall -- a future third variant would fail to compile until this call site names it. A synthetic HostTransportDescriptor stands in for a real one since content is irrelevant to the family-identity wall (fail-closed on identity, not on payload shape)."
+
+fn synthetic_transport() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^emitted_binary_effect_confinement_red_control_synthetic_identity,
+    workspace: [],
+    build: [],
+    run: ProcessInvocation {
+      program: HostToolProgram { executable: "true" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rostered_row(family: EmittedEffectFamily) -> TargetEmitHostRuntimeRow {
+  emitted_family_runtime_row_gated(
+    family: family,
+    present: EmitHostRuntimeRow {
+      transport: synthetic_transport(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  )
+}
+
+test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
+  match rostered_row(family: FilesystemReadFamily) {
+    HostRuntimeRowPresent { row: _ } => true
+    HostRuntimeRowAbsent => false
+  }
+}
+
+test fn emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family() -> Bool {
+  match rostered_row(family: ShellExecRunFamily) {
+    HostRuntimeRowPresent { row: _ } => true
+    HostRuntimeRowAbsent => false
+  }
+}
+
+test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool {
+  match construction_justification.class {
+    WallNow { mechanism: _, authority: authority } =>
+      authority.module_path == "v2.std.host_transport"
+        && authority.decl_name == "EmittedEffectFamily"
+        && (match authority.field {
+          WholeDeclaration => true
+          NamedField { field_name: _ } => false
+        })
+    WallAfterGrounding { dissolves_to: _ } => false
+    RatchetForever => false
+  }
+}

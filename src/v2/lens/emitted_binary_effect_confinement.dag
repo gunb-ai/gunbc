@@ -1,0 +1,15 @@
+module v2.lens.emitted_binary_effect_confinement
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.text { String }
+
+data emitted_binary_effect_confinement_law: String = "Construction-time refusal gating which NEW witness families (neat-carp-312, Task 4) may build a real host-effecting HostTransportDescriptor for the emitted-native execution path. meta_exec_confinement.dag scans the .dag IMPORT GRAPH and has zero visibility into text baked into a generated Rust src/main.rs; this lens instead gates the .dag-level CONSTRUCTION SITE that builds that text, before any Rust is emitted. Membership is construction-by-type, not validation: v2.std.host_transport.EmittedEffectFamily is a closed sum (FilesystemReadFamily | ShellExecRunFamily) — an unrostered family name is unrepresentable, not merely rejected, so there is no unrostered-family value to construct and no roster to consult at runtime. emitted_family_runtime_row_gated exhaustively matches every EmittedEffectFamily variant and reuses the existing v2.std.host_transport.TargetEmitHostRuntimeRow sum (HostRuntimeRowPresent | HostRuntimeRowAbsent) as its result rather than inventing a second refusal carrier; a future variant added to EmittedEffectFamily makes this match non-exhaustive, forcing a conscious, reviewable decision rather than a silent admit. Scope is deliberately narrow: only families landed under this lane are enrolled; the 9 pre-existing families (add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) predate this wall and are out of this lane's remit — widening EmittedEffectFamily to retrofit them is a separate, deliberate decision, not a side effect of this wall existing. No escape hatch: there is no override/bypass parameter on emitted_family_runtime_row_gated."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: SingleAuthority,
+    authority: DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: WholeDeclaration }
+  }
+}

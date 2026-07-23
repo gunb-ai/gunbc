@@ -1,0 +1,80 @@
+module v2.test.execution.emit_host_filesystem_read_equals_eval
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached_with_run_args }
+import v2.compiler.eval { inputs_root_only }
+import v2.compiler.target_carriers { source_medium }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.extdeps.languages.dag { dag_meet_eval_subgraph_fixture }
+import v2.extdeps.languages.rust_test {
+  rust_filesystem_read_family_target_model_staging,
+  rust_family_member_run_args
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data emit_host_filesystem_read_equals_eval_note: String = "Agreement test shape for the filesystem_read native family (neat-carp-312, Task 1). Unlike meet/join/match (real .dag-authored fn bodies translated into a Node tree and re-run through eval()'s InterpretationAlgebra), filesystem_read has no .dag-authored arrow body to translate -- it is a host-effect primitive on BOTH legs. So the 'eval' side here is the real interpreted builtin (filesystem_read + string_contains, the same two builtins dag/test/claim/filesystem_read_hermetic_witness.dag already exercises directly) rather than a fabricated InterpretationAlgebra oracle, and the comparison is a direct byte-equality check against the native run's octet output (the same shape family_crate_member_run in emit_on_demand_family_crate_witness_test.dag uses for its per-member receipts) rather than the TestClaimRun/Verdict machinery, which exists specifically to score a translated-arrow's fidelity and has nothing to translate-fidelity-check here. Both legs read the identical real repo file dag/extdeps/shell/exec.dag; see rust_filesystem_read_family_note in rust_test.dag for why the native leg receives that content as an embedded workspace fixture rather than a baked absolute path."
+
+data filesystem_read_witness_target_path: String = "dag/extdeps/shell/exec.dag"
+
+data filesystem_read_witness_workspace: String = "/tmp/gunbc_emit_on_demand_filesystem_read/witness"
+
+fn filesystem_read_witness_content() -> String {
+  filesystem_read(path: filesystem_read_witness_target_path).content
+}
+
+fn filesystem_read_eval_expected_octet() -> Int {
+  if string_contains(s: filesystem_read_witness_content(), pattern: "bash") { 1 } else { 0 }
+}
+
+fn filesystem_read_native_source() -> Medium<String> {
+  source_medium(text: "", fidelity: Lossless)
+}
+
+fn filesystem_read_native_target() -> TargetModel {
+  rust_filesystem_read_family_target_model_staging(fixture_content: filesystem_read_witness_content())
+}
+
+fn filesystem_read_native_run(expected_octet: Int) -> Bool {
+  match run_emit_host_cached_with_run_args(
+    workspace_dir: filesystem_read_witness_workspace,
+    target: filesystem_read_native_target(),
+    source: filesystem_read_native_source(),
+    fixture_inputs: inputs_root_only(root: dag_meet_eval_subgraph_fixture),
+    run_args: rust_family_member_run_args(member_id: "contains_bash")
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted {
+          value: HostLogicalRun { stdout: stdout },
+          diagnostics: None
+        } =>
+          stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_read_eval_reads_real_bash_argv() -> Bool {
+  string_contains(s: filesystem_read_witness_content(), pattern: "bash")
+    && filesystem_read_eval_expected_octet() == 1
+}
+
+test fn emit_host_filesystem_read_equals_eval_holds() -> Bool {
+  filesystem_read_native_run(expected_octet: filesystem_read_eval_expected_octet())
+}
+
+test fn emit_host_filesystem_read_wrong_oracle_refuses_holds() -> Bool {
+  filesystem_read_native_run(expected_octet: 1 - filesystem_read_eval_expected_octet()) == false
+}
+
+test fn emit_host_filesystem_read_equals_eval_all_holds() -> Bool {
+  filesystem_read_eval_reads_real_bash_argv()
+    && emit_host_filesystem_read_equals_eval_holds()
+    && emit_host_filesystem_read_wrong_oracle_refuses_holds()
+}
