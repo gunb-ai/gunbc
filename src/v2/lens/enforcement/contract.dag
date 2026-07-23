@@ -17,6 +17,7 @@ import v2.lens.registry {
   lens_registry_v0_doc_reachability,
   lens_registry_v0_duplicate_computation,
   lens_registry_v0_effect_reach,
+  lens_registry_v0_emitted_binary_effect_confinement,
   lens_registry_v0_mandatory_tag,
   lens_registry_v0_extdeps_shape_transport_policy,
   lens_registry_v0_fact_cardinality,
@@ -113,6 +114,26 @@ data lens_contract_complexity: LensContract = {
   consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data lens_contract_emitted_binary_effect_confinement: LensContract = {
+  entry: lens_registry_v0_emitted_binary_effect_confinement,
+  mode: Blocking,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: BoundConsumerWitness {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+      function: "emitted_family_runtime_row_gated_refuses_unrostered_family",
+      kind: CorpusWitnessKind
+    }
+  },
+  exemptions: [],
+  boundary: ConstructionJustification {
+    class: WallNow {
+      mechanism: SingleAuthority,
+      authority: DeclarationRef { module_path: "v2.std.host_transport", decl_name: "emitted_effect_family_roster", field: WholeDeclaration }
+    }
+  }
 }
 
 data lens_contract_complexity_accumulator_copy: LensContract = {
@@ -515,6 +536,7 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_doc_reachability,
   lens_contract_duplicate_computation,
   lens_contract_effect_reach,
+  lens_contract_emitted_binary_effect_confinement,
   lens_contract_mandatory_tag,
   lens_contract_extdeps_shape_transport_policy,
   lens_contract_fact_cardinality,

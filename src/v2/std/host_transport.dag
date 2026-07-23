@@ -1,6 +1,6 @@
 module v2.std.host_transport
 
-import v2.std.algebra { length, fold_list }
+import v2.std.algebra { length, contains }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.diagnostic {
@@ -133,16 +133,8 @@ data emitted_effect_family_roster: List<String> = [
   "shell_exec_run_family"
 ]
 
-fn list_contains_str(xs: List<String>, target: String) -> Bool {
-  fold_list(
-    xs: xs,
-    empty: false,
-    cons: fn(acc, s) { acc || (s == target) }
-  )
-}
-
 fn emitted_family_effect_admitted(family: String) -> Bool {
-  list_contains_str(xs: emitted_effect_family_roster, target: family)
+  contains(xs: emitted_effect_family_roster, item: family, eq: fn(a, b) { a == b })
 }
 
 fn emitted_family_runtime_row_gated(
