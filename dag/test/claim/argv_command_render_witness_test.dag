@@ -1,0 +1,18 @@
+module test.claim.argv_command_render
+
+import std.logic { Bool }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+
+test fn shell_quote_plain_args_single_quoted() -> Bool {
+  shell_command_render(command: ArgvCommand { argv: ["nbd-client", "-N", "srv4iso"] }) == "'nbd-client' '-N' 'srv4iso'"
+}
+
+test fn shell_quote_escapes_embedded_apostrophe() -> Bool {
+  shell_command_render(command: ArgvCommand { argv: ["echo", "it's"] }) == "'echo' 'it'\\''s'"
+}
+
+test fn shell_quote_apostrophe_render_reopens_single_quote_context() -> Bool {
+  let rendered = shell_command_render(command: ArgvCommand { argv: ["printf", "o'brien"] })
+  string_contains(s: rendered, pattern: "'\\''")
+    && !string_contains(s: rendered, pattern: "'o'brien'")
+}
