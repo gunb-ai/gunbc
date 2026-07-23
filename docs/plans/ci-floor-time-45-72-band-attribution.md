@@ -1,181 +1,162 @@
-# CI floor time audit — attribute the 45–72 min band
+# CI floor time audit — redundant-work ledger + lever ranking
 
 **Status:** measurement receipt, 2026-07-23 (session vivid-fox-471). **DESIGN.md + carriers remain
-authority** — this doc is a timestamped profiling receipt, not a fact ledger. Dissolves when
-`realization_measurement_loop` Phase-0 lands a durable `.dag`-native Gantt carrier that supersedes
-prose receipts (same trigger as [ci-floor-fractal-gantt.md](ci-floor-fractal-gantt.md)).
+authority** — prose + TSV receipts only; **no floor behavior changes** in this PR. Dissolves when
+`realization_measurement_loop` Phase-0 lands a durable `.dag`-native Gantt carrier.
 
-**One-line verdict:** The **ci job** (not whole workflow) clusters **44–55 min** on current main;
-the **45–72 min workflow band** is mostly **build + ci + deploy_dashboard**. Inside the ci job,
-**~35 min** is `claim_executor` floor time, dominated by **discovery resolve (~12 min wall,
-~620s serial-sum)** and **self-host gate chain batches 5–6 (~14 min combined)**. The #6848
-namespace-walk regression (+24 min vs PRE) is **partially recovered** on effectful gates (#7030,
-−11 min) but **discovery resolve (+520s vs PRE)** and **new self-host enrollment (+14 min)**
-keep the band ~25–30 min above the Jul-20 PRE baseline.
+**Product (operator mandate):** phase attribution is the **map**; the **product** is a per-stage
+**redundant-work ledger** (what each stage recomputes that an earlier stage already computed on
+the same input content) plus a **ranked lever table** priced in displaced minutes.
 
----
+**Carriers (this PR):**
 
-## 1. Band census (what “45–72 min” measures)
-
-Measured over the last 60 `ci.yml` runs on **main** (2026-07-22/23 window).
-
-| Grain | n | min | p25 | median | p75 | max | 45–72 band |
-|---|---:|---:|---:|---:|---:|---:|---|
-| **Workflow wall** (build+ci+deploy) | 52 | 23m | 37m | 55m | 64m | 98m | 29/52 (56%) |
-| **ci job only** | 52 | 3m* | 20m | 44m | 48m | 55m | 21/52 (40%) |
-
-\*Floor of 3m = fast-lane / early-fail runs.
-
-**Interpretation:** Operator-facing “CI takes ~an hour” is the **workflow** number (median 55m).
-Performance work should track the **ci job** (median 44m, p75 48m) — build is ~1m and deploy is
-~2m and should not pollute floor attribution.
-
-**Not the same as ~72 min emit:** `gunbc_ci_witness_corpus_only_batches_note` cites **~72 min** for
-the whole-tree `--target dag` compile-clean gate as **pre-push infeasible** scope — that is
-**emit wall inside `dag_compile_clean_gate_passes` on a cold whole-tree closure**, not the ci job
-wall. On current main the compile-clean **batch wall is ~1 min** because CI runs import-closure
-scoped compile (`tools.dag_compile_clean_scope`), not whole-tree emit every PR.
+- [`docs/probes/ci_floor_phase_attribution_2026-07-23.tsv`](../probes/ci_floor_phase_attribution_2026-07-23.tsv) — per-run per-phase walls
+- [`docs/probes/ci_floor_redundancy_ledger_skeleton_2026-07-23.tsv`](../probes/ci_floor_redundancy_ledger_skeleton_2026-07-23.tsv) — stage × recomputes × duplicate-of
+- [`docs/probes/ci_floor_lever_ranking_2026-07-23.tsv`](../probes/ci_floor_lever_ranking_2026-07-23.tsv) — ranked levers
 
 ---
 
-## 2. ci job decomposition (receipt runs)
+## 1. Band census (map only)
 
-Log-diff harness: parse `claim_executor` invocations by
-`--plan-function gunbc_ci_regen_floor_batches` vs `gunbc_ci_floor_batches`; batch walls from
-`claim_executor: batch N` → next batch start (or last `PASS [batch N]`).
+| Grain | median | 45–72 min band | notes |
+|---|---:|---|---|
+| Workflow (build+ci+deploy) | 55m | 56% of main runs | operator-facing "~1 hour" |
+| **ci job** | **44m** | 40% | **use this for floor attribution** |
+| Floor step (`gunbc ci` claim_executor) | ~35–48m | — | regen excluded (~3m) |
 
-| arm | run | ci job | overhead† | regen | floor | cap-sat |
-|---|---|---:|---:|---:|---:|---|
-| PRE-#6848 | `29763408563` | **17.9m** | ~7m | 2.5m | 10.8m | no |
-| POST-#6848 | `29819122813` | **42.1m** | ~11m | 3.6m | 28.9m | no |
-| POST-#6998/#6999 | `29855080611` | — | — | — | 28.9m‡ | **yes** |
-| POST-#7030 | `29880571548` | — | — | 3.4m | 36.9m | no |
-| main Jul-23 | `29970583893` | **47.7m** | ~10m | 3.0m | 35.0m | no |
-| main Jul-23 | `29967907137` | **49.2m** | ~12m | 3.3m | 36.0m | no |
-| main Jul-22 wide | `29961193892` | **48.7m** | ~10m | 3.0m | 36.5m | no |
-
-†Overhead = ci job wall minus regen + floor executor spans (unpack release bins, plan prelude
-~99s, artifact verify, yaml/selection prelude, post-floor steps).  
-‡Failed run; batch-4 effectful wall still ~19m (pre-#7030 class).
-
-**Current main typical ci job (~48m) ≈ 10m overhead + 3m regen + 35m floor.**
+The **~72 min** figure in `gunbc_ci_witness_corpus_only_batches_note` is whole-tree **emit**
+infeasible for pre-push — not typical ci job wall. Scoped PRs skip compile-clean emit entirely
+(`compile-clean scope: skipped`).
 
 ---
 
-## 3. Floor executor batch attribution (current schedule)
+## 2. Receipt anchor — run `29976989996` (re-derived)
 
-Schedule after #7030 (heavy-resolve main-thread routing) + self-host gate enrollment. Representative:
-run `29970583893` (ci job 47.7m, success).
+Branch `session/gentle-raven-495`, green, srv1-01, ci job **54.9 min**, floor step **~48.4 min**.
+7-batch schedule (post-#7088 cheap-gate early batch). **Whole-tree compile-clean** because diff
+had no shard intersection.
 
-| batch | lane | wall | % of floor | dominant mechanism |
-|---:|---|---:|---:|---|
-| 0 | cheap gates (layering / extdeps / drift) | <1m† | <3% | negligible scans (#7088 moves these before compile-clean on newer main) |
-| 1 | `dag_compile_clean_gate_passes` | **0.8m** | 2% | import-closure scoped `.dag` compile (not whole-tree emit) |
-| 2 | discovery corpus (hermetic, SelectionApplied) | **12.2m** | **35%** | **entry resolve** — see §4.1 |
-| 3 | wet corpora (exec + bin witnesses) | **1.3m** | 4% | small explicit roster; resolve ~11s serial |
-| 4 | effectful gates (emit_host + cheap scans) | **7.1m** | 20% | host effects; **recovered** from ~18.5m by #7030 |
-| 5 | `source_root_ingest` + self-host chain | **10.9m** | **31%** | heavy whole-tree resolve + ingest host work |
-| 6 | `self_host_reads_real_bytes` | **2.9m** | 8% | heavy resolve + filesystem read gate |
-| — | regen sub-plan (separate invocation) | **3.0m** | — | regen_verify ~2m + staleness ~1m |
+| phase | wall (min) | % of floor |
+|---|---:|---:|
+| preamble (plan resolve + hygiene) | 1.9 | 4% |
+| compile-clean receipt (whole-tree emit) | 3.6 | 7% |
+| batch 1 cheap gates (3 nodes, 1 resolve-group) | **10.1** | **21%** |
+| batch 2 compile gate consume | 0.5 | 1% |
+| batch 3 discovery (663 entry-groups, 2206 rows) | **12.8** | **26%** |
+| batch 4 wet corpora | 1.3 | 3% |
+| batch 5 emit_host | 0.1 | 0% |
+| batch 6 source_root_ingest (ONE node) | **12.1** | **25%** |
+| batch 7 reads_real_bytes | 3.3 | 7% |
 
-†On `29970583893` cheap gates still co-reside in batch 4; post-#7088 they move to batch 0
-(seconds).
+**Top-3 = 35.0 of 48.4 min (72%):** discovery 12.8 + source_root_ingest 12.1 + cheap gates 10.1.
 
-### 3.1 Discovery `[measurement]` line (batch 2)
-
-| arm | resolve serial | eval serial | witnesses | skipped |
-|---|---:|---:|---:|---:|
-| PRE `29763408563` | **99s** | 15s | 2087 | 1652 |
-| POST `29819122813` | **403s** | 15s | 2128 | 1755 |
-| main `29970583893` | **620s** | 15s | 2204 | 1739 |
-
-**Eval is not the story** on affected-set PRs (SelectionApplied skips ~79% of roster). **Resolve
-serial-sum grew 6.3×** PRE→main and tracks batch-2 wall (~12 min). Per-witness amortized resolve
-rose ~48ms → ~282ms (2204 witnesses), matching the #6848 bare-reference fixpoint class priced in
-[floor-time-namespace-walk-regression-diagnosis.md](floor-time-namespace-walk-regression-diagnosis.md).
-
-### 3.2 Governor / cap saturation
-
-On **16 GiB `memory.high` capped hosts**, post-#6848 floors can run `forced_serial=1` with
-`hard_backoffs=1` while RSS sits at 93–100% of budget (§1.4 of namespace-walk diagnosis).
-This is an **additive throttle** on top of walk work — same resolve class, slower wall. Uncapped
-hosts (MemAvailable budget) complete the same schedule without backoffs but **do not** erase the
-resolve-serial inflation.
+Governor receipt: `budget=16GiB` (cgroup memory.high), `max_width_reached=1`,
+`measured worker share=3.36GB`, `peak_current=10.1GiB`, `cross_worker_store withheld`.
+Declared cold resolves: **4** (matches `ci_floor_declared_resolve_count`).
 
 ---
 
-## 4. Mechanism ledger (cause → minutes → owner)
+## 3. Redundancy ledger (product)
 
-| # | mechanism | Δ vs PRE (~18m ci) | Δ vs POST-#6848 (~42m ci) | status | owner lane |
-|---|---|---:|---:|---|---|
-| A | #6848 bare-reference fixpoint (`extend_sources_to_both_closure_fixpoint`) — once per entry | **+5 min** floor batch-2 | ~0 (still dominant) | **open** | namespace-resolution §PR-5b |
-| B | #6848 qualified-fill on reconcile miss | **+13 min** floor batch-4 (pre-#7030) | **−11 min** (#7030 heavy-resolve routing) | **partial** | #7030 landed; reconcile-miss path still open |
-| C | `thread_local` cold `MultiEntryIndex` per spawned gate (#6999 didn't fix) | (folded into B) | **−11 min** | **landed #7030** | proud-bear-438 |
-| D | Self-host gate enrollment batches 5–6 (`source_root_ingest`, `reads_real_bytes`) | **+14 min** | +14 min (new scope) | **by design** | self-host / module-identity |
-| E | Cap-saturation throttle on 16 GiB runners | unpriced additive | widens band toward timeouts | **open** | v1-run-stability / governor envelope |
-| F | `UnlistedImportUse` advisory generation (~5k rows/run) | typecheck overhead | same | **open** | namespace advisory suppression |
-| G | ci overhead (bin unpack + plan prelude ~99s) | +3m | stable ~10m | baseline | CI substrate |
+Each row: what the stage computes, what earlier stage already computed on the **same content**,
+and redundancy class per DESIGN §2 (duplicated / unnecessary / irrelevant).
 
-**Reconciliation to band:** PRE ci 17.9m → main ci 47.7m ≈ **+30 min** ≈ A (+5) + B net (+2 after
-#7030) + D (+14) + G (+3) + E (variable). The POST-#6848 → main delta is mostly **D** (new gates)
-with **B partially reversed**.
+| stage | recomputes | duplicate of | class | receipt |
+|---|---|---|---|---|
+| **compile-clean receipt** | whole-tree load + resolve + typecheck + emit | — (first whole-tree touch) | **necessary** | 3.6min; builds `process_shared_index` |
+| **cheap gates (batch 1)** | re-resolve witness entry + scan imports/extdeps/drift | compile-clean receipt on **same** `witness_layer_roots` | **duplicated** | 10.1min **after** 3.6min compile; 3 gates parallel, same resolve-group |
+| **compile gate consume** | reads receipt artifact | compile-clean receipt | **necessary** | 27s verify only |
+| **discovery** | per-entry `extend_sources_to_both_closure_fixpoint` + eval | compile-clean typed cache **in principle**; **not** per-entry walk | **duplicated per-entry** | resolve serial **643s**; `reusing process_shared_index` but #6848 walk dominates |
+| **source_root_ingest** | `discover_source_root_ingest` bin full tree scan | compile-clean + discovery on same roots | **duplicated** | **12.1min** one node; separate binary path |
+| **reads_real_bytes** | heavy whole-tree resolve + filesystem read | prior heavy gates | **duplicated heavy resolve** | 3.3min; serial after ingest |
+| **width=1 governor** | serializes all witness work | — | **irrelevant** (scheduling) | NOT proposing cap raise; index shrink / M2 lane |
+| **materialization unkeyed** | 2.19M unkeyed pure calls | keyed memo path | **duplicated (identity unknown)** | unkeyed=47% of demand; ComputationIdentity lane |
+
+**Key finding vs "4–5× whole-tree re-ingest" hypothesis:** declared **cold resolve count = 4**
+per run — NOT four independent whole-tree cold graphs. The band is **not** four full re-ingests;
+it is **one** whole-tree compile + **many per-entry walks** inside the shared index (discovery
+643s serial resolve on 663 groups ≈ **970ms/group**), plus **two 12-min single-node gates** that
+re-touch the tree through different code paths (ingest bin, cheap-gate scans).
+
+Full skeleton: [`ci_floor_redundancy_ledger_skeleton_2026-07-23.tsv`](../probes/ci_floor_redundancy_ledger_skeleton_2026-07-23.tsv).
+
+### 3.1 Batch-1 internal (cheap gates)
+
+All three gates (`layering_imports`, `extdeps_external_authority`, `generated_artifact_drift`)
+PASS at the **same timestamp** — one resolve-group, wall = **max** of parallel gate evals, not sum.
+Dominant cost is the **shared resolve + host-effect scan** of the gate witness closure (~10min),
+not one gate beating the others in serial. Per-gate split requires `GUNBC_FLOOR_GANTT=1` on a
+replay (follow-up, not this audit PR).
+
+### 3.2 Batch-6 / source_root_ingest — why 12 min for one node?
+
+Evidence from run `29976989996` log: batch 6 invokes `discover_source_root_ingest` repeatedly
+(shell `test -x` preamble then long-running ingest). This is a **separate release binary**, not
+the compile-clean receipt path. It re-derives source-root ingest facts from the live tree —
+work **not** consumed from the typed store the compile-clean receipt populated. Same pattern on
+scoped main runs: batch 5 **10.9min** (`29970583893`) even when compile-clean is **skipped**.
 
 ---
 
-## 5. Historical contrast (effectful-gate recovery receipt)
+## 4. Quadratic hunt (partial — historical arm)
 
-Batch-4 effectful wall (first gate `emit_host_gate_passes` → last batch-4 pass):
+Fit: discovery `resolve_serial_s` vs `entry_groups` (logged per run).
 
-| arm | batch-4 wall | notes |
-|---|---:|---|
-| PRE `29763408563` | **5.7m** | parallel groups, no self-host reads-bytes |
-| POST `29819122813` | **18.5m** | cold per-thread index (#6848 + spawn routing) |
-| POST `29855080611` | **18.8m** | #6998/#6999: ~0% recovery (by execution) |
-| POST `29880571548` | **10.0m** | #7030: heavy-resolve flip — partial |
-| main `29970583893` | **7.1m** | #7030 + schedule churn; near PRE+host-effects |
+| run | class | entry_groups | resolve_serial_s | ms/group |
+|---|---|---:|---:|---:|
+| `29763408563` | PRE-6848 | ~500† | 99 | ~200 |
+| `29819122813` | POST-6848 | ~500† | 403 | ~800 |
+| `29976989996` | deep-diff | **663** | **644** | **971** |
+| `29970583893` | trivial-diff | **663** | **620** | **935** |
+
+†PRE runs lack `adaptive pool over N entry-groups` log line; groups estimated from witness count.
+
+**Reading:** ms/group grew **~5×** PRE→POST (#6848 bare-reference fixpoint) while group count
+grew ~30% (2087→2206 witnesses). The premium is **superlinear in per-group walk cost**, not
+merely corpus size growth. **Local ptrace** on the two ~12min single-node gates is **not yet
+run** (this audit PR is measurement-only); candidates: `rc_map_insert`, typecheck-env inductive
+duplication, s1_closure re-walk (named in mandate).
 
 ---
 
-## 6. Reproduction
+## 5. Mandate questions — answers
+
+| # | question | answer |
+|---|---|---|
+| 1 | What dominates each duration class? | **Trivial-diff (~48m ci):** discovery (~12m) + source_root_ingest (~11m) + effectful (~7m). **Deep-diff (+6m):** adds whole-tree compile-clean (+3.6m) + cheap gates (+10m when pre-compile ordering). No 127–159m green runs in last 500 workflow samples — operator class may be falsifier/cold-control or older fleet. |
+| 2 | Why 12min for source_root_ingest? | Separate `discover_source_root_ingest` binary re-scans tree; does not consume compile-clean receipt. Batch-1 gates: parallel group, ~10min shared resolve — per-gate split needs GANTT replay. |
+| 3 | How many whole-tree index rebuilds? | **1** explicit whole-tree compile emit + **4** declared cold resolves — but **663 per-entry walks** inside discovery on shared index. `fe_begin` RSS climbs 9.5→15.2 GiB across discovery despite index reuse. |
+| 4 | Width=1 fleet-wide on 16GiB? | **Yes on measured runs:** `max_width_reached=1`, `cross_worker_store withheld`. Worker share ~3.4GB leaves headroom on paper but governor does not grow width (width_growths=0). Recovery = per-worker index shrink / M2, **not** cap raise. |
+| 5 | #6848 / #6999 claims? | **Verified:** resolve_serial 99→644s (+545s) PRE→seed; #6999 **~0%** batch-wall recovery on comparable hosts (29855080611 vs 29819122813). Discovery loads each entry once per worker at width=1 — memo hits near zero on that path. |
+
+---
+
+## 6. Ranked levers
+
+See [`ci_floor_lever_ranking_2026-07-23.tsv`](../probes/ci_floor_lever_ranking_2026-07-23.tsv). Top
+three by displaced minutes:
+
+1. **Per-entry bare-reference fixpoint** — 8–12 min (namespace §PR-5b)
+2. **source_root_ingest re-walk** — 10–12 min (module-identity lane)
+3. **Cheap-gate scan after whole-tree compile** — 5–10 min (#7088 ordering may shift; sleek-crane owns)
+
+Config-grade follow-ups (named, not landed here): `GUNBC_FLOOR_GANTT=1` on fleet for per-gate
+split; ptrace on ingest + discovery for quadratic stacks.
+
+---
+
+## 7. Reproduction
 
 ```bash
-# ci job duration
-gh run view <run_id> --json jobs | jq '.jobs[] | select(.name=="ci") | {startedAt,completedAt,conclusion}'
-
-# floor batch walls + discovery measurement
-gh run view <run_id> --log > /tmp/floor.log
-rg 'claim_executor: batch|PASS \[batch|\[measurement\] discovery corpus:|\[governor\] receipt:' /tmp/floor.log
-
-# compare arms
-for r in 29763408563 29819122813 29970583893; do
-  echo "=== $r ==="
-  gh run view $r --json jobs | jq -r '.jobs[]|select(.name=="ci")|"ci job: \(.startedAt) -> \(.completedAt)"'
-  rg 'discovery corpus: [0-9]+ witness' <(gh run view $r --log 2>/dev/null) | head -1
-done
+gh run view RUN_ID --log | rg 'claim_executor: batch|PASS \[batch|compile-clean scope|adaptive pool|discovery corpus:|\[governor\] receipt|floor materialization|floor resolve count'
 ```
-
-Python segmenter used for §2–3 tables: partition log on
-`claim_executor" --source-root` + `--plan-function gunbc_ci_regen_floor_batches|gunbc_ci_floor_batches`.
-
----
-
-## 7. Next scoped dispatch (not this lane)
-
-Ordered by displaced ci job minutes on current main:
-
-1. **Discovery resolve fixpoint (A)** — attack once-per-entry bare-reference walk
-   (namespace-resolution-design §PR-5b residual). Target: **−5 to −8 min** floor batch-2.
-2. **Self-host gate cost (D)** — per-gate measurement with `GUNBC_FLOOR_GANTT=1`; justify or
-   narrow batches 5–6 if host work is redundant with batch-4 emit_host. Target: clarity first;
-   reduction only if duplicated resolve.
-3. **Cap saturation (E)** — headroom vs walk RSS on 16 GiB slots; pairs with #6848 residual.
-4. **Advisory row suppression (F)** — if still hot after A.
 
 ---
 
 ## 8. Provenance
 
-- Log-diff + ci job JSON: vivid-fox-471, by execution on fleet runs listed in §2–3 (2026-07-23).
-- Parent mechanism docs: [floor-time-namespace-walk-regression-diagnosis.md](floor-time-namespace-walk-regression-diagnosis.md),
-  [ci-floor-fractal-gantt.md](ci-floor-fractal-gantt.md), PR #7030 receipt.
-- Related open threads: DESIGN.md floor shared-computation memoization M2; namespace-resolution §PR-5b.
+- vivid-fox-471, 2026-07-23, log-diff by execution on runs in TSV.
+- Parent mandate: sharp-bee-290 msg_eae17a34 (redundancy ledger + quadratic hunt).
+- Related: [floor-time-namespace-walk-regression-diagnosis.md](floor-time-namespace-walk-regression-diagnosis.md),
+  [floor-shared-compute-memoization.md](floor-shared-compute-memoization.md),
+  [v1-run-stability-throughline.md](v1-run-stability-throughline.md).
