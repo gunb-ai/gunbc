@@ -18,14 +18,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emit_host_native_only_verdict_note: String = "Kernel-D Stage 2 (parent sharp-bee-290 msg_9bf66b9b/msg_fe5a876e): the floor's verdict here is decided SOLELY by the emitted native run's own decoded stdout compared against a fixed expected octet constant chosen by the test author -- eval() never runs for classical_not's body in this chain, so v1_interpreter is not load-bearing for the semantics under test (axis (a): witness-body-runs-native; axis (b), the .dag host/meta-orchestration itself running natively, is Gate 1/emitter self-hosting and out of scope here -- this file's own control flow still executes via v1_interpreter today). The underlying compare-to-fixed-octet shape already existed, entangled inside the emit-on-demand caching witness (classical_not_family_cached_run_with_source); this file surfaces it as its own standalone, clearly-named claim rather than re-deriving a second copy (DESIGN.md S2)."
+data emit_host_native_only_verdict_note: String = "Kernel-D Stage 2: verdict decided solely by the emitted native run's stdout vs a fixed expected octet; eval() never runs classical_not's body here. Entangled shape (classical_not_family_cached_run_with_source) surfaced standalone (DESIGN.md S2)."
 
-data emit_host_native_only_verdict_vs_native_routing_frontier_note: String = "Reconciled against v2.compiler.self_host.native_routing_frontier (parent ruling, Kernel-D Stage 2 review): that module is the single authority for a DIFFERENT question -- for a family that has BOTH an eval leg and a native leg (an equals_eval agreement pair), which of the two the per-PR floor actually runs, gated by the parity_window's N-consecutive-green evidence. native_eval_batch here answers a distinct question: this witness has no eval leg to route between in the first place -- eval() is never invoked for the subject's semantics at all, so there is no agreement pair and no parity-window gate to satisfy; it always runs native, unconditionally. Folding native_eval_batch into native_routing_frontier as a NativeRoutingFrontierRow would misrepresent a zero-eval-dependency witness as a flipped agreement-routing decision (a section-3 fork by the reverse direction -- one row pretending to answer a question it was never asked). The two rosters therefore stay separate by construction, not by oversight: native_routing_frontier routes EXISTING equals_eval pairs; native_eval_batch names witnesses that were never eval-vs-native pairs to begin with."
-
-data native_eval_batch: List<String> = [
-  "emit_host_native_only_classical_not_holds",
-  "emit_host_native_only_classical_not_swapped_mismatch_detected_holds",
-]
+data emit_host_native_only_verdict_vs_native_routing_frontier_note: String = "Not a native_routing_frontier row: that module routes EXISTING equals_eval agreement pairs between two legs; this witness has no eval leg to route between (always native, unconditionally), so it is out of that authority's domain rather than a fork of it."
 
 fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
   match ingested_inferred_tree_from_source(source: source) {
