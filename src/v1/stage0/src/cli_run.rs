@@ -27850,3 +27850,25 @@ mod compile_clean_loader_closure_fork_regression {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
+
+#[cfg(test)]
+mod tmp_leg_cost_measurement {
+    use super::*;
+    #[test]
+    fn measure_leg_call_cost() {
+        let entries = [
+            "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+            "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
+            "src/v2/test/claim/self_host/witness_bulk_routing_test.dag",
+        ];
+        let warm = std::time::Instant::now();
+        let _ = witness_execution_leg_label(entries[0]);
+        eprintln!("COLD(first call, incl. resolve+ctx): {:?}", warm.elapsed());
+        let t = std::time::Instant::now();
+        for i in 0..2306 {
+            let _ = witness_execution_leg_label(entries[i % 3]);
+        }
+        let el = t.elapsed();
+        eprintln!("2306 CALLS: {:?}  per-call: {:?}", el, el / 2306);
+    }
+}
