@@ -173,20 +173,18 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
   retained_pending_census(entry: "src/v2/test/claim/self_host/native_routing_frontier_test.dag")
 ]
 
-fn witness_bulk_routing_sample_partition() -> WitnessEntryRoutingPartition {
-  partition_witness_entry_routing_roster(rows: witness_bulk_routing_sample_roster)
-}
+data witness_bulk_routing_sample_partition: WitnessEntryRoutingPartition = partition_witness_entry_routing_roster(rows: witness_bulk_routing_sample_roster)
 
 fn native_routed_entry_rows() -> List<WitnessEntryRoutingRow> {
-  witness_bulk_routing_sample_partition().native_routed
+  witness_bulk_routing_sample_partition.native_routed
 }
 
 fn interpreted_retained_entry_rows() -> List<WitnessEntryRoutingRow> {
-  witness_bulk_routing_sample_partition().interpreted_retained
+  witness_bulk_routing_sample_partition.interpreted_retained
 }
 
 fn emit_ineligible_entry_rows() -> List<WitnessEntryRoutingRow> {
-  witness_bulk_routing_sample_partition().emit_ineligible
+  witness_bulk_routing_sample_partition.emit_ineligible
 }
 
 fn routing_row_for_entry(entry: String) -> List<WitnessEntryRoutingRow> {
@@ -197,12 +195,12 @@ fn routing_row_for_entry(entry: String) -> List<WitnessEntryRoutingRow> {
 }
 
 fn witness_bulk_routing_total_holds() -> Bool {
-  let part = witness_bulk_routing_sample_partition()
+  let part = witness_bulk_routing_sample_partition
   let split_total = length(xs: part.native_routed) + length(xs: part.interpreted_retained) + length(xs: part.emit_ineligible)
   length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
     && split_total == witness_bulk_entry_count_expected
 }
 
 fn witness_bulk_routing_zero_native_at_landing_holds() -> Bool {
-  length(xs: native_routed_entry_rows()) == 0
+  length(xs: witness_bulk_routing_sample_partition.native_routed) == 0
 }
