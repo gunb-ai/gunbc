@@ -13,6 +13,7 @@ import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_i
 import gunbc.gitignore_emit { path_is_ignored }
 import gunbc.plan_registry { all_plans }
 import gunbc.plans.idea_machine { idea_machine_plan }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -28,6 +29,25 @@ fn witness_per_artifact_red_receipts() -> Bool {
     && all(committed_generated_artifacts(), a =>
          !artifact_drifted(a: a, committed: artifact_generate(a: a))
            && artifact_drifted(a: a, committed: concat(artifact_generate(a: a), perturb)))
+}
+
+data fixed_point_witness_note: String = "Fixed-point / byte-idempotence leg (ci-chores P0, 2026-07-22): witness_committed_is_fixed_point reads the REAL committed bytes off disk (Filesystem.Read, ReadsLiveTree) and asserts a fresh artifact_generate reproduces them byte-for-byte for every committed artifact. This is the executable form of `regen yields zero diff` — the property the automated chore commit relies on. It differs from witness_per_artifact_red_receipts (which compares generate-to-generate and so is blind to a committed-vs-generated mismatch such as the missing-trailing-newline defect P0 chased). RED control: witness_committed_fixed_point_red_control perturbs the read bytes and requires the equality to fail, so a false-green fixed point is unwritable. Note (§2): the drift gate run_generated_artifact_drift_gate_body already reads the same bytes as one conjunct; this witness ISOLATES the fixed-point property as a separately-falsifiable claim with its own control, rather than re-deriving the gate's pass/fail. Determinism of artifact_generate ACROSS processes (map-key iteration order) is a distinct property and is enforced by construction by v2.lens.determinism.determinism_compile_gate — not re-checked here."
+
+fn artifact_committed_matches(a: GeneratedArtifact) -> Bool {
+  let committed = Filesystem.Read(path: artifact_path(a: a))
+  committed.success && (committed.content == artifact_generate(a: a))
+}
+
+fn witness_committed_is_fixed_point() -> Bool {
+  count(committed_generated_artifacts()) > 0
+    && all(committed_generated_artifacts(), a => artifact_committed_matches(a: a))
+}
+
+fn witness_committed_fixed_point_red_control() -> Bool {
+  let a = CiYamlArtifact
+  let committed = Filesystem.Read(path: artifact_path(a: a))
+  committed.success
+    && !(concat(committed.content, perturb) == artifact_generate(a: a))
 }
 
 fn witness_all_known_committed() -> Bool {
@@ -146,6 +166,8 @@ fn witness_extra_validation_wired() -> Bool {
 
 test fn generated_artifact_drift_witnesses() -> Bool {
   witness_per_artifact_red_receipts()
+    && witness_committed_is_fixed_point()
+    && witness_committed_fixed_point_red_control()
     && witness_all_known_committed()
     && witness_ignored_paths_excluded()
     && witness_registry_complete()

@@ -97,6 +97,10 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => artifact_is_committed(a: a))
 }
 
+fn committed_generated_artifact_paths() -> List<String> {
+  map(committed_generated_artifacts(), a => artifact_path(a: a))
+}
+
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }

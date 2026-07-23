@@ -35,5 +35,6 @@ data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job
   strategy: Absent,
   timeout_minutes: Absent,
   continue_on_error: Absent,
-  concurrency: Absent
+  concurrency: Absent,
+  permissions: Absent
 }
