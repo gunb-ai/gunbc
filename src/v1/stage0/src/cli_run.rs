@@ -8487,7 +8487,11 @@ fn module_path_from_entry_source(path: &Path) -> String {
     for line in content.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("module ") {
-            return rest.split_whitespace().next().unwrap_or("unknown").to_string();
+            return rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("unknown")
+                .to_string();
         }
     }
     "unknown".to_string()
@@ -8498,7 +8502,10 @@ fn eval_census_string_fn(
     fn_name: &str,
     entry: &str,
 ) -> Result<String, String> {
-    let args = [(Some("entry".to_string()), v1_interpreter::Value::Str(entry.to_string()))];
+    let args = [(
+        Some("entry".to_string()),
+        v1_interpreter::Value::Str(entry.to_string()),
+    )];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
         Ok(v1_interpreter::Value::Str(s)) => Ok(s),
         Ok(other) => Err(format!(
@@ -8517,11 +8524,9 @@ pub fn emit_witness_entry_eligibility_census(
     hist_path: &Path,
 ) -> Result<usize, String> {
     let roots = witness_layer_roots();
-    let (graph, indices) = resolve_entry_graph_shared(
-        &roots,
-        WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
-    )
-    .map_err(|e| format!("resolve census authority: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(&roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+            .map_err(|e| format!("resolve census authority: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let root = process_workspace_root();
     let stamp = chrono_lite_utc_stamp();
@@ -8530,22 +8535,20 @@ pub fn emit_witness_entry_eligibility_census(
     for rel_entry in &entries {
         let abs = root.join(rel_entry);
         let module_path = module_path_from_entry_source(&abs);
-        let disposition = eval_census_string_fn(&ctx, "census_disposition_column_for_entry", rel_entry)?;
+        let disposition =
+            eval_census_string_fn(&ctx, "census_disposition_column_for_entry", rel_entry)?;
         let reason = eval_census_string_fn(&ctx, "census_reason_column_for_entry", rel_entry)?;
-        let first_error = match v1_interpreter::run_in_context(
-            &ctx,
-            "census_first_error_class_column",
-            false,
-        ) {
-            Ok(v1_interpreter::Value::Str(s)) => s,
-            Ok(other) => {
-                return Err(format!(
-                    "census_first_error_class_column returned {}, expected String",
-                    ctx.format_value(&other)
-                ));
-            }
-            Err(e) => return Err(format!("census_first_error_class_column: {e}")),
-        };
+        let first_error =
+            match v1_interpreter::run_in_context(&ctx, "census_first_error_class_column", false) {
+                Ok(v1_interpreter::Value::Str(s)) => s,
+                Ok(other) => {
+                    return Err(format!(
+                        "census_first_error_class_column returned {}, expected String",
+                        ctx.format_value(&other)
+                    ));
+                }
+                Err(e) => return Err(format!("census_first_error_class_column: {e}")),
+            };
         let leg = eval_census_string_fn(&ctx, "census_execution_leg_label", rel_entry)?;
         rows.push(format!(
             "{rel_entry}\t{module_path}\t{module_path}\twitness_entry\t{disposition}\t{reason}\t{first_error}\t{leg}"
@@ -8596,7 +8599,11 @@ fn chrono_lite_utc_stamp() -> String {
         .filter(|o| o.status.success())
         .and_then(|o| {
             let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if s.is_empty() { None } else { Some(s) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         })
         .unwrap_or_else(|| "unknown".to_string())
 }
