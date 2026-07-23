@@ -36,7 +36,6 @@ import gunbc.merge_admission_produce {
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
-  git_toplevel_shell_subexpr_with_fallback,
 }
 import std.types { GitRef }
 import extdeps.github.actions { RunnerSpec }
