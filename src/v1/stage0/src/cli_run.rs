@@ -8637,7 +8637,7 @@ pub fn emit_witness_entry_eligibility_census(
 }
 
 fn chrono_lite_utc_stamp() -> Result<String, String> {
-    // SCAFFOLD (§7 HAND-RUST — dissolve-on: stamp from pure `.dag` emit fold / host clock intrinsic).
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: v2.std.host_clock or equivalent host intrinsic).
     let output = std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%dT%H:%MZ"])
         .output()
