@@ -2,7 +2,8 @@ module gunbc.ci_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
-  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
+  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
+  ci_concurrency_cancel_in_progress_expression,
 }
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
@@ -42,7 +43,7 @@ import extdeps.github.actions {
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
   checkout_action, setup_rust_action, cache_action,
   upload_artifact_action, download_artifact_action
 }
@@ -526,7 +527,7 @@ data ci_workflow: Workflow = {
     value: ConcurrencyMappingQueueNotMax {
 
       group: ci_concurrency_group(),
-      cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+      cancel_in_progress: Present { value: CancelInProgressExpression { expression: ci_concurrency_cancel_in_progress_expression() } },
       explicit_single: none
     }
   },
