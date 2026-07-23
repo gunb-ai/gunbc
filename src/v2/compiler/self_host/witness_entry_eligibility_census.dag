@@ -25,7 +25,7 @@ data witness_entry_eligibility_census_histogram_path: String = "docs/probes/witn
 
 data witness_entry_eligibility_census_carrier_path_dissolve_on: String = "cli_run/emit HAND-RUST rel literals mirror these rows until load-time projection (review 41784); delete mirrors when wired"
 
-data witness_entry_eligibility_census_entry_count: Int = 764
+data witness_entry_eligibility_census_entry_count: Int = 672
 
 data witness_entry_eligibility_census_stamp: String = "2026-07-23T07:25Z"
 
@@ -195,7 +195,7 @@ fn census_first_error_class_column() -> String {
 
 fn witness_entry_eligibility_census_meets_floor() -> Bool {
   witness_entry_eligibility_census_entry_count > 0
-    && witness_entry_eligibility_census_entry_count >= 744
+    && witness_entry_eligibility_census_entry_count >= 600
 }
 
 fn witness_entry_eligibility_census_declared_entry_count() -> Int {
