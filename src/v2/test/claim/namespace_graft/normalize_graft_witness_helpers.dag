@@ -3,7 +3,7 @@ module v2.test.claim.namespace_graft.normalize_graft_witness_helpers
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_graft_spine }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
@@ -18,8 +18,7 @@ import v2.std.node {
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_is_metadata_edge,
-  namespace_graft_is_module_shell,
-  qualified_name_from_graft_spine
+  namespace_graft_is_module_shell
 }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 
