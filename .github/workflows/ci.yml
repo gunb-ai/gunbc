@@ -12,7 +12,7 @@ permissions:
   pull-requests: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -190,8 +190,8 @@ jobs:
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
           n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
-          if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
-          echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
+          if test "$n" -ne 4; then echo "floor resolve count $n differs from declared 4: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
+          echo "floor resolve count $n matches declared 4 (declared cold-resolve receipt)"
         timeout-minutes: 5
       - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
         run: |

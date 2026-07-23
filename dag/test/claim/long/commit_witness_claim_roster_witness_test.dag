@@ -1,0 +1,20 @@
+module test.claim.long.commit_witness_claim_roster_witness
+
+import v2.workflow.commit_witness_claim_roster {
+  commit_witness_claim_roster_live_unresolvable_count
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data commit_witness_claim_roster_long_note: String = "Full CommitWitnessClaim roster resolvability receipt exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note; measured ~210s eval on 2026-07-23). Projects via ci_floor_commit_witness_claim_schedule and resolves every enrolled (entry, check_fn) pair — the #7060 stale-roster class. Fast-lane per-PR coverage: dag/test/claim/commit_witness_claim_roster_witness_test.dag synthetic stale-pair RED only. Excluded from discovery at test/claim/long/ dir grain (gunbc.ci_layer_roots). NOT roster-enrolled on GithubActionsCiJob — dissolve-on: long-lane scheduled falsifier follow-on enrolls this row. Local recipe until then: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/commit_witness_claim_roster_witness_test.dag --function commit_witness_claim_roster_holds."
+
+fn witness_commit_witness_claim_roster_live_holds() -> Bool {
+  commit_witness_claim_roster_live_unresolvable_count() == 0
+}
+
+test fn commit_witness_claim_roster_holds() -> Bool {
+  witness_commit_witness_claim_roster_live_holds()
+}
