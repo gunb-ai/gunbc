@@ -4,7 +4,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. Dissolves when witness_exclusion_substrings rows are replaced by derived consumer classification."
+data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands."
 
 type WitnessConsumerCadence
   = DiscoverySelection
