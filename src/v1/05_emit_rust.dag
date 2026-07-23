@@ -3427,15 +3427,22 @@ fn rust_use_line_bound_symbols(line: String) -> List<String> {
 }
 
 fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
-  lines |> fold(init: [], f: (out, line) =>
+  let owners = lines |> fold(init: empty_map(), f: (acc, line) =>
+    rust_use_line_bound_symbols(line: line) |> fold(init: acc, f: (inner, bound) =>
+      if map_contains_key(inner, bound) { inner } else { map_insert(inner, bound, line) }
+    )
+  )
+  lines |> flat_map(line =>
     if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
-      concat(out, [line])
+      [line]
     } else {
-      let seen = out |> flat_map(prev => rust_use_line_bound_symbols(line: prev))
       let braced = rust_pub_use_braced_names(line: line)
       if braced |> count > 0 {
         let fresh_bounds = unique_strings(items: braced |> map(entry => rust_use_bound_symbol(entry: entry)))
-          |> filter(bound => (seen |> any(s => s == bound)) == false)
+          |> filter(bound => match map_get(owners, bound) {
+            Present { value: owner } => owner == line
+            Absent => false
+          })
         let kept = fresh_bounds |> flat_map(bound =>
           match braced |> filter(entry => rust_use_bound_symbol(entry: entry) == bound) |> first {
             Present { value: entry } => [entry]
@@ -3443,24 +3450,24 @@ fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
           }
         )
         if kept |> count == 0 {
-          out
+          []
         } else if (kept |> count) == (braced |> count) {
-          concat(out, [line])
+          [line]
         } else {
-          let rebuilt = match line |> split(delimiter: "::{") |> first {
-            Present { value: prefix } => concat(prefix, "::{", kept |> join(separator: ", "), "};")
-            Absent => line
+          match line |> split(delimiter: "::{") |> first {
+            Present { value: prefix } => [concat(prefix, "::{", kept |> join(separator: ", "), "};")]
+            Absent => [line]
           }
-          concat(out, [rebuilt])
         }
       } else {
         let singleton = rust_pub_use_singleton_name(line: line)
         if singleton == "" {
-          concat(out, [line])
-        } else if seen |> any(s => s == singleton) {
-          out
+          [line]
         } else {
-          concat(out, [line])
+          match map_get(owners, singleton) {
+            Present { value: owner } => if owner == line { [line] } else { [] }
+            Absent => [line]
+          }
         }
       }
     }
