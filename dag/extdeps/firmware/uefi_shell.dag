@@ -1,0 +1,148 @@
+module extdeps.firmware.uefi_shell
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_render }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "uefi.org/sites/default/files/resources/UEFI_Shell_2_2.pdf"
+  }
+}
+
+type UefiResetMode
+  = ResetWarm
+  | ResetCold
+  | ResetShutdown
+
+fn uefi_reset_flag(mode: UefiResetMode) -> String {
+  match mode {
+    ResetWarm => "-w"
+    ResetCold => "-c"
+    ResetShutdown => "-s"
+  }
+}
+
+type BcfgTarget
+  = BcfgBoot
+  | BcfgDriver
+
+fn bcfg_target_word(target: BcfgTarget) -> String {
+  match target {
+    BcfgBoot => "boot"
+    BcfgDriver => "driver"
+  }
+}
+
+type UefiIfconfigAction
+  = IfconfigList
+  | IfconfigSetDhcp { interface: NonEmptyStr }
+  | IfconfigSetStatic { interface: NonEmptyStr, address: NonEmptyStr, netmask: NonEmptyStr, gateway: NonEmptyStr }
+
+type UefiShellCommand
+  = BcfgDump { target: BcfgTarget }
+  | BcfgAdd { target: BcfgTarget, index: Int, file: NonEmptyStr, description: NonEmptyStr }
+  | BcfgMove { target: BcfgTarget, from_index: Int, to_index: Int }
+  | BcfgRemove { target: BcfgTarget, index: Int }
+  | MapDevices { refresh: Bool }
+  | ConnectRecursive
+  | ListDevices
+  | Ifconfig { action: UefiIfconfigAction }
+  | Ping { host: NonEmptyStr }
+  | Tftp { interface: NonEmptyStr, server: NonEmptyStr, remote_file: NonEmptyStr, local_file: NonEmptyStr }
+  | ExecuteEfi { path: NonEmptyStr, cmdline: List<KernelCmdlineArg> }
+  | Reset { mode: UefiResetMode }
+
+fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
+  match cmd {
+    BcfgDump { target: t } =>
+      concat("bcfg ", concat(bcfg_target_word(target: t), " dump -v"))
+    BcfgAdd { target: t, index: i, file: f, description: d } =>
+      concat(
+        concat("bcfg ", concat(bcfg_target_word(target: t), " add ")),
+        concat(
+          concat(to_string(i), concat(" ", f as String)),
+          concat(" \"", concat(d as String, "\"")),
+        ),
+      )
+    BcfgMove { target: t, from_index: a, to_index: b } =>
+      concat(
+        concat("bcfg ", concat(bcfg_target_word(target: t), " mv ")),
+        concat(to_string(a), concat(" ", to_string(b))),
+      )
+    BcfgRemove { target: t, index: i } =>
+      concat("bcfg ", concat(bcfg_target_word(target: t), concat(" rm ", to_string(i))))
+    MapDevices { refresh: r } =>
+      if r { "map -r" } else { "map" }
+    ConnectRecursive => "connect -r"
+    ListDevices => "devices"
+    Ping { host: h } => concat("ping ", h as String)
+    Tftp { interface: i, server: s, remote_file: rf, local_file: lf } =>
+      join(["tftp", "-i", i as String, s as String, rf as String, lf as String], " ")
+    ExecuteEfi { path: p, cmdline: c } =>
+      join([p as String, kernel_cmdline_render(args: c)], " ")
+    Ifconfig { action: a } =>
+      match a {
+        IfconfigList => "ifconfig -l"
+        IfconfigSetDhcp { interface: i } =>
+          concat("ifconfig -s ", concat(i as String, " dhcp"))
+        IfconfigSetStatic { interface: i, address: addr, netmask: nm, gateway: gw } =>
+          concat(
+            concat("ifconfig -s ", concat(i as String, " static ")),
+            concat(concat(addr as String, " "), concat(concat(nm as String, " "), gw as String)),
+          )
+      }
+    Reset { mode: m } =>
+      concat("reset ", uefi_reset_flag(mode: m))
+  }
+}
+
+type UefiMediaState
+  = MediaPresent
+  | MediaDisconnected
+
+type UefiNetworkInterface {
+  name: NonEmptyStr
+  media: UefiMediaState
+  ipv4: NonEmptyStr
+}
+
+type UefiBootOption {
+  index: Int
+  variable: NonEmptyStr
+  description: String
+  device_path: String
+  optional: Bool
+}
+
+type UefiDeviceMapping {
+  fs_alias: String
+  block_aliases: String
+  device_path: NonEmptyStr
+}
+
+data uefi_ipv4_unspecified: String = "0.0.0.0"
+
+data uefi_ipv4_link_local_prefix: String = "169.254."
+
+data uefi_ipv4_link_local_prefix_doc: String = "RFC 3927 link-local subnet is 169.254.0.0/16; on the dotted-quad rendering the UEFI shell ifconfig emits, membership is exactly the string prefix 169.254. — a prefix test, never a substring scan (a substring would also match 10.169.254.x)."
+
+data uefi_shell_removable_media_device_path_tokens: List<String> = ["CDROM", "CDDVD", "USB"]
+
+data uefi_shell_removable_media_tokens_doc: String = "🟡 dissolve-on: uefi_shell_removable_media_device_path_tokens — the removable-install-media classification reads the UEFI shell 'map -r' device-path RENDERING for these node tokens (CDROM/CDDVD messaging device-path nodes, USB messaging node — UEFI spec §10 device path protocol as the shell renders it). Token-in-rendering is a classification over upstream text, not a parsed device-path model; a mapping whose rendering uses an unlisted token classifies as not-removable and the decision layer refuses with NoBootSourceAvailable (loud refusal, never a fabricated boot source). DISSOLVES WHEN UefiDeviceMapping.device_path becomes a parsed device-path node list and the class is a match over node kinds."
+
+type UefiShellEnvironment {
+  mappings: List<UefiDeviceMapping>
+  boot_options: List<UefiBootOption>
+  interfaces: List<UefiNetworkInterface>
+}
+
+fn uefi_shell_script(commands: List<UefiShellCommand>) -> String {
+  fold(
+    commands,
+    init: "",
+    f: (acc, cmd) => concat(acc, concat(uefi_shell_command_line(cmd: cmd), "\n"))
+  )
+}

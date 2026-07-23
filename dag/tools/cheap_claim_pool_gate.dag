@@ -1,0 +1,22 @@
+module tools.cheap_claim_pool_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.cheap_gate_pool { run_cheap_claim_pool }
+
+func run_cheap_claim_pool_gate_body() -> ProcessExit {
+  return if run_cheap_claim_pool() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "cheap claim pool gate failed: a batch-0 claim is red (the failing claim is named in the pooled claim_batch FAIL lines; concern membership is asserted by the layering/extdeps enrollment walls beside this gate)"
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_cheap_claim_pool_gate_body()
+}
+
+func run_cheap_claim_pool_ci_gate() -> ProcessExit {
+  run_cheap_claim_pool_gate_body()
+}

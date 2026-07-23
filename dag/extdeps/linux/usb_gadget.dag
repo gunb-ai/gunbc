@@ -1,0 +1,111 @@
+module extdeps.linux.usb_gadget
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/usb/gadget_configfs.html",
+  }
+}
+
+type MassStorageLun {
+  backing_device: NonEmptyStr
+  cdrom: Bool
+  read_only: Bool
+  removable: Bool
+}
+
+type UsbGadget {
+  config_root: NonEmptyStr
+  name: NonEmptyStr
+  id_vendor: NonEmptyStr
+  id_product: NonEmptyStr
+  manufacturer: NonEmptyStr
+  product: NonEmptyStr
+  serial: NonEmptyStr
+  config_label: NonEmptyStr
+  lun: MassStorageLun
+  udc: NonEmptyStr
+}
+
+type ConfigfsOp
+  = ConfigfsMkdir { path: NonEmptyStr }
+  | ConfigfsWriteAttr { path: NonEmptyStr, value: String }
+  | ConfigfsSymlink { target: NonEmptyStr, link: NonEmptyStr }
+  | ConfigfsRemoveLink { link: NonEmptyStr }
+  | ConfigfsRmdir { path: NonEmptyStr }
+
+fn usb_gadget_dir(gadget: UsbGadget) -> NonEmptyStr {
+  join([gadget.config_root as String, "/", gadget.name as String], "") as NonEmptyStr
+}
+
+fn gadget_bool_bit(b: Bool) -> String {
+  if b { "1" } else { "0" }
+}
+
+fn usb_gadget_setup_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
+  let g = usb_gadget_dir(gadget: gadget) as String
+  let strings = join([g, "/strings/0x409"], "")
+  let func = join([g, "/functions/mass_storage.0"], "")
+  let lun = join([func, "/lun.0"], "")
+  let config = join([g, "/configs/", gadget.config_label as String], "")
+  [
+    ConfigfsMkdir { path: g as NonEmptyStr },
+    ConfigfsWriteAttr { path: join([g, "/idVendor"], "") as NonEmptyStr, value: gadget.id_vendor as String },
+    ConfigfsWriteAttr { path: join([g, "/idProduct"], "") as NonEmptyStr, value: gadget.id_product as String },
+    ConfigfsMkdir { path: strings as NonEmptyStr },
+    ConfigfsWriteAttr { path: join([strings, "/manufacturer"], "") as NonEmptyStr, value: gadget.manufacturer as String },
+    ConfigfsWriteAttr { path: join([strings, "/product"], "") as NonEmptyStr, value: gadget.product as String },
+    ConfigfsWriteAttr { path: join([strings, "/serialnumber"], "") as NonEmptyStr, value: gadget.serial as String },
+    ConfigfsMkdir { path: func as NonEmptyStr },
+    ConfigfsWriteAttr { path: join([lun, "/removable"], "") as NonEmptyStr, value: gadget_bool_bit(b: gadget.lun.removable) },
+    ConfigfsWriteAttr { path: join([lun, "/cdrom"], "") as NonEmptyStr, value: gadget_bool_bit(b: gadget.lun.cdrom) },
+    ConfigfsWriteAttr { path: join([lun, "/ro"], "") as NonEmptyStr, value: gadget_bool_bit(b: gadget.lun.read_only) },
+    ConfigfsWriteAttr { path: join([lun, "/file"], "") as NonEmptyStr, value: gadget.lun.backing_device as String },
+    ConfigfsMkdir { path: join([config, "/strings/0x409"], "") as NonEmptyStr },
+    ConfigfsWriteAttr { path: join([config, "/strings/0x409/configuration"], "") as NonEmptyStr, value: gadget.config_label as String },
+    ConfigfsSymlink { target: func as NonEmptyStr, link: join([config, "/"], "") as NonEmptyStr },
+    ConfigfsWriteAttr { path: join([g, "/UDC"], "") as NonEmptyStr, value: gadget.udc as String },
+  ]
+}
+
+fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
+  let g = usb_gadget_dir(gadget: gadget) as String
+  let config = join([g, "/configs/", gadget.config_label as String], "")
+  [
+    ConfigfsWriteAttr { path: join([g, "/UDC"], "") as NonEmptyStr, value: "" },
+    ConfigfsRemoveLink { link: join([config, "/mass_storage.0"], "") as NonEmptyStr },
+    ConfigfsRmdir { path: join([g, "/functions/mass_storage.0"], "") as NonEmptyStr },
+    ConfigfsRmdir { path: join([config, "/strings/0x409"], "") as NonEmptyStr },
+    ConfigfsRmdir { path: config as NonEmptyStr },
+    ConfigfsRmdir { path: join([g, "/strings/0x409"], "") as NonEmptyStr },
+    ConfigfsRmdir { path: g as NonEmptyStr },
+  ]
+}
+
+data configfs_op_render_dissolution_trigger: String = "🟡 dissolve-on: configfs_op_line — the ConfigfsOp list is the typed authority (structure), but each op is rendered to a POSIX shell line because a configfs attribute write is a remote-file-write with no argv-only form (printf > sysfs needs a redirect) and the BMC transport is SSH. This single per-variant renderer replaces 32 scattered concats. DISSOLVES WHEN host_effect_apply binds ConfigfsOp directly to a remote Filesystem.Write effect (WriteAttr → Filesystem.Write, Mkdir/Symlink/Rmdir → typed FS ops) over the ssh transport, removing the shell leaf."
+
+fn configfs_op_line(op: ConfigfsOp) -> String {
+  match op {
+    ConfigfsMkdir { path: p } => join(["mkdir -p ", p as String], "")
+    ConfigfsWriteAttr { path: p, value: v } => join(["printf '%s' '", v, "' > ", p as String], "")
+    ConfigfsSymlink { target: t, link: l } => join(["ln -sf ", t as String, " ", l as String], "")
+    ConfigfsRemoveLink { link: l } => join(["rm -f ", l as String, " 2>/dev/null || true"], "")
+    ConfigfsRmdir { path: p } => join(["rmdir ", p as String, " 2>/dev/null || true"], "")
+  }
+}
+
+fn configfs_ops_script(ops: List<ConfigfsOp>) -> String {
+  fold(ops, init: "", f: (acc, op) => join([acc, configfs_op_line(op: op), "\n"], ""))
+}
+
+fn usb_gadget_setup_script(gadget: UsbGadget) -> String {
+  join(["set -e", "\n", configfs_ops_script(ops: usb_gadget_setup_ops(gadget: gadget))], "")
+}
+
+fn usb_gadget_teardown_script(gadget: UsbGadget) -> String {
+  configfs_ops_script(ops: usb_gadget_teardown_ops(gadget: gadget))
+}

@@ -12,6 +12,8 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  ssh_authorized_keys: [],
+  ssh_password_auth: false,
   storage_policy: StoragePolicyDirectLayout,
 }
 
@@ -24,6 +26,8 @@ data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoi
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  ssh_authorized_keys: [],
+  ssh_password_auth: false,
   storage_policy: StoragePolicyAbsent,
 }
 
@@ -106,6 +110,8 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     install_openssh_server: true,
+    ssh_authorized_keys: [],
+    ssh_password_auth: false,
     storage_policy: StoragePolicyDirectLayout,
   }
   match fold_nbd_proxy_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk) {
@@ -163,6 +169,8 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     install_openssh_server: true,
+    ssh_authorized_keys: [],
+    ssh_password_auth: false,
     storage_policy: StoragePolicyDirectLayout,
   }
   match fold_nbd_proxy_os_install_preflight_verdict(payload: manual_payload, disk: EmptyDisk) {

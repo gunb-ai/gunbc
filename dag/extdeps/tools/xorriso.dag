@@ -60,4 +60,24 @@ service xorriso.Iso {
       nonzero => String "xorriso -as mkisofs failed"
     }
   }
+
+  operation ReplayBuildWithTwoMaps {
+    input {
+      stock_iso_path: NonEmptyStr,
+      output_path: NonEmptyStr,
+      volume_id: NonEmptyStr,
+      map_one_source: NonEmptyStr,
+      map_one_iso_path: NonEmptyStr,
+      map_two_source: NonEmptyStr,
+      map_two_iso_path: NonEmptyStr,
+    }
+    output { success: Bool from "exit_success" }
+    transport shell {
+      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-map", "{map_one_source}", "{map_one_iso_path}", "-map", "{map_two_source}", "{map_two_iso_path}", "-commit"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "xorriso -boot_image any replay build failed"
+    }
+  }
 }

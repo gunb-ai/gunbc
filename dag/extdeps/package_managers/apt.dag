@@ -30,6 +30,10 @@ data package_nbdkit: NonEmptyStr = "nbdkit"
 data package_socat: NonEmptyStr = "socat"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"
+data package_google_cloud_cli: NonEmptyStr = "google-cloud-cli"
+data package_busybox: NonEmptyStr = "busybox-static"
+data package_gcc_arm_linux_gnueabi: NonEmptyStr = "gcc-arm-linux-gnueabi"
+
 data package_jq: NonEmptyStr = "jq"
 
 data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"

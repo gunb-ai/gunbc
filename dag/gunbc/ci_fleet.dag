@@ -11,6 +11,7 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
+  srv4_host,
   fleet_host_memory_nominal_vs_usable_note,
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
@@ -100,7 +101,19 @@ data srv3_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer]
+data srv4_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv4",
+  supply: ComputeSupplyFacts {
+    physical: srv4_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
