@@ -119,6 +119,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-floor-child-spawn-attribution",
+    work: DeclarationRef { module_path: "tools.host_prelude", decl_name: "run_gunbc_claims_ready", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when the child-spawn class is dissolved — run_gunbc_claims_ready pools ClaimRuns into one process or runs them against the executor's warm process_shared_index (the ci_floor_resolve_receipt_note 'resolve once, share by reference' terminal); this receipt's counterfactuals become that PR's before/after" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
