@@ -17,7 +17,6 @@
     clippy::all
 )]
 #![deny(unreachable_patterns)]
-#![recursion_limit = "256"]
 
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_rt.rs"]
