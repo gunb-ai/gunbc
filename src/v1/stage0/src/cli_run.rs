@@ -8395,9 +8395,10 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
 /// `witness_entry_eligibility_census_emit`). dissolve-on: claim_executor derives
 /// `WitnessExecutionLeg` from the routing frontier row at runtime (construction).
 pub fn witness_execution_leg_label(entry: &str) -> String {
-    witness_entry_eligibility_execution_leg_from_tsv(entry).unwrap_or_else(|| {
+    let rel = repo_relative_dag_path(entry);
+    witness_entry_eligibility_execution_leg_from_tsv(&rel).unwrap_or_else(|| {
         panic!(
-            "witness execution leg: no census TSV row for entry {entry:?} \
+            "witness execution leg: no census TSV row for entry {rel:?} \
              (refuse — regenerate docs/probes/witness_entry_eligibility_census.tsv)"
         )
     })
