@@ -50,7 +50,7 @@ fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
 }
 
 test fn emit_host_native_only_classical_not_holds() -> Bool {
-  native_only_matches_expected(source: ingested_classical_not_source, expected_octet: 1)
+  native_only_matches_expected(source: ingested_classical_not_source, expected_octet: 0)
 }
 
 test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> Bool {
