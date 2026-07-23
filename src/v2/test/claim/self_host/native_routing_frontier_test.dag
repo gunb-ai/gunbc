@@ -42,8 +42,8 @@ fn witness_unlisted_subject_has_no_row() -> Bool {
 }
 
 fn witness_routed_and_retained_split() -> Bool {
-  (length(xs: native_routed_rows()) == 2)
-    && (length(xs: interpreted_retained_rows()) == 7)
+  (length(xs: native_routed_rows()) == 0)
+    && (length(xs: interpreted_retained_rows()) == 9)
 }
 
 fn routed_subject_module_bound(module_path: String) -> Bool {
