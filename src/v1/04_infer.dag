@@ -23,7 +23,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -86,7 +86,7 @@ import v1.compiler.infer_env {
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-  global_bare_is_ambiguous,
+  global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates, bare_name_miss_diagnostic,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
@@ -131,7 +131,8 @@ import v1.compiler.infer_resolve {
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
-  resolve_func_sigs, flatten_parent_envs
+  resolve_func_sigs, flatten_parent_envs,
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -168,7 +169,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig,
+  lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
   global_bare_callable_node
 }
 import v1.compiler.infer_access {
@@ -586,6 +587,13 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
+}
+
+fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
+    diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
+  }
 }
 
 fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_name: String) -> ErrorNode {
@@ -1619,7 +1627,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
-            Present { value: fsig } =>
+            FuncSigResolved { sig: fsig } =>
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
                   name: name,
@@ -1639,7 +1647,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   name_span: span
                 ))
               }
-            Absent =>
+            FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
+              ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+            FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
                   let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -1802,7 +1812,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
+      let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
+      match call_sig_lookup {
+      FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
+        ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+      _ =>
+      let sig = func_sig_if_resolved(lookup: call_sig_lookup)
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -2200,6 +2215,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         }
         }
+      }
       }
 
     ExprMethodCall { method_semantics: _ } =>
@@ -3291,6 +3307,12 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     && variant_owner_node(scope: scope, name: tn_str) != none
   let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
     && map_get(scope.type_env.str_bindings, tn_str) == none
+  let presence_ambiguity_refusal_diags = if tn_str != "" && map_get(scope.type_env.str_bindings, tn_str) == none {
+    let strict_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: tn_str)
+    if strict_cands |> count > 0 {
+      [make_error_node(diagnostic: AmbiguousReference { name: tn_str, candidates: strict_cands, span: name_span }, module_name: scope.module_name)]
+    } else { [] }
+  } else { [] }
   let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference || presence_name_is_ambiguous {
       []
     } else {
@@ -3461,7 +3483,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let type_diags = match effective_lookup {
       Present { value: _ } => []
       Absent => [make_error_node(
-        diagnostic: UnresolvedType { name: type_name.value, span: span },
+        diagnostic: bare_name_miss_diagnostic(env: scope.type_env, name: type_name.value, span: span),
         module_name: scope.module_name
       )]
     }
@@ -3486,9 +3508,10 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       span: span,
       name_span: name_span
     )
+    let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags)
+      diagnostics: concat(concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
     }
   }
 }
@@ -3706,7 +3729,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3724,7 +3747,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3874,7 +3897,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
         Present { value: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -4141,7 +4164,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+              let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
                 Present { value: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -4464,7 +4487,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+          match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
             Present { value: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -5072,7 +5095,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match lookup_func_sig(func_env: func_env, type_env: type_env, name: mname) {
+  let base = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
     Present { value: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -5091,7 +5114,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
+  match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
     Present { value: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -5342,7 +5365,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
+      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
         Present { value: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -5761,9 +5784,9 @@ type SigParamSplit {
   generic_names: List<String>
 }
 
-fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> ResolvedFuncSig? {
+fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> FuncSigLookup {
   match map_get(scope.body_locals, func_name) {
-    Present { value: _ } => Absent
+    Present { value: _ } => FuncSigUnresolved
     Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
   }
 }

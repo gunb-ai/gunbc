@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, AuthoredLine, Signoff, Unsigned }
+import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -170,8 +170,50 @@ fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
     && string_contains(s: json, pattern: "\"done\": [\"dj-done\"]")
 }
 
+fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: SupersededLine { by: by, content: content },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
+  let node_old = superseded_node(id: "sp-old", by: "sp-successor-lane", content: "Old Lane Row")
+  let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
+  let edges = [RoadmapEdge { child: nid(s: "sp-child"), parent: nid(s: "sp-old") }]
+  let doc = fixture_doc(nodes: [node_old, node_child], edges: edges)
+  let spawnable = next_spawnable(doc: doc, merged: [])
+  let json = roadmap_dispatch_json(doc: doc, merged: [])
+  any(spawnable, n => n.node == nid(s: "sp-child"))
+    && !any(spawnable, n => n.node == nid(s: "sp-old"))
+    && string_contains(s: json, pattern: "\"superseded\": ")
+    && string_contains(s: json, pattern: "\"superseded_by\": \"sp-successor-lane\"")
+    && !string_contains(s: json, pattern: "\"node_id\": \"sp-old\", \"title\"")
+}
+
+fn witness_superseded_control_open_parent_still_gates() -> Bool {
+  let node_open = RoadmapNode {
+    node: nid(s: "sp-old"),
+    line: AuthoredLine { done: false, content: "Old Lane Row" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+  let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
+  let edges = [RoadmapEdge { child: nid(s: "sp-child"), parent: nid(s: "sp-old") }]
+  let doc = fixture_doc(nodes: [node_open, node_child], edges: edges)
+  !any(next_spawnable(doc: doc, merged: []), n => n.node == nid(s: "sp-child"))
+}
+
 test fn roadmap_spawner_witnesses() -> Bool {
-  witness_satisfied_dep_is_spawnable()
+  witness_superseded_unblocks_child_and_never_dispatches()
+    && witness_superseded_control_open_parent_still_gates()
+    && witness_satisfied_dep_is_spawnable()
     && witness_all_parents_gate_spawnability()
     && witness_dispatch_json_partitions_ready_upcoming_done()
     && witness_unsatisfied_dep_not_spawnable()
