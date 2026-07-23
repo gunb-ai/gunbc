@@ -4,6 +4,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { RealizationDispatch }
 import std.realization_schedule {
   RealizationPlan,
+  Runnable,
   schedule_batch_contains_label,
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
@@ -24,14 +25,26 @@ import v2.std.text { String }
 
 type ScheduleLensViolation
   = EmptySchedule
-  | CompileGateNotFirst { expected: String }
+  | CheapGatesMissingFromFirstBatch
+  | CompileGateInFirstBatch { expected: String }
+  | CompileGateNotSecond { expected: String }
   | CorpusBeforeCompile
   | SingleBatchOnly
 
 data schedule_lens_module: String = "v2.lens.schedule_lens"
 
-fn schedule_lens_compile_gate_not_first_reason(expected: String) -> Symbol {
-  symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_not_first:" + expected)
+fn schedule_lens_compile_gate_in_first_batch_reason(expected: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_in_first_batch:" + expected)
+}
+
+fn schedule_lens_compile_gate_not_second_reason(expected: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_not_second:" + expected)
+}
+
+fn schedule_lens_batch_has_any_cheap_gate(batch: List<Runnable>, cheap_gate_labels: List<String>) -> Bool {
+  fold(cheap_gate_labels, init: false, f: fn(found, label) {
+    found || schedule_batch_contains_label(batch: batch, target: label)
+  })
 }
 
 fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic {
@@ -43,9 +56,21 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
         module_file: module_file,
         correction: Unavailable { reason: CorrectionNotModeled }
       )
-    CompileGateNotFirst { expected: expected } =>
+    CheapGatesMissingFromFirstBatch =>
       textual_whole_file_diagnostic(
-        reason: schedule_lens_compile_gate_not_first_reason(expected: expected),
+        reason: ^schedule_lens_cheap_gates_missing_from_first_batch,
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
+    CompileGateInFirstBatch { expected: expected } =>
+      textual_whole_file_diagnostic(
+        reason: schedule_lens_compile_gate_in_first_batch_reason(expected: expected),
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
+    CompileGateNotSecond { expected: expected } =>
+      textual_whole_file_diagnostic(
+        reason: schedule_lens_compile_gate_not_second_reason(expected: expected),
         module_file: module_file,
         correction: Unavailable { reason: CorrectionNotModeled }
       )
@@ -64,41 +89,58 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
   }
 }
 
-fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_fn: String) -> LensVerdict {
+fn schedule_lens_verdict_for_ci_floor(
+  plan: RealizationPlan<Runnable>,
+  compile_gate_fn: String,
+  cheap_gate_labels: List<String>
+) -> LensVerdict {
   if plan.schedule.count() == 0 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: EmptySchedule)
     }
-  } else if plan.schedule.count() < 2 {
+  } else if plan.schedule.count() < 3 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
     }
   } else {
     let batch0 = plan.schedule.first()
-    if batch0.count() != 1 {
+    if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
       Violation {
         diagnostic: schedule_lens_violation_diagnostic(
-          kind: CompileGateNotFirst { expected: compile_gate_fn }
-        )
-      }
-    } else if !schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
-      Violation {
-        diagnostic: schedule_lens_violation_diagnostic(
-          kind: CompileGateNotFirst { expected: compile_gate_fn }
+          kind: CompileGateInFirstBatch { expected: compile_gate_fn }
         )
       }
     } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
       Violation {
         diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
       }
+    } else if !schedule_lens_batch_has_any_cheap_gate(batch: batch0, cheap_gate_labels: cheap_gate_labels) {
+      Violation {
+        diagnostic: schedule_lens_violation_diagnostic(kind: CheapGatesMissingFromFirstBatch)
+      }
     } else {
       let batch1 = plan.schedule.skip(n: 1).first()
-      if batch1.count() < 2 {
+      if (batch1.count() != 1) || !schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
         Violation {
-          diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
+          diagnostic: schedule_lens_violation_diagnostic(
+            kind: CompileGateNotSecond { expected: compile_gate_fn }
+          )
+        }
+      } else if schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
+        Violation {
+          diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
         }
       } else {
-        Holds
+        let has_parallel_rest = fold(plan.schedule.skip(n: 2), init: false, f: fn(found, batch) {
+          found || (batch.count() >= 2)
+        })
+        if !has_parallel_rest {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
+          }
+        } else {
+          Holds
+        }
       }
     }
   }
