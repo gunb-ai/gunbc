@@ -22426,21 +22426,23 @@ mod nfr_tests {
             non_fold_residue_stale_roster_count(),
             live.len()
         );
-        for site in nfr_build_report().sites.iter() {
-            if !non_fold_residue_site_is_rostered(site) {
-                eprintln!("unrostered live site: {site}");
-            }
-            assert!(
-                non_fold_residue_site_is_rostered(site),
-                "unrostered: {site}"
-            );
+        let unrostered: Vec<&String> = nfr_build_report()
+            .sites
+            .iter()
+            .filter(|site| !non_fold_residue_site_is_rostered(site))
+            .collect();
+        for site in &unrostered {
+            eprintln!("unrostered live site: {site}");
         }
-        for entry in non_fold_residue_roster_entries() {
-            if !live.contains(entry.as_str()) {
-                eprintln!("stale roster entry: {entry}");
-            }
-            assert!(live.contains(entry.as_str()), "stale roster: {entry}");
+        let stale: Vec<&String> = non_fold_residue_roster_entries()
+            .iter()
+            .filter(|entry| !live.contains(entry.as_str()))
+            .collect();
+        for entry in &stale {
+            eprintln!("stale roster entry: {entry}");
         }
+        assert!(unrostered.is_empty(), "unrostered: {unrostered:?}");
+        assert!(stale.is_empty(), "stale roster: {stale:?}");
     }
 
     #[test]
