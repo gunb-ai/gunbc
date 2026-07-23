@@ -20165,8 +20165,9 @@ pub(crate) const CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER: &str =
 // Host-boundary transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`
 // (`walk_target_alias_apply` bin). Apply authority lives in `.dag`; the bin only projects
 // module→path→text, calls the fold in-process, and realizes splices at `--write`.
-// 🟡 dissolve-on: self-emit of this bin (or v2 bash-emit of the driver capability) from
-// `tools.walk_target_alias_apply_transport` (mirror of the plan bin's retirement row).
+// 🟡 dissolve-on (whichever lands first): self-emit of this bin (or v2 bash-emit of the
+// driver capability) from `tools.walk_target_alias_apply_transport`, or retirement with
+// the sibling plan bin when the §13 transmutation + refusal flip complete (one-shot codemod).
 // Until then: dry-run + typed write refusal (v1 alias parse gap; see
 // walk_target_alias_apply_corpus_write_gated_reason).
 // Receipt: `rg walk_target_alias_apply src/v1/stage0` until transport self-emission lands;

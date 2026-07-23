@@ -1,24 +1,15 @@
 #![allow(clippy::disallowed_macros)]
 
-//! SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
-//! Host-boundary transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`.
-//! Apply authority lives in `.dag`; this bin is argv → plan rows → path/text projection →
-//! in-process fold call → stdout/splice realization only (DESIGN §3 transport-is-a-handler).
-//!
-//! 🟡 dissolve-on: self-emit of this bin (or v2 bash-emit of the driver capability) from
-//! `tools.walk_target_alias_apply_transport` (mirror of `cli_run_walk_target_alias_plan`).
-//! Receipt carrier: `CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER` in `cli_run.rs`.
-//!
 //! §13 walk-target alias codemod — APPLY driver (namespace-resolution-design §13).
 //!
 //! SCAFFOLD (§7 seed-retained HAND-RUST — authority: docs/plans/namespace-resolution-design.md §13):
-//! host transport for the `.dag` apply fold (`dag/tools/walk_target_alias_apply.dag`).
-//! 🟡 dissolve-on: retires with its sibling `walk_target_alias_plan` when the §13
-//! import→alias transmutation + refusal flip complete (the codemod is one-shot: once the
-//! corpus is transmuted and the namespace terminal lands, both plan and apply drivers are
-//! dead code and delete together — see `CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER`,
-//! cli_run.rs). Receipt: `rg walk_target_alias_apply src/v1/stage0` until that lane closes;
-//! ROADMAP namespace-only lane (docs/plans/namespace-resolution-design.md).
+//! host-boundary transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`.
+//! 🟡 dissolve-on (whichever lands first): self-emit of this bin (or v2 bash-emit of the
+//! driver capability) from `tools.walk_target_alias_apply_transport` — or retirement with
+//! its sibling `walk_target_alias_plan` when the §13 import→alias transmutation + refusal
+//! flip complete (the codemod is one-shot; both drivers are dead code after it and delete
+//! together — see `CLI_RUN_WALK_TARGET_ALIAS_PLAN_SCAFFOLD_MARKER`).
+//! Receipt carrier: `CLI_RUN_WALK_TARGET_ALIAS_APPLY_SCAFFOLD_MARKER` in `cli_run.rs`.
 //!
 //! Thin host transport for `tools.walk_target_alias_apply.walk_target_alias_apply_module_fold`:
 //! argv parse -> plan rows (Rust #6984 planner, seed-retained) -> host-boundary projection
