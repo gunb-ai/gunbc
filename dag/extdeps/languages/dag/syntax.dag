@@ -22,6 +22,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data dag_item_forms: List<ItemForm> = [
+  ItemForm { kind: OtherForm, keyword: "alias", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: AliasBody },
   ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
@@ -56,7 +59,7 @@ data dag_keyword_literals: Map<String, LiteralValue> = {
 }
 
 data dag_keyword_set: Map<String, Bool> = {
-  "module": true, "import": true, "type": true, "fn": true, "func": true,
+  "module": true, "import": true, "alias": true, "type": true, "fn": true, "func": true,
   "resource": true, "service": true, "data": true,
   "interface": true, "pipeline": true, "profile": true, "pattern": true,
   "let": true, "return": true, "match": true, "if": true, "then": true, "else": true,
