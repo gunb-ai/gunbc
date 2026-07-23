@@ -94,6 +94,7 @@ pub fn stage0_crate_allow_block() -> String {
         "    clippy::all".to_string(),
         ")]".to_string(),
         "#![deny(unreachable_patterns)]".to_string(),
+        "#![recursion_limit = \"256\"]".to_string(),
     ])
     .join(&"\n".to_string())
 }

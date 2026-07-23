@@ -176,6 +176,7 @@ fn stage0_std_primitive_modules() -> List<String> {
   [
     "std_content_hash",
     "std_coercion",
+    "std_currency",
     "std_decl_ref",
     "std_disposition",
     "std_error_primitives",
