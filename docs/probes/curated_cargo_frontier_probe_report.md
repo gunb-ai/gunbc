@@ -54,16 +54,10 @@
 
 ## Reproduce
 
-```bash
-# Harness authority: dag/tools/self_host_curated_seed_linked_harness.dag (in-tree).
-# Banked receipts: docs/probes/curated_cargo_frontier_probe_sweep.tsv (shim-free emit, CSSL_STD_SEED_LINK off).
+Harness authority: `dag/tools/self_host_curated_seed_linked_harness.dag` (in-tree).
+Banked receipts: `docs/probes/curated_cargo_frontier_probe_sweep.tsv` (shim-free emit, `CSSL_STD_SEED_LINK` off).
 
-# full sweep (~45min sequential)
-./scripts/curated_cargo_frontier_probe_sweep.sh
-
-# single module
-./scripts/curated_cargo_probe_one.sh src/v2/compiler/02_parse.dag
-```
+The shell runners that produced this sweep (`scripts/curated_cargo_frontier_probe_sweep.sh`, `scripts/curated_cargo_probe_one.sh`) were deleted 2026-07-23 with the rest of `scripts/`. The banked TSV below is the receipt; re-measuring goes through the `cssl_assemble` bin against the harness authority above, which is a fresh measurement rather than a replay of this one.
 
 Machine-readable: `docs/probes/curated_cargo_frontier_probe_sweep.tsv`
 
