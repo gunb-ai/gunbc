@@ -1,6 +1,6 @@
 module v2.std.host_transport
 
-import v2.std.algebra { length }
+import v2.std.algebra { length, fold_list }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.diagnostic {
@@ -13,6 +13,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
+import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node { Node, Symbol }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
