@@ -4,7 +4,7 @@ import std.types { List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.exec.command {
-  ShellCommand,
+  ArgvCommand,
   CommandTransport,
   command_over_transport,
   shell_command_render,
@@ -23,9 +23,9 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ShellCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ShellCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
+data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
 
-func run_shell_command(command: ShellCommand, transport: CommandTransport) -> ProcessExit
+func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
   let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
@@ -37,7 +37,7 @@ func run_shell_command(command: ShellCommand, transport: CommandTransport) -> Pr
   }
 }
 
-func run_shell_commands(commands: List<ShellCommand>, transport: CommandTransport) -> ProcessExit
+func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
   fold(

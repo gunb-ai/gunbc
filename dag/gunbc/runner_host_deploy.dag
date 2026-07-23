@@ -1,7 +1,7 @@
 module gunbc.runner_host_deploy
 
 import std.types { NonEmptyStr, String, Int, List }
-import extdeps.exec.command { ShellCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.fleet_ssh_access { fleet_ssh_secrets_project }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
@@ -69,8 +69,8 @@ fn runner_host_sccache_provision_aarch64() -> String {
   )
 }
 
-fn runner_host_installer_command(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ShellCommand {
-  ShellCommand {
+fn runner_host_installer_command(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
     argv: [
       "env",
       join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
@@ -99,8 +99,8 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
   map(runner_index_seq(n: deploy.runner_count), i => runner_instance_name(deploy: deploy, index: i))
 }
 
-fn runner_enable_command(deploy: RunnerHostDeploy) -> ShellCommand {
-  ShellCommand {
+fn runner_enable_command(deploy: RunnerHostDeploy) -> ArgvCommand {
+  ArgvCommand {
     argv: append(
       ["sudo", "systemctl", "enable", "--now"],
       items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),

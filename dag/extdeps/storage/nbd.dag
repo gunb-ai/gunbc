@@ -3,7 +3,7 @@ module extdeps.storage.nbd
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ShellCommand }
+import extdeps.exec.command { ArgvCommand }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -40,8 +40,8 @@ fn nbd_server_config_text(export: NbdExport) -> String {
   )
 }
 
-fn nbd_server_command(config_path: NonEmptyStr) -> ShellCommand {
-  ShellCommand {
+fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
     argv: ["nbd-server", "-C", config_path as String],
   }
 }
@@ -53,8 +53,8 @@ type NbdClientAttach {
   device: NonEmptyStr
 }
 
-fn nbd_client_attach_command(attach: NbdClientAttach) -> ShellCommand {
-  ShellCommand {
+fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
+  ArgvCommand {
     argv: [
       "nbd-client",
       "-N", attach.export_name as String,
@@ -65,8 +65,8 @@ fn nbd_client_attach_command(attach: NbdClientAttach) -> ShellCommand {
   }
 }
 
-fn nbd_client_disconnect_command(device: NonEmptyStr) -> ShellCommand {
-  ShellCommand {
+fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
+  ArgvCommand {
     argv: ["nbd-client", "-d", device as String],
   }
 }

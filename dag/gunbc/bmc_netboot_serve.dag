@@ -8,9 +8,9 @@ import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKey
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
 import extdeps.tools.busybox { busybox_cli_tool, busybox_httpd_command }
 import extdeps.exec.command {
-  ShellCommand,
+  ArgvCommand,
   CommandTransport,
-  LocalShell,
+  LocalExec,
   SshExec,
   command_over_transport,
   shell_command_render,
@@ -107,7 +107,7 @@ fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
   SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as NonEmptyStr }
 }
 
-fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ShellCommand {
+fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ArgvCommand {
   busybox_httpd_command(
     busybox_bin: bmc_netboot_staged_path(plan: plan, name: "busybox"),
     document_root: plan.netboot_dir,
@@ -115,7 +115,7 @@ fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ShellCommand {
   )
 }
 
-fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> ShellCommand {
+fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
   command_over_transport(
     command: bmc_netboot_serve_command_local(plan: plan),
     transport: bmc_transport(plan: plan),
@@ -148,7 +148,7 @@ data bmc_netboot_provision_dissolution_trigger: String = "🟡 dissolve-on: bmc_
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> ProcessExit
   uses net: Network
 {
-  let cmd = command_over_transport(command: ShellCommand { argv: argv }, transport: bmc_transport(plan: plan))
+  let cmd = command_over_transport(command: ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
   let run = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: cmd)))
   if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: ", run.stderr)) }
 }

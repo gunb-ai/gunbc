@@ -1,7 +1,7 @@
 module gunbc.bmc_virtual_media
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import extdeps.exec.command { ShellCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.storage.nbd {
   NbdExport,
   NbdClientAttach,

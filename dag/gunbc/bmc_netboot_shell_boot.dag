@@ -11,7 +11,7 @@ import extdeps.firmware.uefi_shell {
   ExecuteEfi,
 }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
-import extdeps.exec.command { ShellCommand }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.bmc_netboot_serve {
   BmcNetbootServePlan,
   srv4_bmc_netboot_serve_plan,
@@ -21,8 +21,8 @@ import gunbc.bmc_netboot_serve {
 data shell_boot_local_kernel: NonEmptyStr = "fs0:\\vmlinuz"
 data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"
 
-fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ShellCommand {
-  ShellCommand {
+fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
+  ArgvCommand {
     argv: [
       join([plan.netboot_dir as String, "/busybox"], ""),
       "udpsvd", "-E", "0.0.0.0", "69",

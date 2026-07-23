@@ -11,12 +11,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type ShellCommand {
+type ArgvCommand {
   argv: List<String>
 }
 
 type CommandTransport
-  = LocalShell
+  = LocalExec
   | SshExec { ssh_target: NonEmptyStr }
 
 fn ssh_exec_prefix(target: NonEmptyStr) -> List<String> {
@@ -29,11 +29,11 @@ fn ssh_exec_prefix(target: NonEmptyStr) -> List<String> {
   ]
 }
 
-fn command_over_transport(command: ShellCommand, transport: CommandTransport) -> ShellCommand {
+fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> ArgvCommand {
   match transport {
-    LocalShell => command
+    LocalExec => command
     SshExec { ssh_target: t } =>
-      ShellCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }
+      ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }
   }
 }
 
@@ -41,6 +41,6 @@ fn shell_quote(arg: String) -> String {
   join(["'", arg, "'"], "")
 }
 
-fn shell_command_render(command: ShellCommand) -> String {
+fn shell_command_render(command: ArgvCommand) -> String {
   join(map(command.argv, a => shell_quote(arg: a)), " ")
 }
