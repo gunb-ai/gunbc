@@ -39,7 +39,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, borrowed_generic_param_names, global_bare_nearest_ancestor_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
 }
 
 import v1.compiler.infer_emit_info {
@@ -47,7 +47,8 @@ import v1.compiler.infer_emit_info {
 }
 
 import v1.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig
+  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
 }
 
 import v1.compiler.infer_service {
@@ -81,10 +82,23 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
   }
 }
 
-fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   match lookup_resolved_sig(env: func_env, name: name) {
-    Present { value: sig } => Present { value: sig }
-    Absent => func_sig_from_global_bare(type_env: type_env, name: name)
+    FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+    FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+    FuncSigUnresolved =>
+      match func_sig_from_global_bare(type_env: type_env, name: name) {
+        Present { value: sig } => FuncSigResolved { sig: sig }
+        Absent => FuncSigUnresolved
+      }
+  }
+}
+
+fn func_sig_if_resolved(lookup: FuncSigLookup) -> ResolvedFuncSig? {
+  match lookup {
+    FuncSigResolved { sig: sig } => Present { value: sig }
+    FuncSigUnresolved => Absent
+    FuncSigAmbiguous { candidates: _ } => Absent
   }
 }
 
@@ -105,7 +119,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
       Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
         Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-        match global_bare_nearest_ancestor_candidate(env_module_path: type_env.module_path, candidates: cands) {
+        match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
           Present { value: cand } =>
             Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
           Absent => none

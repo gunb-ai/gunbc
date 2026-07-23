@@ -48,7 +48,7 @@ fn ready_node(id: String) -> RoadmapNode {
 }
 
 fn frontier_ready(ids: List<String>) -> SpawnFrontier {
-  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [] }
+  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [], superseded: [] }
 }
 
 fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
