@@ -75,7 +75,7 @@ fn srv3_seeded_autoinstall_delivery_is_on_iso() -> Bool {
 }
 
 fn srv3_seeded_grub_cmdline_names_nocloud() -> Bool {
-  string_contains(s: srv3_seeded_grub_kernel_cmdline as String, pattern: "autoinstall ds=nocloud")
+  string_contains(s: srv3_seeded_grub_kernel_cmdline as String, pattern: "autoinstall \"ds=nocloud")
 }
 
 fn srv3_seeded_install_media_unattended_not_proven_yet() -> Bool {

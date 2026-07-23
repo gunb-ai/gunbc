@@ -15,5 +15,5 @@ test fn self_host_03_normalize_behavioral_receipt_holds() -> Bool {
 }
 
 test fn self_host_03_normalize_declared_source_refs_complete_holds() -> Bool {
-  length(xs: declared_source_refs) == 12
+  length(xs: declared_source_refs) == 16
 }

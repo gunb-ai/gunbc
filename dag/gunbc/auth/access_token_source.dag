@@ -1,0 +1,19 @@
+module gunbc.auth.access_token_source
+
+import std.types { Secret }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.cloud.gcp.gcp
+
+type AccessTokenSource
+  = GcloudPrintToken
+  | OperatorSuppliedToken { token: Secret }
+
+func resolve_access_token(source: AccessTokenSource) -> Secret
+  uses net: Network
+{
+  match source {
+    GcloudPrintToken => shell.GCloud.AuthPrintAccessToken().access_token
+    OperatorSuppliedToken { token: t } => t
+  }
+}
