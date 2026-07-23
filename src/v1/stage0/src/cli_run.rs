@@ -21670,6 +21670,17 @@ mod pool_heads_oracle_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    // 2026-07-23 backfill: #7088 (CI fail-fast cheap-gate early batch) landed this site
+    // unrostered on main — same masking class as the dated blocks below (affected-set
+    // selection predict-skipped the corpus-read nfr witness for its landing diff); it
+    // surfaced on PR #7097, whose emitter-touch diff re-selected the whole-corpus receipt,
+    // failing that PR's CI on a main-side site (verified: identical failure on an
+    // origin/main control worktree with the same binary). Variant-membership dispatch over
+    // the closed `Gate` coproduct (off-variant `_ => found` per member arm) — the same
+    // structural-equality residue class as the *_eq rows; dissolves with derived equality
+    // from inhabitance (dag/std/algebra, DESIGN §3/§4) or with the cheap-gate membership
+    // fold's own dissolution trigger in ci_floor_plan.dag.
+    "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
     // 2026-07-18 backfill: four sites that landed unrostered on main while the affected-set
     // selection predict-skipped the corpus-read nfr witness for their landing diffs (same
     // masking class as the dated blocks below). Their files predate this PR and this PR does
