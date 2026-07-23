@@ -314,6 +314,13 @@ fn optional_string_list_kv(key: String, items: List<String>) -> List<YamlKeyValu
   }
 }
 
+fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue> {
+  match perms {
+    Absent => []
+    Present { value: p } => [kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
+  }
+}
+
 fn job_yaml(job: Job) -> YamlValue {
   yaml_mapping(entries: concat(
     [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
@@ -324,10 +331,13 @@ fn job_yaml(job: Job) -> YamlValue {
         concat(
           optional_string_kv(key: "if", value: job.if_condition),
           concat(
-            [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+            optional_job_permissions_kv(perms: job.permissions),
             concat(
-              optional_env_mapping(entries: job.env),
-              optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+              [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+              concat(
+                optional_env_mapping(entries: job.env),
+                optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+              )
             )
           )
         )

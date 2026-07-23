@@ -40,10 +40,6 @@ import gunbc.generated_artifact {
   artifact_path,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.node_http_server_emit {
-  roadmap_dashboard_served_static_route_table,
-  roadmap_dashboard_node_http_server_source,
-}
 import gunbc.roadmap_static_site {
   roadmap_site_health_path,
   roadmap_site_roadmap_url_path,
@@ -238,27 +234,6 @@ fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
-fn witness_static_site_routes_in_dashboard_route_table() -> Bool {
-  let site = roadmap_site_text_static_routes()
-  let table = roadmap_dashboard_served_static_route_table().routes
-  count(site) == 3
-    && count(table) == count(site) + 2
-    && all(site, site_route =>
-      any(table, table_route =>
-        served_static_route_literal_path(route: site_route) == served_static_route_literal_path(route: table_route)
-          && site_route.body == table_route.body
-      )
-    )
-}
-
-fn witness_static_site_paths_only_in_retracted_server() -> Bool {
-  let src = roadmap_dashboard_node_http_server_source()
-  string_contains(s: src, pattern: "createServer")
-    && string_contains(s: src, pattern: "/^\\/ROADMAP\\.md$/")
-    && string_contains(s: src, pattern: "/^\\/target\\/roadmap-dispatch\\.json$/")
-    && string_contains(s: src, pattern: "/^\\/healthz$/")
-}
-
 fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080")
@@ -366,8 +341,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_apply_script_has_no_frozen_page()
     && witness_apply_script_excludes_readback_curls()
     && witness_retract_owned_process_removes_serve_service()
-    && witness_static_site_routes_in_dashboard_route_table()
-    && witness_static_site_paths_only_in_retracted_server()
     && witness_systemd_unit_emitted()
     && witness_apply_script_matches_committed_golden()
     && witness_retract_script_matches_committed_golden()

@@ -44,17 +44,23 @@ import v2.extdeps.languages.rust_test {
 import v2.test.execution.emit_host_meet_join_equals_eval {
   meet_join_eval_tree_for,
   meet_join_eval_subject,
-  meet_join_eval_verdict_is_pass,
 }
 import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
   emit_complement_eval_subject,
-  emit_complement_eval_verdict_is_pass,
 }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
+import v2.std.algebra { Cons, Empty, length, list_append }
+import v2.std.collection { List, Optional, Present, Absent }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import v2.std.host_run { HostLogicalRun }
+import v2.compiler.self_host.native_agreement_support {
+  native_agreement_divergence_from_run
+}
+import v2.std.native_agreement {
+  NativeAgreementDivergence,
+  native_agreement_failure_receipt,
+  format_native_agreement_divergence
+}
 import v2.std.node { Node }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -201,14 +207,15 @@ fn family_crate_member_run(
   }
 }
 
-fn family_crate_meet_join_member_agreement(
+fn family_crate_meet_join_member_agreement_divergence(
   workspace: String,
   source: Medium<String>,
   tree: InferredTree,
   subgraph: Node,
   member_id: String
-) -> Bool {
-  meet_join_eval_verdict_is_pass(
+) -> Optional<NativeAgreementDivergence> {
+  native_agreement_divergence_from_run(
+    member_id: member_id,
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: meet_join_eval_subject(tree: tree, subgraph: subgraph),
       source_outcome: Accepted { value: source, diagnostics: None },
@@ -219,11 +226,31 @@ fn family_crate_meet_join_member_agreement(
   )
 }
 
-fn family_crate_complement_member_agreement(
+fn family_crate_meet_join_member_agreement(
+  workspace: String,
+  source: Medium<String>,
+  tree: InferredTree,
+  subgraph: Node,
+  member_id: String
+) -> Bool {
+  match family_crate_meet_join_member_agreement_divergence(
+    workspace: workspace,
+    source: source,
+    tree: tree,
+    subgraph: subgraph,
+    member_id: member_id
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn family_crate_complement_member_agreement_divergence(
   workspace: String,
   source: Medium<String>
-) -> Bool {
-  emit_complement_eval_verdict_is_pass(
+) -> Optional<NativeAgreementDivergence> {
+  native_agreement_divergence_from_run(
+    member_id: "complement",
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_complement_eval_subject(tree: family_crate_complement_tree()),
       source_outcome: Accepted { value: source, diagnostics: None },
@@ -232,6 +259,79 @@ fn family_crate_complement_member_agreement(
       run_args: rust_family_member_run_args(member_id: "complement")
     )
   )
+}
+
+fn family_crate_complement_member_agreement(
+  workspace: String,
+  source: Medium<String>
+) -> Bool {
+  match family_crate_complement_member_agreement_divergence(
+    workspace: workspace,
+    source: source
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn optional_divergence_to_list(
+  opt: Optional<NativeAgreementDivergence>
+) -> List<NativeAgreementDivergence> {
+  match opt {
+    Absent => []
+    Present { value: d } => [d]
+  }
+}
+
+fn family_crate_emit_family_rejected_divergence() -> NativeAgreementDivergence {
+  NativeAgreementDivergence {
+    member_id: "emit_family",
+    interpreted_value: "emit_rejected",
+    native_value: "emit_rejected"
+  }
+}
+
+fn family_crate_pr_native_agreement_divergences() -> List<NativeAgreementDivergence> {
+  let members = family_crate_members()
+  let workspace = native_cache_workspace_root(
+    cache_root: family_crate_cache_root_for(test_id: "pr_native"),
+    key: family_crate_native_key(members: members)
+  )
+  match emit_family(
+    members: members,
+    transport_target: rust_logic_family_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      list_append(
+        left: optional_divergence_to_list(
+          opt: family_crate_meet_join_member_agreement_divergence(
+            workspace: workspace,
+            source: source,
+            tree: family_crate_meet_tree(),
+            subgraph: dag_meet_eval_subgraph_fixture,
+            member_id: "meet"
+          )
+        ),
+        right: list_append(
+          left: optional_divergence_to_list(
+            opt: family_crate_meet_join_member_agreement_divergence(
+              workspace: workspace,
+              source: source,
+              tree: family_crate_join_tree(),
+              subgraph: dag_join_eval_subgraph_fixture,
+              member_id: "join"
+            )
+          ),
+          right: optional_divergence_to_list(
+            opt: family_crate_complement_member_agreement_divergence(
+              workspace: workspace,
+              source: source
+            )
+          )
+        )
+      )
+    Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
+  }
 }
 
 fn family_crate_member_run_refused(
@@ -398,34 +498,15 @@ test fn emit_on_demand_family_crate_witnesses() -> Bool {
 data family_crate_pr_native_note: String = "Per-PR native carrier (routing frontier, 2026-07-22): the NO-EVICT agreement leg — same one-build workspace derivation as the receipts above but under the fixed pr_native test_id and never evicted, so the first CI run on a runner cold-builds once and every later PR run is warm (compile_skipped observed via the cached transport receipts). Assertions are agreement-only (interpreted == native per member), skip-state-agnostic by design: cold and warm runs both green, which is what a per-PR gate needs. Hermetic-clean: no evict intrinsic (which refuses hermetic), and the cached transport runs on the Admitted verdict in every mode."
 
 test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {
-  let members = family_crate_members()
-  let workspace = native_cache_workspace_root(
-    cache_root: family_crate_cache_root_for(test_id: "pr_native"),
-    key: family_crate_native_key(members: members)
+  length(xs: family_crate_pr_native_agreement_divergences()) == 0
+}
+
+test fn family_crate_emit_family_rejected_divergence_holds() -> Bool {
+  format_native_agreement_divergence(d: family_crate_emit_family_rejected_divergence()) == "member=emit_family interpreted=emit_rejected native=emit_rejected"
+}
+
+fn emit_on_demand_family_crate_pr_native_agreement_failure_receipt() -> String {
+  native_agreement_failure_receipt(
+    divergences: family_crate_pr_native_agreement_divergences()
   )
-  match emit_family(
-    members: members,
-    transport_target: rust_logic_family_target_model_staging()
-  ) {
-    Accepted { value: source, diagnostics: _ } =>
-      family_crate_meet_join_member_agreement(
-        workspace: workspace,
-        source: source,
-        tree: family_crate_meet_tree(),
-        subgraph: dag_meet_eval_subgraph_fixture,
-        member_id: "meet"
-      )
-        && family_crate_meet_join_member_agreement(
-          workspace: workspace,
-          source: source,
-          tree: family_crate_join_tree(),
-          subgraph: dag_join_eval_subgraph_fixture,
-          member_id: "join"
-        )
-        && family_crate_complement_member_agreement(
-          workspace: workspace,
-          source: source
-        )
-    Rejected { diagnostics: _ } => false
-  }
 }

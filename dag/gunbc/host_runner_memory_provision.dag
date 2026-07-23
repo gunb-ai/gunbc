@@ -23,7 +23,7 @@ import gunbc.host_effect {
   host_effect_converge_loop_evidence,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.host_converge_realize { interpret_converge_knob, KnobUnimplemented }
+import gunbc.host_converge_realize { interpret_converge_knob, KnobUnimplemented, KnobEffect }
 import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 import std.realization_reconcile { Converged, NotConverged }
@@ -37,7 +37,7 @@ data host_runner_memory_provision_scope_disposition: Disposition = Scaffold {
   },
 }
 
-data host_runner_memory_provision_scope_note: String = "Path (b) modeled ConvergePlan ensure on assimilation spine (P1:runner-deploy-slot): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs from gunbc.runner_slot_allocation, shaped as host_effect_apply_gated → ConvergePlan — never hand systemctl. LIVE APPLY refuses at host_converge_realize PerSlotMemoryCap KnobUnimplemented until interpreter lands (plan-emit EMIT CLAIMS NOTHING + verify-only read-back is the operator close). Read-back verdict helper (per_slot_memory_cap_verdict_from_unit_read) is mandatory on the verify path; apply-path read-back is dissolve-on with the realize scaffold."
+data host_runner_memory_provision_scope_note: String = "Path (b) modeled ConvergePlan ensure on assimilation spine (P1:runner-deploy-slot): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs from gunbc.runner_slot_allocation, shaped as host_effect_apply_gated → ConvergePlan — never hand systemctl. LIVE APPLY now interprets PerSlotMemoryCap to a derived drop-in write + daemon-reload (host_converge_realize KnobEffect) executed through host_effect_realize run_shell_transport (in-process LocalShell), grounded on the REAL exit code — a nonzero exit is a typed NotConverged refusal, never a fabricated exit 0. Read-back verdict helper (per_slot_memory_cap_verdict_from_unit_read) is mandatory on the verify path; apply-path read-back is dissolve-on with the realize scaffold."
 
 data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -87,9 +87,10 @@ fn runner_memory_cap_readback_verdict(read: RunnerUnitMemoryLiveRead, knob: Conv
   per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
 }
 
-fn runner_memory_knob_apply_frontier_is_unimplemented(knob: ConvergeKnob) -> Bool {
+fn runner_memory_knob_apply_interpreted(knob: ConvergeKnob) -> Bool {
   match interpret_converge_knob(knob: knob) {
-    KnobUnimplemented { target_kind: kind, knob_name: _, reason: _ } => kind == "PerSlotMemoryCap"
+    KnobEffect { knob_name: _, effect_script: s } => s != ""
+    KnobUnimplemented { target_kind: _, knob_name: _, reason: _ } => false
   }
 }
 

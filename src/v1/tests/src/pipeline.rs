@@ -1232,7 +1232,7 @@ fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
 fn parse_resilience_unmasked_typecheck_debt_receipt() {
     use std::collections::BTreeSet;
     use v1_compiler::cli_run::{
-        build_multi_entry_index, discover_floor_corpus_rows,
+        build_multi_entry_index, discover_floor_witness_roster,
         resolve_entry_with_index_for_discovery_corpus, witness_exclusion_substrings,
     };
     use v1_compiler::v1_std_core::{
@@ -1250,7 +1250,8 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "src/v2/test/claim/manual".to_string(),
     ];
     let excludes = witness_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes).expect("discover roster");
+    let rows =
+        discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     let index = build_multi_entry_index(&roots);
 
