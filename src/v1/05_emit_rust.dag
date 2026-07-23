@@ -5373,7 +5373,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String
       Present { value: info } =>
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
       Absent =>
-        emit_ident(name: name, target: Rust)
+        emit_ident(name: leaf, target: Rust)
     }
   } else {
     emit_ident(name: name, target: Rust)
