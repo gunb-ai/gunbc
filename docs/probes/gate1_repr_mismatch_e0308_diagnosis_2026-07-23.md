@@ -77,3 +77,17 @@ Extend Gate-1 text-carrier grounding to the type-alias emit path (`rust_string_g
 | `v2_std_text` String alias | `Rc<FreeMonoid<Char>>` | `std::string::String` | grounded |
 
 Remaining E0308 is secondary buckets (Vector/FreeMonoid ~25%, Optional/Option ~21%, RC_WRAP ~6%) — staged successors, not systemic fork.
+
+## Successor lanes (pre-scoped ratchet — do not re-diagnose from scratch)
+
+Each remaining bucket is the **same construction-grounding move family** as text (#5428: native form == modeled form at the emit seam), but each names its **own carrier authority** — not one mega-fix:
+
+| Bucket | ~share | Grounding shape | Authority / seam |
+|---:|---:|---|---|
+| COLLECTION Vector↔FreeMonoid | 10% | Type-alias + collection-repr choice (`TargetCollectionRealization`; text carrier is the Char→String special case already in `06_translate`) | `project_*_collection_type_node` + `rust.dag` realization rows |
+| OPTIONAL Optional↔Option | 7% | Type-alias + use-site: modeled `Optional<T>` → native `Option<T>` | Mirror `is_host_text_carrier_type` pattern for Optional |
+| RC_WRAP `Option<T>` vs `Rc<Option<T>>` | 2% | **Wrap-decision** grounding (ownership facts), not type-alias alone | `wrap_decision_predicate` (#6776) — struct-field emission |
+| OWNERSHIP Node vs `Rc<Node>` | 1% | Same wrap-decision family | `wrap_decision_predicate` |
+| DIAG / WITNESS residue | ~6% | Typed diagnostics + Witness param alignment — separate axes, not carrier alias | Per-class rows after carrier ratchet |
+
+**Ratchet order:** text (this PR) → collection → Optional → wrap-decision residue. E0433 import-closure (#7125) is a parallel wall, not an E0308 grounding.
