@@ -13060,6 +13060,45 @@ pub fn optional_pattern_unknown_parent_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn variant_pattern_dotted_qualification_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the dotted-render class in PATTERN position (sibling of alias_rhs_qualified_name_routing_note, which covers TYPE position). A namespace-QUALIFIED variant/parent name in a match pattern (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent_enum from annotate_pattern_parent_enums's authored_name_at) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Rust pattern position never needs a crate::-qualified path (only import-line synthesis, a separate seam, brings the bare enum into scope) so the fix is simpler than alias_rhs: route both the variant name and the resolved parent through qualified_last_segment (v1.std.core, the same single authority) via variant_pattern_qualified_path, shared by emit_variant_pattern and emit_variant_pattern_rc_aware so the dotted-render fix is not forked a third time. Every already-bare pattern renders exactly as before (qualified_last_segment is the identity on an unqualified name).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn variant_pattern_qualified_path(
+    rust_name: String,
+    resolved_parent: Option<String>,
+) -> String {
+    match resolved_parent.clone() {
+        Some(parent) => {
+            let parent_leaf = qualified_last_segment(parent.clone());
+            if (parent_leaf.clone() == "Witness".to_string()) {
+                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(parent_leaf.clone(), "::".to_string()),
+                    rust_name.clone(),
+                )
+            }
+        }
+        None => rust_name.clone(),
+    }
+}
+
+pub fn variant_pattern_shape_key(rust_name: String, resolved_parent: Option<String>) -> String {
+    match resolved_parent.clone() {
+        Some(parent) => v1_rt::concat(
+            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
+            rust_name.clone(),
+        ),
+        None => rust_name.clone(),
+    }
+}
+
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
@@ -13071,41 +13110,30 @@ pub fn emit_variant_pattern(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let bare_name = qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
-            name.clone(),
+            bare_name.clone(),
             parent_enum.clone(),
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant = (is_optional_variant_name(name.clone())
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
             && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
-            if (name.clone() == "Present".to_string()) {
+            if (bare_name.clone() == "Present".to_string()) {
                 "Some".to_string()
             } else {
                 "None".to_string()
             }
         } else {
-            name.clone()
+            bare_name.clone()
         };
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            match resolved_parent.clone() {
-                Some(parent) => {
-                    if (parent.clone() == "Witness".to_string()) {
-                        v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
-                    } else {
-                        v1_rt::concat(
-                            v1_rt::concat(parent.clone(), "::".to_string()),
-                            rust_name.clone(),
-                        )
-                    }
-                }
-                None => rust_name.clone(),
-            }
+            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
         };
-        if ((optional_variant.clone() && (name.clone() == "Present".to_string()))
+        if ((optional_variant.clone() && (bare_name.clone() == "Present".to_string()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -13142,7 +13170,7 @@ pub fn emit_variant_pattern(
                             {
                                 let fb_pat = field_binding_pattern(fb.clone());
                                 let pos_path = v1_rt::rc_list_push(
-                                    v1_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                    v1_rt::rc_list_push(path_prefix.clone(), bare_name.clone()),
                                     "0".to_string(),
                                 );
                                 let bind_name = pattern_string_binding_name(pos_path.clone());
@@ -13158,7 +13186,7 @@ pub fn emit_variant_pattern(
                                     {
                                         let payload_scrut = positional_payload_scrut_type(
                                             resolved_parent.clone(),
-                                            name.clone(),
+                                            bare_name.clone(),
                                             fb.clone(),
                                             emit_info.clone(),
                                             source_indices.clone(),
@@ -13192,7 +13220,7 @@ pub fn emit_variant_pattern(
                                             pattern_string_binding_name(v1_rt::rc_list_push(
                                                 v1_rt::rc_list_push(
                                                     path_prefix.clone(),
-                                                    name.clone(),
+                                                    bare_name.clone(),
                                                 ),
                                                 fb_name.clone(),
                                             ));
@@ -13214,7 +13242,7 @@ pub fn emit_variant_pattern(
                                             v1_rt::rc_list_push(
                                                 v1_rt::rc_list_push(
                                                     path_prefix.clone(),
-                                                    name.clone(),
+                                                    bare_name.clone(),
                                                 ),
                                                 fb_name.clone(),
                                             ),
@@ -13249,13 +13277,8 @@ pub fn emit_variant_pattern(
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
                     {
-                        let shape_key = match resolved_parent.clone() {
-                            Some(parent) => v1_rt::concat(
-                                v1_rt::concat(parent.clone(), "::".to_string()),
-                                name.clone(),
-                            ),
-                            None => name.clone(),
-                        };
+                        let shape_key =
+                            variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
                         let is_positional = (v1_rt::set_contains(
                             &emit_info.positional_payload_variants.clone(),
                             shape_key.clone(),
@@ -13296,13 +13319,10 @@ pub fn emit_variant_pattern(
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
                             {
-                                let shape_key2 = match resolved_parent.clone() {
-                                    Some(parent) => v1_rt::concat(
-                                        v1_rt::concat(parent.clone(), "::".to_string()),
-                                        name.clone(),
-                                    ),
-                                    None => name.clone(),
-                                };
+                                let shape_key2 = variant_pattern_shape_key(
+                                    rust_name.clone(),
+                                    resolved_parent.clone(),
+                                );
                                 let is_positional2 = (v1_rt::set_contains(
                                     &emit_info.positional_payload_variants.clone(),
                                     shape_key2.clone(),
@@ -13345,7 +13365,7 @@ pub fn emit_variant_pattern(
                                                             v1_rt::rc_list_push(
                                                                 v1_rt::rc_list_push(
                                                                     path_prefix.clone(),
-                                                                    name.clone(),
+                                                                    bare_name.clone(),
                                                                 ),
                                                                 "0".to_string(),
                                                             )
@@ -13353,7 +13373,7 @@ pub fn emit_variant_pattern(
                                                             v1_rt::rc_list_push(
                                                                 v1_rt::rc_list_push(
                                                                     path_prefix.clone(),
-                                                                    name.clone(),
+                                                                    bare_name.clone(),
                                                                 ),
                                                                 fb_name.clone(),
                                                             )
@@ -13388,7 +13408,7 @@ pub fn emit_variant_pattern(
                                                                 v1_rt::rc_list_push(
                                                                     v1_rt::rc_list_push(
                                                                         path_prefix.clone(),
-                                                                        name.clone(),
+                                                                        bare_name.clone(),
                                                                     ),
                                                                     "0".to_string(),
                                                                 )
@@ -13396,7 +13416,7 @@ pub fn emit_variant_pattern(
                                                                 v1_rt::rc_list_push(
                                                                     v1_rt::rc_list_push(
                                                                         path_prefix.clone(),
-                                                                        name.clone(),
+                                                                        bare_name.clone(),
                                                                     ),
                                                                     fb_name.clone(),
                                                                 )
@@ -13496,7 +13516,9 @@ pub fn analyze_rc_pattern(
                 field_bindings: fbs,
                 ..
             } => {
-                if (is_optional_variant_name(n.clone()) && is_optional_parent(parent_enum.clone()))
+                let bare_n = qualified_last_segment(n.clone());
+                if (is_optional_variant_name(bare_n.clone())
+                    && is_optional_parent(parent_enum.clone()))
                 {
                     if ((fbs.clone().len() as i64) == 1) {
                         match fbs.clone().first().cloned() {
@@ -13510,7 +13532,7 @@ pub fn analyze_rc_pattern(
                                 );
                                 Rc::new(RcPatternAnalysis {
                                     matches_rc_variant: false,
-                                    matches_option_rc_variant: ((n.clone()
+                                    matches_option_rc_variant: ((bare_n.clone()
                                         == "Present".to_string())
                                         && inner.matches_rc_variant.clone()),
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
@@ -13525,7 +13547,7 @@ pub fn analyze_rc_pattern(
                 } else {
                     {
                         let resolved_parent = pattern_parent_enum(
-                            n.clone(),
+                            bare_n.clone(),
                             parent_enum.clone(),
                             scrut_type.clone(),
                             emit_info.type_summaries.clone(),
@@ -13548,7 +13570,7 @@ pub fn analyze_rc_pattern(
                                         let inner_scrut = if (fb_name.clone() == "0".to_string()) {
                                             positional_payload_scrut_type(
                                                 resolved_parent.clone(),
-                                                n.clone(),
+                                                bare_n.clone(),
                                                 fb.clone(),
                                                 emit_info.clone(),
                                                 source_indices.clone(),
@@ -13725,41 +13747,30 @@ pub fn emit_variant_pattern_rc_aware(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let bare_name = qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
-            name.clone(),
+            bare_name.clone(),
             parent_enum.clone(),
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant = (is_optional_variant_name(name.clone())
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
             && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
-            if (name.clone() == "Present".to_string()) {
+            if (bare_name.clone() == "Present".to_string()) {
                 "Some".to_string()
             } else {
                 "None".to_string()
             }
         } else {
-            name.clone()
+            bare_name.clone()
         };
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            match resolved_parent.clone() {
-                Some(parent) => {
-                    if (parent.clone() == "Witness".to_string()) {
-                        v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
-                    } else {
-                        v1_rt::concat(
-                            v1_rt::concat(parent.clone(), "::".to_string()),
-                            rust_name.clone(),
-                        )
-                    }
-                }
-                None => rust_name.clone(),
-            }
+            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
         };
-        if ((optional_variant.clone() && (name.clone() == "Present".to_string()))
+        if ((optional_variant.clone() && (bare_name.clone() == "Present".to_string()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -13804,7 +13815,7 @@ pub fn emit_variant_pattern_rc_aware(
                             {
                                 let fb_pat = field_binding_pattern(fb.clone());
                                 let pos_path = v1_rt::rc_list_push(
-                                    v1_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                    v1_rt::rc_list_push(path_prefix.clone(), bare_name.clone()),
                                     "0".to_string(),
                                 );
                                 let bind_name = pattern_string_binding_name(pos_path.clone());
@@ -13820,7 +13831,7 @@ pub fn emit_variant_pattern_rc_aware(
                                     {
                                         let payload_scrut = positional_payload_scrut_type(
                                             resolved_parent.clone(),
-                                            name.clone(),
+                                            bare_name.clone(),
                                             fb.clone(),
                                             emit_info.clone(),
                                             source_indices.clone(),
@@ -13862,7 +13873,7 @@ pub fn emit_variant_pattern_rc_aware(
                                             pattern_string_binding_name(v1_rt::rc_list_push(
                                                 v1_rt::rc_list_push(
                                                     path_prefix.clone(),
-                                                    name.clone(),
+                                                    bare_name.clone(),
                                                 ),
                                                 fb_name.clone(),
                                             ));
@@ -13903,7 +13914,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                 v1_rt::rc_list_push(
                                                     v1_rt::rc_list_push(
                                                         path_prefix.clone(),
-                                                        name.clone(),
+                                                        bare_name.clone(),
                                                     ),
                                                     fb_name.clone(),
                                                 ),
@@ -13943,13 +13954,8 @@ pub fn emit_variant_pattern_rc_aware(
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
                     {
-                        let shape_key = match resolved_parent.clone() {
-                            Some(parent) => v1_rt::concat(
-                                v1_rt::concat(parent.clone(), "::".to_string()),
-                                name.clone(),
-                            ),
-                            None => name.clone(),
-                        };
+                        let shape_key =
+                            variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
                         let is_positional = (v1_rt::set_contains(
                             &emit_info.positional_payload_variants.clone(),
                             shape_key.clone(),
@@ -13990,13 +13996,10 @@ pub fn emit_variant_pattern_rc_aware(
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
                             {
-                                let shape_key2 = match resolved_parent.clone() {
-                                    Some(parent) => v1_rt::concat(
-                                        v1_rt::concat(parent.clone(), "::".to_string()),
-                                        name.clone(),
-                                    ),
-                                    None => name.clone(),
-                                };
+                                let shape_key2 = variant_pattern_shape_key(
+                                    rust_name.clone(),
+                                    resolved_parent.clone(),
+                                );
                                 let is_positional2 = (v1_rt::set_contains(
                                     &emit_info.positional_payload_variants.clone(),
                                     shape_key2.clone(),
@@ -14039,7 +14042,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                             v1_rt::rc_list_push(
                                                                 v1_rt::rc_list_push(
                                                                     path_prefix.clone(),
-                                                                    name.clone(),
+                                                                    bare_name.clone(),
                                                                 ),
                                                                 "0".to_string(),
                                                             )
@@ -14047,7 +14050,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                             v1_rt::rc_list_push(
                                                                 v1_rt::rc_list_push(
                                                                     path_prefix.clone(),
-                                                                    name.clone(),
+                                                                    bare_name.clone(),
                                                                 ),
                                                                 fb_name.clone(),
                                                             )
@@ -14096,7 +14099,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                                     v1_rt::rc_list_push(
                                                                         v1_rt::rc_list_push(
                                                                             path_prefix.clone(),
-                                                                            name.clone(),
+                                                                            bare_name.clone(),
                                                                         ),
                                                                         "0".to_string(),
                                                                     )
@@ -14104,7 +14107,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                                     v1_rt::rc_list_push(
                                                                         v1_rt::rc_list_push(
                                                                             path_prefix.clone(),
-                                                                            name.clone(),
+                                                                            bare_name.clone(),
                                                                         ),
                                                                         fb_name.clone(),
                                                                     )
@@ -14177,7 +14180,9 @@ pub fn rc_pattern_preludes(
                 field_bindings: fbs,
                 ..
             } => {
-                if (is_optional_variant_name(n.clone()) && is_optional_parent(parent_enum.clone()))
+                let bare_n = qualified_last_segment(n.clone());
+                if (is_optional_variant_name(bare_n.clone())
+                    && is_optional_parent(parent_enum.clone()))
                 {
                     if ((fbs.clone().len() as i64) == 1) {
                         match fbs.clone().first().cloned() {
@@ -14206,7 +14211,7 @@ pub fn rc_pattern_preludes(
                 } else {
                     {
                         let resolved_parent = pattern_parent_enum(
-                            n.clone(),
+                            bare_n.clone(),
                             parent_enum.clone(),
                             "".to_string(),
                             emit_info.type_summaries.clone(),
@@ -14224,7 +14229,7 @@ pub fn rc_pattern_preludes(
                                             {
                                                 let payload_scrut = positional_payload_scrut_type(
                                                     resolved_parent.clone(),
-                                                    n.clone(),
+                                                    bare_n.clone(),
                                                     fb.clone(),
                                                     emit_info.clone(),
                                                     source_indices.clone(),
@@ -14266,7 +14271,7 @@ pub fn rc_pattern_preludes(
                                                                     v1_rt::rc_list_push(
                                                                         v1_rt::rc_list_push(
                                                                             Rc::new(vec![]),
-                                                                            n.clone(),
+                                                                            bare_n.clone(),
                                                                         ),
                                                                         fb_name.clone(),
                                                                     ),
@@ -19277,7 +19282,7 @@ pub fn arm_resolved_parent_enum(
             parent_enum: pe,
             ..
         } => pattern_parent_enum(
-            n.clone(),
+            qualified_last_segment(n.clone()),
             pe.clone(),
             scrut_type.clone(),
             type_summaries.clone(),
@@ -20610,7 +20615,15 @@ pub fn emit_typed_record_lit(
                 }
             }
         };
-        match qualified_name.clone() {
+        let bare_qualified_name = match qualified_name.clone() {
+            Some(qn) => Some(qualified_last_segment(qn.clone())),
+            None => None,
+        };
+        let bare_parent_enum = match parent_enum.clone() {
+            Some(pe) => Some(qualified_last_segment(pe.clone())),
+            None => None,
+        };
+        match bare_qualified_name.clone() {
             None => {
                 let is_product = is_product_type(resolved_type.clone());
                 if (is_product.clone() && (resolved_type.ident_span.clone() == None)) {
@@ -20878,7 +20891,7 @@ pub fn emit_typed_record_lit(
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
-                    parent_enum.clone(),
+                    bare_parent_enum.clone(),
                     resolved_type.clone(),
                     emit_info.clone(),
                     si.clone(),
@@ -20891,7 +20904,10 @@ pub fn emit_typed_record_lit(
                         } else {
                             false
                         };
-                        let rt_name = authored_name_at(si.clone(), resolved_type.clone());
+                        let rt_name = qualified_last_segment(authored_name_at(
+                            si.clone(),
+                            resolved_type.clone(),
+                        ));
                         if (((((resolved_type.ident_span.clone() != None)
                             && (rt_name.clone() != tn.clone()))
                             && !rt_is_type_var.clone())
@@ -20904,7 +20920,7 @@ pub fn emit_typed_record_lit(
                         {
                             Some(rt_name.clone())
                         } else {
-                            parent_enum.clone()
+                            bare_parent_enum.clone()
                         }
                     }
                 };
@@ -20986,7 +21002,7 @@ pub fn emit_typed_record_lit(
                     }
                 }
                 let optional_variant = (is_optional_variant_name(tn.clone())
-                    && (is_optional_parent(parent_enum.clone())
+                    && (is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone())));
                 let rust_tn = if optional_variant.clone() {
                     if (tn.clone() == "Present".to_string()) {
@@ -21063,7 +21079,7 @@ pub fn emit_typed_record_lit(
                                         let val_str = emit_field_value_with_context(
                                             f_value.clone(),
                                             resolved_type.clone(),
-                                            type_name.clone(),
+                                            bare_qualified_name.clone(),
                                             "0".to_string(),
                                             registry.clone(),
                                             scope.clone(),
@@ -21112,7 +21128,7 @@ pub fn emit_typed_record_lit(
                                                 let val_str = emit_field_value_with_context(
                                                     f_value.clone(),
                                                     resolved_type.clone(),
-                                                    type_name.clone(),
+                                                    bare_qualified_name.clone(),
                                                     f_name.clone(),
                                                     registry.clone(),
                                                     scope.clone(),
