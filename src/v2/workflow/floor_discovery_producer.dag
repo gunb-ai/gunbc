@@ -321,22 +321,21 @@ fn floor_discovery_process_dag_file(
   }
 }
 
+fn floor_discovery_child_is_directory_candidate(name: String) -> Bool {
+  (name != "") && !string_contains(s: name, pattern: ".")
+}
+
 fn floor_discovery_walk_dir(
   state: FloorDiscoveryWalkState,
   dir_path: String,
-  exclude_substrings: List<String>,
-  list_failure_is_fatal: Bool
+  exclude_substrings: List<String>
 ) -> FloorDiscoveryWalkState {
   let listed = Filesystem.List(path: dir_path)
   if !listed.success {
-    if list_failure_is_fatal {
-      FloorDiscoveryWalkState {
-        rows: state.rows,
-        walk_failures: state.walk_failures + 1,
-        sidecar_violations: state.sidecar_violations
-      }
-    } else {
-      state
+    FloorDiscoveryWalkState {
+      rows: state.rows,
+      walk_failures: state.walk_failures + 1,
+      sidecar_violations: state.sidecar_violations
     }
   } else if listed.entries == "" {
     state
@@ -355,13 +354,14 @@ fn floor_discovery_walk_dir(
               repo_path: child,
               exclude_substrings: exclude_substrings
             )
-          } else {
+          } else if floor_discovery_child_is_directory_candidate(name: name) {
             floor_discovery_walk_dir(
               state: acc,
               dir_path: child,
-              exclude_substrings: exclude_substrings,
-              list_failure_is_fatal: false
+              exclude_substrings: exclude_substrings
             )
+          } else {
+            acc
           }
         }
       }
@@ -504,8 +504,7 @@ fn discover_floor_corpus_rows_from_host_facts(
           floor_discovery_walk_dir(
             state: acc,
             dir_path: root,
-            exclude_substrings: exclude_substrings,
-            list_failure_is_fatal: true
+            exclude_substrings: exclude_substrings
           )
         }
       ),
@@ -538,6 +537,6 @@ fn floor_filename_hygiene_refusal_for_paths(
   )
 }
 
-data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. Listing failure is FloorDiscoveryRefused, never an empty roster."
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. Interior directory candidates (basename has no '.') increment walk_failures on list failure; dotted basenames are skipped as non-dag files. Listing failure is FloorDiscoveryRefused, never an empty roster."
 
 data floor_discovery_live_tree_disposition_dissolve_on: String = "dissolve-on: floor_discovery_live_tree_disposition — producer reads the entry's `data live_tree_disposition: LiveTreeDisposition = …` row (first match; undeclared = ReadsLiveTree). Malformed/duplicate declaration refusal and effect-reach reclassification remain on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold)."
