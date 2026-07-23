@@ -6,7 +6,7 @@ data roster_registry_taxonomy_note: String = "Group-of-units standard representa
 
 data roster_registry_enforcement_intent_convergence_note: String = "Convergence, not implementation: the enforcement-intent thread (DESIGN open thread 'enforcement intent — ask once, compile forever'; docs/plans/enforcement-intent-design.md) absorbs this registry when StandingIntent / LensContract land — its subject_roster IS this concept (a registered group of units with declared membership provenance). Do not build that machinery here; this carrier stays the minimal data authority and the lens stays a data-shape check until that thread lands and this registry becomes its subject_roster carrier."
 
-data roster_registry_visibility_note: String = "Honesty bound: the lens sees only ENROLLED registrations. An unregistered bare list elsewhere in the tree is invisible to it — until enforcement-intent lands, unregistered nickname lists are caught at review by the group-5a rule (registry admission is the review bar for any new 'pool'/'class'/'lane'/'family' String key), not by this lens. Known unregistered residue, walled here so it is counted: NON_FOLD_RESIDUE_ROSTER (src/v1/stage0/src/cli_run.rs, a host-side &[&str] whose per-row reasons and triggers exist as comments) — its re-home to a .dag carrier the host reads through is the named follow-up; a DeclarationRef cannot name a Rust const, so it enrolls when the carrier moves."
+data roster_registry_visibility_note: String = "Honesty bound: the lens sees only ENROLLED registrations. An unregistered bare list elsewhere in the tree is invisible to it — until enforcement-intent lands, unregistered nickname lists are caught at review by the group-5a rule (registry admission is the review bar for any new 'pool'/'class'/'lane'/'family' String key), not by this lens. The one residue this note formerly walled — NON_FOLD_RESIDUE_ROSTER, a host-side Rust const whose per-row reasons and triggers lived as comments — is re-homed: the rows are gunbc.non_fold_residue.non_fold_residue_frontier (typed FrontierRow, host census reads through non_fold_residue_units_from_module_source in cli_run.rs) and the roster is enrolled below. No known unregistered residue remains."
 
 data roster_registry_upcoming_targets_note: String = "Walls for in-flight lanes (registry admission is the rule): (a) the bulk-native flip's 744 frontier rows MUST land ByDerivation — the native_routing_frontier registration below is the template (subject-keyed, closure-derived membership, equivalence receipt); (b) chore-remedy classification is already by-construction (subject types) and needs no registration; (c) the deploy lease/generation guard reuses Grant/containment-prefix plus git ancestry — no new group concept, nothing to enroll; (d) machine-shape scheduling and CI-ergonomics lanes: any 'pool'/'class'/'lane' String key at review enrolls here or is rejected as a nickname; (e) the long/ dir lane is BLESSED Form-C — storage grain WITH a construction backstop (the 5-second eval deadline makes an over-budget fast-lane witness unwritable-in-place) — registered ByContainment below, not restructured."
 
@@ -132,6 +132,14 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note"),
     unit_kind: "long-lane witness file (dag/test/claim/long/, src/v2/test/claim/long/)",
     membership: ByContainment
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.non_fold_residue", decl_name: "non_fold_residue_frontier"),
+    unit_kind: "non-fold-residue site key (path::fn)",
+    membership: DeclaredFrontier {
+      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6); per-row reasons and dissolution triggers in-row via shared class strings, dated landing receipts preserved; the host census (nfr_residue_sites) reads the rows through the record-row reader",
+      dissolve_on: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the host scan and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)"
+    }
   }
 ]
 
