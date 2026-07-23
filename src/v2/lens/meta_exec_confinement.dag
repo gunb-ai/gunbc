@@ -16,6 +16,7 @@ import v2.std.algebra {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 
 data meta_exec_confinement_law: String = "Meta-exec confinement (shell→intent Wave A1): shell.Exec.Run/.Check is the honest bottom bash transport — kept, not deleted — but sequestered to realization. extdeps.shell.exec is module-isolated from extdeps.shell; only realization-edge paths may import it without a shrinking roster entry. Intent-layer shell.Exec import is a typed leak; bare String at the Run script position is separately banned by host_language_transport_script once TransportScript brands the input. Dissolves when every roster row migrates off direct shell.Exec and typed host_effect_apply / emit(intent,Bash) is the only path from intent."
 
@@ -28,15 +29,47 @@ data meta_exec_realization_edge_path_prefixes: List<String> = [
   "dag/test/claim/"
 ]
 
-data meta_exec_confinement_exception_roster: List<String> = [
-  "dag/gunbc/ci_deploy_target_host.dag",
-  "dag/gunbc/host_converge_slice1.dag",
-  "dag/gunbc/host_runner_memory_cap_verify.dag",
-  "dag/gunbc/host_identity_adopt.dag",
-  "dag/gunbc/host_identity_assimilation.dag",
-  "dag/gunbc/srv3_install_diagnostic_checklist.dag",
-  "dag/gunbc/tools/review.dag"
+data meta_exec_confinement_exception_roster: List<FrontierRow> = [
+  frontier_row(
+    unit: "dag/gunbc/ci_deploy_target_host.dag",
+    reason: "deploy-target host probe still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_converge_slice1.dag",
+    reason: "host-converge slice still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_runner_memory_cap_verify.dag",
+    reason: "runner memory-cap verification still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_identity_adopt.dag",
+    reason: "host-identity adoption still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_identity_assimilation.dag",
+    reason: "host-identity assimilation still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/srv3_install_diagnostic_checklist.dag",
+    reason: "srv3 install diagnostic checklist still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/tools/review.dag",
+    reason: "review tooling still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  )
 ]
+
+fn meta_exec_confinement_exception_paths() -> List<String> {
+  frontier_units(rows: meta_exec_confinement_exception_roster)
+}
 
 type MetaExecConfinementLeak {
   path: String
@@ -113,11 +146,11 @@ fn meta_exec_confinement_holds(
 }
 
 fn meta_exec_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
-  meta_exec_leak_count(facts: facts, roster: meta_exec_confinement_exception_roster)
+  meta_exec_leak_count(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
 fn meta_exec_confinement_holds_canonical(facts: List<LayerImportFact>) -> Bool {
-  meta_exec_confinement_holds(facts: facts, roster: meta_exec_confinement_exception_roster)
+  meta_exec_confinement_holds(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
 data meta_exec_consumer_scan_roots: List<String> = [
@@ -200,14 +233,14 @@ fn meta_exec_roster_sound(
 
 fn meta_exec_roster_stale_count_live(scan_roots: List<String>) -> Int {
   meta_exec_roster_stale_count(
-    roster: meta_exec_confinement_exception_roster,
+    roster: meta_exec_confinement_exception_paths(),
     live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }
 
 fn meta_exec_roster_sound_live(scan_roots: List<String>) -> Bool {
   meta_exec_roster_sound(
-    roster: meta_exec_confinement_exception_roster,
+    roster: meta_exec_confinement_exception_paths(),
     live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }
