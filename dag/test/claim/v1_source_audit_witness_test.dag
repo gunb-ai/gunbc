@@ -101,6 +101,7 @@ test fn emit_handles_for_loop() -> Bool {
 
 test fn emit_generates_cargo_toml() -> Bool {
   src_has(emit_rust_path, "emit_cargo_toml")
+    && src_has(emit_rust_path, "name: \"libc\"")
 }
 
 test fn emit_has_tco_support() -> Bool {
