@@ -1,0 +1,66 @@
+module v2.workflow.frontier_probe_survey_transport
+
+import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import tools.host_prelude {
+  ClaimRun,
+  WitnessBinReady,
+  WitnessBinRefused,
+  run_gunbc_claims,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
+}
+
+data survey_source_root: String = "src/v2"
+data survey_manifest_dir: String = "target/frontier-probe-survey"
+data survey_manifest_path: String = "target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag"
+data survey_test_entry: String = "src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag"
+data survey_witness: String = "compiler_frontier_per_module_probe_survey_holds"
+data survey_gap_witness: String = "compiler_frontier_gap_clustering_common_root_at_blocker_class_holds"
+
+data frontier_probe_survey_transport_scaffold_note: String = "SCAFFOLD — see v2.compiler.self_host.frontier_probe_survey::frontier_probe_survey_transport_scaffold_note. Host bin reads `compiler_frontier_sweep_order` from frontier.dag; dissolves on `^migrate_when_frontier_per_module_probe_receipt_binds` (gunbc.plans.wave2_prep_design census carrier)."
+
+fn survey_manifest_emit_args(manifest_path: String) -> List<String> {
+  [
+    "--source-root", survey_source_root,
+    "--emit-survey-manifest", manifest_path,
+    "--survey-dir", survey_manifest_dir
+  ]
+}
+
+func run_frontier_probe_survey_gate_ready(root: String) -> Bool {
+    let target_ready = shell.Mkdir.Parents(path: concat(root, concat("/", survey_manifest_dir)))
+    if target_ready.success {
+      let emitted = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: witness_bin_release_path(root: root, bin_name: "frontier_probe_survey"),
+        args: survey_manifest_emit_args(manifest_path: survey_manifest_path)
+      )
+      if emitted.success {
+        run_gunbc_claims(
+          source_roots: concat(witness_layer_roots, [survey_manifest_dir]),
+          claims: [
+            ClaimRun { entry: survey_test_entry, function: survey_witness },
+            ClaimRun { entry: survey_test_entry, function: survey_gap_witness }
+          ]
+        )
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+}
+
+func run_frontier_probe_survey_gate() -> Bool {
+  let root = git.Core.Toplevel()
+  let survey_bin = witness_bin(var_name: "FRONTIER_PROBE_SURVEY", bin_name: "frontier_probe_survey")
+  match witness_bin_ensure_built_typed(root: root.path, bin: survey_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } => run_frontier_probe_survey_gate_ready(root: root.path)
+  }
+}

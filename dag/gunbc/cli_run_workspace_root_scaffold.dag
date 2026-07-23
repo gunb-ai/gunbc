@@ -1,0 +1,40 @@
+module gunbc.cli_run_workspace_root_scaffold
+
+
+data cli_run_workspace_root_discovery_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "workspace_root_from",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_workspace_root_discovery_dissolve_trigger: String = "🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust (#6484 .git-ancestor kernel); DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely"
+
+data cli_run_workspace_root_hand_rust_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+
+data cli_run_workspace_root_discovery_loc_delta_net: Int = 12
+
+data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = "from_subdirectory_matches_git_toplevel"
+
+data cli_run_workspace_root_discovery_test_discriminator_cwd_ascent: String = "refuses_path_outside_git_checkout"
+
+data cli_run_source_root_anchor_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "try_anchor_source_root",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_source_root_anchor_dissolve_trigger: String = "🟡 dissolve-on: try_anchor_source_root — declared layer/pool-root anchoring in HAND-Rust while dag/compiler is modeled-before-implemented (§6 model-first), so root absence is a legitimate state the walk skips LOUDLY (counted stderr line per root), never a mid-floor panic; CLI-provided roots keep the panicking anchor_source_root contract. DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → the roots walk is GENERATED and absence becomes a typed, located, counted diagnostic at the roster layer) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path handling entirely"
+
+data cli_run_source_root_anchor_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+
+data cli_run_source_root_anchor_loc_delta_net: Int = 43
+
+data cli_run_source_root_anchor_test_discriminator_present_root: String = "try_anchor_source_root_resolves_declared_present_root"
+
+data cli_run_source_root_anchor_test_discriminator_absent_root: String = "try_anchor_source_root_skips_declared_absent_root"

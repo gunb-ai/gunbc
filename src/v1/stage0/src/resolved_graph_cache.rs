@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -7,7 +7,10 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_compiler_infer::rewire_func_env_parent_links;
+use crate::v1_compiler_infer::{
+    rewire_func_env_parent_links, rewire_type_env_import_str_binding_identity,
+    rewire_type_env_parent_links,
+};
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
@@ -60,6 +63,34 @@ struct CachePayload {
     source_indices: HashMap<String, NewlineIndex>,
 }
 
+fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for key in keys {
+                out.insert(
+                    key.clone(),
+                    sort_json_value(map.get(&key).expect("key").clone()),
+                );
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sort_json_value).collect())
+        }
+        other => other,
+    }
+}
+
+fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
+    let value =
+        serde_json::to_value(payload).map_err(|e| format!("cache payload value encode: {e}"))?;
+    serde_json::to_vec(&sort_json_value(value))
+        .map_err(|e| format!("cache payload byte encode: {e}"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheWriteOutcome {
     Written,
@@ -81,6 +112,23 @@ pub enum CacheWriteOutcome {
 /// realization must stream, not buffer, before it is safe to default on.)
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
+}
+
+thread_local! {
+    /// Successful store decodes on this thread. With the process share installed
+    /// in front of the store (the ladder's tier ordering: share serves repeats,
+    /// store serves the first touch), decodes == distinct subjects touched — a
+    /// second decode of one subject within a process is the inversion coming
+    /// back. Disclosed so the frequency is observable, never absorbed.
+    static DECODE_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+pub fn decode_count() -> u64 {
+    DECODE_COUNT.with(|c| c.get())
+}
+
+fn record_decode() {
+    DECODE_COUNT.with(|c| c.set(c.get() + 1));
 }
 
 fn extract_module_path(content: &str) -> Option<String> {
@@ -113,7 +161,12 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
-fn transform_content_digest() -> Hash {
+/// Content hash of the running compiler binary — the compiler-identity key term.
+/// One authority for every key that must invalidate across a seed rebuild: the
+/// resolved-graph subject digest (below) and the typed-module content key
+/// (`std.interface_summary.typed_module_key`, cli_run's typed store) both consume
+/// this digest rather than re-deriving the executable read.
+pub fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
@@ -271,13 +324,17 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules =
+        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
         diagnostics: decoded.diagnostics.clone(),
         emit_graph_info: decoded.emit_graph_info.clone(),
     });
+    record_decode();
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
@@ -428,8 +485,7 @@ pub fn build_valid_artifact_bytes(
         graph: graph.clone(),
         source_indices: si_plain,
     };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
+    let payload_bytes = encode_cache_payload(&payload)?;
     let content_digest = payload_content_digest(&payload_bytes);
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
@@ -453,7 +509,7 @@ pub fn serialize_fixture_payload_for_test(
         graph: graph.clone(),
         source_indices: si_plain,
     };
-    serde_json::to_vec(&payload).map_err(|e| format!("fixture payload encode: {e}"))
+    encode_cache_payload(&payload).map_err(|e| format!("fixture payload encode: {e}"))
 }
 
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
@@ -467,7 +523,10 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules =
+        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
             modules,
@@ -494,6 +553,322 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
         }
     }
     Ok(())
+}
+
+/// NodeKeyedGraphArtifact codec kernel — the interned content-keyed node table.
+///
+/// SEED-RETAINED (DESIGN §7): declared by the disposition row
+/// `node_keyed_graph_codec_seed_disposition` + `node_keyed_graph_codec_seed_note`
+/// in `v2.workflow.realization_runner` — hand-Rust because byte-level IO and Rc
+/// pointer identity are realization facts the substrate cannot express today.
+/// dissolve-on: §4 one-grammar-both-directions emission rows extended to a
+/// binary medium (bytes carrier + row table for this format) — the kernel then
+/// becomes row-derived emission dispatched from the modeled schema and retires
+/// with the seed.
+///
+/// Modeled authority: `NodeKeyedGraphRow` / `NodeKeyedGraphArtifact` beside
+/// `NodeKeyedStore` in `v2.workflow.realization_runner` (the S2b store form).
+/// Codec ruling (settled 2026-07-10): a tree codec over the Rc-shared graph
+/// un-shares every shared subtree (`serde_json::to_vec` measured ~3.4GiB
+/// working set -> 17GiB encode at this cache's write path); serde-streaming
+/// and packed-binary-tree keep the unsharing. This kernel encodes each node
+/// exactly once, keyed by its content hash, children referenced by hash and
+/// never inline; the hash-consed single-pass decode rebuilds the sharing and
+/// refuses a forward or missing child ref, which makes an encoded cycle
+/// unrepresentable. Hash + row-local size + row land in ONE bottom-up walk —
+/// the transitive footprint is never a stored field (the .dag reachable-set
+/// fold is the single value-size authority). Hashes are the fnv1a64 authority
+/// (`bytes_identity_hash`/`hash_combine`; `std.content_hash` is the modeled
+/// surface on the same authority — no third surface).
+pub trait NodeKeyedGraphEncode: Sized {
+    /// Canonical bytes of the node's row-local payload (child positions excluded).
+    fn local_payload_bytes(&self) -> Vec<u8>;
+
+    /// Shared children, in canonical order.
+    fn graph_children(&self) -> Vec<Rc<Self>>;
+
+    /// Rebuild from the row-local payload plus the decoded (shared) children.
+    fn rebuild(local_payload: &[u8], children: Vec<Rc<Self>>) -> Result<Self, String>;
+}
+
+const GRAPH_ARTIFACT_MAGIC: &[u8; 8] = b"gunbngat";
+const GRAPH_ARTIFACT_FORMAT_VERSION: u32 = 1;
+const HASH_DIGEST_LEN: usize = 16;
+
+fn graph_row_content_hash(payload: &[u8], child_refs: &[Hash]) -> Hash {
+    let mut acc = v1_rt::hash_combine(
+        v1_rt::atom_identity_hash("node-keyed-graph-row-v1".to_string()),
+        v1_rt::bytes_identity_hash(payload),
+    );
+    for child in child_refs {
+        acc = v1_rt::hash_combine(acc, child.clone());
+    }
+    acc
+}
+
+/// One decoded row's facts, row-local only (the host projection the .dag size
+/// fold consumes: `encoded_length` == `payload.len()`, transitive footprint is
+/// derived by the fold, never stored here).
+pub struct NodeKeyedGraphRowFacts {
+    pub content_hash: Hash,
+    pub child_refs: Vec<Hash>,
+    pub payload: Vec<u8>,
+}
+
+struct GraphEncodeState {
+    rows: Vec<NodeKeyedGraphRowFacts>,
+    by_ptr: std::collections::HashMap<*const (), Hash>,
+    interned: std::collections::HashSet<Hash>,
+    in_progress: std::collections::HashSet<*const ()>,
+}
+
+fn graph_encode_node<T: NodeKeyedGraphEncode>(
+    root: &Rc<T>,
+    state: &mut GraphEncodeState,
+) -> Result<Hash, String> {
+    let mut stack: Vec<(Rc<T>, bool)> = vec![(root.clone(), false)];
+    while let Some((node, expanded)) = stack.pop() {
+        let ptr = Rc::as_ptr(&node) as *const ();
+        if state.by_ptr.contains_key(&ptr) {
+            continue;
+        }
+        if expanded {
+            let payload = node.local_payload_bytes();
+            let child_refs: Vec<Hash> = node
+                .graph_children()
+                .iter()
+                .map(|child| {
+                    let child_ptr = Rc::as_ptr(child) as *const ();
+                    state.by_ptr.get(&child_ptr).cloned().ok_or_else(|| {
+                        "graph encode: child left unhashed by post-order walk".to_string()
+                    })
+                })
+                .collect::<Result<_, String>>()?;
+            let content_hash = graph_row_content_hash(&payload, &child_refs);
+            if state.interned.insert(content_hash.clone()) {
+                state.rows.push(NodeKeyedGraphRowFacts {
+                    content_hash: content_hash.clone(),
+                    child_refs,
+                    payload,
+                });
+            }
+            state.by_ptr.insert(ptr, content_hash);
+        } else {
+            if state.in_progress.contains(&ptr) {
+                return Err(
+                    "graph encode: cycle detected — the node graph is not acyclic".to_string(),
+                );
+            }
+            state.in_progress.insert(ptr);
+            stack.push((node.clone(), true));
+            for child in node.graph_children() {
+                let child_ptr = Rc::as_ptr(&child) as *const ();
+                if !state.by_ptr.contains_key(&child_ptr) {
+                    stack.push((child, false));
+                }
+            }
+        }
+    }
+    state
+        .by_ptr
+        .get(&(Rc::as_ptr(root) as *const ()))
+        .cloned()
+        .ok_or_else(|| "graph encode: root left unhashed".to_string())
+}
+
+/// Encode `(store_node_hash, value_root)` entries as one interned table.
+/// Rows are emitted child-before-parent in first-completion order of a
+/// deterministic post-order walk, so re-encoding a decode of these bytes is
+/// byte-identical.
+pub fn node_keyed_graph_encode<T: NodeKeyedGraphEncode>(
+    entries: &[(Hash, Rc<T>)],
+) -> Result<Vec<u8>, String> {
+    let mut state = GraphEncodeState {
+        rows: Vec::new(),
+        by_ptr: std::collections::HashMap::new(),
+        interned: std::collections::HashSet::new(),
+        in_progress: std::collections::HashSet::new(),
+    };
+    let mut entry_pairs: Vec<(Hash, Hash)> = Vec::new();
+    for (store_node, value_root) in entries {
+        if !v1_rt::is_hash_digest(store_node) {
+            return Err(format!(
+                "graph encode: store node key {store_node:?} is not a 16-char hex hash"
+            ));
+        }
+        let root_hash = graph_encode_node(value_root, &mut state)?;
+        entry_pairs.push((store_node.clone(), root_hash));
+    }
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(GRAPH_ARTIFACT_MAGIC);
+    bytes.extend_from_slice(&GRAPH_ARTIFACT_FORMAT_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&(state.rows.len() as u64).to_le_bytes());
+    for row in &state.rows {
+        bytes.extend_from_slice(row.content_hash.as_bytes());
+        bytes.extend_from_slice(&(row.child_refs.len() as u64).to_le_bytes());
+        for child in &row.child_refs {
+            bytes.extend_from_slice(child.as_bytes());
+        }
+        bytes.extend_from_slice(&(row.payload.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&row.payload);
+    }
+    bytes.extend_from_slice(&(entry_pairs.len() as u64).to_le_bytes());
+    for (store_node, value_root) in &entry_pairs {
+        bytes.extend_from_slice(store_node.as_bytes());
+        bytes.extend_from_slice(value_root.as_bytes());
+    }
+    Ok(bytes)
+}
+
+struct GraphDecodeCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> GraphDecodeCursor<'a> {
+    fn take(&mut self, len: usize, what: &str) -> Result<&'a [u8], String> {
+        let end = self.offset.checked_add(len).ok_or_else(|| {
+            format!(
+                "graph decode: length overflow reading {what} at offset {}",
+                self.offset
+            )
+        })?;
+        if end > self.bytes.len() {
+            return Err(format!(
+                "graph decode: truncated artifact reading {what} at offset {} (need {len} bytes, have {})",
+                self.offset,
+                self.bytes.len() - self.offset
+            ));
+        }
+        let out = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(out)
+    }
+
+    fn take_u64(&mut self, what: &str) -> Result<u64, String> {
+        let raw = self.take(8, what)?;
+        Ok(u64::from_le_bytes(raw.try_into().expect("8-byte slice")))
+    }
+
+    fn take_hash(&mut self, what: &str) -> Result<Hash, String> {
+        let raw = self.take(HASH_DIGEST_LEN, what)?;
+        let hash = std::str::from_utf8(raw)
+            .map_err(|_| format!("graph decode: {what} is not utf8 at offset {}", self.offset))?
+            .to_string();
+        if !v1_rt::is_hash_digest(&hash) {
+            return Err(format!(
+                "graph decode: {what} {hash:?} is not a 16-char hex hash"
+            ));
+        }
+        Ok(hash)
+    }
+}
+
+/// Walk the artifact header + rows without rebuilding values: the row-local
+/// facts projection (size/topology), shared with the .dag fold semantics.
+pub fn node_keyed_graph_row_facts(bytes: &[u8]) -> Result<Vec<NodeKeyedGraphRowFacts>, String> {
+    graph_row_facts_with_end(bytes).map(|(rows, _)| rows)
+}
+
+fn graph_row_facts_with_end(bytes: &[u8]) -> Result<(Vec<NodeKeyedGraphRowFacts>, usize), String> {
+    let mut cursor = GraphDecodeCursor { bytes, offset: 0 };
+    let magic = cursor.take(GRAPH_ARTIFACT_MAGIC.len(), "magic")?;
+    if magic != GRAPH_ARTIFACT_MAGIC {
+        return Err("graph decode: bad magic — not a node-keyed graph artifact".to_string());
+    }
+    let version_raw = cursor.take(4, "format version")?;
+    let version = u32::from_le_bytes(version_raw.try_into().expect("4-byte slice"));
+    if version != GRAPH_ARTIFACT_FORMAT_VERSION {
+        return Err(format!(
+            "graph decode: format version {version} != {GRAPH_ARTIFACT_FORMAT_VERSION}"
+        ));
+    }
+    let row_count = cursor.take_u64("row count")?;
+    let mut rows = Vec::new();
+    for row_index in 0..row_count {
+        let content_hash = cursor.take_hash("row content hash")?;
+        let child_count = cursor.take_u64("child ref count")?;
+        let mut child_refs = Vec::new();
+        for _ in 0..child_count {
+            child_refs.push(cursor.take_hash("child ref")?);
+        }
+        let payload_len = cursor.take_u64("payload length")? as usize;
+        let payload = cursor.take(payload_len, "payload")?.to_vec();
+        let computed = graph_row_content_hash(&payload, &child_refs);
+        if computed != content_hash {
+            return Err(format!(
+                "graph decode: row {row_index} content hash mismatch (stored {content_hash}, computed {computed})"
+            ));
+        }
+        rows.push(NodeKeyedGraphRowFacts {
+            content_hash,
+            child_refs,
+            payload,
+        });
+    }
+    Ok((rows, cursor.offset))
+}
+
+pub struct NodeKeyedGraphDecoded<T> {
+    pub entries: Vec<(Hash, Rc<T>)>,
+    pub row_count: usize,
+}
+
+/// Hash-consed single-pass decode: every child ref resolves to the one `Rc`
+/// already decoded for that hash, so structural sharing is rebuilt by
+/// construction. A forward or missing child ref refuses (child-before-parent
+/// order is the format invariant; an encoded cycle is unrepresentable).
+pub fn node_keyed_graph_decode<T: NodeKeyedGraphEncode>(
+    bytes: &[u8],
+) -> Result<NodeKeyedGraphDecoded<T>, String> {
+    let (rows, table_end) = graph_row_facts_with_end(bytes)?;
+    let row_count = rows.len();
+    let mut by_hash: std::collections::HashMap<Hash, Rc<T>> = std::collections::HashMap::new();
+    for (row_index, row) in rows.into_iter().enumerate() {
+        if by_hash.contains_key(&row.content_hash) {
+            return Err(format!(
+                "graph decode: duplicate row for hash {} at row {row_index} — interning violated",
+                row.content_hash
+            ));
+        }
+        let children: Vec<Rc<T>> = row
+            .child_refs
+            .iter()
+            .map(|child| {
+                by_hash.get(child).cloned().ok_or_else(|| {
+                    format!(
+                        "graph decode: row {row_index} references child {child} with no earlier row — \
+                         forward or missing child ref (child-before-parent order violated)"
+                    )
+                })
+            })
+            .collect::<Result<_, String>>()?;
+        let node = T::rebuild(&row.payload, children)?;
+        by_hash.insert(row.content_hash, Rc::new(node));
+    }
+    let mut cursor = GraphDecodeCursor {
+        bytes,
+        offset: table_end,
+    };
+    let entry_count = cursor.take_u64("entry count")?;
+    let mut entries = Vec::new();
+    for entry_index in 0..entry_count {
+        let store_node = cursor.take_hash("entry store node")?;
+        let value_root = cursor.take_hash("entry value root")?;
+        let value = by_hash.get(&value_root).cloned().ok_or_else(|| {
+            format!(
+                "graph decode: entry {entry_index} value root {value_root} has no row in the table"
+            )
+        })?;
+        entries.push((store_node, value));
+    }
+    if cursor.offset != bytes.len() {
+        return Err(format!(
+            "graph decode: {} trailing bytes after entries",
+            bytes.len() - cursor.offset
+        ));
+    }
+    Ok(NodeKeyedGraphDecoded { entries, row_count })
 }
 
 pub trait AuditedRealization {

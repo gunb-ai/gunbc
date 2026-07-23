@@ -1,33 +1,25 @@
 module test.claim.lens_verdict_witness
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  NotApplicable,
-  Unrealized,
-  Violation,
-  ModuleWholeFile,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.lens_verdict_witness"
 
-fn sample_diagnostic(reason: String) -> LensVerdictDiagnostic {
-  LensVerdictDiagnostic {
-    reason: reason,
-    at: ModuleWholeFile { module_name: witness_module }
-  }
+fn sample_violation() -> v2.std.lens_verdict.LensVerdict {
+  v2.std.lens_verdict.lens_verdict_module_violation(
+    reason: ^lens_verdict_witness_violation,
+    module_name: witness_module
+  )
 }
 
-fn sample_violation() -> LensVerdict {
-  Violation { diagnostic: sample_diagnostic(reason: "lens_verdict_witness_violation") }
+fn sample_unrealized() -> v2.std.lens_verdict.LensVerdict {
+  v2.std.lens_verdict.lens_verdict_module_unrealized(
+    reason: ^lens_verdict_witness_unrealized,
+    module_name: witness_module
+  )
 }
 
-fn sample_unrealized() -> LensVerdict {
-  Unrealized { diagnostic: sample_diagnostic(reason: "lens_verdict_witness_unrealized") }
-}
-
-fn sample_holds() -> LensVerdict {
+fn sample_holds() -> v2.std.lens_verdict.LensVerdict {
   Holds
 }
 
@@ -61,24 +53,20 @@ fn witness_is_violation_red_on_holds() -> Bool {
 
 fn witness_locus_green_on_violation() -> Bool {
   match sample_violation() {
-    Violation { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m == witness_module
-    }
+    Violation { diagnostic: d } =>
+      v2.std.lens_verdict.lens_verdict_diagnostic_locus_module(d: d) == witness_module
     _ => false
   }
 }
 
 fn witness_locus_red_on_perturbed_module() -> Bool {
-  let perturbed = Violation {
-    diagnostic: LensVerdictDiagnostic {
-      reason: "lens_verdict_witness_perturbed",
-      at: ModuleWholeFile { module_name: "test.claim.lens_verdict_witness_wrong_module" }
-    }
-  }
+  let perturbed = v2.std.lens_verdict.lens_verdict_module_violation(
+    reason: ^lens_verdict_witness_perturbed,
+    module_name: "test.claim.lens_verdict_witness_wrong_module"
+  )
   match perturbed {
-    Violation { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m != witness_module
-    }
+    Violation { diagnostic: d } =>
+      v2.std.lens_verdict.lens_verdict_diagnostic_locus_module(d: d) != witness_module
     _ => false
   }
 }

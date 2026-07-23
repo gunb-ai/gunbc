@@ -1,0 +1,165 @@
+module v2.test.emit.rust_body_add_emit
+
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body,
+  table_fixture_add_arrow_with_body_swapped_operands
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_source_text,
+  rust_target_model_staging,
+  rust_fn_add_lex
+}
+import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model {
+  InfixToken,
+  TargetModel,
+  canonical_operation_op_add,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node
+}
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_body_add_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32 { y + x }"
+
+data rust_body_add_minus_source_text: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
+
+fn rust_body_add_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_body_add_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_body_add_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_body_add_facts_miss }
+  }
+}
+
+fn rust_body_add_producer_inferred_tree() -> Outcome<InferredTree> {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_body_add_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_body_add_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
+  match table_fixture_add_arrow_with_body_swapped_operands() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_body_add_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_body_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_body_add_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_body_add_emit_from_swapped_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_body_add_producer_swapped_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_body_add_minus_operator_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_add(),
+    shape: InfixToken { token: ^rust_token_minus }
+  )
+}
+
+fn rust_body_add_minus_operator_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [rust_body_add_minus_operator_row()])
+}
+
+fn rust_body_add_empty_operator_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [])
+}
+
+fn rust_body_add_minus_target_model() -> TargetModel {
+  rust_target_model_with_operators_and_lex(
+    operator_catalog: rust_body_add_minus_operator_catalog(),
+    lex: rust_fn_add_lex()
+  )
+}
+
+fn rust_body_add_missing_catalog_target_model() -> TargetModel {
+  rust_target_model_with_operators_and_lex(
+    operator_catalog: rust_body_add_empty_operator_catalog(),
+    lex: rust_fn_add_lex()
+  )
+}
+
+test fn rust_body_add_emit_add_fn_accepts_holds() -> Bool {
+  match rust_body_add_emit_from_tree(target: rust_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
+  match rust_body_add_emit_from_swapped_tree(target: rust_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_body_add_swapped_source_text) &&
+      (source.carried != rust_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
+  match rust_body_add_emit_from_tree(target: rust_body_add_minus_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_body_add_minus_source_text) &&
+      (source.carried != rust_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_body_add_emit_missing_catalog_rejects() -> Bool {
+  match rust_body_add_emit_from_tree(target: rust_body_add_missing_catalog_target_model()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

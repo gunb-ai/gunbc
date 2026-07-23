@@ -1,28 +1,5 @@
 module v2.test.synthesis_gate.optimality_gap_completeness
 
-import v2.lens.synthesis {
-  DecisionTree,
-  InformationTheoretic,
-  synthesis_lens,
-  synthesis_lens_diagnostics
-}
-import v2.std.algebra { Empty, fold_list, is_empty, list_append, non_empty }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.report { Report }
-import v2.test.lens_synthesis.synthesis_gap_polynomial {
-  synthesis_gap_poly_input
-}
-import v2.test.synthesis_gate.subject_technique_roster {
-  SynthesisSubjectRow,
-  synthesis_subject_row_add,
-  synthesis_subject_rows
-}
-import v2.test.synthesis_gate.synthesis_subject_body_supply {
-  synthesis_arrow_body_for_row
-}
 
 fn synthesis_row_acquired(row: SynthesisSubjectRow) -> Bool {
   match synthesis_arrow_body_for_row(row: row) {

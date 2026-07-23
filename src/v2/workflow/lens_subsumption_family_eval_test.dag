@@ -9,6 +9,9 @@ import v2.lens.subsumption {
   affected_set_irt1_subsumption,
   rust_language_model_emit_subsumption
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn subsumption_row_is_mechanical(row: DissolutionSubsumption) -> Bool {
   match row.verification {

@@ -30,6 +30,9 @@ import v2.test.manual.scheduler_runnable_frontier {
   scheduler_missing_prerequisite_dependencies,
   scheduler_test_node
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parallel_executor_expected_first_batch: ExecutorBatch = ExecutorBatch {
   jobs: [

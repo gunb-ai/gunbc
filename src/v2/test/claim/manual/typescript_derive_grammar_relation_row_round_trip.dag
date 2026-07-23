@@ -3,20 +3,20 @@ module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 import v2.extdeps.languages.typescript {
   ts_eager_grammar_relation_row_witness,
   ts_exemplar_emitted_for_lhs,
-  ts_formal_production_mvp1_fn_add,
+  ts_formal_production_fn_add,
   ts_grammar_relation_row_node,
   ts_inhabitant_atom,
-  ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_scaffold_relation_row_node,
-  ts_mvp1_grammar_relation_row,
-  ts_mvp1_canonical_add_fn_tokens,
+  ts_emitted_add_fn_node,
+  ts_fn_add_scaffold_relation_row_node,
+  ts_grammar_relation_row,
+  ts_canonical_add_fn_tokens,
   ts_concrete_token_node,
   ts_pr3_identity_relation_row_witness,
   ts_pr3_identity_typed_fn_emitted,
-  ts_wave2a_task_formal_productions,
-  ts_wave2a_task_type_alias_emitted,
-  ts_wave2a_task_type_alias_relation_row_witness,
-  ts_wave2a_type_annotation_task_record_emitted
+  ts_task_formal_productions,
+  ts_task_type_alias_emitted,
+  ts_task_type_alias_relation_row_witness,
+  ts_type_annotation_task_record_emitted
 }
 import v2.std.grammar {
   derive_grammar_relation_row,
@@ -39,6 +39,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.test.fixture.task_manager_demo { Task, create_task }
+
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
@@ -55,63 +56,63 @@ fn ts_grammar_relation_round_trip_fail_node() -> Node {
 }
 }
 
-fn ts_mvp1_grammar_relation_tokens_root() -> Node {
+fn ts_grammar_relation_tokens_root() -> Node {
   grammar_relation_tokens_node(
-    tokens: ts_mvp1_canonical_add_fn_tokens(),
+    tokens: ts_canonical_add_fn_tokens(),
     token_to_node: ts_concrete_token_node
   )
 }
 
-fn ts_mvp1_grammar_relation_row_std_node() -> Node {
+fn ts_grammar_relation_row_std_node() -> Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(
-      production: ts_formal_production_mvp1_fn_add(),
-      emitted: ts_mvp1_emitted_add_fn_node()
+      production: ts_formal_production_fn_add(),
+      emitted: ts_emitted_add_fn_node()
     ),
-    tokens: ts_mvp1_grammar_relation_tokens_root()
+    tokens: ts_grammar_relation_tokens_root()
   )
 }
 
-data ts_mvp1_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
-  production: ts_formal_production_mvp1_fn_add(),
-  productions: [ts_formal_production_mvp1_fn_add()],
-  emitted: ts_mvp1_emitted_add_fn_node()
+data ts_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
+  production: ts_formal_production_fn_add(),
+  productions: [ts_formal_production_fn_add()],
+  emitted: ts_emitted_add_fn_node()
 )
 
-fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
+fn ts_task_type_alias_emitted_surplus_conj_slot() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
+      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {
+fn ts_lhs_exact_arrow_emitted_rejects() -> Bool {
   match formal_production_for_lhs_exact(
-    productions: ts_wave2a_task_formal_productions(),
-    lhs: ^ts_production_wave2a_type_alias_decl,
-    child: ts_mvp1_emitted_add_fn_node()
+    productions: ts_task_formal_productions(),
+    lhs: ^ts_production_type_alias_decl,
+    child: ts_emitted_add_fn_node()
   ) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
     Holds { value: _ } => false
   }
 }
 
-fn ts_wave2a_task_derive_row_surplus_conj_slot_rejects() -> Bool {
+fn ts_task_derive_row_surplus_conj_slot_rejects() -> Bool {
   match formal_production_for_lhs_exact(
-    productions: ts_wave2a_task_formal_productions(),
-    lhs: ^ts_production_wave2a_type_alias_decl,
-    child: ts_wave2a_task_type_alias_emitted()
+    productions: ts_task_formal_productions(),
+    lhs: ^ts_production_type_alias_decl,
+    child: ts_task_type_alias_emitted()
   ) {
     Holds { value: production } =>
       match derive_grammar_relation_row_node(
         production: production,
-        productions: ts_wave2a_task_formal_productions(),
-        emitted: ts_wave2a_task_type_alias_emitted_surplus_conj_slot()
+        productions: ts_task_formal_productions(),
+        emitted: ts_task_type_alias_emitted_surplus_conj_slot()
       ) {
         Holds { value: _ } => false
         Violates { diagnostic: _ } => true
@@ -120,19 +121,19 @@ fn ts_wave2a_task_derive_row_surplus_conj_slot_rejects() -> Bool {
   }
 }
 
-fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
-  match ts_wave2a_task_type_alias_relation_row_witness() {
+fn ts_task_derive_row_round_trip_holds() -> Bool {
+  match ts_task_type_alias_relation_row_witness() {
     Holds { value: fixture_row } =>
       match formal_production_for_lhs_exact(
-        productions: ts_wave2a_task_formal_productions(),
-        lhs: ^ts_production_wave2a_type_alias_decl,
-        child: ts_wave2a_task_type_alias_emitted()
+        productions: ts_task_formal_productions(),
+        lhs: ^ts_production_type_alias_decl,
+        child: ts_task_type_alias_emitted()
       ) {
         Holds { value: production } =>
           match derive_grammar_relation_row_node(
             production: production,
-            productions: ts_wave2a_task_formal_productions(),
-            emitted: ts_wave2a_task_type_alias_emitted()
+            productions: ts_task_formal_productions(),
+            emitted: ts_task_type_alias_emitted()
           ) {
             Holds { value: derived_row } =>
               content_hash(n: fixture_row) == content_hash(n: derived_row)
@@ -145,8 +146,8 @@ fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
 }
 
 fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
-  content_hash(n: ts_mvp1_grammar_relation_row_std_node()) ==
-    content_hash(n: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row()))
+  content_hash(n: ts_grammar_relation_row_std_node()) ==
+    content_hash(n: ts_grammar_relation_row_node(row: ts_grammar_relation_row()))
 }
 
 fn ts_grammar_relation_round_trip_claim_input(ok: Bool) -> Node {
@@ -158,7 +159,7 @@ fn ts_grammar_relation_round_trip_claim_input(ok: Bool) -> Node {
 }
 
 data claim_typescript_derive_grammar_relation_row_round_trip: TestClaim = CompilesClaim {
-  label: "T-11 REPLAN-3: derive_grammar_relation_row round-trips typescript MVP-1 formal grammar-relation row (TaskManager fixture bound)",
+  label: "T-11 REPLAN-3: derive_grammar_relation_row round-trips typescript formal grammar-relation row (TaskManager fixture bound)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_derive_grammar_relation_row_round_trip_holds()
@@ -171,7 +172,7 @@ data claim_typescript_derive_grammar_relation_row_arrow_emitted_rejects: TestCla
   label: "T-11 PR-1.5b: formal_production_for_lhs_exact rejects Arrow emitted (not Conj/Atom)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
-    ok: ts_wave2a_lhs_exact_arrow_emitted_rejects()
+    ok: ts_lhs_exact_arrow_emitted_rejects()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -203,7 +204,7 @@ data claim_typescript_derive_grammar_relation_row_surplus_conj_rejects: TestClai
   label: "T-11 PR-1.5b: derive_grammar_relation_row_node rejects emitted Conj with surplus positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
-    ok: ts_wave2a_task_derive_row_surplus_conj_slot_rejects()
+    ok: ts_task_derive_row_surplus_conj_slot_rejects()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }

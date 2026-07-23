@@ -1,0 +1,338 @@
+module v2.lens.enforcement.grammar_coverage
+
+
+type GrammarCoverageParseVerdict
+  = ParsedClean
+  | ParseRejected { stage: String, reason: Symbol }
+
+type GrammarCoverageFileReceipt {
+  rel_path: String
+  verdict: GrammarCoverageParseVerdict
+}
+
+type GrammarCoverageRejectedRow {
+  stage: String
+  reason: Symbol
+  count: Int
+}
+
+type GrammarCoverageTreeReceipt {
+  tree_root: String
+  files_attempted: Int
+  parsed_clean: Int
+  rejected_count: Int
+  rejected_rows: List<GrammarCoverageRejectedRow>
+  file_rows: List<GrammarCoverageFileReceipt>
+}
+
+type GrammarCoverageTimingPoint {
+  subset_n: Int
+  work_units: Int
+}
+
+type GrammarCoverageCensusAcc {
+  files_attempted: Int
+  parsed_clean: Int
+  rejected_count: Int
+  rejected_rows: List<GrammarCoverageRejectedRow>
+  file_rows: List<GrammarCoverageFileReceipt>
+}
+
+type GrammarCoverageTakeAcc {
+  taken: List<String>
+  remaining: Int
+}
+
+data grammar_coverage_no_reject: Symbol = ^grammar_coverage_no_reject
+
+data grammar_coverage_file_anchor: Symbol = ^grammar_coverage_file_anchor
+
+data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
+
+fn grammar_coverage_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn grammar_coverage_tree_root_for_path(path: String) -> String {
+  if path.starts_with(prefix: "dag/") {
+    "dag"
+  } else if path.starts_with(prefix: "src/v1/") {
+    "src/v1"
+  } else if path.starts_with(prefix: "src/v2/") {
+    "src/v2"
+  } else {
+    ""
+  }
+}
+
+fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: std.algebra.Empty,
+    cons: fn(acc, fact) {
+      dedupe_snoc(
+        acc: acc,
+        item: fact.rel_path,
+        eq: grammar_coverage_string_eq
+      )
+    }
+  )
+}
+
+fn grammar_coverage_corpus_roster_live() -> List<String> {
+  grammar_coverage_distinct_rel_paths(
+    facts: decl_facts(pool_roots: v2.lens.enforcement.standing_intent.whole_corpus_scope.roots)
+  )
+}
+
+fn grammar_coverage_paths_for_tree(
+  paths: List<String>,
+  tree_root: String
+) -> List<String> {
+  filter(xs: paths, predicate: fn(path) {
+    grammar_coverage_tree_root_for_path(path: path) == tree_root
+  })
+}
+
+fn grammar_coverage_take_step(
+  acc: GrammarCoverageTakeAcc,
+  path: String
+) -> GrammarCoverageTakeAcc {
+  if acc.remaining == 0 {
+    acc
+  } else {
+    GrammarCoverageTakeAcc {
+      taken: list_append(left: acc.taken, right: [path]),
+      remaining: acc.remaining - 1
+    }
+  }
+}
+
+fn grammar_coverage_take_n(paths: List<String>, n: Int) -> List<String> {
+  let acc = fold_list(
+    xs: paths,
+    empty: GrammarCoverageTakeAcc { taken: std.algebra.Empty, remaining: n },
+    cons: fn(a, p) {
+      grammar_coverage_take_step(acc: a, path: p)
+    }
+  )
+  acc.taken
+}
+
+fn grammar_coverage_ingest_source_text(
+  source_text: String,
+  file: Symbol
+) -> GrammarCoverageParseVerdict {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } =>
+      ParseRejected { stage: "tokenize", reason: d.head.reason }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          ParseRejected { stage: "parse", reason: d.head.reason }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } =>
+              ParseRejected { stage: "normalize", reason: d.head.reason }
+            Accepted { value: _, diagnostics: _ } =>
+              ParsedClean
+          }
+      }
+  }
+}
+
+fn grammar_coverage_ingest_path(path: String) -> GrammarCoverageParseVerdict {
+  let source_text = filesystem_read(path: path).content
+  grammar_coverage_ingest_source_text(
+    source_text: source_text,
+    file: grammar_coverage_file_anchor
+  )
+}
+
+fn grammar_coverage_file_receipt(rel_path: String) -> GrammarCoverageFileReceipt {
+  GrammarCoverageFileReceipt {
+    rel_path: rel_path,
+    verdict: grammar_coverage_ingest_path(path: rel_path)
+  }
+}
+
+fn grammar_coverage_symbol_reason_eq(a: Symbol, b: Symbol) -> Bool {
+  symbol_identity_digest(sym: a) == symbol_identity_digest(sym: b)
+}
+
+fn grammar_coverage_file_reject_locus_matches(
+  receipt: GrammarCoverageFileReceipt,
+  stage: String,
+  reason: Symbol
+) -> Bool {
+  match receipt.verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == stage) && grammar_coverage_symbol_reason_eq(a: r, b: reason)
+  }
+}
+
+fn grammar_coverage_census_fold_step(
+  acc: GrammarCoverageCensusAcc,
+  path: String
+) -> GrammarCoverageCensusAcc {
+  let file_row = grammar_coverage_file_receipt(rel_path: path)
+  match file_row.verdict {
+    ParsedClean =>
+      GrammarCoverageCensusAcc {
+        files_attempted: acc.files_attempted + 1,
+        parsed_clean: acc.parsed_clean + 1,
+        rejected_count: acc.rejected_count,
+        rejected_rows: acc.rejected_rows,
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
+      }
+    ParseRejected { stage: stage, reason: reason } =>
+      GrammarCoverageCensusAcc {
+        files_attempted: acc.files_attempted + 1,
+        parsed_clean: acc.parsed_clean,
+        rejected_count: acc.rejected_count + 1,
+        rejected_rows: list_append(
+          left: [GrammarCoverageRejectedRow { stage: stage, reason: reason, count: 1 }],
+          right: acc.rejected_rows
+        ),
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
+      }
+  }
+}
+
+fn grammar_coverage_tree_census(
+  tree_root: String,
+  paths: List<String>
+) -> GrammarCoverageTreeReceipt {
+  let acc = fold_list(
+    xs: paths,
+    empty: GrammarCoverageCensusAcc {
+      files_attempted: 0,
+      parsed_clean: 0,
+      rejected_count: 0,
+      rejected_rows: std.algebra.Empty,
+      file_rows: std.algebra.Empty
+    },
+    cons: fn(a, p) {
+      grammar_coverage_census_fold_step(acc: a, path: p)
+    }
+  )
+  GrammarCoverageTreeReceipt {
+    tree_root: tree_root,
+    files_attempted: acc.files_attempted,
+    parsed_clean: acc.parsed_clean,
+    rejected_count: acc.rejected_count,
+    rejected_rows: acc.rejected_rows,
+    file_rows: acc.file_rows
+  }
+}
+
+fn grammar_coverage_tree_census_from_roster(
+  tree_root: String,
+  roster: List<String>
+) -> GrammarCoverageTreeReceipt {
+  grammar_coverage_tree_census(
+    tree_root: tree_root,
+    paths: grammar_coverage_paths_for_tree(paths: roster, tree_root: tree_root)
+  )
+}
+
+fn grammar_coverage_expected_work_units(
+  roster_len: Int,
+  subset_n: Int
+) -> Int {
+  if subset_n <= roster_len {
+    subset_n
+  } else {
+    roster_len
+  }
+}
+
+fn grammar_coverage_timing_point_for_subset(
+  roster: List<String>,
+  subset_n: Int
+) -> GrammarCoverageTimingPoint {
+  let subset = grammar_coverage_take_n(paths: roster, n: subset_n)
+  let receipt = grammar_coverage_tree_census(tree_root: "corpus", paths: subset)
+  GrammarCoverageTimingPoint {
+    subset_n: subset_n,
+    work_units: receipt.files_attempted
+  }
+}
+
+fn grammar_coverage_timing_work_units_match_take_n(
+  roster: List<String>,
+  subset_n: Int
+) -> Bool {
+  let point = grammar_coverage_timing_point_for_subset(
+    roster: roster,
+    subset_n: subset_n
+  )
+  let work_units = point.work_units
+  let expected = grammar_coverage_expected_work_units(
+    roster_len: length(xs: roster),
+    subset_n: subset_n
+  )
+  work_units == expected
+}
+
+fn grammar_coverage_rejected_row_present(
+  rows: List<GrammarCoverageRejectedRow>,
+  stage: String,
+  reason: Symbol
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || ((row.stage == stage) && grammar_coverage_symbol_reason_eq(a: row.reason, b: reason))
+    }
+  )
+}
+
+fn grammar_coverage_receipt_totality_holds(receipt: GrammarCoverageTreeReceipt) -> Bool {
+  receipt.files_attempted == (receipt.parsed_clean + receipt.rejected_count)
+}
+
+fn grammar_coverage_rejected_row_count_sum(rows: List<GrammarCoverageRejectedRow>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      acc + row.count
+    }
+  )
+}
+
+fn grammar_coverage_rejected_rows_cover_rejects(receipt: GrammarCoverageTreeReceipt) -> Bool {
+  grammar_coverage_rejected_row_count_sum(rows: receipt.rejected_rows) == receipt.rejected_count
+}
+
+fn grammar_coverage_tree_receipt_eq(a: GrammarCoverageTreeReceipt, b: GrammarCoverageTreeReceipt) -> Bool {
+  (a.tree_root == b.tree_root)
+    && (a.files_attempted == b.files_attempted)
+    && (a.parsed_clean == b.parsed_clean)
+    && (a.rejected_count == b.rejected_count)
+}
+
+fn grammar_coverage_parse_fraction_bps(receipt: GrammarCoverageTreeReceipt) -> Int {
+  if receipt.files_attempted == 0 {
+    0
+  } else {
+    (receipt.parsed_clean * 10000) / receipt.files_attempted
+  }
+}
+
+fn grammar_coverage_roster_contains_path(
+  roster: List<String>,
+  path: String
+) -> Bool {
+  fold_list(
+    xs: roster,
+    empty: false,
+    cons: fn(acc, p) {
+      acc || grammar_coverage_string_eq(a: p, b: path)
+    }
+  )
+}

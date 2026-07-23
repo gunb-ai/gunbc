@@ -1,0 +1,67 @@
+module v2.test.long.dag_repeat_spine_wellformed
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn normalizes(src: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn repeat_spine_three_seg_qual_name_normalizes_holds() -> Bool {
+  normalizes(src: "module a.b.c\n")
+}
+
+test fn repeat_spine_import_block_newline_normalizes_holds() -> Bool {
+  normalizes(src: "module m.t\nimport foo.bar {\n  a\n  b\n}\n")
+}
+
+test fn repeat_spine_single_name_import_normalizes_holds() -> Bool {
+  normalizes(src: "module m.t\nimport foo\n")
+}
+
+test fn repeat_spine_bare_fn_normalizes_holds() -> Bool {
+  normalizes(src: "module m.t\nfn f() -> Int { 0 }\n")
+}
+
+data repeat_spine_dup_named_atom_a: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^probe } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data repeat_spine_dup_named_atom_b: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data repeat_spine_dup_named_conj: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    grammar_named_edge(
+      name: ^grammar_repeat_element_node_projection,
+      target: repeat_spine_dup_named_atom_a
+    ),
+    grammar_named_edge(
+      name: ^grammar_repeat_element_node_projection,
+      target: repeat_spine_dup_named_atom_b
+    )
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn repeat_spine_dup_named_conj_still_ill_formed_control_holds() -> Bool {
+  well_formed(n: repeat_spine_dup_named_conj) == false
+}

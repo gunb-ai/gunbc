@@ -1,0 +1,268 @@
+module v2.test.emit.rust_binop_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.std.compilers.target_model { render_target_text }
+import v2.extdeps.languages.dag {
+  dag_arrow_domain_conj_node,
+  dag_arrow_with_body_node,
+  dag_binary_body_node,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust {
+  rust_source_text,
+  rust_target_model_staging,
+  rust_operator_realizations_catalog_node,
+  rust_value_expression_projection,
+  rust_fn_add_lex
+}
+import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model {
+  CanonicalOperation,
+  TargetModel,
+  TargetValueExpression,
+  canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_primitive_apply,
+  target_value_expression_primitive_apply_to_concrete_tokens,
+  InfixToken
+}
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_binop_sub_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
+
+data rust_binop_mul_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x * y }"
+
+data rust_binop_eq_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x == y }"
+
+fn rust_binop_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_binop_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_binop_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_binop_facts_miss }
+  }
+}
+
+fn rust_binop_operator_atom(token: Symbol) -> Node {
+  dag_type_atom_node(identity: token)
+}
+
+fn rust_binop_arrow_with_operator(operator_token: Symbol) -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_binary_body_node(
+      operator: rust_binop_operator_atom(token: operator_token),
+      left_binding: ^dag_binding_param_x,
+      right_binding: ^dag_binding_param_y
+    )
+  )
+}
+
+fn rust_binop_producer_emit(operator_token: Symbol, target: TargetModel) -> Outcome<Medium<String>> {
+  emit(
+    tree: rust_binop_inferred_tree_for(root: rust_binop_arrow_with_operator(operator_token: operator_token)),
+    target: target
+  )
+}
+
+fn rust_binop_binary_expr(operation: CanonicalOperation) -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: operation,
+    operands: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+    ]
+  )
+}
+
+fn rust_binop_add_only_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [
+    target_operator_realization_node(
+      operation: canonical_operation_op_add(),
+      shape: InfixToken { token: ^rust_token_plus }
+    )
+  ])
+}
+
+fn rust_binop_sub_mistoken_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [
+    target_operator_realization_node(
+      operation: canonical_operation_op_sub(),
+      shape: InfixToken { token: ^rust_token_plus }
+    )
+  ])
+}
+
+fn rust_binop_target_model(catalog: Node) -> TargetModel {
+  rust_target_model_with_operators_and_lex(
+    operator_catalog: catalog,
+    lex: rust_fn_add_lex()
+  )
+}
+
+fn rust_binop_vep_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<String> {
+  bind_outcome(
+    o: target_value_expression_primitive_apply_to_concrete_tokens(
+      expr: rust_binop_binary_expr(operation: operation),
+      projection: rust_value_expression_projection(),
+      catalog: catalog
+    ),
+    f: fn(tokens) {
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: rust_binop_target_model(catalog: catalog),
+          tokens: tokens
+        ),
+        f: fn(carrier) {
+          Accepted { value: render_target_text(t: carrier), diagnostics: None }
+        }
+      )
+    }
+  )
+}
+
+fn rust_binop_vep_emit_accepts(operation: CanonicalOperation, expected: String) -> Bool {
+  match rust_binop_vep_emit(
+    operation: operation,
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: s, diagnostics: d } => (s == expected) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_binop_vep_emit_differs_from_add(operation: CanonicalOperation) -> Bool {
+  match rust_binop_vep_emit(
+    operation: operation,
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: s, diagnostics: _ } =>
+      (s != "x + y") && rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_binop_producer_emit_accepts(operator_token: Symbol, expected: String) -> Bool {
+  match rust_binop_producer_emit(
+    operator_token: operator_token,
+    target: rust_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == expected) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_binop_vep_emit_core_catalog_holds() -> Bool {
+  rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_sub(), expected: "x - y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_mul(), expected: "x * y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_div(), expected: "x / y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_eq(), expected: "x == y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_ne(), expected: "x != y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_and(), expected: "x && y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_or(), expected: "x || y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_lt(), expected: "x < y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_gt(), expected: "x > y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_le(), expected: "x <= y") &&
+    rust_binop_vep_emit_accepts(operation: canonical_operation_op_ge(), expected: "x >= y")
+}
+
+test fn rust_binop_vep_emit_discriminates_from_add() -> Bool {
+  rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_sub()) &&
+    rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_mul()) &&
+    rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_eq()) &&
+    rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_lt()) &&
+    rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_and())
+}
+
+test fn rust_binop_vep_emit_wrong_token_discriminates() -> Bool {
+  match rust_binop_vep_emit(
+    operation: canonical_operation_op_sub(),
+    catalog: rust_binop_sub_mistoken_catalog()
+  ) {
+    Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_binop_vep_emit_missing_catalog_rejects() -> Bool {
+  match rust_binop_vep_emit(
+    operation: canonical_operation_op_sub(),
+    catalog: rust_binop_add_only_catalog()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn rust_binop_producer_emit_sub_holds() -> Bool {
+  rust_binop_producer_emit_accepts(
+    operator_token: ^dag_token_minus,
+    expected: rust_binop_sub_fn_source_text
+  )
+}
+
+test fn rust_binop_producer_emit_sub_discriminates_from_add() -> Bool {
+  rust_binop_producer_emit_accepts(
+    operator_token: ^dag_token_minus,
+    expected: rust_binop_sub_fn_source_text
+  ) &&
+    (rust_binop_sub_fn_source_text != rust_source_text)
+}
+
+test fn rust_binop_producer_emit_mul_holds() -> Bool {
+  rust_binop_producer_emit_accepts(
+    operator_token: ^dag_token_star,
+    expected: rust_binop_mul_fn_source_text
+  )
+}
+
+test fn rust_binop_producer_emit_eq_holds() -> Bool {
+  rust_binop_producer_emit_accepts(
+    operator_token: ^dag_token_eq_eq,
+    expected: rust_binop_eq_fn_source_text
+  )
+}

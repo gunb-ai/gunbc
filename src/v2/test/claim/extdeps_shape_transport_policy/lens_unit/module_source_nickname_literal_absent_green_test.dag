@@ -1,13 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_green
 
-import v2.lens.extdeps_shape_transport_policy {
-  extdeps_live_module_source_nickname_literal_count
-}
-import v2.lens.extdeps_shape_transport_policy.module_refs {
-  module_source_nickname_literal_green_module
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data exempt_unknown_path: String = "fictional/unknown_path.dag"
 data exempt_ci_yml: String = "ci.yml"

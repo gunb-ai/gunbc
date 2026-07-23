@@ -1,0 +1,138 @@
+module v2.test.long.accumulator_copy_compile_gate
+
+import std.algebra { Empty }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.compiler.normalize { normalize }
+import v2.compiler.compile { TranslateTo, validate_then_compile }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
+import v2.std.collection { empty_map }
+import v2.std.compilers.lexing { VoidLexRules }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostics,
+  NonEmptyDiagnostics,
+  None,
+  Rejected,
+  Some
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data compile_gate_witness_note: String = "RED/GREEN controls for the accumulator-copy compile gate at its two consumption grains. Gate grain (normalize output — the tree shape the lens provably reads): the quadratic snippet REJECTS with accumulator_copy_poly2_suspect located at the finding node; the identity fold ACCEPTS clean; the unregistered-combiner-carrying-carrier snippet ACCEPTS with the refusal ledger attached (typed per-cause, counted, non-gating — the stopped-line audit channel). Door grain (validate_then_compile): the resolved add fixture passes through the root-required roster with empty caller lenses — proving the roster RUNS on every door call and passes clean trees. The end-to-end door RED (real module with imports through tokenize->resolve->infer->gate) rides the PR-2 CI transport stage whose red control ingests a real corpus module; an import-free snippet cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed there, not here."
+
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
+
+type NormalizedProbe
+  = ProbeStageRejected { stage: String }
+  | ProbeNormalized { root: Node }
+
+fn normalized_of(source: String) -> NormalizedProbe {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^compile_gate_witness_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => ProbeStageRejected { stage: "tokenize" }
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => ProbeStageRejected { stage: "parse" }
+        Accepted { value: parse_tree, diagnostics: _ } =>
+          match normalize(parse_tree: parse_tree) {
+            Rejected { diagnostics: _ } => ProbeStageRejected { stage: "normalize" }
+            Accepted { value: normalized, diagnostics: _ } =>
+              ProbeNormalized { root: normalized }
+          }
+      }
+  }
+}
+
+fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if d.head.reason == reason {
+    true
+  } else {
+    fold(d.tail, init: false, f: fn(acc, diag) {
+      acc || (diag.reason == reason)
+    })
+  }
+}
+
+test fn gate_red_quadratic_rejects() -> Bool {
+  match normalized_of(source: quad_snippet) {
+    ProbeStageRejected { stage: _ } => false
+    ProbeNormalized { root: root } =>
+      match accumulator_copy_compile_gate(node: root) {
+        Rejected { diagnostics: d } =>
+          non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+test fn gate_green_identity_accepts_clean() -> Bool {
+  match normalized_of(source: identity_snippet) {
+    ProbeStageRejected { stage: _ } => false
+    ProbeNormalized { root: root } =>
+      match accumulator_copy_compile_gate(node: root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } =>
+          match d {
+            None => true
+            Some { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+test fn gate_refusal_ledger_counted_not_gating() -> Bool {
+  match normalized_of(source: unregistered_combiner_snippet) {
+    ProbeStageRejected { stage: _ } => false
+    ProbeNormalized { root: root } =>
+      match accumulator_copy_compile_gate(node: root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } =>
+          match d {
+            None => false
+            Some { diagnostics: ledger } =>
+              non_empty_contains_reason(
+                d: ledger,
+                reason: ^combiner_unregistered_carrier_reaches
+              )
+          }
+      }
+  }
+}
+
+data compile_gate_target_stub: TargetModel = TargetModel {
+  bundle: Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  },
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+  token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: Empty,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+test fn door_root_roster_runs_and_passes_clean_tree() -> Bool {
+  match validate_then_compile(
+    source: fixture_add_resolved_tree(),
+    lenses: [],
+    mode: TranslateTo { target: compile_gate_target_stub }
+  ) {
+    Rejected { diagnostics: d } =>
+      !non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}

@@ -112,7 +112,7 @@ dashboard tree; pause anytime.
 
 ## Why the integration is good (not a forced fit)
 
-The roadmap node already maps almost 1:1 onto ctrl's work-item fields. `ctrl.process_algebra`
+The roadmap node already maps almost 1:1 onto ctrl's work-item fields. `gunbc.process_algebra`
 is already the `.dag` mirror of ctrl's `nodes` table (same Leaf/Composite/Bucket, same
 Declare/Decompose/Close). The only genuine adds are sizing, the `Acceptance` coproduct, and the
 emit seam — small and additive. That 1:1 mapping IS the evidence the integration is real.

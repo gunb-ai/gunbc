@@ -1,0 +1,189 @@
+module test.claim.host_converge_slice1_witness
+
+import std.types { Bool, NonEmptyStr, List }
+import extdeps.os.systemd { systemd_memory_max_property }
+import gunbc.host_converge { Drifted, PerSlotMemoryCap }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_unit_live_read {
+  gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
+}
+import gunbc.fleet_show_effective_read {
+  runner_unit_live_read_row_from_stdout,
+  runner_unit_memory_live_read_from_stdout,
+  per_slot_memory_cap_verdict_from_unit_read,
+}
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read_local,
+  systemctl_show_property_operation_argv_matches_transport,
+}
+import extdeps.os.systemd { MemoryMax }
+import gunbc.host_converge_slice1 {
+  host_converge_slice1_probe_unit,
+  host_converge_slice1_knob_name,
+  host_converge_slice1_srv1_per_slot_memory_max_knob,
+  host_converge_slice1_memory_cap_verdict,
+  host_converge_slice1_fixture_receipt,
+  host_converge_slice1_memory_max_set_script,
+  host_converge_slice1_transport_script_scaffold,
+  host_converge_slice1_enumerate_units_script,
+  host_converge_slice1_cross_check_enumeration,
+  host_converge_slice1_usage_guard,
+  HostConvergeSlice1UsageSafe,
+  HostConvergeSlice1UsageUnsafe,
+  HostConvergeSlice1UsageUnknown,
+  HostConvergeSlice1EnumerationMismatch,
+  HostConvergeSlice1UnitOutcome,
+  HostConvergeSlice1UnitUsageGuardRefused,
+  HostConvergeSlice1Refused,
+  host_converge_slice1_unit_outcome_to_legacy_result,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_budget { declared_runner_count }
+import std.measure { byte_size }
+import std.disposition { Scaffold, Terminal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
+  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
+    Present { value: knob } =>
+      knob.name == host_converge_slice1_knob_name
+        && match knob.target {
+          PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+            p == systemd_memory_max_property && b == knob.desired
+          _ => false
+        }
+    Absent => false
+  }
+}
+
+fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
+  match host_converge_slice1_fixture_receipt() {
+    Present { value: receipt } =>
+      receipt.host == operator_host_srv1
+        && receipt.unit == host_converge_slice1_probe_unit
+        && receipt.verdict == Drifted
+    Absent => false
+  }
+}
+
+fn witness_stdout_parse_grounds_memory_max() -> Bool {
+  match runner_unit_live_read_row_from_stdout(
+    unit: host_converge_slice1_probe_unit,
+    stdout: "infinity\n0\ninfinity\n",
+    probed_at: "2026-07-16",
+  ) {
+    Present { value: row } => row.memory_max_raw == "infinity"
+    Absent => false
+  }
+}
+
+fn witness_short_stdout_is_read_absent() -> Bool {
+  match runner_unit_memory_live_read_from_stdout(
+    unit: host_converge_slice1_probe_unit,
+    stdout: "infinity\n",
+    probed_at: "2026-07-16",
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
+  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
+    Present { value: knob } =>
+      match host_converge_slice1_memory_cap_verdict(
+        read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
+        knob: knob,
+      ) {
+        Present { value: Drifted } =>
+          match per_slot_memory_cap_verdict_from_unit_read(
+            read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
+            target: knob.target,
+          ) {
+            Present { value: Drifted } => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_slice1_show_property_local_read_holds() -> Bool {
+  match systemctl_show_property_read_local(unit: host_converge_slice1_probe_unit, property: MemoryMax) {
+    Present { value: v } => v == "8589934592"
+    Absent => false
+  }
+}
+
+fn witness_transport_reads_use_show_property_authority() -> Bool {
+  systemctl_show_property_operation_argv_matches_transport(
+    unit: host_converge_slice1_probe_unit,
+    property: MemoryMax,
+  )
+    && witness_slice1_show_property_local_read_holds()
+    && string_contains(
+      s: host_converge_slice1_memory_max_set_script(unit: host_converge_slice1_probe_unit, bytes_value: "17179869184"),
+      pattern: "set-property",
+    )
+}
+
+fn witness_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
+  match host_converge_slice1_transport_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
+  witness_slice1_knob_is_per_slot_memory_max_on_srv1()
+    && witness_fixture_infinity_drifts_against_model_desired()
+    && witness_stdout_parse_grounds_memory_max()
+    && witness_short_stdout_is_read_absent()
+    && witness_verdict_uses_converge_target_not_string_flatten()
+    && witness_transport_reads_use_show_property_authority()
+    && witness_transport_script_scaffold_carries_dissolution_trigger()
+}
+
+fn witness_enumerate_units_script_is_read_only_list_units() -> Bool {
+  let script = host_converge_slice1_enumerate_units_script(instance_glob: "actions-runner@srv3-*.service")
+  string_contains(s: script, pattern: "systemctl list-units")
+    && string_contains(s: script, pattern: "actions-runner@srv3-*.service")
+    && string_contains(s: script, pattern: "awk")
+}
+
+fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
+  let declared = declared_runner_count()
+  let empty_units: List<NonEmptyStr> = []
+  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
+    Present { value: mismatch } =>
+      mismatch.host == operator_host_srv3
+        && mismatch.declared_count == declared
+        && length(mismatch.observed_units) == 0
+        && declared != 0
+    Absent => declared == 0
+  }
+}
+
+fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
+  let outcome: HostConvergeSlice1UnitOutcome = HostConvergeSlice1UnitUsageGuardRefused {
+    unit: host_converge_slice1_probe_unit,
+    current_bytes: byte_size(count: 200),
+    target_cap_bytes: byte_size(count: 100),
+  }
+  match host_converge_slice1_unit_outcome_to_legacy_result(outcome) {
+    HostConvergeSlice1Refused { reason: r } =>
+      string_contains(s: r, pattern: "usage guard")
+        && string_contains(s: r, pattern: "retryable")
+    _ => false
+  }
+}
+
+test fn host_converge_slice1_wires_srv3_multi_unit_generalization() -> Bool {
+  witness_enumerate_units_script_is_read_only_list_units()
+    && witness_cross_check_enumeration_none_iff_length_matches_declared()
+    && witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason()
+}

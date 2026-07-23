@@ -1,31 +1,38 @@
 module v2.test.execution.add_arrow_eval_by_execution
 
-import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body }
-import v2.test.complexity_gate.source_bridged_add_subject_producer {
-  source_bridged_add_arrow_with_body,
-  source_bridged_add_parse_tokens
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_module_source
+}
+import v2.compiler.parse { parse_module }
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body
 }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval_context_with_semantics,
   eval,
+  eval_context_v4_evaluator,
   inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
+}
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_eval_allocate_literal,
+  v2_evaluator_interpretation
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model_wave1,
-  dag_mvp1_source_text
+  dag_int_literal_node_from_lexeme,
+  dag_language_model
 }
-import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
-import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert }
+import v2.std.compilers.lexing { Token, TokenStream }
+import v2.std.grammar { ParseTree }
 import v2.std.cardinality {
   RankingDimension,
   TerminationProof,
@@ -47,7 +54,11 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.compilers.lexing { Token }
-import v2.std.machine { Byte }
+import v2.std.integer {
+  Int,
+  integer_int_to_signed_i32_le_bytes,
+  integer_signed_i32_le_bytes_to_int
+}
 import v2.std.node {
   Arrow,
   Atom,
@@ -73,13 +84,14 @@ import v2.std.runtime {
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
-  InterpretationStructureWitness,
   LoopInterpreter,
+  MatchInterpreter,
   RuntimePrimitive,
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -95,6 +107,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn add_arrow_eval_atom(s: Symbol) -> Node {
   Node {
@@ -104,51 +119,26 @@ fn add_arrow_eval_atom(s: Symbol) -> Node {
   }
 }
 
-fn add_arrow_eval_byte() -> Byte {
-  Byte { bits: [true] }
-}
-
 fn add_arrow_eval_i64_node() -> Node {
   add_arrow_eval_atom(s: ^add_arrow_eval_i64)
 }
 
-fn add_arrow_eval_int_value(bytes: List<Byte>) -> RuntimeValue {
-  RuntimePrimitive {
-    value: RuntimePrimitiveValue {
-      primitive_type: add_arrow_eval_i64_node(),
-      bytes: bytes
-    }
+fn add_arrow_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => Present { value: node }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn add_arrow_eval_two_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte()])
-}
-
-fn add_arrow_eval_three_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte(), add_arrow_eval_byte()])
-}
-
-fn add_arrow_eval_five_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte()
-  ])
-}
-
-fn add_arrow_eval_literal_two_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_two)
-}
-
-fn add_arrow_eval_literal_three_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_three)
-}
-
-fn add_arrow_eval_literal_five_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_five)
+fn add_arrow_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
 }
 
 fn add_arrow_eval_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -159,34 +149,14 @@ fn add_arrow_eval_runtime_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn add_arrow_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == add_arrow_eval_literal_two_node() {
-    outcome_accepted(value: add_arrow_eval_two_value())
-  } else if node == add_arrow_eval_literal_three_node() {
-    outcome_accepted(value: add_arrow_eval_three_value())
-  } else if node == add_arrow_eval_literal_five_node() {
-    outcome_accepted(value: add_arrow_eval_five_value())
-  } else {
-    outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
-  }
-}
-
-fn add_arrow_eval_arg_is_count(value: RuntimeValue, n: Int) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == add_arrow_eval_i64_node()) && (count(p.bytes) == n)
-    _ => false
-  }
-}
-
 fn add_arrow_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match first(args) {
+    match list_at_optional(xs: args, index: 0) {
       Present { value: left } =>
-        match last(args) {
+        match list_at_optional(xs: args, index: 1) {
           Present { value: right } =>
-            add_arrow_eval_arg_is_count(value: left, n: 2)
-              && add_arrow_eval_arg_is_count(value: right, n: 3)
+            add_arrow_eval_runtime_int_equals(value: left, n: 2)
+              && add_arrow_eval_runtime_int_equals(value: right, n: 3)
           Absent => false
         }
       Absent => false
@@ -196,20 +166,25 @@ fn add_arrow_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   }
 }
 
+fn add_arrow_eval_int_runtime_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: add_arrow_eval_i64_node(),
+      bytes: integer_int_to_signed_i32_le_bytes(value: n)
+    }
+  }
+}
+
 fn add_arrow_eval_call_primitive(
   node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   if add_arrow_eval_ordered_add_args(args: args) {
-    outcome_accepted(value: add_arrow_eval_five_value())
+    outcome_accepted(value: add_arrow_eval_int_runtime_value(n: 5))
   } else {
     outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
-}
-
-fn add_arrow_eval_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
 }
 
 fn add_arrow_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
@@ -222,7 +197,7 @@ fn add_arrow_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: Evalu
 fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: add_arrow_eval_allocate_literal
+      allocate_literal: v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
       call_primitive: add_arrow_eval_call_primitive
@@ -235,19 +210,35 @@ fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: add_arrow_eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
 
 fn add_arrow_eval_lazy_arm_branch_node() -> Node {
-  Node {
-    kind: ComputationNode { behavior: Branch },
-    occurrence_id: SyntheticOccurrence,
-    children: [
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_five_node() },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) }
-    ]
+  match add_arrow_eval_int_literal_optional(lexeme: "2") {
+    Present { value: two_lit } =>
+      match add_arrow_eval_int_literal_optional(lexeme: "5") {
+        Present { value: five_lit } =>
+          Node {
+            kind: ComputationNode { behavior: Branch },
+            occurrence_id: SyntheticOccurrence,
+            children: [
+              Edge { label: Positional, target: two_lit },
+              Edge { label: Positional, target: five_lit },
+              Edge {
+                label: Positional,
+                target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal)
+              }
+            ]
+          }
+        Absent =>
+          add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
+      }
+    Absent =>
+      add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
   }
 }
 
@@ -268,52 +259,27 @@ fn add_arrow_eval_bind_value(
   }
 }
 
-fn add_arrow_eval_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
-      allocate_literal: add_arrow_eval_allocate_literal
-    },
-    transform: TransformInterpreter {
-      call_primitive: add_arrow_eval_call_primitive
-    },
-    branch: BranchInterpreter {
-      choose_branch: add_arrow_eval_choose_branch
-    },
-    loop: LoopInterpreter {
-      step_loop: add_arrow_eval_step_loop
-    },
-    bind: BindInterpreter {
-      bind_value: add_arrow_eval_bind_value
-    }
-  }
-}
-
-fn add_arrow_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
-    allocate_literal: ^add_arrow_eval_allocate_literal_sym,
-    call_primitive: ^add_arrow_eval_call_primitive_sym,
-    choose_branch: ^add_arrow_eval_choose_branch_sym,
-    step_loop: ^add_arrow_eval_step_loop_sym,
-    bind_value: ^add_arrow_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
-  }
-}
-
 fn add_arrow_eval_context() -> EvalContext {
-  eval_context_with_semantics(
-    runtime_identity: ^add_arrow_eval_runtime_id,
-    interpretation: add_arrow_eval_interpretation(),
-    structure_witness: add_arrow_eval_interpretation_structure_witness()
+  eval_context_v4_evaluator()
+}
+
+fn add_arrow_eval_parse_tokens(tokens: TokenStream) -> Outcome<ParseTree> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: parse_module(tokens: tokens, grammar: lm.grammar),
+    f: fn(artifact) {
+      outcome_accepted(value: artifact.tree)
+    }
   )
 }
 
 fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
+    o: tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: source_bridged_add_parse_tokens(tokens: token_stream_remaining(stream: tokens)),
+        o: add_arrow_eval_parse_tokens(tokens: tokens),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
@@ -332,14 +298,9 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
   )
 }
 
-fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
-    f: fn(tokens) {
-      outcome_accepted(value: token_stream_all(stream: tokens))
-    }
-  )
+fn add_arrow_eval_tokenize_source() -> Outcome<TokenStream> {
+  let lm = dag_language_model()
+  tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex)
 }
 
 fn add_arrow_eval_tokenize_holds() -> Bool {
@@ -352,7 +313,7 @@ fn add_arrow_eval_tokenize_holds() -> Bool {
 fn add_arrow_eval_parse_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -363,7 +324,7 @@ fn add_arrow_eval_parse_holds() -> Bool {
 fn add_arrow_eval_normalize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: _, diagnostics: _ } => true
@@ -376,10 +337,10 @@ fn add_arrow_eval_normalize_holds() -> Bool {
 }
 
 fn add_arrow_eval_resolve_holds() -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
@@ -395,15 +356,29 @@ fn add_arrow_eval_resolve_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_add_call(callee: Node) -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
-    children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_three_node() }
-    ]
+fn add_arrow_eval_add_call_optional(
+  callee: Node,
+  left_lex: String,
+  right_lex: String
+) -> Optional<Node> {
+  match add_arrow_eval_int_literal_optional(lexeme: left_lex) {
+    Present { value: left } =>
+      match add_arrow_eval_int_literal_optional(lexeme: right_lex) {
+        Present { value: right } =>
+          Present {
+            value: Node {
+              kind: ComputationNode { behavior: Transform },
+              occurrence_id: SyntheticOccurrence,
+              children: [
+                Edge { label: Positional, target: callee },
+                Edge { label: Positional, target: left },
+                Edge { label: Positional, target: right }
+              ]
+            }
+          }
+        Absent => Absent
+      }
+    Absent => Absent
   }
 }
 
@@ -437,10 +412,33 @@ fn add_arrow_eval_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-fn add_arrow_eval_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
-  let call = add_arrow_eval_add_call(callee: callee)
-  let root = add_arrow_eval_tree_root(call: call, expected: expected)
-  outcome_accepted(value: add_arrow_eval_admitted_tree(root: root))
+fn add_arrow_eval_inferred_run_tree(
+  callee: Node,
+  left_lex: String,
+  right_lex: String,
+  expected_lex: String
+) -> Outcome<InferredTree> {
+  match add_arrow_eval_add_call_optional(callee: callee, left_lex: left_lex, right_lex: right_lex) {
+    Present { value: call } =>
+      match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
+        Present { value: expected } => {
+          let root = add_arrow_eval_tree_root(call: call, expected: expected)
+          outcome_accepted(value: add_arrow_eval_admitted_tree(root: root))
+        }
+        Absent =>
+          outcome_rejected(
+            d: add_arrow_eval_runtime_diagnostic(
+              n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
+            )
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: add_arrow_eval_runtime_diagnostic(
+          n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
+        )
+      )
+  }
 }
 
 fn add_arrow_eval_claim(input: Node, expected: Node) -> TestClaim {
@@ -465,18 +463,49 @@ fn add_arrow_eval_subject(tree: InferredTree, input: Node, expected: Node) -> Te
   }
 }
 
-fn add_arrow_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
-  let input = add_arrow_eval_add_call(callee: callee)
-  bind_outcome(
-    o: add_arrow_eval_inferred_run_tree(callee: callee, expected: expected),
-    f: fn(tree) {
-      outcome_accepted(
-        value: run_test_claim(
-          subject: add_arrow_eval_subject(tree: tree, input: input, expected: expected)
+fn add_arrow_eval_run(
+  callee: Node,
+  left_lex: String,
+  right_lex: String,
+  expected_lex: String
+) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  match add_arrow_eval_add_call_optional(
+    callee: callee,
+    left_lex: left_lex,
+    right_lex: right_lex
+  ) {
+    Present { value: call_node } =>
+      match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
+        Present { value: expected } =>
+          bind_outcome(
+            o: add_arrow_eval_inferred_run_tree(
+              callee: callee,
+              left_lex: left_lex,
+              right_lex: right_lex,
+              expected_lex: expected_lex
+            ),
+            f: fn(tree) {
+              outcome_accepted(
+                value: run_test_claim(
+                  subject: add_arrow_eval_subject(tree: tree, input: call_node, expected: expected)
+                )
+              )
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: add_arrow_eval_runtime_diagnostic(
+              n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
+            )
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: add_arrow_eval_runtime_diagnostic(
+          n: add_arrow_eval_atom(s: ^add_arrow_eval_literal_miss)
         )
       )
-    }
-  )
+  }
 }
 
 fn add_arrow_swapped_operand_body() -> Node {
@@ -556,16 +585,26 @@ fn add_arrow_excess_body() -> Node {
   }
 }
 
-fn add_arrow_excess_actual_call(callee: Node) -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
-    children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_three_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() }
-    ]
+fn add_arrow_excess_actual_call_optional(callee: Node) -> Optional<Node> {
+  match add_arrow_eval_int_literal_optional(lexeme: "2") {
+    Present { value: two_lit } =>
+      match add_arrow_eval_int_literal_optional(lexeme: "3") {
+        Present { value: three_lit } =>
+          Present {
+            value: Node {
+              kind: ComputationNode { behavior: Transform },
+              occurrence_id: SyntheticOccurrence,
+              children: [
+                Edge { label: Positional, target: callee },
+                Edge { label: Positional, target: two_lit },
+                Edge { label: Positional, target: three_lit },
+                Edge { label: Positional, target: two_lit }
+              ]
+            }
+          }
+        Absent => Absent
+      }
+    Absent => Absent
   }
 }
 
@@ -588,9 +627,14 @@ fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
 }
 
 fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
+      match add_arrow_eval_inferred_run_tree(
+        callee: arrow,
+        left_lex: "2",
+        right_lex: "3",
+        expected_lex: "5"
+      ) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -598,39 +642,48 @@ fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_runtime_value_is_five(value: RuntimeValue) -> Bool {
-  add_arrow_eval_arg_is_count(value: value, n: 5)
+fn add_arrow_eval_runtime_value_is_n(value: RuntimeValue, n: Int) -> Bool {
+  add_arrow_eval_runtime_int_equals(value: value, n: n)
 }
 
 fn add_arrow_eval_direct_runtime_holds() -> Bool {
-  match source_bridged_add_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } => {
-      let input = add_arrow_eval_add_call(callee: arrow)
-      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match eval(
-            tree: tree,
-            interpretation: add_arrow_eval_interpretation(),
-            inputs: inputs_root_only(root: input)
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3") {
+        Present { value: call_node } =>
+          match add_arrow_eval_inferred_run_tree(
+            callee: arrow,
+            left_lex: "2",
+            right_lex: "3",
+            expected_lex: "5"
           ) {
-            Accepted { value: actual, diagnostics: None } =>
-              add_arrow_eval_runtime_value_is_five(value: actual)
-            _ => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match eval(
+                tree: tree,
+                interpretation: v2_evaluator_interpretation(),
+                inputs: inputs_root_only(root: call_node)
+              ) {
+                Accepted { value: actual, diagnostics: None } =>
+                  add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        Absent => false
       }
-    }
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
-  match source_bridged_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
-          expected: add_arrow_eval_literal_five_node()
+          left_lex: "2",
+          right_lex: "3",
+          expected_lex: "5"
         )
       )
     Rejected { diagnostics: _ } => false
@@ -638,12 +691,29 @@ fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
 }
 
 fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
           callee: arrow,
-          expected: add_arrow_eval_literal_five_node()
+          left_lex: "2",
+          right_lex: "3",
+          expected_lex: "5"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn add_arrow_eval_generality_executes_holds() -> Bool {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
+          callee: arrow,
+          left_lex: "7",
+          right_lex: "8",
+          expected_lex: "15"
         )
       )
     Rejected { diagnostics: _ } => false
@@ -658,16 +728,35 @@ fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
   add_arrow_eval_run_passes(
     run: add_arrow_eval_run(
       callee: add_arrow_swapped_add_arrow(),
-      expected: add_arrow_eval_literal_five_node()
+      left_lex: "2",
+      right_lex: "3",
+      expected_lex: "6"
     )
   )
+}
+
+fn add_arrow_eval_wrong_value_red_holds() -> Bool {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
+          callee: arrow,
+          left_lex: "7",
+          right_lex: "8",
+          expected_lex: "16"
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn add_arrow_excess_signature_red_holds() -> Bool {
   add_arrow_eval_run_passes(
     run: add_arrow_eval_run(
       callee: add_arrow_excess_signature_arrow(),
-      expected: add_arrow_eval_literal_five_node()
+      left_lex: "2",
+      right_lex: "3",
+      expected_lex: "5"
     )
   ) == false
 }
@@ -676,29 +765,38 @@ fn add_arrow_excess_body_red_holds() -> Bool {
   add_arrow_eval_run_passes(
     run: add_arrow_eval_run(
       callee: add_arrow_excess_body_arrow(),
-      expected: add_arrow_eval_literal_five_node()
+      left_lex: "2",
+      right_lex: "3",
+      expected_lex: "5"
     )
   ) == false
 }
 
 fn add_arrow_excess_actual_executes_to_five() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } => {
-      let input = add_arrow_excess_actual_call(callee: arrow)
-      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match eval(
-            tree: tree,
-            interpretation: add_arrow_eval_interpretation(),
-            inputs: inputs_root_only(root: input)
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match add_arrow_excess_actual_call_optional(callee: arrow) {
+        Present { value: call_node } =>
+          match add_arrow_eval_inferred_run_tree(
+            callee: arrow,
+            left_lex: "2",
+            right_lex: "3",
+            expected_lex: "5"
           ) {
-            Accepted { value: actual, diagnostics: None } =>
-              add_arrow_eval_runtime_value_is_five(value: actual)
-            _ => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match eval(
+                tree: tree,
+                interpretation: v2_evaluator_interpretation(),
+                inputs: inputs_root_only(root: call_node)
+              ) {
+                Accepted { value: actual, diagnostics: None } =>
+                  add_arrow_eval_runtime_value_is_n(value: actual, n: 5)
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        Absent => false
       }
-    }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -716,18 +814,18 @@ fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
     inputs: inputs_root_only(root: branch)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      add_arrow_eval_runtime_value_is_five(value: v)
+      add_arrow_eval_runtime_int_equals(value: v, n: 5)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn add_arrow_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_accepted(value: Continue { value: add_arrow_eval_five_value() })
+  outcome_accepted(value: Continue { value: add_arrow_eval_int_runtime_value(n: 5) })
 }
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: add_arrow_eval_allocate_literal },
+    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
     transform: TransformInterpreter { call_primitive: add_arrow_eval_call_primitive },
     branch: BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm },
     loop: LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue },
@@ -788,7 +886,7 @@ fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
     inputs: inputs_root_only(root: loop_node)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      add_arrow_eval_runtime_value_is_five(value: v)
+      add_arrow_eval_runtime_int_equals(value: v, n: 5)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -797,7 +895,9 @@ test fn add_arrow_eval_by_execution_keystone_holds() -> Bool {
   add_arrow_eval_source_driven_add_executes_holds()
     && add_arrow_eval_direct_runtime_holds()
     && add_arrow_eval_source_pipeline_admits_add_holds()
+    && add_arrow_eval_generality_executes_holds()
     && add_arrow_eval_swapped_operands_red_holds()
+    && add_arrow_eval_wrong_value_red_holds()
 
     && add_arrow_excess_signature_red_holds()
     && add_arrow_excess_body_red_holds()

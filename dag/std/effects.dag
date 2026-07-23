@@ -7,16 +7,22 @@ import std.http_path {
   has_path_params, last_path_param
 }
 
-type EffectShape
+type EffectShape<K>
   = ReadEffect
-  | UpsertEffect { key_source: KeySource }
-  | DeleteEffect { key_source: KeySource }
-  | CreateEffect { cause: CreateCause }
+  | UpsertEffect { key_source: K }
+  | DeleteEffect { key_source: K }
+  | CreateEffect { cause: CreateCause<K> }
   | AppendEffect
+  | ExecuteEffect
 
-type CreateCause
+data execute_effect_note: String = "ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none (landed authority)."
+
+type CreateCause<K>
   = PostAlways
-  | CreateIfAbsent { key_source: KeySource }
+  | CreateIfAbsent { key_source: K }
+  | KeylessFallback { method: HttpMethod }
+
+data keyless_fallback_cause_note: String = "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses."
 
 type KeySource
   = PathParam { param: String }
@@ -24,11 +30,13 @@ type KeySource
   | CompositeKey { fields: List<String> }
 
 type IdempotencyEvidence
-  = LatticeEffect { shape: EffectShape }
+  = LatticeEffect { shape: EffectShape<KeySource> }
   | IdentityEffect
-  | NonIdempotent { shape: EffectShape, reason: String }
+  | NonIdempotent { shape: EffectShape<KeySource>, reason: String }
 
-fn is_idempotent_effect(shape: EffectShape) -> Bool {
+data generic_predicate_frontier_note: String = "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today."
+
+fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     ReadEffect => true
     UpsertEffect => true
@@ -37,8 +45,10 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
@@ -59,18 +69,23 @@ fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
   }
 }
 
-fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
+fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
-    _ => false
+    ReadEffect => false
+    UpsertEffect { key_source: key_source } => false
+    DeleteEffect { key_source: key_source } => false
+    AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
-fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
+fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeySource>) -> Bool {
   match a {
     CreateEffect { cause: cause_a } =>
       match cause_a {
@@ -80,18 +95,28 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
               match cause_b {
                 CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
                 PostAlways => false
+                KeylessFallback { method: method } => false
               }
-            _ => false
+            ReadEffect => false
+            UpsertEffect { key_source: key_source } => false
+            DeleteEffect { key_source: key_source } => false
+            AppendEffect => false
+            ExecuteEffect => false
           }
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
-    _ => false
+    ReadEffect => false
+    UpsertEffect { key_source: key_source } => false
+    DeleteEffect { key_source: key_source } => false
+    AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
 type OperationEffect {
   operation_name: String
-  shape: EffectShape
+  shape: EffectShape<KeySource>
   evidence: IdempotencyEvidence
 }
 
@@ -117,7 +142,7 @@ type DerivedOpEffect {
   operation_name: String
   method: HttpMethod
   path_template: PathTemplate
-  shape: EffectShape
+  shape: EffectShape<KeySource>
 }
 
 type DeriveOpEffectResult
@@ -133,7 +158,7 @@ type DeriveOpEffectResult
 fn derive_effect_shape(
   method: HttpMethod,
   path: PathTemplate
-) -> EffectShape {
+) -> EffectShape<KeySource> {
   match method {
     GET     => ReadEffect
     HEAD    => ReadEffect
@@ -142,17 +167,17 @@ fn derive_effect_shape(
     DELETE =>
       match last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: DELETE } }
       }
     PUT =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: PUT } }
       }
     PATCH =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: PATCH } }
       }
   }
 }
@@ -180,7 +205,7 @@ type ModifierCheck {
   operation_name: String
   declared_idempotent: Bool
   declared_readonly: Bool
-  derived_shape: EffectShape
+  derived_shape: EffectShape<KeySource>
   agreement: ModifierAgreement
 }
 
@@ -194,17 +219,40 @@ fn check_modifier_vs_derivation(
     Agrees
   } else if declared_idempotent && !derived_idempotent {
     match op.shape {
-      CreateEffect { cause: PostAlways } =>
-        DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
-      _ =>
+      CreateEffect { cause: cause } =>
+        match cause {
+          PostAlways =>
+            DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+          KeylessFallback { method: method } =>
+            DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+        }
+      ReadEffect =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      UpsertEffect { key_source: key_source } =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      DeleteEffect { key_source: key_source } =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      AppendEffect =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      ExecuteEffect =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     }
   } else if !declared_idempotent && derived_idempotent {
     match op.shape {
-      CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
-        Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
-      _ =>
-        Agrees
+      CreateEffect { cause: cause } =>
+        match cause {
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+          PostAlways => Agrees
+          KeylessFallback { method: method } => Agrees
+        }
+      ReadEffect => Agrees
+      UpsertEffect { key_source: key_source } => Agrees
+      DeleteEffect { key_source: key_source } => Agrees
+      AppendEffect => Agrees
+      ExecuteEffect => Agrees
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {
@@ -227,7 +275,7 @@ fn check_modifier_vs_derivation(
 
 type IdempotencyTestObligation {
   operation_name: String
-  effect_shape: EffectShape
+  effect_shape: EffectShape<KeySource>
   claim: String
   witness_required: Bool
 }

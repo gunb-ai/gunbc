@@ -1,0 +1,12 @@
+module tools.floor_skip_discovery_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+import std.logic { Bool }
+
+fn run_floor_skip_discovery_witness() -> Bool {
+  run_witness_bin(
+    var_name: "FLOOR_SKIP_DISCOVERY_WITNESS",
+    bin_name: "floor_skip_discovery_witness",
+    args: []
+  )
+}

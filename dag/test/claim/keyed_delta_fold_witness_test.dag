@@ -1,35 +1,7 @@
 module test.claim.keyed_delta_fold_witness
 
-import std.types { Bool, String, List }
-import std.change {
-  KeyedRow,
-  KeyedPatch,
-  KeyedLeafVerdict,
-  KeyedApplyHunk,
-  KeyedVerdictAdded,
-  KeyedVerdictRemoved,
-  KeyedConflict,
-  KeyedUnchanged,
-  keyed_three_way_leaf,
-  keyed_two_way_diff,
-  keyed_three_way_fold,
-  keyed_apply_two_way_diff,
-  keyed_retract_two_way_diff,
-  keyed_apply_patch,
-  keyed_invert_patch,
-  keyed_patch_empty,
-  keyed_patch_append,
-  keyed_patch_singleton,
-  keyed_patch_monoid,
-  keyed_patch_fold,
-  keyed_three_way_patch_empty,
-  keyed_three_way_patch_monoid,
-  keyed_three_way_patch_singleton,
-  keyed_leaf_verdict_join,
-  keyed_patches_equal,
-  keyed_rows_snapshot_equal,
-  keyed_patch_hunk_count,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type FixtureVal {
   payload: String

@@ -1,44 +1,12 @@
 module v2.test.manual.path_y_fidelity_successor
 
-import extdeps.communication.medium { Lossless, Lossy, DecodeFidelity }
-import extdeps.communication.fidelity_carriers { source_medium_carried }
-import extdeps.github.expressions {
-  Expression,
-  ContextAccess,
-  FunctionCall,
-  StringLiteral,
-  LogicalOr,
-  Github,
-  Runner,
-  HashFiles,
-  serialize_expression,
-  ingest_expression
-}
-import gunbc.bmc_onboarding {
-  bmc_factory_state,
-  bmc_full_state_is_lossy_after_roundtrip
-}
-import v2.compiler.target_carriers { decode_fidelity_from_target }
-import v2.extdeps.bmc.lifecycle_fidelity {
-  bmc_lifecycle_inverse_target_model,
-  bmc_lifecycle_inverse_target_model_credentials_modeled_perturb
-}
-import v2.extdeps.github.expression_fidelity { gha_expression_roundtrip_target_model }
-import v2.workflow.bmc_lifecycle_roundtrip {
-  bmc_lifecycle_roundtrip,
-  bmc_lifecycle_roundtrip_fidelity
-}
-import v2.workflow.gha_expression_fidelity {
-  gha_expression_core_roundtrip_fidelity,
-  gha_expression_core_advertises_lossless
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_y_core_expr() -> Expression {
   LogicalOr {
     left: LogicalOr {
-      left: FunctionCall {
+      left: extdeps.github.expressions.FunctionCall {
         function: HashFiles,
         args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
       },

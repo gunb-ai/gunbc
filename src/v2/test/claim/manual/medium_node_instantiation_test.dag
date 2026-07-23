@@ -1,16 +1,14 @@
 module v2.test.manual.medium_node_instantiation
 
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.extdeps.runtimes.v2_evaluator { v2_eval_wave1_bool_literal_pin }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn medium_node_lossless() -> Medium<Node> {
-  Medium { carried: v2_eval_wave1_bool_literal_pin, fidelity: Lossless }
+  Medium { carried: v2_eval_bool_literal_pin, fidelity: Lossless }
 }
 
 fn medium_node_carried_is_expected() -> Bool {
-  medium_node_lossless().carried == v2_eval_wave1_bool_literal_pin
+  medium_node_lossless().carried == v2_eval_bool_literal_pin
 }
 
 fn medium_node_fidelity_is_lossless() -> Bool {
@@ -21,7 +19,7 @@ fn medium_node_fidelity_is_lossless() -> Bool {
 }
 
 fn medium_node_lossy_tag_not_lossless() -> Bool {
-  match (Medium { carried: v2_eval_wave1_bool_literal_pin, fidelity: Lossy }).fidelity {
+  match (Medium { carried: v2_eval_bool_literal_pin, fidelity: Lossy }).fidelity {
     Lossless => false
     Lossy => true
   }

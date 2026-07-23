@@ -33,6 +33,7 @@ import v2.compiler.infer {
   algebra_ref_is_grounded,
   canonical_grounding_for_node
 }
+import v2.compiler.wrap_decision { wrap_decision_gate }
 import v2.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -73,16 +74,16 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  content_hash,
   fold_node,
   node_rebuild,
+  node_subtree_count,
   well_formed,
   SyntheticOccurrence
 }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
-  FixedToken,
-  BoundToken,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -99,6 +100,7 @@ import v2.std.compilers.target_model {
   TargetTypeExprRecord,
   TargetTypeExprSum,
   TargetCollectionRealization,
+  TargetTextCarrier,
   TargetRepresentationChoice,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
@@ -124,8 +126,14 @@ import v2.std.compilers.target_model {
   target_type_expr_sum_emitted,
   type_expr_projection_row_closedness_from_target,
   type_expression_projection_from_target,
-  lex_rules_literal_for_class,
   lex_rules_literal,
+  bound_tokens_source_text,
+  TargetText,
+  text_atom,
+  target_text_seq,
+  target_text_empty,
+  target_text_is_empty,
+  render_target_text,
   token_spelling_from_model,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -154,11 +162,12 @@ import v2.std.compilers.target_model {
   OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter,
   OwnershipAtStructField,
-  target_value_semantics_carriers_from_node,
-  CarrierOwnershipByValue,
-  CarrierOwnershipByReference,
-  target_use_site_ownership_lookup_in_catalog_node,
-  target_use_site_ownership_lookup_miss_diagnostic,
+  WrapDecision,
+  WrapByValue,
+  WrapByReference,
+  WrapDecisionGate,
+  WrapGateInapplicable,
+  WrapGateDecided,
   target_reference_layer_tokens_from_node,
   target_reference_layer_apply_type_emitted,
   target_reference_layer_apply_value_expression,
@@ -178,20 +187,8 @@ import v2.std.collection {
   optional_absent,
   optional_present
 }
-import v2.std.algebra {
-  Cons,
-  Empty,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  fold_list_node,
-  is_empty,
-  length,
-  list_append,
-  list_snoc_item,
-  list_tail,
-  zip_eq
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.grammar { grammar_relation_row_reverse_parse_selection }
@@ -203,15 +200,6 @@ type TargetBundleChildLookup
   | BundleChildDuplicate
   | BundleChildInvalidEdge
 
-fn node_subtree_count(n: Node) -> Int {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(_) { 1 },
-      step: fn(acc, _edge, child_count) { acc + child_count }
-    }
-  )
-}
 fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -806,46 +794,19 @@ fn serialize_concrete_syntax_tokens_to_source(
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
-    f: fn(text) {
-      target_source_medium(text: text, target: target)
+    f: fn(carrier) {
+      target_source_medium(text: render_target_text(t: carrier), target: target)
     }
   )
 }
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
-) -> Outcome<String> {
-  fold_list(
-    xs: tokens,
-    empty: Accepted { value: Empty, diagnostics: None },
-    cons: fn(acc, token) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match token {
-            FixedToken { token_class: token_class } =>
-              bind_outcome(
-                o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
-                f: fn(spelling) {
-                  Accepted {
-                    value: list_append(left: partial, right: spelling),
-                    diagnostics: ad
-                  }
-                }
-              )
-            BoundToken { token_class: _, binding: binding } =>
-              bind_outcome(
-                o: target_binding_spelling_lookup(target: target, binding: binding),
-                f: fn(spelling) {
-                  Accepted {
-                    value: list_append(left: partial, right: spelling),
-                    diagnostics: ad
-                  }
-                }
-              )
-          }
-      }
-    }
+) -> Outcome<TargetText> {
+  bound_tokens_source_text(
+    tokens: tokens,
+    lex: target.lex,
+    binding_spellings: target.binding_spellings
   )
 }
 
@@ -883,7 +844,7 @@ fn translate_project_transform_in_arrow_scope(
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -932,7 +893,7 @@ fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -954,7 +915,7 @@ fn target_serialize_relation_row_from_model_bounded(
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
-                      empty: Accepted { value: Empty, diagnostics: None },
+                      empty: Accepted { value: target_text_empty, diagnostics: None },
                       cons: fn(acc, token_node) {
                         match acc {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -964,7 +925,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 match token_spelling_from_model(target: target, token: token_node) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: list_append(left: partial, right: source),
+                                      value: target_text_seq(acc: partial, next: text_atom(lexeme: source)),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -986,7 +947,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 ) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: list_append(left: partial, right: source),
+                                      value: target_text_seq(acc: partial, next: source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -1052,20 +1013,25 @@ fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
   target: TargetModel
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
       match item_kind {
         TokenSequenceConcreteToken =>
-          token_spelling_from_model(target: target, token: item)
+          bind_outcome(
+            o: token_spelling_from_model(target: target, token: item),
+            f: fn(spelling) {
+              outcome_accepted(text_atom(lexeme: spelling))
+            }
+          )
         TokenSequenceNonterminal =>
           target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
       }
     }
   )
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<String> {
+fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
@@ -1077,10 +1043,10 @@ fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
   target: TargetModel
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: Accepted { value: target_text_empty, diagnostics: None },
     cons: fn(acc, token_node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1088,7 +1054,7 @@ fn token_sequence_to_source_bounded(
           match token_item_to_source_bounded(remaining - 1, token_node, target) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
-                value: list_append(left: partial, right: source),
+                value: target_text_seq(acc: partial, next: source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
@@ -1100,7 +1066,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<String> {
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -1113,7 +1079,7 @@ fn target_serialize_source_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -1181,7 +1147,7 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          target_source_medium(text: text, target: target)
+          target_source_medium(text: render_target_text(t: text), target: target)
         }
       )
     }
@@ -1398,6 +1364,39 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
   )
 }
 
+fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_element),
+    f: fn(element_carrier) {
+      bind_outcome(
+        o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_emitted),
+        f: fn(emitted) {
+          Accepted {
+            value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
+            diagnostics: None
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<TargetTextCarrier>> {
+  bind_outcome(
+    o: conj_optional_named_child(parent: bundle, edge_name: ^target_collection_row_field_text_carrier),
+    f: fn(opt) {
+      match opt {
+        Present { value: node } =>
+          bind_outcome(
+            o: target_text_carrier_from_node(node: node),
+            f: fn(tc) { Accepted { value: optional_present(value: tc), diagnostics: None } }
+          )
+        Absent => Accepted { value: optional_absent(), diagnostics: None }
+      }
+    }
+  )
+}
+
 fn target_collection_realization_from_bundle(
   bundle: Node
 ) -> Outcome<TargetCollectionRealization> {
@@ -1426,15 +1425,21 @@ fn target_collection_realization_from_bundle(
                           bind_outcome(
                             o: target_collection_fallback_from_node(node: fallback_node),
                             f: fn(fallback_diagnostic) {
-                              Accepted {
-                                value: TargetCollectionRealization {
-                                  source_carrier: source_carrier,
-                                  primary: primary,
-                                  alternatives: alternatives,
-                                  fallback_diagnostic: fallback_diagnostic
-                                },
-                                diagnostics: None
-                              }
+                              bind_outcome(
+                                o: target_text_carrier_optional_from_bundle(bundle: bundle),
+                                f: fn(text_carrier) {
+                                  Accepted {
+                                    value: TargetCollectionRealization {
+                                      source_carrier: source_carrier,
+                                      primary: primary,
+                                      alternatives: alternatives,
+                                      fallback_diagnostic: fallback_diagnostic,
+                                      text_carrier: text_carrier
+                                    },
+                                    diagnostics: None
+                                  }
+                                }
+                              )
                             }
                           )
                         }
@@ -1544,44 +1549,62 @@ fn project_free_monoid_collection_type_node(
       bind_outcome(
         o: free_monoid_collection_realization_from_target(target: target),
         f: fn(row) {
-          match target_collection_select_choice(
-            primary: row.primary,
-            alternatives: row.alternatives,
-            elem: elem
-          ) {
-            Present { value: choice } =>
-              bind_outcome(
-                o: translate_type_expression_project(node: elem, target: target, projection: projection),
-                f: fn(elem_projected) {
-                  bind_outcome(
-                    o: translate_apply_use_site_ownership_to_projected_type(
-                      projected: elem_projected,
-                      source_carrier: elem,
-                      target: target,
-                      use_site: OwnershipAtBindingProjection
-                    ),
-                    f: fn(elem_storage) {
-                      Accepted {
-                        value: target_type_expr_instantiation_emitted(
-                          form: choice.form.apply,
-                          head: target_type_expr_atom_emitted(
-                            form: projection.atom_form,
-                            identity: choice.form.apply.surface
-                          ),
-                          args: Cons { head: elem_storage, tail: Empty }
-                        ),
-                        diagnostics: None
-                      }
-                    }
-                  )
-                }
-              )
-            Absent => outcome_rejected(row.fallback_diagnostic)
+          match row.text_carrier {
+            Present { value: text_carrier } =>
+              if content_hash(n: elem) == content_hash(n: text_carrier.element_carrier) {
+                Accepted { value: text_carrier.emitted_type_node, diagnostics: None }
+              } else {
+                project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
+              }
+            Absent =>
+              project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
           }
         }
       )
     Absent =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn project_free_monoid_via_vec_choice(
+  row: TargetCollectionRealization,
+  elem: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_select_choice(
+    primary: row.primary,
+    alternatives: row.alternatives,
+    elem: elem
+  ) {
+    Present { value: choice } =>
+      bind_outcome(
+        o: translate_type_expression_project(node: elem, target: target, projection: projection),
+        f: fn(elem_projected) {
+          bind_outcome(
+            o: translate_apply_use_site_ownership_to_projected_type(
+              projected: elem_projected,
+              source_carrier: elem,
+              target: target,
+              use_site: OwnershipAtBindingProjection
+            ),
+            f: fn(elem_storage) {
+              Accepted {
+                value: target_type_expr_instantiation_emitted(
+                  form: choice.form.apply,
+                  head: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: choice.form.apply.surface
+                  ),
+                  args: Cons { head: elem_storage, tail: Empty }
+                ),
+                diagnostics: None
+              }
+            }
+          )
+        }
+      )
+    Absent => outcome_rejected(row.fallback_diagnostic)
   }
 }
 type TypeExprHeadTail {
@@ -2039,18 +2062,29 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
   )
 }
 
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<String> {
+fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetText> {
   bind_outcome(
     o: type_expr_atom_binding(node: node),
     f: fn(binding) {
-      target_binding_spelling_lookup(target: target, binding: binding)
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: binding),
+        f: fn(spelling) {
+          outcome_accepted(text_atom(lexeme: spelling))
+        }
+      )
     }
   )
 }
 
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<String> {
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
   match edge.label {
-    Named { name: label } => target_binding_spelling_lookup(target: target, binding: label)
+    Named { name: label } =>
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: label),
+        f: fn(spelling) {
+          outcome_accepted(text_atom(lexeme: spelling))
+        }
+      )
     Positional =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
   }
@@ -2074,7 +2108,7 @@ fn serialize_type_expr_generic_apply_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: node)
@@ -2108,12 +2142,12 @@ fn serialize_type_expr_generic_apply_bounded(
                       o: lex_rules_literal(target: target, token_class: form.close),
                       f: fn(close_source) {
                         Accepted {
-                          value: list_append(
-                            left: list_append(
-                              left: list_append(left: head_source, right: open_source),
-                              right: args_source
+                          value: target_text_seq(
+                            acc: target_text_seq(
+                              acc: target_text_seq(acc: head_source, next: text_atom(lexeme: open_source)),
+                              next: args_source
                             ),
-                            right: close_source
+                            next: text_atom(lexeme: close_source)
                           ),
                           diagnostics: None
                         }
@@ -2136,7 +2170,7 @@ fn serialize_type_expr_args_bounded(
   form: TargetGenericApply,
   args: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2144,7 +2178,7 @@ fn serialize_type_expr_args_bounded(
   } else {
     fold_list(
       xs: args,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, arg) {
         bind_outcome(
           o: acc,
@@ -2157,16 +2191,16 @@ fn serialize_type_expr_args_bounded(
                 emitted: arg
               ),
               f: fn(arg_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(arg_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.separator),
                     f: fn(sep_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: sep_source),
-                          right: arg_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                          next: arg_source
                         )
                       )
                     }
@@ -2187,7 +2221,7 @@ fn serialize_type_expr_separated_bounded(
   separator: Symbol,
   items: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2195,7 +2229,7 @@ fn serialize_type_expr_separated_bounded(
   } else {
     fold_list(
       xs: items,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, item) {
         bind_outcome(
           o: acc,
@@ -2208,16 +2242,16 @@ fn serialize_type_expr_separated_bounded(
                 emitted: item
               ),
               f: fn(item_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(item_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: separator),
                     f: fn(sep_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: sep_source),
-                          right: item_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                          next: item_source
                         )
                       )
                     }
@@ -2240,7 +2274,7 @@ fn serialize_type_expr_record_fields_bounded(
   field_label_separator: Symbol,
   fields: List<Edge>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2248,7 +2282,7 @@ fn serialize_type_expr_record_fields_bounded(
   } else {
     fold(
       fields,
-      init: Accepted { value: Empty, diagnostics: None },
+      init: Accepted { value: target_text_empty, diagnostics: None },
       f: fn(acc, field) {
         bind_outcome(
           o: acc,
@@ -2267,20 +2301,20 @@ fn serialize_type_expr_record_fields_bounded(
                         emitted: field.target
                       ),
                       f: fn(field_type_source) {
-                        let field_source = list_append(
-                          left: list_append(left: label_source, right: label_sep_source),
-                          right: field_type_source
+                        let field_source = target_text_seq(
+                          acc: target_text_seq(acc: label_source, next: text_atom(lexeme: label_sep_source)),
+                          next: field_type_source
                         )
-                        if is_empty(xs: source) {
+                        if target_text_is_empty(t: source) {
                           outcome_accepted(field_source)
                         } else {
                           bind_outcome(
                             o: lex_rules_literal(target: target, token_class: separator),
                             f: fn(sep_source) {
                               outcome_accepted(
-                                list_append(
-                                  left: list_append(left: source, right: sep_source),
-                                  right: field_source
+                                target_text_seq(
+                                  acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                                  next: field_source
                                 )
                               )
                             }
@@ -2305,7 +2339,7 @@ fn serialize_type_expr_record_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match form.field_label_separator {
     Present { value: field_label_separator } =>
       bind_outcome(
@@ -2329,9 +2363,9 @@ fn serialize_type_expr_record_bounded(
                     o: lex_rules_literal(target: target, token_class: form.close),
                     f: fn(close_source) {
                       Accepted {
-                        value: list_append(
-                          left: list_append(left: open_source, right: fields_source),
-                          right: close_source
+                        value: target_text_seq(
+                          acc: target_text_seq(acc: text_atom(lexeme: open_source), next: fields_source),
+                          next: text_atom(lexeme: close_source)
                         ),
                         diagnostics: None
                       }
@@ -2352,7 +2386,7 @@ fn serialize_type_expr_sum_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetSumTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_type_expr_emitted_labeled_slot_nodes(node: node),
     f: fn(variants) {
@@ -2373,7 +2407,7 @@ fn serialize_type_expr_arrow_param_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   slot: TargetTypeExprArrowParamSlot
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: serialize_type_expr_arrow_param_spelling(
       target: target,
@@ -2393,9 +2427,9 @@ fn serialize_type_expr_arrow_param_bounded(
             o: lex_rules_literal(target: target, token_class: form.param_type_separator),
             f: fn(separator_source) {
               Accepted {
-                value: list_append(
-                  left: list_append(left: name_source, right: separator_source),
-                  right: type_source
+                value: target_text_seq(
+                  acc: target_text_seq(acc: text_atom(lexeme: name_source), next: text_atom(lexeme: separator_source)),
+                  next: type_source
                 ),
                 diagnostics: None
               }
@@ -2414,7 +2448,7 @@ fn serialize_type_expr_arrow_params_bounded(
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2422,7 +2456,7 @@ fn serialize_type_expr_arrow_params_bounded(
   } else {
     fold_list(
       xs: params,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, slot) {
         bind_outcome(
           o: acc,
@@ -2436,16 +2470,16 @@ fn serialize_type_expr_arrow_params_bounded(
                 slot: slot
               ),
               f: fn(param_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(param_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.param_list_separator),
                     f: fn(separator_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: separator_source),
-                          right: param_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: separator_source)),
+                          next: param_source
                         )
                       )
                     }
@@ -2466,7 +2500,7 @@ fn serialize_type_expr_arrow_named_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_type_expr_arrow_labeled_param_slots(node: node),
     f: fn(params) {
@@ -2502,15 +2536,15 @@ fn serialize_type_expr_arrow_named_bounded(
                             ),
                             f: fn(codomain_source) {
                               Accepted {
-                                value: list_append(
-                                  left: list_append(
-                                    left: list_append(
-                                      left: list_append(left: open_source, right: params_source),
-                                      right: close_source
+                                value: target_text_seq(
+                                  acc: target_text_seq(
+                                    acc: target_text_seq(
+                                      acc: target_text_seq(acc: text_atom(lexeme: open_source), next: params_source),
+                                      next: text_atom(lexeme: close_source)
                                     ),
-                                    right: arrow_source
+                                    next: text_atom(lexeme: arrow_source)
                                   ),
-                                  right: codomain_source
+                                  next: codomain_source
                                 ),
                                 diagnostics: None
                               }
@@ -2536,7 +2570,7 @@ fn serialize_type_expr_arrow_input_wrapped(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   input_node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: lex_rules_literal(target: target, token_class: form.open),
     f: fn(open_source) {
@@ -2553,9 +2587,9 @@ fn serialize_type_expr_arrow_input_wrapped(
             o: lex_rules_literal(target: target, token_class: form.close),
             f: fn(close_source) {
               Accepted {
-                value: list_append(
-                  left: list_append(left: open_source, right: input_source),
-                  right: close_source
+                value: target_text_seq(
+                  acc: target_text_seq(acc: text_atom(lexeme: open_source), next: input_source),
+                  next: text_atom(lexeme: close_source)
                 ),
                 diagnostics: None
               }
@@ -2573,7 +2607,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   form: TargetFunctionTypeShape,
   inputs: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2581,7 +2615,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   } else {
     fold_list(
       xs: inputs,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, input_node) {
         bind_outcome(
           o: acc,
@@ -2595,16 +2629,16 @@ fn serialize_type_expr_arrow_inputs_bounded(
                 input_node: input_node
               ),
               f: fn(input_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(input_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.arrow),
                     f: fn(arrow_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: arrow_source),
-                          right: input_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: arrow_source)),
+                          next: input_source
                         )
                       )
                     }
@@ -2624,7 +2658,7 @@ fn serialize_type_expr_arrow_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome_accepted(
@@ -2669,9 +2703,9 @@ fn serialize_type_expr_arrow_bounded(
                       ),
                       f: fn(output_source) {
                         Accepted {
-                          value: list_append(
-                            left: list_append(left: inputs_source, right: arrow_source),
-                            right: output_source
+                          value: target_text_seq(
+                            acc: target_text_seq(acc: inputs_source, next: text_atom(lexeme: arrow_source)),
+                            next: output_source
                           ),
                           diagnostics: None
                         }
@@ -2692,7 +2726,7 @@ fn serialize_type_expr_emitted_wire_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   wire: TargetTypeExpression
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match wire.kind {
     TargetTypeExprAtom =>
       type_expr_spelling_for_atom(target: target, node: wire.node)
@@ -2743,7 +2777,7 @@ fn serialize_type_expr_emitted_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -2768,48 +2802,6 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics.head.reason == ^target_atom_realization_lookup_miss
 }
 
-fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
-  match target_bundle_optional_child(target: target, edge_name: edge_name) {
-    Accepted { value: optional_child, diagnostics: d } =>
-      match optional_child {
-        Absent => outcome_accepted(false)
-        Present { value: _ } => outcome_accepted(true)
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn translate_sg_rc_bundle_apply_disposition(
-  target: TargetModel,
-  source_carrier: Node
-) -> Outcome<Bool> {
-  bind_outcome(
-    o: translate_sg_rc_bundle_edge_present(
-      target: target,
-      edge_name: ^target_model_edge_use_site_ownership_realizations
-    ),
-    f: fn(has_catalog) {
-      bind_outcome(
-        o: translate_sg_rc_bundle_edge_present(
-          target: target,
-          edge_name: ^target_model_edge_reference_layer_tokens
-        ),
-        f: fn(has_tokens) {
-          if has_catalog == false && has_tokens == false {
-            outcome_accepted(false)
-          } else {
-            if has_catalog && has_tokens {
-              outcome_accepted(true)
-            } else {
-              outcome_rejected(translate_sg_rc_bundle_partial_diagnostic(source_carrier: source_carrier))
-            }
-          }
-        }
-      )
-    }
-  )
-}
-
 fn translate_reference_layer_tokens_from_target(
   target: TargetModel
 ) -> Outcome<TargetReferenceLayerTokens> {
@@ -2819,38 +2811,63 @@ fn translate_reference_layer_tokens_from_target(
   )
 }
 
-fn translate_use_site_ownership_catalog_from_model(
-  target: TargetModel,
-  source_carrier: Node
+fn translate_apply_wrap_gate_to_type_shell(
+  shell: Node,
+  gate: WrapDecisionGate,
+  target: TargetModel
 ) -> Outcome<Node> {
-  match target_bundle_optional_child(
-    target: target,
-    edge_name: ^target_model_edge_use_site_ownership_realizations
-  ) {
-    Accepted { value: optional_catalog, diagnostics: d } =>
-      match optional_catalog {
-        Absent =>
-          outcome_rejected(
-            target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier)
+  match gate {
+    WrapGateInapplicable => outcome_accepted(shell)
+    WrapGateDecided { decision } =>
+      match decision {
+        WrapByValue => outcome_accepted(shell)
+        WrapByReference { layer } =>
+          bind_outcome(
+            o: type_expression_projection_from_target(target: target),
+            f: fn(projection) {
+              bind_outcome(
+                o: translate_reference_layer_tokens_from_target(target: target),
+                f: fn(tokens) {
+                  outcome_accepted(
+                    target_reference_layer_apply_type_emitted(
+                      inner: shell,
+                      layer: layer,
+                      projection: projection,
+                      tokens: tokens
+                    )
+                  )
+                }
+              )
+            }
           )
-        Present { value: catalog } => Accepted { value: catalog, diagnostics: d }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
-  match target_bundle_optional_child(
-    target: target,
-    edge_name: ^target_model_edge_value_semantics_carriers
-  ) {
-    Accepted { value: optional_node, diagnostics: d } =>
-      match optional_node {
-        Absent => Accepted { value: Empty, diagnostics: d }
-        Present { value: node } =>
-          Accepted { value: target_value_semantics_carriers_from_node(node: node), diagnostics: d }
+fn translate_apply_wrap_gate_to_value_expression(
+  expr: TargetValueExpression,
+  gate: WrapDecisionGate,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match gate {
+    WrapGateInapplicable => outcome_accepted(expr)
+    WrapGateDecided { decision } =>
+      match decision {
+        WrapByValue => outcome_accepted(expr)
+        WrapByReference { layer } =>
+          bind_outcome(
+            o: translate_reference_layer_tokens_from_target(target: target),
+            f: fn(tokens) {
+              outcome_accepted(
+                target_reference_layer_apply_value_expression(
+                  inner: expr,
+                  layer: layer,
+                  tokens: tokens
+                )
+              )
+            }
+          )
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -2981,56 +2998,17 @@ fn translate_apply_use_site_ownership_to_type_shell(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
-  match translate_sg_rc_bundle_apply_disposition(
+  match wrap_decision_gate(
     target: target,
-    source_carrier: source_carrier
+    source_carrier: source_carrier,
+    use_site: use_site
   ) {
-    Accepted { value: false, diagnostics: _ } => outcome_accepted(shell)
-    Accepted { value: true, diagnostics: _ } =>
-  bind_outcome(
-    o: type_expression_projection_from_target(target: target),
-    f: fn(projection) {
-      bind_outcome(
-        o: translate_reference_layer_tokens_from_target(target: target),
-        f: fn(tokens) {
-          bind_outcome(
-            o: translate_use_site_ownership_catalog_from_model(
-              target: target,
-              source_carrier: source_carrier
-            ),
-            f: fn(catalog) {
-              bind_outcome(
-                o: translate_value_semantics_carriers_from_model(target: target),
-                f: fn(value_semantics_carriers) {
-                  match target_use_site_ownership_lookup_in_catalog_node(
-                    catalog: catalog,
-                    value_semantics_carriers: value_semantics_carriers,
-                    source_carrier: source_carrier,
-                    use_site: use_site
-                  ) {
-                    Accepted { value: ownership, diagnostics: d } =>
-                      match ownership {
-                        CarrierOwnershipByValue => outcome_accepted(shell)
-                        CarrierOwnershipByReference { realization: row } =>
-                          outcome_accepted(
-                            target_reference_layer_apply_type_emitted(
-                              inner: shell,
-                              layer: row.reference_layer,
-                              projection: projection,
-                              tokens: tokens
-                            )
-                          )
-                      }
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  }
-                }
-              )
-            }
-          )
-        }
+    Accepted { value: gate, diagnostics: _ } =>
+      translate_apply_wrap_gate_to_type_shell(
+        shell: shell,
+        gate: gate,
+        target: target
       )
-    }
-  )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
@@ -3102,7 +3080,7 @@ fn serialize_type_expr_boundary_atom_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match translate_target_function_signature_realization_for_boundary(
     target: target,
     emitted: emitted,
@@ -3152,7 +3130,7 @@ fn serialize_type_expr_boundary_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -3336,49 +3314,16 @@ fn translate_apply_use_site_ownership_to_value_expression(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<TargetValueExpression> {
-  match translate_sg_rc_bundle_apply_disposition(
+  match wrap_decision_gate(
     target: target,
-    source_carrier: source_carrier
+    source_carrier: source_carrier,
+    use_site: use_site
   ) {
-    Accepted { value: false, diagnostics: _ } => outcome_accepted(expr)
-    Accepted { value: true, diagnostics: _ } =>
-      bind_outcome(
-        o: translate_reference_layer_tokens_from_target(target: target),
-        f: fn(tokens) {
-          bind_outcome(
-            o: translate_use_site_ownership_catalog_from_model(
-              target: target,
-              source_carrier: source_carrier
-            ),
-            f: fn(catalog) {
-              bind_outcome(
-                o: translate_value_semantics_carriers_from_model(target: target),
-                f: fn(value_semantics_carriers) {
-                  match target_use_site_ownership_lookup_in_catalog_node(
-                    catalog: catalog,
-                    value_semantics_carriers: value_semantics_carriers,
-                    source_carrier: source_carrier,
-                    use_site: use_site
-                  ) {
-                    Accepted { value: ownership, diagnostics: d } =>
-                      match ownership {
-                        CarrierOwnershipByValue => outcome_accepted(expr)
-                        CarrierOwnershipByReference { realization: row } =>
-                          outcome_accepted(
-                            target_reference_layer_apply_value_expression(
-                              inner: expr,
-                              layer: row.reference_layer,
-                              tokens: tokens
-                            )
-                          )
-                      }
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  }
-                }
-              )
-            }
-          )
-        }
+    Accepted { value: gate, diagnostics: _ } =>
+      translate_apply_wrap_gate_to_value_expression(
+        expr: expr,
+        gate: gate,
+        target: target
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -3519,7 +3464,7 @@ fn translate_fold_init(
     ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
-fn translate_mvp1_coerce_from_grounding_or_evidence(
+fn translate_projection_absent_coerce_from_grounding_or_evidence(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3552,7 +3497,7 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
       }
   }
 }
-fn translate_mvp1_fold_init(
+fn translate_projection_absent_fold_init(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3575,7 +3520,7 @@ fn translate_mvp1_fold_init(
         }
       }
     TypeNode { connective: Atom { identity: _ } } =>
-      translate_mvp1_coerce_from_grounding_or_evidence(
+      translate_projection_absent_coerce_from_grounding_or_evidence(
         node: node,
         tree: tree,
         target: target
@@ -3721,7 +3666,7 @@ fn translate_node_computation(
     }
   )
 }
-fn translate_node_mvp1_fold(
+fn translate_node_projection_absent_fold(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3729,7 +3674,7 @@ fn translate_node_mvp1_fold(
   fold_node(
     n: node,
     algebra: NodeFold {
-      init: fn(n0) { translate_mvp1_fold_init(node: n0, tree: tree, target: target) },
+      init: fn(n0) { translate_projection_absent_fold_init(node: n0, tree: tree, target: target) },
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )
@@ -3830,7 +3775,7 @@ fn is_dag_import_carrier(emitted: Node) -> Bool {
   }
 }
 
-fn translate_node_mvp1(
+fn translate_node_projection_absent(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3853,7 +3798,7 @@ fn translate_node_mvp1(
         match translate_grammar_relation_row_match(target: target, emitted: raw) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
           Rejected { diagnostics: _ } =>
-            translate_node_mvp1_fold(node: node, tree: tree, target: target)
+            translate_node_projection_absent_fold(node: node, tree: tree, target: target)
         }
       }
     )
@@ -3868,7 +3813,7 @@ fn translate_node(
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
     Accepted { value: ProjectionAbsent, diagnostics: _ } =>
-      translate_node_mvp1(node: node, tree: tree, target: target)
+      translate_node_projection_absent(node: node, tree: tree, target: target)
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: r }
   }

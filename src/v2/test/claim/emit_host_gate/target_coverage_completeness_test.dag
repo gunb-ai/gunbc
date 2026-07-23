@@ -6,12 +6,16 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
-import v2.extdeps.languages.python { python_mvp1_target_model }
-import v2.extdeps.languages.go { go_mvp1_target_model }
-import v2.extdeps.languages.typescript { ts_mvp1_target_model }
-import v2.extdeps.languages.cpp { cpp_mvp1_target_model }
-import v2.extdeps.languages.java { java_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.python { python_target_model }
+import v2.extdeps.languages.go { go_target_model }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.java { java_target_model }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type EmitHostTargetCoverageRow {
   target: TargetModel
@@ -19,32 +23,37 @@ type EmitHostTargetCoverageRow {
 }
 
 data emit_host_coverage_row_rust: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: rust_mvp1_target_model(),
+  target: rust_target_model(),
   host_smoked: true
 }
 
 data emit_host_coverage_row_python: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: python_mvp1_target_model(),
+  target: python_target_model(),
   host_smoked: true
 }
 
 data emit_host_coverage_row_go: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: go_mvp1_target_model(),
+  target: go_target_model(),
   host_smoked: true
 }
 
 data emit_host_coverage_row_typescript: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: ts_mvp1_target_model(),
+  target: ts_target_model(),
   host_smoked: true
 }
 
 data emit_host_coverage_row_cpp: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: cpp_mvp1_target_model(),
+  target: cpp_target_model(),
   host_smoked: false
 }
 
+data emit_host_coverage_row_c: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: c_target_model(),
+  host_smoked: true
+}
+
 data emit_host_coverage_row_java: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: java_mvp1_target_model(),
+  target: java_target_model(),
   host_smoked: false
 }
 
@@ -54,6 +63,7 @@ data emit_host_target_coverage_rows: List<EmitHostTargetCoverageRow> = [
   emit_host_coverage_row_go,
   emit_host_coverage_row_typescript,
   emit_host_coverage_row_cpp,
+  emit_host_coverage_row_c,
   emit_host_coverage_row_java
 ]
 
@@ -74,7 +84,7 @@ fn emit_host_all_targets_consistent() -> Bool {
   )
 }
 
-data emit_host_gate_declared_smoke_count: Int = 4
+data emit_host_gate_declared_smoke_count: Int = 5
 
 fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> Bool {
   match runtime_row_from_target(target: row.target) {

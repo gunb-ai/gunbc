@@ -1,20 +1,8 @@
 module gunbc.plans.wiring_liveness_preflight
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem,
-  MarkdownTableRow, MarkdownTableCell, MarkdownAlignment,
-  HeadingBlock, ParagraphBlock, OrderedListBlock, UnorderedListBlock, TableBlock,
-  TextInline, H2, AlignNone,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
 fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   [
@@ -71,6 +59,7 @@ fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
       li(text: "**Runtime preflight — residue only** (§3b) — run the wiring check over the `affected_set` `ReExecFrontier` before the interpreter executes a section; `FailClosed` on a dead wire in the about-to-run slice. Needed only where a realization stays opaque to compile-time reflection; dissolves into item 2 (the compile-time lens) as realizations self-host. The affected-set frontier's first paying consumer."),
     ]),
     p(text: "**Execution (DESIGN §6, on merge):** these slices fan out to dependent workers in this order — item 2 (compile-time lens, the wall) is the spine; item 3 (opaque-residue generator) and the item-1 follow-up confirmation gate on the realization lane; item 4 (runtime preflight) is last and shrinks over time."),
+    p(text: "Related: [witness subject-execution audit — spec-without-execution census](witness-subject-execution-audit.md) — the census of witnesses whose subjects never execute; the same coverage-by-illusion class this preflight makes unwritable for modeled realizations."),
   ]
 }
 

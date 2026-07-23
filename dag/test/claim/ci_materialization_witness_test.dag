@@ -1,0 +1,25 @@
+module test.claim.ci_materialization_witness
+
+import std.types { Bool, String }
+import gunbc.ci_materialization { ci_catalog_projection_refusals }
+import gunbc.ci_materialization_gate {
+  ci_materialization_ladder_holds_live,
+  ci_materialization_holds_without_sccache,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data ci_materialization_witness_note: String = "Behavioral materialization-ladder witnesses over the LIVE emitted workflow (operator, 2026-07-08: see-it-working in the same pipeline the redundancy is paid in). The tautological step-count / demand-count pins (uses==N, run==N, prelude==3, exempt-fresh>=1, single-recompute demand==1) were DELETED 2026-07-15 per operator directive: they asserted calibrated magic numbers that reddened on any benign workflow edit (e.g. re-enrolling the srv1 deploy job) without testing behavior. The discriminating duplication->refusal RED control lives in src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag; the ladder property itself is exercised behaviorally below."
+
+test fn ci_ladder_holds_on_live_workflow() -> Bool {
+  ci_materialization_ladder_holds_live()
+}
+
+test fn ci_ladder_holds_without_sccache_single_build() -> Bool {
+  ci_materialization_holds_without_sccache()
+}
+
+test fn ci_catalog_projection_has_no_refusals() -> Bool {
+  ci_catalog_projection_refusals() == 0
+}

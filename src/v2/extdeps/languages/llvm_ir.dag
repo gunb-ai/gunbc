@@ -36,6 +36,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
+import std.algebra { Empty }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.collection { List, Map }
@@ -527,35 +528,35 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeatur
   }
 }
 
-type LlvmWave1IntegerBits
-  = Wave1Bits32
-  | Wave1Bits64
+type LlvmIntegerBits
+  = LlvmBits32
+  | LlvmBits64
 
-type LlvmWave1FloatKind
-  = Wave1HalfFloat
-  | Wave1SingleFloat
-  | Wave1DoubleFloat
+type LlvmFloatKind
+  = LlvmHalfFloat
+  | LlvmSingleFloat
+  | LlvmDoubleFloat
 
 type LlvmIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  wave1_bits: LlvmWave1IntegerBits
+  bits: LlvmIntegerBits
   std_projection: Symbol
 }
 
 type LlvmFloatPrimitiveFacts {
   surface_spelling: Symbol
-  kind: LlvmWave1FloatKind
+  kind: LlvmFloatKind
   std_projection: Symbol
 }
 data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_i32,
-  wave1_bits: Wave1Bits32,
+  bits: LlvmBits32,
   std_projection: ^llvm_std_projection_i32,
 }
 
 data llvm_facts_i64: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_i64,
-  wave1_bits: Wave1Bits64,
+  bits: LlvmBits64,
   std_projection: ^llvm_std_projection_i64,
 }
 
@@ -566,19 +567,19 @@ data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
 
 data llvm_facts_half: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_half,
-  kind: Wave1HalfFloat,
+  kind: LlvmHalfFloat,
   std_projection: ^llvm_std_projection_half,
 }
 
 data llvm_facts_float: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_float,
-  kind: Wave1SingleFloat,
+  kind: LlvmSingleFloat,
   std_projection: ^llvm_std_projection_float,
 }
 
 data llvm_facts_double: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_double,
-  kind: Wave1DoubleFloat,
+  kind: LlvmDoubleFloat,
   std_projection: ^llvm_std_projection_double,
 }
 
@@ -596,18 +597,18 @@ fn llvm_inhabitant_atom(id: Symbol) -> Node {
 }
 }
 
-fn llvm_wave1_integer_bits_node(wave1_bits: LlvmWave1IntegerBits) -> Node {
-  match wave1_bits {
-    Wave1Bits32 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits32)
-    Wave1Bits64 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits64)
+fn llvm_integer_bits_node(bits: LlvmIntegerBits) -> Node {
+  match bits {
+    LlvmBits32 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits32)
+    LlvmBits64 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits64)
   }
 }
 
-fn llvm_wave1_float_kind_node(kind: LlvmWave1FloatKind) -> Node {
+fn llvm_float_kind_node(kind: LlvmFloatKind) -> Node {
   match kind {
-    Wave1HalfFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_half)
-    Wave1SingleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_single)
-    Wave1DoubleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_double)
+    LlvmHalfFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_half)
+    LlvmSingleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_single)
+    LlvmDoubleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_double)
   }
 }
 
@@ -621,7 +622,7 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
-        target: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits)
+        target: llvm_integer_bits_node(bits: facts.bits)
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
@@ -646,7 +647,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_wave1_float_kind_node(kind: facts.kind)
+        target: llvm_float_kind_node(kind: facts.kind)
       },
       Edge {
         label: Named { name: ^llvm_facts_field_std_projection },
@@ -663,7 +664,7 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
+          Holds { value: llvm_integer_bits_node(bits: facts.bits) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
       } else {
@@ -681,7 +682,7 @@ fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: llvm_wave1_float_kind_node(kind: facts.kind) }
+          Holds { value: llvm_float_kind_node(kind: facts.kind) }
       } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
@@ -731,16 +732,16 @@ fn llvm_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn llvm_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn llvm_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: llvm_primitive_bundles_from_integer_catalog(),
     right: llvm_primitive_bundles_from_float_catalog()
   )
 }
 
-fn llvm_ir_model_core_wave1() -> ModelCore {
+fn llvm_ir_model_core() -> ModelCore {
   ModelCore {
-    primitives: llvm_wave1_primitive_fact_bundles(),
+    primitives: llvm_primitive_fact_bundles(),
     inhabitance: [],
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -769,7 +770,7 @@ fn llvm_global_ident_pattern() -> LexPattern {
   }
 }
 
-fn llvm_wave1_lex() -> LexRules {
+fn llvm_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -815,7 +816,7 @@ fn llvm_void_function_expr() -> GrammarExpr {
   )
 }
 
-fn llvm_ir_wave1_grammar() -> ParseGrammar {
+fn llvm_ir_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^llvm_production_void_function,
     expression: llvm_void_function_expr(),
@@ -849,8 +850,8 @@ fn llvm_void_function_formal_production() -> FormalProduction {
 
 fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: llvm_wave1_lex(),
-    grammar: llvm_ir_wave1_grammar()
+    lex: llvm_lex(),
+    grammar: llvm_ir_grammar()
   }
 }
 

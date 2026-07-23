@@ -1,0 +1,397 @@
+module v2.lens.identity_captured_navigation.analyze
+
+
+fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: cap, name: name) {
+    Accepted { value: c, diagnostics: _ } => Present { value: c }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn sequence_left_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+}
+
+fn sequence_right_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+}
+
+fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
+  Cons { head: item, tail: xs }
+}
+
+data direct_capture_note: String = "collect_direct_captures walks n.children only until it hits a node whose OWN production identity equals the target emitted symbol - it does not descend past a match, so it finds exactly the direct (non-nested) occurrences of a production, matching the technique v2.lens.complexity_accumulator_copy.analyze uses to read a call's own args (^dag_surface_arg) without wandering into a nested call's args."
+
+fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: n) {
+          Present { value: c } => capture_list_prepend(item: c, xs: acc)
+          Absent => acc
+        }
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) {
+          collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+        })
+      }
+    Absent =>
+      fold(n.children, init: acc, f: fn(a, e) {
+        collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+      })
+  }
+}
+
+fn primary_expr_capture(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        parse_production_captured_child_optional(node: node)
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+  match sequence_left_node(cap: cap) {
+    Absent => Absent
+    Present { value: left } => node_atom_identity_optional(node: left)
+  }
+}
+
+fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
+  Cons { head: item, tail: xs }
+}
+
+fn symbol_list_length(xs: List<Symbol>) -> Int {
+  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
+}
+
+fn edge_is_identity_projection(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
+fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
+  let here = match node_atom_identity_optional(node: n) {
+    Present { value: id } =>
+      if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    if edge_is_identity_projection(e: e) {
+      a
+    } else {
+      collect_value_identifiers_into(n: e.target, acc: a)
+    }
+  })
+}
+
+data mention_scan_note: String = "collect_value_identifiers_into skips ^grammar_production_identity_node_projection edges the same way v2.lens.complexity_accumulator_copy.analyze's edge_skips_identifier_count does (a wrapper's own identity tag is never a value mention). Binding-position idents (arg labels, field-pattern labels) are NOT lexeme-stamped in the dag surface grammar (dag_grammar_terminal, not dag_grammar_terminal_lexeme) so they never surface as atom-identity content here - only real value-reference identifiers (call heads, arguments, bare names) are collected, which is exactly the mention set this lens needs."
+
+data node_source_symbol_note: String = "The dag surface grammar stamps a caret-literal's referenced identifier (dag_grammar_caret_symbol_expr's right-hand terminal) with StampClass, not StampLexeme (src/v2/extdeps/languages/dag.dag), so node_atom_identity_optional on that terminal returns only the generic ^dag_token_ident token-CLASS symbol for every caret literal, never the specific text - a real grammar limitation this lens does not touch (out of scope: dag.dag's parse/identity machinery). node_source_symbol recovers the actual referenced identifier out-of-band via the same span/provenance machinery std.diagnostic's Locus and std.provenance's SpanIndex already provide for diagnostics: look up the node's minted occurrence in the SpanIndex, resolve it to a Textual\{file, extent: ByteRange\} locus, slice the original source text, and intern the slice as a Symbol. A synthetic (unminted) node or a non-textual/non-byte-range locus fail-closed to Absent - never a fabricated symbol."
+
+fn node_source_symbol(node: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+  match node.occurrence_id {
+    SyntheticOccurrence => Absent
+    MintedOccurrence { id: occ_id } =>
+      match span_index_resolve_textual_locus(index: span_index, id: occ_id) {
+        Violates { diagnostic: _ } => Absent
+        Holds { value: locus } =>
+          match locus {
+            Textual { file: _, extent: extent } =>
+              match extent {
+                WholeFile => Absent
+                ByteRange { start: start, end: end } =>
+                  Present { value: symbol_intern_lexeme(lexeme: substring(s: source_text, start: start, end: end)) }
+              }
+            _ => Absent
+          }
+      }
+  }
+}
+
+data arg_value_symbol_caret_note: String = "primary_expr's grammar is a Choice: caret_symbol_expr = Sequence(caret_terminal, ident_terminal) for an atom literal like ^foo, vs primary_expr_core's plain-identifier case = Sequence(ident_lexeme, suffix) for a call head like find_named_child - the SAME sequence shape, but the symbol lives on the LEFT for a plain identifier and the RIGHT for a caret-prefixed atom literal (the left is the caret token itself, dag_lex_token_symbol-true). arg_value_symbol reads the left first and, when it is literally ^dag_token_caret, resolves the right - the atom literal's real referenced symbol - via node_source_symbol (see node_source_symbol_note) rather than returning the caret token's own class symbol."
+
+fn caret_literal_right_symbol(value_expr: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+  match sequence_right_node(cap: value_expr) {
+    Absent => Absent
+    Present { value: right } => node_source_symbol(node: right, span_index: span_index, source_text: source_text)
+  }
+}
+
+fn value_expr_symbol_from_left(
+  value_expr: Node,
+  left_id: Symbol,
+  span_index: SpanIndex,
+  source_text: String
+) -> Optional<Symbol> {
+  match left_id == ^dag_token_caret {
+    true => caret_literal_right_symbol(value_expr: value_expr, span_index: span_index, source_text: source_text)
+    false => Present { value: left_id }
+  }
+}
+
+fn arg_value_symbol(arg_capture: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+    Absent => Absent
+    Present { value: value_expr } =>
+      match sequence_left_symbol(cap: value_expr) {
+        Present { value: left_id } =>
+          value_expr_symbol_from_left(
+            value_expr: value_expr,
+            left_id: left_id,
+            span_index: span_index,
+            source_text: source_text
+          )
+        Absent => Absent
+      }
+  }
+}
+
+fn call_args_in_order(call_capture: Node) -> List<Node> {
+  list_reverse(xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty))
+}
+
+fn arg_nth_value_symbol(
+  call_capture: Node,
+  index: Int,
+  span_index: SpanIndex,
+  source_text: String
+) -> Optional<Symbol> {
+  match list_at_optional(xs: call_args_in_order(call_capture: call_capture), index: index) {
+    Absent => Absent
+    Present { value: arg_cap } =>
+      arg_value_symbol(arg_capture: arg_cap, span_index: span_index, source_text: source_text)
+  }
+}
+
+fn match_scrutinee_node(match_capture: Node) -> Optional<Node> {
+  match sequence_right_node(cap: match_capture) {
+    Absent => Absent
+    Present { value: after_kw } => sequence_left_node(cap: after_kw)
+  }
+}
+
+fn match_arms_region_node(match_capture: Node) -> Optional<Node> {
+  match sequence_right_node(cap: match_capture) {
+    Absent => Absent
+    Present { value: after_kw } =>
+      match sequence_right_node(cap: after_kw) {
+        Absent => Absent
+        Present { value: after_scrutinee } =>
+          match sequence_right_node(cap: after_scrutinee) {
+            Absent => Absent
+            Present { value: arms_seq } => sequence_left_node(cap: arms_seq)
+          }
+      }
+  }
+}
+
+fn identity_navigation_call_found(cap: Node) -> Optional<Node> {
+  Present { value: cap }
+}
+
+fn no_identity_navigation_call() -> Optional<Node> {
+  Absent
+}
+
+fn scrutinee_identity_navigation_call(
+  scrutinee: Node,
+  span_index: SpanIndex,
+  source_text: String
+) -> Optional<Node> {
+  match find_capture(root: scrutinee, emitted: ^dag_surface_primary_expr) {
+    Absent => no_identity_navigation_call()
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Present { value: head } =>
+          if head == ^find_named_child {
+            match arg_nth_value_symbol(call_capture: cap, index: 1, span_index: span_index, source_text: source_text) {
+              Present { value: name_sym } =>
+                if name_sym == ^grammar_production_identity_node_projection {
+                  identity_navigation_call_found(cap: cap)
+                } else {
+                  no_identity_navigation_call()
+                }
+              Absent => no_identity_navigation_call()
+            }
+          } else {
+            no_identity_navigation_call()
+          }
+        Absent => no_identity_navigation_call()
+      }
+  }
+}
+
+fn count_symbol(xs: List<Symbol>, needle: Symbol) -> Int {
+  fold(xs, init: 0, f: fn(acc, s) { if s == needle { acc + 1 } else { acc } })
+}
+
+data classify_note: String = "Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at."
+
+fn empty_symbol_list() -> List<Symbol> {
+  Empty
+}
+
+fn no_identity_navigation_finding() -> Optional<Finding> {
+  Absent
+}
+
+fn suspect_identity_navigation_finding(
+  source_node: Node,
+  match_node: Node,
+  reduction_count: Int,
+  remaining: Int
+) -> Optional<Finding> {
+  Present {
+    value: Suspect {
+      violation: IdentityNodeEscapesAsValue {
+        source: source_node,
+        at: match_node,
+        reduction_count: reduction_count,
+        extraneous_mentions: remaining
+      }
+    }
+  }
+}
+
+fn unclassifiable_identity_navigation_finding(match_node: Node, cause: Symbol) -> Optional<Finding> {
+  Present {
+    value: Unclassifiable { at: match_node, cause: cause }
+  }
+}
+
+fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<Symbol>) -> Optional<Finding> {
+  let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
+    if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
+  })
+  let non_absent_total = symbol_list_length(xs: non_absent)
+  let reduction_count = count_symbol(xs: non_absent, needle: ^node_atom_identity_optional)
+  let remaining = non_absent_total - reduction_count
+  if reduction_count == 0 {
+    if remaining == 0 {
+      no_identity_navigation_finding()
+    } else {
+      suspect_identity_navigation_finding(
+        source_node: source_node,
+        match_node: match_node,
+        reduction_count: reduction_count,
+        remaining: remaining
+      )
+    }
+  } else if reduction_count == 1 {
+    if remaining == 1 {
+      no_identity_navigation_finding()
+    } else if remaining == 0 {
+      unclassifiable_identity_navigation_finding(
+        match_node: match_node,
+        cause: ^identity_navigation_reduction_argless
+      )
+    } else {
+      suspect_identity_navigation_finding(
+        source_node: source_node,
+        match_node: match_node,
+        reduction_count: reduction_count,
+        remaining: remaining
+      )
+    }
+  } else {
+    unclassifiable_identity_navigation_finding(
+      match_node: match_node,
+      cause: ^identity_navigation_multiple_reductions
+    )
+  }
+}
+
+fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_text: String) -> List<Finding> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: cap } =>
+            match match_scrutinee_node(match_capture: cap) {
+              Present { value: scrutinee } =>
+                match scrutinee_identity_navigation_call(
+                  scrutinee: scrutinee,
+                  span_index: span_index,
+                  source_text: source_text
+                ) {
+                  Present { value: source_call } =>
+                    match match_arms_region_node(match_capture: cap) {
+                      Present { value: arms } =>
+                        match classify_identity_match(
+                          source_node: source_call,
+                          match_node: node,
+                          mentions: collect_value_identifiers_into(n: arms, acc: Empty)
+                        ) {
+                          Present { value: f } => Cons { head: f, tail: Empty }
+                          Absent => Empty
+                        }
+                      Absent =>
+                        Cons {
+                          head: Unclassifiable {
+                            at: node,
+                            cause: ^identity_navigation_arms_unresolved
+                          },
+                          tail: Empty
+                        }
+                    }
+                  Absent => Empty
+                }
+              Absent => Empty
+            }
+          Absent => Empty
+        }
+      } else {
+        Empty
+      }
+    Absent => Empty
+  }
+}
+
+fn identity_navigation_scan(node: Node, span_index: SpanIndex, source_text: String, acc: List<Finding>) -> List<Finding> {
+  let here = list_append(
+    left: acc,
+    right: identity_navigation_findings_at(node: node, span_index: span_index, source_text: source_text)
+  )
+  fold(node.children, init: here, f: fn(a, e) {
+    identity_navigation_scan(node: e.target, span_index: span_index, source_text: source_text, acc: a)
+  })
+}
+
+fn identity_captured_navigation_findings(root: Node, span_index: SpanIndex, source_text: String) -> List<Finding> {
+  identity_navigation_scan(node: root, span_index: span_index, source_text: source_text, acc: Empty)
+}
+
+fn finding_is_suspect(f: Finding) -> Bool {
+  match f {
+    Suspect { violation: _ } => true
+    Unclassifiable { at: _, cause: _ } => false
+  }
+}
+
+fn finding_is_refusal(f: Finding) -> Bool {
+  match f {
+    Suspect { violation: _ } => false
+    Unclassifiable { at: _, cause: _ } => true
+  }
+}
+
+fn finding_refusal_cause(f: Finding) -> Optional<Symbol> {
+  match f {
+    Suspect { violation: _ } => Absent
+    Unclassifiable { at: _, cause: c } => Present { value: c }
+  }
+}

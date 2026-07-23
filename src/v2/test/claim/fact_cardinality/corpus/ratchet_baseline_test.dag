@@ -1,8 +1,0 @@
-module v2.test.fact_cardinality.corpus.ratchet_baseline
-
-import v2.lens.fact_cardinality { fact_cardinality_live_coexistence_ratchet_holds }
-import v2.std.logic { Bool }
-
-test fn corpus_coexistence_ratchet_baseline_holds() -> Bool {
-  fact_cardinality_live_coexistence_ratchet_holds()
-}

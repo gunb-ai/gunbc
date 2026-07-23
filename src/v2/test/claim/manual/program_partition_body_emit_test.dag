@@ -7,10 +7,11 @@ import v2.compiler.program_partition {
   resolve_program_partition
 }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_source_text,
-  ts_mvp1_target_model
+  ts_source_text,
+  ts_target_model
 }
-import v2.std.algebra { Empty, any, fold_list, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -35,6 +36,9 @@ import v2.test.manual.add_body_emit_typescript {
   add_body_ts_emit_from_producer_tree,
   add_body_ts_producer_inferred_tree
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
   any(xs: seen, predicate: fn(member) { member == needle })
@@ -106,19 +110,19 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
     Accepted { value: program, diagnostics: _ } =>
       match find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
-          match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+          match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
             Accepted { value: whole_source, diagnostics: whole_d } =>
               match emit_for_target(
                 program: program,
                 segment: program_segment_subtree_root(root: body),
-                target: ts_mvp1_target_model(),
+                target: ts_target_model(),
                 boundary: partition_boundary_ambient_context()
               ) {
                 Accepted { value: body_source, diagnostics: body_d } =>
                   (body_d == None)
                     && (whole_d == None)
                     && (body_source != whole_source)
-                    && (whole_source.carried == ts_mvp1_source_text)
+                    && (whole_source.carried == ts_source_text)
                 Rejected { diagnostics: _ } => false
               }
             Rejected { diagnostics: _ } => false
@@ -132,19 +136,19 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
 test fn program_partition_whole_program_emit_matches_direct() -> Bool {
   match add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+      match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
         Accepted { value: direct_source, diagnostics: direct_d } =>
           match emit_for_target(
             program: program,
             segment: program_segment_whole_program(),
-            target: ts_mvp1_target_model(),
+            target: ts_target_model(),
             boundary: partition_boundary_ambient_context()
           ) {
             Accepted { value: partition_source, diagnostics: partition_d } =>
               (direct_d == None)
                 && (partition_d == None)
                 && (direct_source == partition_source)
-                && (direct_source.carried == ts_mvp1_source_text)
+                && (direct_source.carried == ts_source_text)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

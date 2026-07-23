@@ -1,0 +1,111 @@
+module v2.test.claim.witness_cost_locality_test
+
+
+data fixture_carriers: List<String> = ["fix.corpus_reader"]
+
+data fixture_stages: List<String> = ["fix.stage_ingest", "fix.stage_infer", "fix.stage_emit"]
+
+data fixture_unit_closure: List<String> = ["fix.subject", "fix.std_logic", "fix.std_text"]
+
+data fixture_reading_closure: List<String> = ["fix.subject", "fix.std_logic", "fix.corpus_reader"]
+
+data fixture_one_stage_closure: List<String> = ["fix.subject", "fix.stage_ingest", "fix.std_text"]
+
+data fixture_round_trip_closure: List<String> = ["fix.subject", "fix.stage_ingest", "fix.stage_emit"]
+
+data fixture_both_axes_closure: List<String> = ["fix.subject", "fix.corpus_reader", "fix.stage_ingest", "fix.stage_infer"]
+
+fn verdict_of(closure: List<String>) -> WitnessCostLocality {
+  witness_cost_locality(
+    closure_modules: closure,
+    ambient_read_carriers: fixture_carriers,
+    pipeline_stages: fixture_stages
+  )
+}
+
+test fn unit_closure_is_local() -> Bool {
+  locality_is_local(verdict: verdict_of(closure: fixture_unit_closure))
+}
+
+test fn corpus_reading_closure_couples_on_data_breadth() -> Bool {
+  let v = verdict_of(closure: fixture_reading_closure)
+  couples_on_data_breadth(verdict: v) && !couples_on_layer_depth(verdict: v)
+}
+
+test fn single_stage_closure_stays_local() -> Bool {
+  locality_is_local(verdict: verdict_of(closure: fixture_one_stage_closure))
+}
+
+test fn round_trip_closure_couples_on_layer_depth() -> Bool {
+  let v = verdict_of(closure: fixture_round_trip_closure)
+  couples_on_layer_depth(verdict: v) && !couples_on_data_breadth(verdict: v)
+}
+
+test fn both_axes_closure_couples_on_both() -> Bool {
+  let v = verdict_of(closure: fixture_both_axes_closure)
+  couples_on_data_breadth(verdict: v) && couples_on_layer_depth(verdict: v)
+}
+
+test fn red_control_spanning_closure_is_not_local() -> Bool {
+  locality_is_local(verdict: verdict_of(closure: fixture_round_trip_closure)) == false
+}
+
+data fixture_two_hop_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
+  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+]
+
+data fixture_severed_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  ModuleImportFact { module: "fix.mid", imports: [] },
+  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+]
+
+data fixture_cyclic_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.a"] },
+  ModuleImportFact { module: "fix.a", imports: ["fix.b"] },
+  ModuleImportFact { module: "fix.b", imports: ["fix.a", "fix.corpus_reader"] }
+]
+
+fn facts_verdict(facts: List<ModuleImportFact>) -> WitnessCostLocality {
+  witness_cost_locality_from_facts(
+    entry_module: "fix.entry",
+    facts: facts,
+    ambient_read_carriers: fixture_carriers,
+    pipeline_stages: fixture_stages
+  )
+}
+
+test fn two_hop_carrier_couples_on_data_breadth() -> Bool {
+  couples_on_data_breadth(verdict: facts_verdict(facts: fixture_two_hop_facts))
+}
+
+test fn severed_mid_hop_is_local() -> Bool {
+  locality_is_local(verdict: facts_verdict(facts: fixture_severed_facts))
+}
+
+test fn cyclic_facts_terminate_and_still_reach_carrier() -> Bool {
+  couples_on_data_breadth(verdict: facts_verdict(facts: fixture_cyclic_facts))
+}
+
+fn coupled_fixture_verdict() -> WitnessCostLocality {
+  verdict_of(closure: fixture_reading_closure)
+}
+
+test fn declared_corpus_input_routes_scheduled_even_when_reachability_is_local() -> Bool {
+  let a = per_pr_admission(verdict: verdict_of(closure: fixture_unit_closure), envelope: DeclaredCorpusInput)
+  admission_is_continuous(admission: a) == false
+}
+
+test fn declared_bounded_fixture_overrides_coupled_reachability() -> Bool {
+  admission_is_continuous(admission: per_pr_admission(verdict: coupled_fixture_verdict(), envelope: DeclaredBoundedFixture))
+}
+
+test fn undeclared_local_admits_continuous() -> Bool {
+  admission_is_continuous(admission: per_pr_admission(verdict: verdict_of(closure: fixture_unit_closure), envelope: EnvelopeUndeclared))
+}
+
+test fn red_control_undeclared_coupled_never_rides_continuous() -> Bool {
+  admission_is_continuous(admission: per_pr_admission(verdict: coupled_fixture_verdict(), envelope: EnvelopeUndeclared)) == false
+}

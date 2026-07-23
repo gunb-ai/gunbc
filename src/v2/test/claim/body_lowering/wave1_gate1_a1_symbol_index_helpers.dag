@@ -1,0 +1,122 @@
+module v2.test.claim.body_lowering.wave1_gate1_a1_symbol_index_helpers
+
+
+data wave1_gate1_a1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+        }
+      })
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn wave1_gate1_a1_parsed_add_module() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: wave1_gate1_a1_add_module_source,
+    file: ^wave1_gate1_a1_add_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+fn wave1_gate1_a1_normalized_add_module() -> Optional<Node> {
+  match wave1_gate1_a1_parsed_add_module() {
+    Absent => Absent
+    Present { value: parsed } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+      }
+  }
+}
+
+fn wave1_gate1_a1_ingest_param_domain_parity_holds() -> Bool {
+  match wave1_gate1_a1_parsed_add_module() {
+    Absent => false
+    Present { value: parsed } =>
+      let ingest_bindings = body_lower_param_binding_symbols_from_fn_decl_module(root: parsed)
+      match wave1_gate1_a1_normalized_add_module() {
+        Absent => false
+        Present { value: normalized } =>
+          match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+            Absent => false
+            Present { value: arrow } =>
+              body_lower_arrow_domain_matches_ingest_param_bindings(
+                arrow: arrow,
+                ingest_bindings: ingest_bindings
+              )
+          }
+      }
+  }
+}
+
+fn wave1_gate1_a1_domain_param_list_walk_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_a1_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          length(xs: body_lower_arrow_domain_binding_symbols(arrow: arrow)) == 2
+      }
+  }
+}
+
+fn wave1_gate1_a1_symbol_index_frontend_parity_holds() -> Bool {
+  match wave1_gate1_a1_parsed_add_module() {
+    Absent => false
+    Present { value: parsed } =>
+      match body_lower_find_captured(root: parsed, emitted: ^dag_surface_fn_decl) {
+        ParseSubtreeFound { captured: captured } =>
+          match body_lower_fn_decl_ident_from_captured(captured: captured) {
+            Absent => false
+            Present { value: fn_name } =>
+              match wave1_gate1_a1_normalized_add_module() {
+                Absent => false
+                Present { value: normalized } =>
+                  match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+                    Absent => false
+                    Present { value: arrow } =>
+                      body_lower_arrow_domain_matches_frontend_symbol_index(
+                        arrow: arrow,
+                        module_tree: normalized,
+                        fn_name: fn_name
+                      )
+                  }
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+fn wave1_gate1_a1_real_ingest_lowers_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_a1_find_arrow_in_module(root: tree) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}

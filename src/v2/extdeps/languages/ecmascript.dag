@@ -2,7 +2,8 @@ module v2.extdeps.languages.ecmascript
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.grammar {
   StampClass,
   StampBinding,
@@ -137,9 +138,9 @@ type EcmascriptSingletonPrimitiveFacts {
   std_projection: Symbol
 }
 
-data ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
+data ecmascript_source_text: String = "function add(x, y) { return x + y; }"
 
-fn ecmascript_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn ecmascript_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^ecmascript_token_kw_function },
     BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_fn_add },
@@ -237,226 +238,199 @@ fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
+fn ecmascript_primitive_facts_node(
+  surface_spelling: Symbol,
+  middle_field_name: Symbol,
+  middle_field_value: Symbol,
+  std_projection: Symbol
+) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
         name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
+        target: ecmascript_inhabitant_atom(id: surface_spelling)
       ),
       ecmascript_named_edge(
-        name: ^ecmascript_facts_field_machine_representation,
-        target: ecmascript_inhabitant_atom(id: facts.machine_representation)
+        name: middle_field_name,
+        target: ecmascript_inhabitant_atom(id: middle_field_value)
       ),
       ecmascript_named_edge(
         name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
+        target: ecmascript_inhabitant_atom(id: std_projection)
       )
     ],
     occurrence_id: SyntheticOccurrence
+  }
 }
+
+fn ecmascript_primitive_spec_facts(
+  surface_spelling: Symbol,
+  encoding_value: Symbol
+) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          Holds { value: ecmascript_inhabitant_atom(id: surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          Holds { value: ecmascript_inhabitant_atom(id: encoding_value) }
+      } else {
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn ecmascript_primitive_algebra_witness_node(
+  witness_field_name: Symbol,
+  witness_tag: Symbol,
+  middle_field_name: Symbol,
+  middle_field_value: Symbol,
+  std_projection: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ecmascript_named_edge(
+        name: witness_field_name,
+        target: ecmascript_inhabitant_atom(id: witness_tag)
+      ),
+      ecmascript_named_edge(
+        name: middle_field_name,
+        target: ecmascript_inhabitant_atom(id: middle_field_value)
+      ),
+      ecmascript_named_edge(
+        name: ^ecmascript_facts_field_std_projection,
+        target: ecmascript_inhabitant_atom(id: std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ecmascript_catalog_surface_symbol_in_rows<T>(
+  sym: Symbol,
+  rows: List<T>,
+  row_surface_spelling: fn(T) -> Symbol
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || sym == row_surface_spelling(row)
+    }
+  )
+}
+
+fn ecmascript_primitive_fact_bundles_from_catalog_rows<T>(
+  rows: List<T>,
+  row_to_bundle: fn(T) -> PrimitiveFactBundle
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(xs: acc, item: row_to_bundle(row))
+    }
+  )
+}
+
+fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_machine_representation,
+    middle_field_value: facts.machine_representation,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_bigint_facts_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_boolean_facts_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_symbol_facts_node(facts: EcmascriptSymbolPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_string_facts_node(facts: EcmascriptStringPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_surface_spelling,
-        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_singleton_kind,
-        target: ecmascript_inhabitant_atom(id: discriminant(v: facts.kind))
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_facts_node(
+    surface_spelling: facts.surface_spelling,
+    middle_field_name: ^ecmascript_facts_field_singleton_kind,
+    middle_field_value: discriminant(v: facts.kind),
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.machine_representation) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: facts.machine_representation
+  )
 }
 
 fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: facts.encoding
+  )
 }
 
 fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: facts.encoding
+  )
 }
 
 fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: facts.encoding
+  )
 }
 
 fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: facts.encoding
+  )
 }
 
 fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: ^ecmascript_repr_singleton_sole_inhabitant) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  ecmascript_primitive_spec_facts(
+    surface_spelling: facts.surface_spelling,
+    encoding_value: ^ecmascript_repr_singleton_sole_inhabitant
+  )
 }
 
 fn ecmascript_primitive_bundle_from_number_facts(
@@ -514,84 +488,60 @@ fn ecmascript_primitive_bundle_from_singleton_facts(
 }
 
 fn ecmascript_primitive_bundles_from_number_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_number_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_number_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_number_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_number_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_bigint_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_bigint_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_bigint_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_bigint_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_bigint_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_boolean_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_boolean_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_boolean_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_boolean_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_symbol_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_symbol_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_symbol_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_symbol_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_string_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_string_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_string_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_string_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_singleton_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_singleton_facts(facts: facts)
-      )
+  ecmascript_primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_singleton_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_singleton_facts(facts: facts)
     }
   )
 }
 
-fn ecmascript_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: list_append(
@@ -611,66 +561,33 @@ fn ecmascript_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 }
 
 fn ecmascript_number_algebra_witness_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_witness_number_approximate_field,
-        target: ecmascript_inhabitant_atom(id: ^ecmascript_witness_number_approximate_field)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_machine_representation,
-        target: ecmascript_inhabitant_atom(id: facts.machine_representation)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_algebra_witness_node(
+    witness_field_name: ^ecmascript_witness_number_approximate_field,
+    witness_tag: ^ecmascript_witness_number_approximate_field,
+    middle_field_name: ^ecmascript_facts_field_machine_representation,
+    middle_field_value: facts.machine_representation,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_bigint_algebra_witness_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_witness_bigint_ordered_ring,
-        target: ecmascript_inhabitant_atom(id: ^ecmascript_witness_bigint_ordered_ring)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_algebra_witness_node(
+    witness_field_name: ^ecmascript_witness_bigint_ordered_ring,
+    witness_tag: ^ecmascript_witness_bigint_ordered_ring,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_boolean_algebra_witness_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ecmascript_named_edge(
-        name: ^ecmascript_witness_bool_boolean_algebra,
-        target: ecmascript_inhabitant_atom(id: ^ecmascript_witness_bool_boolean_algebra)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_encoding,
-        target: ecmascript_inhabitant_atom(id: facts.encoding)
-      ),
-      ecmascript_named_edge(
-        name: ^ecmascript_facts_field_std_projection,
-        target: ecmascript_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ecmascript_primitive_algebra_witness_node(
+    witness_field_name: ^ecmascript_witness_bool_boolean_algebra,
+    witness_tag: ^ecmascript_witness_bool_boolean_algebra,
+    middle_field_name: ^ecmascript_facts_field_encoding,
+    middle_field_value: facts.encoding,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ecmascript_number_algebra_inhabitance(facts: EcmascriptNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -740,9 +657,9 @@ fn ecmascript_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn ecmascript_model_core_wave1() -> ModelCore {
+fn ecmascript_model_core() -> ModelCore {
   ModelCore {
-    primitives: ecmascript_wave1_primitive_fact_bundles(),
+    primitives: ecmascript_primitive_fact_bundles(),
     inhabitance: ecmascript_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -786,11 +703,11 @@ fn ecmascript_declared_inhabitants_root() -> Node {
 }
 }
 
-fn ecmascript_mvp1_selection_policy_node() -> Node {
+fn ecmascript_selection_policy_node() -> Node {
   ecmascript_number_inhabitant_node()
 }
 
-fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
+fn ecmascript_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -807,17 +724,17 @@ fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
+fn ecmascript_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      ecmascript_named_edge(name: ^serialize_source_field_source_text, target: ecmascript_inhabitant_atom(id: ^ecmascript_mvp1_source_literal)),
-      ecmascript_named_edge(name: ^serialize_source_field_source_grammar, target: ecmascript_inhabitant_atom(id: ^ecmascript_production_mvp1_fn_add))
+      ecmascript_named_edge(name: ^serialize_source_field_source_text, target: ecmascript_inhabitant_atom(id: ^ecmascript_source_literal)),
+      ecmascript_named_edge(name: ^serialize_source_field_source_grammar, target: ecmascript_inhabitant_atom(id: ^ecmascript_production_fn_add))
     ],
     right: [
       ecmascript_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: ecmascript_mvp1_concrete_tokens(),
+          tokens: ecmascript_concrete_tokens(),
           token_to_node: ecmascript_concrete_token_node
         )
       )
@@ -825,17 +742,17 @@ fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn ecmascript_mvp1_serialize_source_node() -> Node {
+fn ecmascript_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: ecmascript_mvp1_serialize_source_children(),
+    children: ecmascript_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
-    xs: ecmascript_mvp1_concrete_tokens(),
+    xs: ecmascript_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
       list_snoc_item(
@@ -954,32 +871,32 @@ fn ecmascript_formal_productions_to_grammar_production(
   }
 }
 
-fn ecmascript_formal_production_mvp1_fn_add() -> FormalProduction {
+fn ecmascript_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^ecmascript_production_mvp1_fn_add,
+    lhs: ^ecmascript_production_fn_add,
     rhs: ecmascript_formal_rhs_from_token_classes()
   )
 }
 
-fn ecmascript_wave1_formal_productions() -> List<FormalProduction> {
-  [ecmascript_formal_production_mvp1_fn_add()]
+fn ecmascript_formal_productions() -> List<FormalProduction> {
+  [ecmascript_formal_production_fn_add()]
 }
 
-fn ecmascript_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn ecmascript_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^ecmascript_production_mvp1_fn_add,
+    name: ^ecmascript_production_fn_add,
     expression: ecmascript_formal_productions_to_grammar_expr(
-      prods: [ecmascript_formal_production_mvp1_fn_add()]
+      prods: [ecmascript_formal_production_fn_add()]
     ),
-    emitted: ecmascript_mvp1_emitted_add_fn_node()
+    emitted: ecmascript_emitted_add_fn_node()
   }
 }
 
-fn ecmascript_mvp1_grammar_relation_row() -> EcmascriptGrammarRelationRow {
+fn ecmascript_grammar_relation_row() -> EcmascriptGrammarRelationRow {
   EcmascriptGrammarRelationRow {
-    production: ecmascript_formal_production_mvp1_fn_add(),
-    emitted: ecmascript_mvp1_emitted_add_fn_node(),
-    tokens: ecmascript_mvp1_concrete_tokens()
+    production: ecmascript_formal_production_fn_add(),
+    emitted: ecmascript_emitted_add_fn_node(),
+    tokens: ecmascript_concrete_tokens()
   }
 }
 
@@ -1001,33 +918,33 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
 }
 }
 
-fn ecmascript_mvp1_translation_rules_node() -> Node {
+fn ecmascript_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
-        name: ^ecmascript_relation_rule_mvp1_fn_add,
-        target: ecmascript_grammar_relation_row_node(row: ecmascript_mvp1_grammar_relation_row())
+        name: ^ecmascript_relation_rule_fn_add,
+        target: ecmascript_grammar_relation_row_node(row: ecmascript_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_mvp1_target_model_node() -> Node {
+fn ecmascript_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_mvp1_selection_policy_node()),
+      ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_selection_policy_node()),
       ecmascript_named_edge(name: ^target_model_edge_declared_inhabitants, target: ecmascript_declared_inhabitants_root()),
-      ecmascript_named_edge(name: ^target_model_edge_translation_rules, target: ecmascript_mvp1_translation_rules_node()),
-      ecmascript_named_edge(name: ^target_model_edge_serialize_source, target: ecmascript_mvp1_serialize_source_node())
+      ecmascript_named_edge(name: ^target_model_edge_translation_rules, target: ecmascript_translation_rules_node()),
+      ecmascript_named_edge(name: ^target_model_edge_serialize_source, target: ecmascript_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn ecmascript_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^ecmascript_binding_fn_add, "add"),
@@ -1039,13 +956,13 @@ fn ecmascript_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ecmascript_mvp1_target_model() -> TargetModel {
+fn ecmascript_target_model() -> TargetModel {
   TargetModel {
-    bundle: ecmascript_mvp1_target_model_node(),
-    lex: ecmascript_wave1_lex(),
-    binding_spellings: ecmascript_mvp1_binding_spellings(),
+    bundle: ecmascript_target_model_node(),
+    lex: ecmascript_lex(),
+    binding_spellings: ecmascript_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ecmascript_mvp1_source_text,
+    authority_source_text: ecmascript_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -1113,7 +1030,7 @@ fn ecmascript_int_literal_lex_rule() -> LexRule {
   }
 }
 
-fn ecmascript_wave1_lex_rules() -> LexRuleSet {
+fn ecmascript_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       ecmascript_lex_rule(token_class: ^ecmascript_token_rparen_lbrace_inner_open, text: ") {\n        "),
@@ -1143,19 +1060,19 @@ fn ecmascript_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn ecmascript_wave1_lex() -> LexRules {
-  ModeledLexRules { root: ecmascript_wave1_lex_rules() }
+fn ecmascript_lex() -> LexRules {
+  ModeledLexRules { root: ecmascript_lex_rules() }
 }
 
 fn ecmascript_grammar_atom(id: Symbol) -> Node {
   ecmascript_inhabitant_atom(id: id)
 }
 
-fn ecmascript_wave1_grammar_root() -> GrammarRoot {
+fn ecmascript_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^ecmascript_production_fn_decl,
     productions: [
-      ecmascript_grammar_production_mvp1_fn_add(),
+      ecmascript_grammar_production_fn_add(),
 
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
@@ -1329,130 +1246,62 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn ecmascript_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: ecmascript_wave1_grammar_root() }
+fn ecmascript_grammar() -> ParseGrammar {
+  ModeledGrammar { root: ecmascript_grammar_root() }
 }
 
-fn ecmascript_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn ecmascript_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: ecmascript_wave1_lex_rules(),
+    rules: ecmascript_lex_rules(),
     token_class: sym
   )
 }
 
-fn ecmascript_catalog_surface_spelling_eq(sym: Symbol, spelling: Symbol) -> Bool {
-  sym == spelling
-}
-
-fn ecmascript_catalog_surface_fold_false() -> Bool {
-  false
-}
-
-fn ecmascript_number_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptNumberPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
-}
-
 fn ecmascript_number_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_number_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_number_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_number_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_bigint_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptBigIntPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_bigint_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_bigint_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_bigint_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_bigint_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_boolean_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptBooleanPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_boolean_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_boolean_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_boolean_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_boolean_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_string_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptStringPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_string_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_string_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_string_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_string_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_symbol_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptSymbolPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_symbol_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_symbol_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_symbol_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_symbol_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
 }
 
-fn ecmascript_singleton_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptSingletonPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
-}
-
 fn ecmascript_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_singleton_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_singleton_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  ecmascript_catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_singleton_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
 }
 
@@ -1469,21 +1318,21 @@ fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       ecmascript_catalog_surface_symbol(sym: sym) ||
-        ecmascript_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: ecmascript_wave1_grammar(), sym: sym) ||
+        ecmascript_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: ecmascript_grammar(), sym: sym) ||
         sym == ^ecmascript_surface_fn_item ||
-        sym == ^ecmascript_production_mvp1_fn_add ||
-        sym == ^ecmascript_mvp1_source_literal
+        sym == ^ecmascript_production_fn_add ||
+        sym == ^ecmascript_source_literal
     }
   }
 }
 
-fn ecmascript_language_model_wave1() -> LanguageModel {
+fn ecmascript_language_model() -> LanguageModel {
   LanguageModel {
-    lex: ecmascript_wave1_lex(),
-    grammar: ecmascript_wave1_grammar(),
+    lex: ecmascript_lex(),
+    grammar: ecmascript_grammar(),
     language_identity: ^ecmascript_language_model_surface_id,
     canonical_symbols: ecmascript_language_model_canonical_symbols(),
-    core: ecmascript_model_core_wave1()
+    core: ecmascript_model_core()
   }
 }

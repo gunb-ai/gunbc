@@ -1,32 +1,7 @@
 module test.claim.realization_width_witness
 
-import std.nat { Nat }
-import std.measure { HardwareThreadCount, Nano, hardware_thread_count, hardware_thread_count_value }
-import std.realization_schedule {
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableSingleClaim,
-  CostAccount,
-  cost_account_predicted_zero,
-  runnable_resource_profile_negligible,
-}
-import std.realization {
-  bounded_host_spawn_width,
-  witness_spawn_width_capped_by_hardware,
-  witness_width_fold_preserves_schedule_topology,
-  witness_budget_ignoring_fold_fails,
-  witness_measured_cost_affects_shard_balance,
-  witness_memory_term_non_binding_uses_shard_count,
-  witness_tight_budget_backs_off_below_shard_count,
-  witness_unreadable_budget_falls_back_conservative,
-  witness_safety_fraction_is_load_bearing,
-  witness_subunit_budget_admits_one,
-  witness_pids_term_binds_below_cores_and_memory,
-  witness_memory_term_still_binds_under_three_term_fold,
-  witness_unreadable_pids_budget_falls_back_conservative,
-  witness_subunit_pids_budget_admits_one,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn synthetic_plan_total() -> CostAccount<Nano> {
   cost_account_predicted_zero()
@@ -50,7 +25,7 @@ fn synthetic_plan() -> RealizationPlan<Nano> {
     schedule: [
       [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
+        RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()

@@ -1,0 +1,8 @@
+module v2.test.long.s1_closure_receipt
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn s1_closure_parses_holds() -> Bool {
+  is_empty(xs: s1_closure_failures())
+}

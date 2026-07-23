@@ -2,19 +2,20 @@
 // Source module: extdeps.uri_path
 
 use self::PathSegmentTokensResult::*;
+use self::PathTemplateMatch::*;
 use self::PathTemplateParseResult::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::std_http_path::{PathTemplate, UrlPathToken};
+pub use crate::std_http_path::{PathParamBinding, PathTemplate, UrlPathToken};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -99,6 +100,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             };
             let name_and_suffix = Rc::new(
                 after_open
+                    .clone()
                     .split(&"}".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
@@ -162,12 +164,158 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             } else {
                 Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
                     tokens: v1_rt::concat(
-                        v1_rt::concat(prefix_tokens, param_tokens),
-                        suffix_tokens,
+                        v1_rt::concat(prefix_tokens.clone(), param_tokens.clone()),
+                        suffix_tokens.clone(),
                     ),
                 })
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PathTemplateMatch {
+    PathMatched {
+        params: Rc<Vec<Rc<PathParamBinding>>>,
+    },
+    PathNotMatched,
+}
+impl PathTemplateMatch {
+    pub fn params(&self) -> Rc<Vec<Rc<PathParamBinding>>> {
+        match self {
+            PathTemplateMatch::PathMatched { params: __val, .. } => __val.clone(),
+            PathTemplateMatch::PathNotMatched => panic!("no params on unit variant"),
+        }
+    }
+}
+
+pub fn match_path_template_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and std.http_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is std.http_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
+    if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {
+        Rc::new(vec![])
+    } else {
+        {
+            let raw_segs = Rc::new(
+                path_only
+                    .clone()
+                    .split(&"/".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            match raw_segs.clone().first().cloned() {
+                Some(lead) => {
+                    if (lead.clone() == "".to_string()) {
+                        Rc::new(
+                            raw_segs
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        raw_segs.clone()
+                    }
+                }
+                None => raw_segs.clone(),
+            }
+        }
+    }
+}
+
+pub fn match_path_tokens(
+    tokens: Rc<Vec<Rc<UrlPathToken>>>,
+    segs: Rc<Vec<String>>,
+) -> Rc<PathTemplateMatch> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match tokens.clone().first().cloned() {
+            None => match segs.clone().first().cloned() {
+                None => Rc::new(PathTemplateMatch::PathMatched {
+                    params: Rc::new(vec![]),
+                }),
+                Some(_) => Rc::new(PathTemplateMatch::PathNotMatched),
+            },
+            Some(tok) => match segs.clone().first().cloned() {
+                None => Rc::new(PathTemplateMatch::PathNotMatched),
+                Some(seg) => match (*match_path_tokens(
+                    Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    Rc::new(
+                        segs.clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                ))
+                .clone()
+                {
+                    PathTemplateMatch::PathNotMatched => Rc::new(PathTemplateMatch::PathNotMatched),
+                    PathTemplateMatch::PathMatched { params: ps, .. } => {
+                        match (*tok.clone()).clone() {
+                            UrlPathToken::LiteralToken { text: t, .. } => {
+                                if (t.clone() == seg.clone()) {
+                                    Rc::new(PathTemplateMatch::PathMatched { params: ps.clone() })
+                                } else {
+                                    Rc::new(PathTemplateMatch::PathNotMatched)
+                                }
+                            }
+                            UrlPathToken::ParamToken { name: n, .. } => {
+                                if (seg.clone() == "".to_string()) {
+                                    Rc::new(PathTemplateMatch::PathNotMatched)
+                                } else {
+                                    Rc::new(PathTemplateMatch::PathMatched {
+                                        params: v1_rt::concat(
+                                            Rc::new(vec![Rc::new(PathParamBinding {
+                                                name: n.clone(),
+                                                value: seg.clone(),
+                                            })]),
+                                            ps.clone(),
+                                        ),
+                                    })
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        }
+    })
+}
+
+pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathTemplateMatch> {
+    {
+        let path_only = match Rc::new(
+            path.clone()
+                .split(&"?".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(p) => p.clone(),
+            None => path.clone(),
+        };
+        match_path_tokens(
+            template.tokens.clone(),
+            match_path_segments(path_only.clone()),
+        )
     }
 }
 
@@ -189,6 +337,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             let mut __result = Vec::new();
             for s in Rc::new(
                 path_only
+                    .clone()
                     .split(&"/".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),

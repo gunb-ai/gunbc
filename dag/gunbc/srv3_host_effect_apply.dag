@@ -1,0 +1,157 @@
+module gunbc.srv3_host_effect_apply
+
+
+type Srv3TypedReceipt {
+  lines: List<String>
+}
+
+fn srv3_actuator_target() -> NodeControlPlane {
+  HostOs { node: srv3_os_install_actuator_host }
+}
+
+data srv3_seeded_install_media_toolchain_ensure_deploy_access: DeployAccess = ci_deploy_srv1_access
+
+fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
+  match deploy_access_check(
+    access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
+    actor: deploy_access_unprivileged_fixture_actor(),
+  ) {
+    Deny { reason: _ } => true
+    Permit => false
+  }
+}
+
+fn srv3_host_effect_apply(
+  effect: HostEffect,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: srv3_actuator_target(),
+    effect: effect,
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  )
+}
+
+fn srv3_host_effect_observe_apply(
+  include_git_meta: Bool,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(
+    effect: Srv3InstallReconcileObserve { include_git_meta: include_git_meta },
+  )
+}
+
+fn srv3_host_effect_observe_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: srv3_actuator_target(),
+    effect: Srv3InstallReconcileObserve { include_git_meta: true },
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  )
+}
+
+fn srv3_durable_approval_grant_record_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: DurableApprovalGrantRecord)
+}
+
+fn srv3_durable_approval_grant_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: srv3_actuator_target(),
+    effect: DurableApprovalGrantRead,
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  )
+}
+
+fn srv3_install_media_fetch_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3InstallMediaFetch)
+}
+
+fn srv3_seeded_install_media_toolchain_ensure_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply_gated(
+    access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
+    target: srv3_actuator_target(),
+    effect: Srv3SeededInstallMediaToolchainEnsure,
+    evidence: host_effect_identity_evidence,
+    transport: srv3_seeded_install_media_toolchain_ensure_deploy_access.transport,
+    fixture_actor: none,
+  )
+}
+
+fn srv3_seeded_install_media_remaster_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
+}
+
+fn srv3_sol_console_capture_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3SolConsoleCapture)
+}
+
+fn srv3_bmcweb_session_login_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin)
+}
+
+fn srv3_bmcweb_token_extract_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3BmcwebTokenExtract)
+}
+
+fn srv3_nbd_proxy_serve_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect())
+}
+
+fn srv3_boot_once_read_back_sleep_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3BootOnceReadBackSleep)
+}
+
+fn srv3_typed_receipt(receipt: Srv3TypedReceipt) -> Srv3TypedReceipt {
+  receipt
+}
+
+fn srv3_typed_receipt_from_lines(lines: List<String>) -> Srv3TypedReceipt {
+  Srv3TypedReceipt { lines: lines }
+}
+
+fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  srv3_host_effect_apply(effect: Srv3ReceiptEmit { lines: receipt.lines })
+}
+
+fn srv3_shell_stdout_from_apply(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> String? {
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } => Present { value: out }
+        ConvergePlanApplied { stdout: _, exit_code: _ } => none
+      }
+    NotConverged { reason: _, applied: _ } => none
+  }
+}
+
+fn srv3_reconciliation_failure_reason(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> String? {
+  match r {
+    Converged { evidence: _, applied: _ } => none
+    NotConverged { reason: why, applied: _ } => Present { value: why }
+  }
+}
+
+fn srv3_reconciliation_to_process_exit(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  failure_prefix: String,
+) -> ProcessExit {
+  if reconciliation_converged(r: r) {
+    ExitSuccess
+  } else {
+    match srv3_reconciliation_failure_reason(r: r) {
+      Present { value: why } => exit_failure(reason: concat(failure_prefix, why))
+      Absent => exit_failure(reason: concat(failure_prefix, "host_effect_apply failed"))
+    }
+  }
+}
+
+fn srv3_emit_typed_receipt(receipt: Srv3TypedReceipt) -> ProcessExit {
+  srv3_reconciliation_to_process_exit(
+    r: srv3_receipt_emit_apply(receipt: receipt),
+    failure_prefix: "srv3-receipt-emit: ",
+  )
+}

@@ -1,0 +1,984 @@
+module v2.extdeps.languages.c
+
+import extdeps.languages.c.emit {
+  c_header_extension,
+  c_include_directive_for_header_path,
+  c_object_extension,
+  c_path_with_extension,
+  c_source_extension
+}
+import v2.extdeps.languages.c_decl {
+  c_semantic_decl_emission_bundle_node
+}
+import std.algebra { Empty }
+import std.graph {
+  CallGraph,
+  GraphEdge,
+  graph_has_multi_node_scc
+}
+import std.types { String }
+import v2.std.algebra { any, length }
+import v2.std.collection {
+  Absent,
+  Optional,
+  Present,
+  List,
+  Map,
+  empty_map,
+  map_insert
+}
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.compilers.lexing {
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule
+}
+import v2.std.grammar {
+  GrammarExpr,
+  GrammarProduction,
+  Sequence,
+  StampClass,
+  Terminal,
+  grammar_production_to_node,
+  grammar_relation_tokens_node
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  ConcreteSyntaxToken,
+  FixedToken,
+  BoundToken,
+  target_model_emit_transforms_empty,
+  concrete_syntax_token_class,
+  concrete_syntax_token_to_node
+}
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  EmittedWithSuffix,
+  FixedWidthBytes,
+  HostRuntimeRowPresent,
+  HostToolProgram,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedProgram,
+  TargetEmitHostRuntimeRow,
+  WorkspaceFile
+}
+import v2.std.compilers.compilation_unit {
+  ByValueTypeCycle,
+  CompilationUnit,
+  CompilationUnitArtifactId,
+  CompilationUnitId,
+  ModuleDag,
+  ModuleId,
+  ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionFoldOutcome,
+  PartitionFoldRefused,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  module_type_definition_rows,
+  module_unit_id,
+  partition_fold_outcome,
+  partition_unit_by_id,
+  type_definition_row_identity
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
+
+data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. Refuses only ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared (universal cause on home PartitionR4ValidityCause). SccSplit is Rust R4, not C R4."
+
+data c_by_value_type_cycle_detail: String = "incomplete by-value type containment cycle across partition units"
+
+data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
+
+data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
+
+fn c_partition_fold_outcome(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> PartitionFoldOutcome {
+  partition_fold_outcome(module_dag: module_dag, assignment: assignment)
+}
+
+type CTranslationUnitSpelling {
+  unit_id: CompilationUnitId
+  header_path: String
+  source_path: String
+  include_directives: List<String>
+  include_closure: List<CompilationUnitId>
+  object_path: String
+  interface_nodes: List<Node>
+}
+
+fn c_unit_basename(unit_id: CompilationUnitId) -> String {
+  unit_id
+}
+
+fn c_unit_header_path(unit_id: CompilationUnitId) -> String {
+  c_path_with_extension(
+    basename: c_unit_basename(unit_id: unit_id),
+    extension: c_header_extension
+  )
+}
+
+fn c_unit_source_path(unit_id: CompilationUnitId) -> String {
+  c_path_with_extension(
+    basename: c_unit_basename(unit_id: unit_id),
+    extension: c_source_extension
+  )
+}
+
+fn c_unit_object_path(artifact: CompilationUnitArtifactId) -> String {
+  c_path_with_extension(basename: artifact, extension: c_object_extension)
+}
+
+fn c_include_directive_for_dep(dep_id: CompilationUnitId) -> String {
+  c_include_directive_for_header_path(
+    header_path: c_unit_header_path(unit_id: dep_id)
+  )
+}
+
+fn c_unit_include_directives(deps: List<CompilationUnitId>) -> List<String> {
+  deps |> map(dep => c_include_directive_for_dep(dep_id: dep))
+}
+
+fn c_include_closure_snoc_unique(
+  items: List<CompilationUnitId>,
+  item: CompilationUnitId
+) -> List<CompilationUnitId> {
+  if any(xs: items, predicate: fn(id) { id == item }) {
+    items
+  } else {
+    items |> list_push(item)
+  }
+}
+
+fn c_include_closure_grow_once(
+  units: List<CompilationUnit>,
+  closed: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  closed
+    |> fold(init: closed, f: fn(acc, dep_id) {
+      match partition_unit_by_id(units: units, unit_id: dep_id) {
+        Present { value: dep_unit } =>
+          dep_unit.deps
+            |> fold(init: acc, f: fn(inner, next) {
+              c_include_closure_snoc_unique(items: inner, item: next)
+            })
+        Absent => acc
+      }
+    })
+    |> sort_by(id => id)
+}
+
+fn c_include_closure_saturate_with_fuel(
+  units: List<CompilationUnit>,
+  closed: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    closed
+  } else {
+    let grown = c_include_closure_grow_once(units: units, closed: closed)
+    if length(xs: grown) == length(xs: closed) {
+      grown
+    } else {
+      c_include_closure_saturate_with_fuel(
+        units: units,
+        closed: grown,
+        fuel: fuel - 1
+      )
+    }
+  }
+}
+
+fn c_include_closure(
+  unit: CompilationUnit,
+  units: List<CompilationUnit>
+) -> List<CompilationUnitId> {
+  c_include_closure_saturate_with_fuel(
+    units: units,
+    closed: unit.deps,
+    fuel: (units |> count) + 1
+  )
+}
+
+fn c_translation_unit_spelling(
+  unit: CompilationUnit,
+  units: List<CompilationUnit>
+) -> CTranslationUnitSpelling {
+  CTranslationUnitSpelling {
+    unit_id: unit.id
+    header_path: c_unit_header_path(unit_id: unit.id)
+    source_path: c_unit_source_path(unit_id: unit.id)
+    include_directives: c_unit_include_directives(deps: unit.deps)
+    include_closure: c_include_closure(unit: unit, units: units)
+    object_path: c_unit_object_path(artifact: unit.artifact)
+    interface_nodes: unit.interface
+  }
+}
+
+fn c_unit_graph_call_graph(units: List<CompilationUnit>) -> CallGraph {
+  CallGraph {
+    edges: units
+      |> fold(init: Empty, f: fn(acc, unit) {
+        unit.deps
+          |> fold(init: acc, f: fn(inner, dep) {
+            inner
+              |> list_push(
+                GraphEdge {
+                  caller: unit.id,
+                  callee: dep
+                }
+              )
+          })
+      })
+  }
+}
+
+fn c_unit_graph_names(units: List<CompilationUnit>) -> List<String> {
+  units |> map(unit => unit.id) |> sort_by(id => id)
+}
+
+fn c_partition_unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
+  graph_has_multi_node_scc(
+    names: c_unit_graph_names(units: units),
+    graph: c_unit_graph_call_graph(units: units)
+  )
+}
+
+type CTypeOwner {
+  module: ModuleId
+  identity: Symbol
+}
+
+type CByValueTypeEdge {
+  from: CTypeOwner
+  to: CTypeOwner
+}
+
+type CTypeOwnerLookup
+  = CTypeOwnerFound { owner: CTypeOwner }
+  | CTypeOwnerAbsent
+  | CTypeOwnerAmbiguous { identity: Symbol }
+
+fn c_type_owner_eq(left: CTypeOwner, right: CTypeOwner) -> Bool {
+  left.module == right.module && left.identity == right.identity
+}
+
+fn c_list_snoc_type_owner(items: List<CTypeOwner>, item: CTypeOwner) -> List<CTypeOwner> {
+  items |> list_push(item)
+}
+
+fn c_type_atoms_by_value_in_node(node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => [sym]
+    TypeNode { connective: Arrow } => []
+    TypeNode { connective: Conj } =>
+      node.children
+        |> fold(init: [], f: fn(acc, child) {
+          c_type_atoms_by_value_in_node(node: child.target)
+            |> fold(init: acc, f: fn(inner, sym) {
+              if any(xs: inner, predicate: fn(s) { s == sym }) {
+                inner
+              } else {
+                inner |> list_push(sym)
+              }
+            })
+        })
+    _ => []
+  }
+}
+
+fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
+  row.definition
+}
+
+fn c_all_type_owners(module_dag: ModuleDag) -> List<CTypeOwner> {
+  module_dag.modules
+    |> fold(init: [], f: fn(acc, member_module) {
+      module_type_definition_rows(module_dag: module_dag, module: member_module)
+        |> fold(init: acc, f: fn(inner, row) {
+          inner
+            |> list_push(
+              CTypeOwner {
+                module: member_module,
+                identity: type_definition_row_identity(row: row),
+              }
+            )
+        })
+    })
+}
+
+fn c_type_owner_for_symbol_in_module(
+  owners: List<CTypeOwner>,
+  member_module: ModuleId,
+  sym: Symbol
+) -> Optional<CTypeOwner> {
+  fold_list(
+    xs: owners,
+    empty: Absent,
+    cons: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match (owner.module == member_module) && (owner.identity == sym) {
+            true => Present { value: owner }
+            false => Absent
+          }
+      }
+    }
+  )
+}
+
+fn c_type_owner_singleton_match(
+  owners: List<CTypeOwner>,
+  sym: Symbol
+) -> CTypeOwnerLookup {
+  fold_list(
+    xs: owners,
+    empty: CTypeOwnerAbsent,
+    cons: fn(acc, owner) {
+      match owner.identity == sym {
+        false => acc
+        true =>
+          match acc {
+            CTypeOwnerAbsent => CTypeOwnerFound { owner: owner }
+            CTypeOwnerFound { owner: _ } => CTypeOwnerAmbiguous { identity: sym }
+            CTypeOwnerAmbiguous { identity: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+fn c_type_owner_for_symbol(
+  owners: List<CTypeOwner>,
+  home_module: ModuleId,
+  sym: Symbol
+) -> CTypeOwnerLookup {
+  match c_type_owner_for_symbol_in_module(
+    owners: owners,
+    member_module: home_module,
+    sym: sym
+  ) {
+    Present { value: owner } => CTypeOwnerFound { owner: owner }
+    Absent => c_type_owner_singleton_match(owners: owners, sym: sym)
+  }
+}
+
+fn c_type_definition_for_owner(
+  module_dag: ModuleDag,
+  owner: CTypeOwner
+) -> Optional<Node> {
+  fold_list(
+    xs: module_type_definition_rows(module_dag: module_dag, module: owner.module),
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match type_definition_row_identity(row: row) == owner.identity {
+            true => Present { value: c_type_definition_body(row: row) }
+            false => Absent
+          }
+      }
+    }
+  )
+}
+
+fn c_by_value_type_edges(
+  module_dag: ModuleDag,
+  owners: List<CTypeOwner>
+) -> List<CByValueTypeEdge> {
+  owners
+    |> fold(init: [], f: fn(acc, owner) {
+      match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+        Present { value: defn } =>
+          c_type_atoms_by_value_in_node(node: defn)
+            |> fold(init: acc, f: fn(inner, sym) {
+              match c_type_owner_for_symbol(
+                owners: owners,
+                home_module: owner.module,
+                sym: sym
+              ) {
+                CTypeOwnerFound { owner: target } =>
+                  inner
+                    |> list_push(
+                      CByValueTypeEdge {
+                        from: owner,
+                        to: target,
+                      }
+                    )
+                CTypeOwnerAbsent => inner
+                CTypeOwnerAmbiguous { identity: _ } => inner
+              }
+            })
+        Absent => acc
+      }
+    })
+}
+
+fn c_by_value_type_identity_resolution_refusal(
+  module_dag: ModuleDag,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  owners
+    |> fold(init: Absent, f: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+            Present { value: defn } =>
+              c_type_atoms_by_value_in_node(node: defn)
+                |> fold(init: Absent, f: fn(inner_acc, sym) {
+                  match inner_acc {
+                    Present { value: _ } => inner_acc
+                    Absent =>
+                      match c_type_owner_for_symbol(
+                        owners: owners,
+                        home_module: owner.module,
+                        sym: sym
+                      ) {
+                        CTypeOwnerAmbiguous { identity: _ } =>
+                          Present { value: c_by_value_type_ambiguous_identity_detail }
+                        CTypeOwnerFound { owner: _ } => Absent
+                        CTypeOwnerAbsent => Absent
+                      }
+                  }
+                })
+            Absent => Absent
+          }
+      }
+    })
+}
+
+fn c_path_contains_type_owner(path: List<CTypeOwner>, node: CTypeOwner) -> Bool {
+  path |> any(step => c_type_owner_eq(left: step, right: node))
+}
+
+fn c_by_value_edge_crosses_units(
+  edge: CByValueTypeEdge,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  match module_unit_id(assignment: assignment, module: edge.from.module) {
+    Present { value: from_unit } =>
+      match module_unit_id(assignment: assignment, module: edge.to.module) {
+        Present { value: to_unit } => from_unit != to_unit
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn c_by_value_cycle_has_cross_unit_edge(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  cycle: List<CTypeOwner>
+) -> Bool {
+  edges |> any(edge =>
+    c_path_contains_type_owner(path: cycle, node: edge.from)
+      && c_path_contains_type_owner(path: cycle, node: edge.to)
+      && c_by_value_edge_crosses_units(edge: edge, assignment: assignment)
+  )
+}
+
+fn c_dfs_by_value_type_cycle(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  current: CTypeOwner,
+  path: List<CTypeOwner>,
+  fuel: Int
+) -> Optional<String> {
+  match fuel <= 0 {
+    true => Absent
+    false =>
+      match c_path_contains_type_owner(path: path, node: current) {
+        true =>
+          match c_by_value_cycle_has_cross_unit_edge(
+            edges: edges,
+            assignment: assignment,
+            cycle: path
+          ) {
+            true => Present { value: c_by_value_type_cycle_detail }
+            false => Absent
+          }
+        false =>
+          let next_path = c_list_snoc_type_owner(items: path, item: current)
+          edges
+            |> fold(init: Absent, f: fn(acc, edge) {
+              match acc {
+                Present { value: _ } => acc
+                Absent =>
+                  match c_type_owner_eq(left: edge.from, right: current) {
+                    true =>
+                      c_dfs_by_value_type_cycle(
+                        edges: edges,
+                        assignment: assignment,
+                        current: edge.to,
+                        path: next_path,
+                        fuel: fuel - 1
+                      )
+                    false => Absent
+                  }
+              }
+            })
+      }
+  }
+}
+
+fn c_find_by_value_type_cycle_detail(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  owners
+    |> fold(init: Absent, f: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          c_dfs_by_value_type_cycle(
+            edges: edges,
+            assignment: assignment,
+            current: owner,
+            path: [],
+            fuel: (owners |> count) + 1
+          )
+      }
+    })
+}
+
+fn c_by_value_type_cycle_detail_after_resolution(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
+  c_find_by_value_type_cycle_detail(
+    edges: edges,
+    assignment: assignment,
+    owners: owners
+  )
+}
+
+fn c_partition_by_value_type_cycle_cause(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  units: List<CompilationUnit>
+) -> Optional<String> {
+  let _ = units
+  let owners = c_all_type_owners(module_dag: module_dag)
+  match c_by_value_type_identity_resolution_refusal(
+    module_dag: module_dag,
+    owners: owners
+  ) {
+    Present { value: detail } => Present { value: detail }
+    Absent =>
+      c_by_value_type_cycle_detail_after_resolution(
+        module_dag: module_dag,
+        assignment: assignment,
+        owners: owners
+      )
+  }
+}
+
+fn c_validate_partition_r4(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  units: List<CompilationUnit>
+) -> PartitionR4ValidityVerdict {
+  match c_partition_by_value_type_cycle_cause(
+    module_dag: module_dag,
+    assignment: assignment,
+    units: units
+  ) {
+    Absent => PartitionR4Valid
+    Present { value: detail } =>
+      PartitionR4Refused {
+        cause: ByValueTypeCycle { detail: detail },
+      }
+  }
+}
+
+data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
+
+data c_cpp_realization_relationship_note: String = "C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted c_subset authority) and cpp keeps only C++-only extensions."
+
+data c_source_text: String = "int add(int x, int y) { return x + y; }"
+
+data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 3); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
+
+data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
+
+data c_emit_host_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+
+fn c_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_fn_add },
+    FixedToken { token_class: ^c_token_lparen },
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    FixedToken { token_class: ^c_token_comma },
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    FixedToken { token_class: ^c_token_rparen },
+    FixedToken { token_class: ^c_token_lbrace },
+    FixedToken { token_class: ^c_token_kw_return },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    FixedToken { token_class: ^c_token_plus },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    FixedToken { token_class: ^c_token_semicolon },
+    FixedToken { token_class: ^c_token_rbrace }
+  ]
+}
+
+fn c_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_inhabitant_field_atom, target: c_atom(id: ^c_inhabitant_int))
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: c_int_inhabitant_node() },
+      Edge { label: Positional, target: c_int_inhabitant_node() },
+      Edge { label: Positional, target: c_int_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn c_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      c_named_edge(name: ^serialize_source_field_source_text, target: c_atom(id: ^c_source_literal)),
+      c_named_edge(name: ^serialize_source_field_source_grammar, target: c_atom(id: ^c_production_fn_add))
+    ],
+    right: [
+      c_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: c_concrete_tokens(),
+          token_to_node: c_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn c_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: c_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+type CGramBuild1State
+  = CGramBuild1StateInit
+  | CGramBuild1StateReady { expr: GrammarExpr }
+
+fn c_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match fold_list(
+    xs: c_concrete_tokens(),
+    empty: CGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        CGramBuild1StateInit =>
+          CGramBuild1StateReady {
+            expr: c_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        CGramBuild1StateReady { expr: acc } =>
+          CGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: c_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    CGramBuild1StateInit =>
+      c_grammar_terminal(token_class: ^c_token_ty_int)
+    CGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn c_grammar_production_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: ^c_production_fn_add,
+    expression: c_grammar_sequence_from_token_classes(),
+    emitted: c_emitted_add_fn_node()
+  }
+}
+
+type CGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn c_grammar_relation_row() -> CGrammarRelationRow {
+  CGrammarRelationRow {
+    production: c_grammar_production_fn_add(),
+    emitted: c_emitted_add_fn_node(),
+    tokens: c_concrete_tokens()
+  }
+}
+
+fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      c_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      c_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: c_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_relation_rule_fn_add, target: c_grammar_relation_row_node(row: c_grammar_relation_row()))
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_selection_policy_node() -> Node {
+  c_int_inhabitant_node()
+}
+
+fn c_add_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_inhabitant_field_int, target: c_int_inhabitant_node()),
+      c_named_edge(name: ^c_inhabitant_field_add_fn, target: c_emitted_add_fn_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^target_model_edge_selection_policy, target: c_selection_policy_node()),
+      c_named_edge(name: ^target_model_edge_declared_inhabitants, target: c_add_declared_inhabitants_root()),
+      c_named_edge(name: ^target_model_edge_translation_rules, target: c_translation_rules_node()),
+      c_named_edge(name: ^target_model_edge_serialize_source, target: c_serialize_source_node()),
+      c_named_edge(
+        name: ^target_model_edge_semantic_decl_emission,
+        target: c_semantic_decl_emission_bundle_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^c_binding_fn_add, "add"),
+      ^c_binding_param_x,
+      "x"
+    ),
+    ^c_binding_param_y,
+    "y"
+  )
+}
+
+fn c_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+}
+
+fn c_lex_rules() -> List<LexRule> {
+  [
+    c_lex_rule(token_class: ^c_token_ty_int, text: "int "),
+    c_lex_rule(token_class: ^c_token_lparen, text: "("),
+    c_lex_rule(token_class: ^c_token_comma, text: ", "),
+    c_lex_rule(token_class: ^c_token_rparen, text: ") "),
+    c_lex_rule(token_class: ^c_token_lbrace, text: "{ "),
+    c_lex_rule(token_class: ^c_token_kw_return, text: "return "),
+    c_lex_rule(token_class: ^c_token_plus, text: " + "),
+    c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
+    c_lex_rule(token_class: ^c_token_rbrace, text: " }")
+  ]
+}
+
+fn c_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules() } }
+}
+
+fn c_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^c_host_transport_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "fixture.c",
+        content: EmittedWithSuffix { suffix: main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cc" },
+        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: ProducedProgram { path: "fixture" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn c_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_host_transport_descriptor(main_suffix: c_emit_host_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_host_transport_descriptor(main_suffix: c_emit_host_inject_fault_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+data c_emit_host_type_decl_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  Bool b = True;\n  if (p.x + p.y != 5) { return 1; }\n  if (b != True) { return 2; }\n  unsigned char out[5] = {0, 5, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
+
+data c_emit_host_type_decl_inject_fault_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  unsigned char out[5] = {0, 4, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
+
+data c_emit_host_type_decl_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+
+fn c_type_decl_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^c_type_decl_host_transport_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "fixture.c",
+        content: EmittedWithSuffix { suffix: main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cc" },
+        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: ProducedProgram { path: "fixture" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn c_type_decl_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_inject_fault_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_type_decl_target_model() -> TargetModel {
+  TargetModel {
+    bundle: c_target_model_node(),
+    lex: c_lex(),
+    binding_spellings: c_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: c_type_decl_runtime_row()
+  }
+}
+
+fn c_target_model() -> TargetModel {
+  TargetModel {
+    bundle: c_target_model_node(),
+    lex: c_lex(),
+    binding_spellings: c_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: c_source_text,
+    runtime_row: c_runtime_row()
+  }
+}

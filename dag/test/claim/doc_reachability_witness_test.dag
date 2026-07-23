@@ -1,7 +1,41 @@
 module test.claim.doc_reachability_witness
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.doc_graph_roots {
+  doc_graph_roots_all,
+  hand_authored_slugs_all_unregistered,
+  hand_authored_plan_slug_is_unregistered,
+  HandAuthoredDocBind, PlanDoc,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.plan { HasTrigger }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition_correction_note: String = "Corrected 2026-07-15: the 2026-07-12 machine-stamped SubstrateInputsOnly row (#6479 batch, entry-text classifier) was FALSE — every test fn below reads the live docs/ tree through the doc_graph_* host builtins (cli_run.rs build_doc_graph_report), the exact hidden-behind-a-builtin blind spot live_tree.dag:5 declares for that classifier. ReadsLiveTree restores the never-skip tooth so the orphan wall runs on every full floor; the false stamp let a docs-only PR (gunbc#6654) mint an orphan with green CI. #7023 recurrence: the shell documentation_only_skip shortcut exited before claim_executor, bypassing this lane entirely on docs-only PRs — retired proud-cat-517; floor_skip_discovery_witness proves by execution that docs-only diffs RUN this entry."
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
-  return doc_graph_orphan_count() == 0
+  return doc_graph_orphan_count(doc_graph_roots_all()) == 0
+}
+
+test fn doc_graph_registered_plan_roots_nonempty() -> Bool {
+  return doc_graph_roots_all().count() > 0
+}
+
+test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
+  return doc_graph_admitted_root_count(doc_graph_roots_all()) == doc_graph_roots_all().count()
+}
+
+test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
+  return hand_authored_slugs_all_unregistered()
+}
+
+test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
+  return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "typescript-gap-census",
+    work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "synthetic negative control: this slug IS registered, so the wall must refuse it" },
+  }) == false
 }
 
 test fn doc_graph_has_no_dangling_links() -> Bool {

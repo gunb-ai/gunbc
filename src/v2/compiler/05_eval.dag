@@ -7,7 +7,8 @@ import v2.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-import v2.std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
   Absent,
@@ -37,6 +38,7 @@ import v2.std.runtime {
   Return,
   RuntimeAggregate,
   RuntimeClosure,
+  RuntimeClosureValue,
   RuntimePrimitive,
   RuntimeReference,
   RuntimeUnit,
@@ -61,6 +63,7 @@ import v2.std.runtime {
   ReadResource,
   WriteResource,
   effect_handler_for_kind,
+  environment_binding_key_for_symbol,
   interpretation_behavior_dispatch,
   runtime_value_node_projection,
   runtime_value_resolved_type
@@ -92,6 +95,7 @@ import v2.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
+  node_for_structural_equality,
   well_formed,
   SyntheticOccurrence
 }
@@ -148,7 +152,7 @@ import v2.std.verification {
   test_claim_input
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.extdeps.languages.dag { dag_round_trip_wave1_authorities_ready }
+import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoFixtureStore,
   EffectIoResourceBackend,
@@ -162,15 +166,16 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
-  v2_eval_wave1_allocate_literal,
-  v2_eval_wave1_bind_value,
-  v2_eval_wave1_call_primitive,
-  v2_eval_wave1_choose_branch,
-  v2_eval_wave1_represent_literal,
-  v2_eval_wave1_step_loop,
+  v2_eval_allocate_literal,
+  v2_eval_bind_value,
+  v2_eval_call_primitive,
+  v2_eval_choose_branch,
+  v2_eval_is_literal_shaped_node,
+  v2_eval_represent_literal,
+  v2_eval_step_loop,
   v2_evaluator_interpretation_structure_witness,
-  v2_evaluator_interpretation_wave1,
-  v2_evaluator_runtime_wave1
+  v2_evaluator_interpretation,
+  v2_evaluator_runtime
 }
 
 type InterpretationCacheAuthority {
@@ -291,10 +296,10 @@ fn eval_context_with_effect_io(
   }
 }
 
-fn eval_context_v4_evaluator_wave1() -> EvalContext {
+fn eval_context_v4_evaluator() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^v2_evaluator_runtime_id,
-    interpretation: v2_evaluator_interpretation_wave1(),
+    interpretation: v2_evaluator_interpretation(),
     structure_witness: v2_evaluator_interpretation_structure_witness()
   )
 }
@@ -326,9 +331,9 @@ fn interpretation_structure_witness_digest(
 }
 
 fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
-  if v.allocate_literal == v2_eval_wave1_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_allocate_literal_sym)
-  } else if v.allocate_literal == v2_eval_wave1_represent_literal {
+  if v.allocate_literal == v2_eval_allocate_literal {
+    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym)
+  } else if v.allocate_literal == v2_eval_represent_literal {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag)
   } else {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag)
@@ -336,41 +341,41 @@ fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash
 }
 
 fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter) -> Hash {
-  if t.call_primitive == v2_eval_wave1_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_call_primitive_sym)
+  if t.call_primitive == v2_eval_call_primitive {
+    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym)
   } else {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag)
   }
 }
 
 fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Hash {
-  if b.choose_branch == v2_eval_wave1_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_choose_branch_sym)
+  if b.choose_branch == v2_eval_choose_branch {
+    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym)
   } else {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_branch_tag)
   }
 }
 
 fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
-  if l.step_loop == v2_eval_wave1_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_step_loop_sym)
+  if l.step_loop == v2_eval_step_loop {
+    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym)
   } else {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_loop_tag)
   }
 }
 
 fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
-  if b.bind_value == v2_eval_wave1_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_bind_value_sym)
+  if b.bind_value == v2_eval_bind_value {
+    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym)
   } else {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_bind_tag)
   }
 }
 
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
-  if v.allocate_literal == v2_eval_wave1_allocate_literal {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
-  } else if v.allocate_literal == v2_eval_wave1_represent_literal {
+  if v.allocate_literal == v2_eval_allocate_literal {
+    test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else if v.allocate_literal == v2_eval_represent_literal {
     test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_represent_literal_tag) == test_claim_symbol_digest(sym: witness_sym)
   } else {
     false
@@ -378,32 +383,32 @@ fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_s
 }
 
 fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, witness_sym: Symbol) -> Bool {
-  if t.call_primitive == v2_eval_wave1_call_primitive {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
+  if t.call_primitive == v2_eval_call_primitive {
+    test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
     false
   }
 }
 
 fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness_sym: Symbol) -> Bool {
-  if b.choose_branch == v2_eval_wave1_choose_branch {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
+  if b.choose_branch == v2_eval_choose_branch {
+    test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
     false
   }
 }
 
 fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym: Symbol) -> Bool {
-  if l.step_loop == v2_eval_wave1_step_loop {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
+  if l.step_loop == v2_eval_step_loop {
+    test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
     false
   }
 }
 
 fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym: Symbol) -> Bool {
-  if b.bind_value == v2_eval_wave1_bind_value {
-    test_claim_symbol_digest(sym: ^v2_eval_wave1_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
+  if b.bind_value == v2_eval_bind_value {
+    test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
     false
   }
@@ -461,7 +466,7 @@ fn interpretation_algebra_executed_structure_digest(
   }
 }
 
-fn interpretation_v4_evaluator_wave1_registry_semantics_digest(
+fn interpretation_v4_evaluator_registry_semantics_digest(
   interpretation: InterpretationAlgebra
 ) -> Hash {
   combine_hash(
@@ -476,8 +481,8 @@ fn interpretation_registry_semantics_digest(
   _structure_witness: InterpretationStructureWitness
 ) -> Hash {
   if runtime_identity == ^v2_evaluator_runtime_id {
-    if interpretation == v2_evaluator_interpretation_wave1() {
-      interpretation_v4_evaluator_wave1_registry_semantics_digest(interpretation: interpretation)
+    if interpretation == v2_evaluator_interpretation() {
+      interpretation_v4_evaluator_registry_semantics_digest(interpretation: interpretation)
     } else {
       test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
     }
@@ -585,6 +590,8 @@ fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
       test_claim_symbol_digest(sym: ^test_claim_no_correction_ambiguous_intent_tag)
     ExternalContractUnknown =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_external_contract_unknown_tag)
+    CorrectionNotModeled =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_correction_not_modeled_tag)
   }
 }
 
@@ -834,12 +841,12 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     interpretation: authority.interpretation,
     structure_witness: authority.structure_witness
   )
-  let registered_semantics = interpretation_v4_evaluator_wave1_registry_semantics_digest(
-    interpretation: v2_evaluator_interpretation_wave1()
+  let registered_semantics = interpretation_v4_evaluator_registry_semantics_digest(
+    interpretation: v2_evaluator_interpretation()
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
   if authority.runtime_identity == ^v2_evaluator_runtime_id
-    && authority.interpretation == v2_evaluator_interpretation_wave1()
+    && authority.interpretation == v2_evaluator_interpretation()
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics
     && registry_witness != registry_mismatch {
@@ -942,7 +949,7 @@ fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Witness<RuntimeVal
   Violates {
     diagnostic: eval_diagnostic(
       reason: ^eval_rejected_runtime_binding_lookup_miss,
-      node: key.declaration
+      node: symbol_atom_node(sym: key.identity)
     )
   }
 }
@@ -960,11 +967,11 @@ fn empty_evaluation_environment() -> EvaluationEnvironment {
 }
 
 fn eval_runtime() -> V4EvaluatorRuntime {
-  v2_evaluator_runtime_wave1()
+  v2_evaluator_runtime()
 }
 
 fn eval_default_interpretation() -> InterpretationAlgebra {
-  v2_evaluator_interpretation_wave1()
+  v2_evaluator_interpretation()
 }
 
 fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
@@ -1142,10 +1149,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
       absent_reason: ^eval_rejected_bind_key_absent
     ),
     f: fn(e) {
-      Accepted {
-        value: EnvironmentBindingKey { declaration: e.target },
-        diagnostics: None
-      }
+      eval_environment_binding_key_from_node(declaration: e.target)
     }
   )
 }
@@ -1175,10 +1179,63 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
+fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    _ => optional_absent()
+  }
+}
+
+fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
+  match eval_binding_key_from_atom(node: declaration) {
+    Present { value: key } =>
+      Accepted { value: key, diagnostics: None }
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
+      )
+  }
+}
+
 fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  eval_witness_outcome(
-    witness: environment.bindings.lookup(EnvironmentBindingKey { declaration: node })
+  bind_outcome(
+    o: eval_environment_binding_key_from_node(declaration: node),
+    f: fn(key) {
+      eval_witness_outcome(
+        witness: environment.bindings.lookup(key)
+      )
+    }
   )
+}
+
+fn eval_type_node_atom(
+  node: Node,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if v2_eval_is_literal_shaped_node(node: node) {
+        interpretation.value.allocate_literal(node, environment)
+      } else {
+        match eval_runtime_binding_lookup(node: node, environment: environment) {
+          Accepted { value: v, diagnostics: d } =>
+            Accepted { value: v, diagnostics: d }
+          Rejected { diagnostics: bind_ds } =>
+            match interpretation.value.allocate_literal(node, environment) {
+              Accepted { value: v, diagnostics: d } =>
+                Accepted { value: v, diagnostics: d }
+              Rejected { diagnostics: _ } =>
+                Rejected { diagnostics: bind_ds }
+            }
+        }
+      }
+    TypeNode { connective: _ } =>
+      interpretation.value.allocate_literal(node, environment)
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
 }
 
 type EvalParamBindAcc {
@@ -1211,7 +1268,7 @@ fn eval_bind_param_edge_step(
               ),
               f: fn(value) {
                 bind.bind_value(
-                  EnvironmentBindingKey { declaration: eval_binding_key_node(sym: binding_id) },
+                  environment_binding_key_for_symbol(sym: binding_id),
                   value,
                   env
                 )
@@ -1993,11 +2050,11 @@ fn eval_interpret_node(
             effect_io: effect_io
           )
         TypeNode { connective: _ } =>
-          match eval_runtime_binding_lookup(node: node, environment: environment) {
-            Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
-            Rejected { diagnostics: _ } =>
-              interpretation.value.allocate_literal(node, environment)
-          }
+          eval_type_node_atom(
+            node: node,
+            interpretation: interpretation,
+            environment: environment
+          )
       }
     }
   )
@@ -2142,6 +2199,40 @@ fn eval_fold_callee_reference_child_state(
   }
 }
 
+data eval_closure_argument_note: String = "A closure passed as a runtime argument is an Arrow TypeNode in argument position (fold's transform child 3). Its value is the closure itself — the captured arrow plus the environment it closes over — NOT the value of its body, whose parameters (fold acc/h) are unbound until the callee applies it. So the walk materializes RuntimeClosure here and does not descend into the arrow's children; descending would evaluate the body against an environment that cannot bind its parameters. This is the same structural-child seam as eval_fold_is_callee_reference_edge (a child the walk must not value-evaluate), at edge grain so an Arrow in CALLEE or root position still evaluates normally — only a runtime-argument edge is a closure. Carrier is the existing v2.std.runtime authority (RuntimeClosureValue); no literal-atom roster is extended."
+
+fn eval_fold_is_closure_argument_edge(
+  parent: Node,
+  progress: EvalProgress,
+  edge: Edge
+) -> Bool {
+  eval_edge_is_runtime_argument(parent: parent, progress: progress, edge: edge)
+    && eval_node_is_arrow(node: edge.target)
+}
+
+fn eval_fold_closure_argument_child_state(
+  edge: Edge,
+  tree: InferredTree,
+  environment: EvaluationEnvironment
+) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: Accepted {
+      value: RuntimeClosure {
+        value: RuntimeClosureValue {
+          arrow_type: edge.target,
+          arrow: edge.target,
+          environment: environment
+        }
+      },
+      diagnostics: None
+    }
+  }
+}
+
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
   edge: Edge,
@@ -2157,6 +2248,16 @@ fn eval_fold_child_for_edge(
     edge: edge
   ) {
     eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+  } else if eval_fold_is_closure_argument_edge(
+    parent: acc.node,
+    progress: acc.progress,
+    edge: edge
+  ) {
+    eval_fold_closure_argument_child_state(
+      edge: edge,
+      tree: tree,
+      environment: environment
+    )
   } else {
     eval_fold_tree(
       n: edge.target,
@@ -2330,6 +2431,7 @@ fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
     ComputationNode { behavior: Branch } => true
     ComputationNode { behavior: Loop } => true
     ComputationNode { behavior: Bind } => true
+    ComputationNode { behavior: Match } => true
     _ => false
   }
 }
@@ -2377,6 +2479,16 @@ fn eval_runtime_control_node(
             )
           ComputationNode { behavior: Bind } =>
             eval_bind_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          ComputationNode { behavior: Match } =>
+            eval_match_node_eval(
               node: node,
               tree: tree,
               interpretation: interpretation,
@@ -2524,7 +2636,7 @@ fn run_test_claim_round_trip_verdict(
   match actual {
     Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     Accepted { value: _, diagnostics: _ } =>
-      if dag_round_trip_wave1_authorities_ready() {
+      if dag_round_trip_authorities_ready() {
         Pass
       } else {
         verdict_fail(
@@ -2548,7 +2660,7 @@ fn run_test_claim_round_trip_verdict_runtime(
         )
       )
     Accepted { value: _, diagnostics: _ } =>
-      if dag_round_trip_wave1_authorities_ready() {
+      if dag_round_trip_authorities_ready() {
         Pass
       } else {
         verdict_fail(

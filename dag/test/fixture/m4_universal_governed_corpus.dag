@@ -1,6 +1,5 @@
 module test.fixture.m4_universal_governed_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data m4_universal_probe_case_allowed: PublishedMockCase = PublishedMockCase {
   operation_key: "GovernedUniversalProbe.Allowed",

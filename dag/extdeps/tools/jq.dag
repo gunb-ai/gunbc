@@ -1,0 +1,33 @@
+module extdeps.tools.jq
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_jq }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "jqlang.org/manual/"
+  }
+}
+
+data jq_cli_tool: CliTool = CliTool {
+  name: "jq",
+  min_version: none,
+  installable_via: [SourceApt { package: package_jq }],
+}
+
+service jq.Json {
+  operation ExtractRaw {
+    input { filter: NonEmptyStr, path: NonEmptyStr }
+    output { value: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["jq", "-r", "{filter}", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "jq extract failed"
+    }
+  }
+}

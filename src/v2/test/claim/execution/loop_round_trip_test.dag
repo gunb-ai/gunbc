@@ -10,16 +10,15 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_mvp1_fixture_emitted_loop_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_loop_body_fixture,
-  dag_mvp1_loop_target_model,
-  dag_mvp1_pick_arrow_domain_conj_node,
-  dag_mvp1_type_atom_node
+  dag_fixture_emitted_loop_fn,
+  dag_fixture_int_inhabitant,
+  dag_loop_body_fixture,
+  dag_loop_target_model,
+  dag_pick_arrow_domain_conj_node,
+  dag_type_atom_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality {
-  RankingDimension,
   TerminationProof,
   termination_proof_witness_for_node
 }
@@ -40,7 +39,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Node }
+import v2.std.node { Node }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.verification {
@@ -48,9 +47,12 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data loop_emitted_root: Node = dag_mvp1_fixture_emitted_loop_fn
-data loop_target_model: TargetModel = dag_mvp1_loop_target_model()
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data loop_emitted_root: Node = dag_fixture_emitted_loop_fn
+data loop_target_model: TargetModel = dag_loop_target_model()
 
 fn loop_canonical_grounding(
   node: Node,
@@ -72,11 +74,11 @@ fn loop_canonical_grounding(
 }
 
 fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_fixture_emitted_loop_fn {
+  if node == dag_fixture_emitted_loop_fn {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_fixture_int_inhabitant {
+  } else if node == dag_fixture_int_inhabitant {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
@@ -84,44 +86,44 @@ fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds {
       value: loop_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
     Holds {
       value: loop_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
     Holds {
       value: loop_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_one) {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_two) {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_loop_body_fixture {
+  } else if node == dag_loop_body_fixture {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_pick_arrow_domain_conj_node() {
+  } else if node == dag_pick_arrow_domain_conj_node() {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_fn_one) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_fn_one) {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_loop_measure_sym) {
+  } else if node == dag_type_atom_node(identity: ^dag_loop_measure_sym) {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
@@ -136,28 +138,10 @@ fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn loop_termination_proof() -> TerminationProof {
-  TerminationProof {
-    non_increasing: [],
-    strict: RankingDimension { measured: ^dag_mvp1_loop_measure_sym }
-  }
-}
-
-fn loop_round_trip_node_is_loop(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Loop } => true
-    _ => false
-  }
-}
+data loop_descent_fabrication_dissolved_note: String = "The former loop_descent_witness_for hand-fabricated Holds { TerminationProof { strict: ^dag_loop_measure_sym } } for every loop node because the tag-only multiplicity path unconditionally refused loops. Body-lowering Stage 2 (measure_descent_fact_registry, v2.std.cardinality) derives that exact proof from the measure, so the fabrication is deleted and this test consumes the real derivation."
 
 fn loop_descent_witness_for(node: Node) -> Witness<TerminationProof> {
-  if node == dag_mvp1_fixture_emitted_loop_fn
-    || node == dag_mvp1_loop_body_fixture
-    || loop_round_trip_node_is_loop(node: node) {
-    Holds { value: loop_termination_proof() }
-  } else {
-    termination_proof_witness_for_node(n: node)
-  }
+  termination_proof_witness_for_node(n: node)
 }
 
 fn loop_round_trip_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
@@ -234,7 +218,7 @@ fn loop_ingest_via_coerce_matches_canonical() -> Bool {
     target: loop_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_loop_fn)
+      (result.target == dag_fixture_emitted_loop_fn)
         && loop_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false

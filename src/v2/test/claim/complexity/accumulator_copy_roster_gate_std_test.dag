@@ -1,0 +1,20 @@
+module v2.test.claim.complexity.accumulator_copy_roster_gate_std
+
+import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data std_tranche_offline_roster_note: String = "Enrollment plan (operator ruling 2026-07-10, echoed eager-ram-612 #6452 guidance): CI-enrolled = cheap discriminating units only — dag/test/claim behavioral keystones selected by affected-set discovery when dag/std/ changes (markdown_inline_render_keystone_holds, config_record_emit_keystone_holds / serialize_fields_doc, reconcile_share_collapse_witnesses for realization.dag, std_graph_build_adjacency_views_evaluates for graph.dag). OFFLINE = this roster gate module (file_gate serial resolve per path; discovery exclusion row claim/complexity/accumulator_copy_roster_gate lands via #6452 — NOT duplicated on this branch; NOT in witness_discovery_scan_dirs; NOT in commit_gate_roster). Wet recipe on v2.lens.complexity_accumulator_copy.roster_gate.offline_roster_gate_claim_batch_recipe. List-carrier concat(acc,[x]) folds rewritten to prepend+reverse in markdown.dag, markdown_markup.dag, serialize.dag, realization.dag, materialization_ladder.dag; change.dag keyed_collect_keys + keyed_invert_patch map rewrite. keyed_merge_row_lists left concat(acc,[row]) init:left (order-breaking for prepend+reverse). graph.dag neighbor append unchanged. String-carrier debt (7 sites): http_path.dag (2), markup.dag (2), render.dag (1), render_repeat_string_bootstrap.dag (1), width.dag (1). Roster gates only change.dag (ceiling 13) and render_repeat_string_bootstrap.dag (ceiling 0); other cleaned std files are behavioral-witness gated (substrate concat triggers combiner_unregistered_carrier_reaches refusals)."
+
+data std_tranche_string_carrier_debt_count: Int = 7
+
+test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "dag/std/change.dag", refusal_ceiling: 13)
+}
+
+test fn roster_std_render_repeat_string_bootstrap_within_ratchet() -> Bool {
+  file_gate(path: "dag/std/render_repeat_string_bootstrap.dag", refusal_ceiling: 0)
+}

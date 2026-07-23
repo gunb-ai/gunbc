@@ -1,0 +1,237 @@
+module test.claim.roadmap_belt_witness
+
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNode,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  Sized,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_belt {
+  BeltRunState, Running, Paused,
+  BeltCapacity,
+  BeltAction, HoldPaused, AtCapacity,
+  belt_step,
+  belt_action_is_spawn,
+  belt_spawn_count,
+  belt_spawns_node,
+  belt_plan,
+  roadmap_belt_status_json,
+  BeltReconcile,
+  belt_reconcile,
+  belt_reconcile_spawn_count,
+  belt_reconcile_teardown_count,
+  belt_reconcile_refusal_count,
+  belt_member_ids,
+  belt_reconcile_status_json,
+}
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import std.upsert_decision {
+  ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused
+}
+import std.types { String, Int, List, Bool }
+
+fn nid(s: String) -> RoadmapNodeId { s }
+
+fn ready_node(id: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn frontier_ready(ids: List<String>) -> SpawnFrontier {
+  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [] }
+}
+
+fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
+
+fn any_paused(actions: List<BeltAction>) -> Bool {
+  any(actions, a => match a { HoldPaused => true, _ => false })
+}
+
+fn at_capacity_waiting(actions: List<BeltAction>) -> Int {
+  fold(actions, init: 0, f: (acc, a) => match a { AtCapacity { ready_waiting } => ready_waiting, _ => acc })
+}
+
+fn witness_paused_spawns_nothing() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Paused, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+}
+
+fn witness_running_spawns_ready_within_capacity() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 2
+    && belt_spawns_node(actions: actions, id: nid(s: "a"))
+    && belt_spawns_node(actions: actions, id: nid(s: "b"))
+}
+
+fn witness_capacity_limits_spawns() -> Bool {
+  let f = frontier_ready(ids: ["a", "b", "c"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 1))
+  belt_spawn_count(actions: actions) == 1
+}
+
+fn witness_occupied_node_not_respawned() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "a")], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 1
+    && belt_spawns_node(actions: actions, id: nid(s: "b"))
+    && !belt_spawns_node(actions: actions, id: nid(s: "a"))
+}
+
+fn witness_at_capacity_reports_backlog() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "x"), nid(s: "y")], cap: cap(n: 2))
+  belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
+}
+
+fn witness_belt_plan_equals_step_composition() -> Bool {
+  let doc = roadmap_authority()
+  let merged = authored_merged_prs()
+  let f = spawn_frontier(doc: doc, merged: merged)
+  let via_plan = belt_plan(state: Running, doc: doc, merged: merged, occupied: [], cap: cap(n: 3))
+  let via_step = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: via_plan) == belt_spawn_count(actions: via_step)
+}
+
+fn witness_belt_plan_paused_holds_on_authority() -> Bool {
+  let actions = belt_plan(
+    state: Paused,
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    occupied: [],
+    cap: cap(n: 3),
+  )
+  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+}
+
+fn witness_belt_status_json_shape() -> Bool {
+  let j = roadmap_belt_status_json()
+  string_contains(s: j, pattern: "roadmap-belt/v1")
+    && string_contains(s: j, pattern: "run_state")
+    && string_contains(s: j, pattern: "running")
+    && string_contains(s: j, pattern: "would_spawn")
+    && string_contains(s: j, pattern: "max_concurrent")
+}
+
+test fn roadmap_belt_witnesses() -> Bool {
+  witness_paused_spawns_nothing()
+    && witness_running_spawns_ready_within_capacity()
+    && witness_capacity_limits_spawns()
+    && witness_occupied_node_not_respawned()
+    && witness_at_capacity_reports_backlog()
+    && witness_belt_plan_equals_step_composition()
+    && witness_belt_plan_paused_holds_on_authority()
+    && witness_belt_status_json_shape()
+}
+
+fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-{node_id}",
+    node_id: node_id,
+    windows: 1,
+    lease_verdict: verdict,
+  }
+}
+
+fn spawns_node(r: BeltReconcile, id: String) -> Bool {
+  any(belt_member_ids(ms: r.spawns), x => x == id)
+}
+
+fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
+  any(belt_member_ids(ms: r.teardowns), x => x == id)
+}
+
+fn witness_reconcile_spawns_ready_missing_session() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 2
+    && spawns_node(r: r, id: "a")
+    && spawns_node(r: r, id: "b")
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_noop_when_ready_and_live() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 0
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_reaps_owned_done_session() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 1
+    && tears_down_node(r: r, id: "z")
+    && belt_reconcile_spawn_count(r: r) == 1
+    && spawns_node(r: r, id: "a")
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
+  let f = frontier_ready(ids: [])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
+}
+
+fn witness_r5_refuses_foreign_teardown() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 0
+    && !tears_down_node(r: r, id: "z")
+    && belt_reconcile_refusal_count(r: r) == 1
+    && belt_reconcile_spawn_count(r: r) == 1
+}
+
+fn witness_r5_refuses_nameonly_teardown() -> Bool {
+  let f = frontier_ready(ids: [])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
+}
+
+fn witness_reconcile_capacity_defers_surfaced() -> Bool {
+  let f = frontier_ready(ids: ["a", "b", "c"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 1))
+  belt_reconcile_spawn_count(r: r) == 1 && r.deferred == 2
+}
+
+fn witness_reconcile_paused_no_actions() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let r = belt_reconcile(state: Paused, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 0
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_status_json_shape() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let j = belt_reconcile_status_json(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")
+    && string_contains(s: j, pattern: "would_teardown")
+    && string_contains(s: j, pattern: "refusal_count")
+    && string_contains(s: j, pattern: "deferred")
+}
+
+test fn roadmap_belt_reconcile_witnesses() -> Bool {
+  witness_reconcile_spawns_ready_missing_session()
+    && witness_reconcile_noop_when_ready_and_live()
+    && witness_reconcile_reaps_owned_done_session()
+    && witness_reconcile_reaps_drifted_owned_session()
+    && witness_r5_refuses_foreign_teardown()
+    && witness_r5_refuses_nameonly_teardown()
+    && witness_reconcile_capacity_defers_surfaced()
+    && witness_reconcile_paused_no_actions()
+    && witness_reconcile_status_json_shape()
+}

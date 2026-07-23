@@ -1,0 +1,75 @@
+module v2.test.parse.rust
+
+data rust_extended_fn_source: String = "fn choose(x: i32, y: i32) -> i32 { let z = x + 1;\nif z > 0 { return z }\nreturn 0 }"
+
+data rust_return_semi_source: String = "fn r() -> i32 { return; }"
+
+data rust_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32 { let\nz=x+1;\nif z>0 { return z; }\nreturn 0; }"
+
+fn rust_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_parse_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_parse_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn rust_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: ^rust_parse_file,
+    rules: rust_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: rust_grammar())
+  }
+}
+
+fn rust_tokenize_and_parse() -> Outcome<ParseTree> {
+  rust_tokenize_and_parse_source(text: rust_extended_fn_source)
+}
+
+data claim_rust_extended_function_parses: TestClaim = EqualsClaim {
+  label: "Rust lex/grammar accepts an extended function with let, if, return, and binary expressions",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: rust_parse_bool_atom(
+    b: rust_parse_accepted(out: rust_tokenize_and_parse())
+  ),
+  rhs: rust_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_rust_return_semi_parses: TestClaim = EqualsClaim {
+  label: "Rust grammar accepts return; with layout-free return lexeme and trivia between tokens",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: rust_parse_bool_atom(
+    b: rust_parse_accepted(
+      out: rust_tokenize_and_parse_source(text: rust_return_semi_source)
+    )
+  ),
+  rhs: rust_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_rust_layout_tight_parses: TestClaim = EqualsClaim {
+  label: "Rust grammar accepts tight/newline-separated layout with trivia-separated tokens",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: rust_parse_bool_atom(
+    b: rust_parse_accepted(
+      out: rust_tokenize_and_parse_source(text: rust_layout_tight_source)
+    )
+  ),
+  rhs: rust_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

@@ -29,8 +29,6 @@ data json_production_rows: List<JsonProductionRow> = [
   JsonProductionRow { rfc_section: "3", lhs: "literal", rhs: "'null' | 'true' | 'false'", value_variant: "JsonNull|JsonBool" },
 ]
 
-data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dag/extdeps/languages/json/grammar.dag plus emit.dag is the single dag-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest o emit = id on json_production_rows witnesses"
-
 type JsonNumberLexeme = String where brand("JsonNumberLexeme")
 
 type JsonNumberParseRest {
@@ -158,4 +156,219 @@ fn json_number_lexeme(s: String) -> JsonNumberLexeme? {
 
 fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
   json_number_lexeme_unchecked(s: to_string(n))
+}
+
+type JsonTextParseResult
+  = JsonTextParseOk { end: Int }
+  | JsonTextParseFail { end: Int }
+
+type JsonWhitespaceChar
+  = JsonWsSpace
+  | JsonWsNewline
+  | JsonWsCarriageReturn
+  | JsonWsTab
+
+fn json_text_trim_trailing_lf(body: String) -> String {
+  if ends_with(s: body, suffix: "\n") {
+    substring(s: body, start: 0, end: body.length() - 1)
+  } else {
+    body
+  }
+}
+
+fn json_text_parse_fail(end: Int) -> JsonTextParseResult {
+  JsonTextParseFail { end: end }
+}
+
+fn json_text_parse_ok(end: Int) -> JsonTextParseResult {
+  JsonTextParseOk { end: end }
+}
+
+fn json_text_whitespace_char(c: String) -> JsonWhitespaceChar? {
+  if c == " " {
+    Present { value: JsonWsSpace }
+  } else if c == "\n" {
+    Present { value: JsonWsNewline }
+  } else if c == "\r" {
+    Present { value: JsonWsCarriageReturn }
+  } else if c == "\t" {
+    Present { value: JsonWsTab }
+  } else {
+    none
+  }
+}
+
+fn json_text_skip_ws(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    i
+  } else {
+    match json_text_whitespace_char(c: char_at(s: s, i: i)) {
+      Absent => i
+      Present { value: _ } => json_text_skip_ws(s: s, i: i + 1)
+    }
+  }
+}
+
+fn json_text_starts_with_at(s: String, i: Int, lit: String) -> Bool {
+  substring(s: s, start: i, end: i + lit.length()) == lit
+}
+
+fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
+  if i >= s.length() {
+    json_text_parse_fail(end: i)
+  } else {
+    let c = char_at(s: s, i: i)
+    if c == "\"" {
+      json_text_parse_ok(end: i + 1)
+    } else if c == "\\" {
+      if i + 1 >= s.length() {
+        json_text_parse_fail(end: i)
+      } else {
+        json_text_parse_string_inner(s: s, i: i + 2)
+      }
+    } else {
+      json_text_parse_string_inner(s: s, i: i + 1)
+    }
+  }
+}
+
+fn json_text_parse_string(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, i: i) != "\"" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_string_inner(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_number_digits(s: String, i: Int) -> Int {
+  if i >= s.length() || !is_json_digit_char(c: char_at(s: s, i: i)) {
+    i
+  } else {
+    json_text_parse_number_digits(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
+  let start = i
+  let after_minus = if char_at(s: s, i: i) == "-" { i + 1 } else { i }
+  let after_int = json_text_parse_number_digits(s: s, i: after_minus)
+  if after_int == after_minus && char_at(s: s, i: after_minus) != "-" {
+    json_text_parse_fail(end: start)
+  } else {
+    let after_frac = if char_at(s: s, i: after_int) == "." {
+      let d = json_text_parse_number_digits(s: s, i: after_int + 1)
+      if d == after_int + 1 { after_int } else { d }
+    } else {
+      after_int
+    }
+    let end = if char_at(s: s, i: after_frac) == "e" || char_at(s: s, i: after_frac) == "E" {
+      let exp = after_frac + 1
+      let signed = if char_at(s: s, i: exp) == "+" || char_at(s: s, i: exp) == "-" { exp + 1 } else { exp }
+      json_text_parse_number_digits(s: s, i: signed)
+    } else {
+      after_frac
+    }
+    if end > after_minus { json_text_parse_ok(end: end) } else { json_text_parse_fail(end: start) }
+  }
+}
+
+fn json_text_parse_literal(s: String, i: Int, lit: String) -> JsonTextParseResult {
+  if json_text_starts_with_at(s: s, i: i, lit: lit) {
+    json_text_parse_ok(end: i + lit.length())
+  } else {
+    json_text_parse_fail(end: i)
+  }
+}
+
+fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "]" {
+    json_text_parse_ok(end: p + 1)
+  } else {
+    match json_text_parse_value(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: end } => {
+        let q = json_text_skip_ws(s: s, i: end)
+        if char_at(s: s, i: q) == "]" {
+          json_text_parse_ok(end: q + 1)
+        } else if char_at(s: s, i: q) == "," {
+          json_text_parse_array_values(s: s, i: q + 1)
+        } else {
+          json_text_parse_fail(end: q)
+        }
+      }
+    }
+  }
+}
+
+fn json_text_parse_array(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, i: i) != "[" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_array_values(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "}" {
+    json_text_parse_ok(end: p + 1)
+  } else {
+    match json_text_parse_string(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: key_end } => {
+        let c = json_text_skip_ws(s: s, i: key_end)
+        if char_at(s: s, i: c) != ":" {
+          json_text_parse_fail(end: c)
+        } else {
+          match json_text_parse_value(s: s, i: c + 1) {
+            JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+            JsonTextParseOk { end: val_end } => {
+              let q = json_text_skip_ws(s: s, i: val_end)
+              if char_at(s: s, i: q) == "}" {
+                json_text_parse_ok(end: q + 1)
+              } else if char_at(s: s, i: q) == "," {
+                json_text_parse_object_members(s: s, i: q + 1)
+              } else {
+                json_text_parse_fail(end: q)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn json_text_parse_object(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, i: i) != "{" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_object_members(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if p >= s.length() {
+    json_text_parse_fail(end: p)
+  } else {
+    let c = char_at(s: s, i: p)
+    if c == "{" { json_text_parse_object(s: s, i: p) }
+    else if c == "[" { json_text_parse_array(s: s, i: p) }
+    else if c == "\"" { json_text_parse_string(s: s, i: p) }
+    else if c == "t" { json_text_parse_literal(s: s, i: p, lit: "true") }
+    else if c == "f" { json_text_parse_literal(s: s, i: p, lit: "false") }
+    else if c == "n" { json_text_parse_literal(s: s, i: p, lit: "null") }
+    else if c == "-" || is_json_digit_char(c: c) { json_text_parse_number(s: s, i: p) }
+    else { json_text_parse_fail(end: p) }
+  }
+}
+
+fn json_text_parseable(s: String) -> Bool {
+  match json_text_parse_value(s: s, i: 0) {
+    JsonTextParseOk { end: end } =>
+      json_text_skip_ws(s: s, i: end) == s.length()
+    JsonTextParseFail { end: _ } => false
+  }
 }

@@ -1,18 +1,7 @@
 module v2.lens.no_dual_representation_test.scan
 
-import v2.std.algebra {
-  Cons,
-  Empty,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  is_empty,
-  is_prefix_of,
-  length,
-  list_append,
-  list_snoc_item,
-  list_tail
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.data_index {
   DataInitDecl,
@@ -446,6 +435,30 @@ fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViola
       )
     }
   })
+}
+
+fn dual_rep_eq_site_count_from_module(scan: DualRepModuleScan) -> Int {
+  fold(scan.fns, init: 0, f: fn(acc, fact) {
+    acc + length(xs: eq_sites_from_output(root: fact.output))
+  })
+}
+
+fn dual_rep_eq_site_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
+  fold_list(
+    xs: scans,
+    empty: 0,
+    cons: fn(acc, scan) {
+      acc + dual_rep_eq_site_count_from_module(scan: scan)
+    }
+  )
+}
+
+fn dual_rep_coverage_honesty_holds(eq_site_count: Int, frontier_declared: Bool) -> Bool {
+  if eq_site_count > 0 {
+    true
+  } else {
+    frontier_declared
+  }
 }
 
 fn dual_rep_violation_count_from_scans(scans: List<DualRepModuleScan>) -> Int {

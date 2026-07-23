@@ -4,6 +4,9 @@ import v2.std.logic { Bool }
 import v2.test.lens_effect.effect_depends_on {
   effect_depends_on_claim_passes
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn lens_effect_family_gate() -> Bool {
   effect_depends_on_claim_passes

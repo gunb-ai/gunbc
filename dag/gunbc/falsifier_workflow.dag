@@ -1,0 +1,191 @@
+module gunbc.falsifier_workflow
+
+import v2.std.collection { Absent }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep,
+  WorkflowTrigger, Schedule, WorkflowDispatch,
+  WorkflowPermissions, PermRead,
+  ConcurrencyMappingQueueNotMax, CancelInProgressBool
+}
+import gunbc.ci_workflow {
+  ci_prelude_steps, ci_release_build_step,
+  ci_floor_peak_pre_step, ci_floor_peak_post_step,
+  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
+}
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_spec { ci_repo_root_shell, plan_artifact_plan_function }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.cli_invoke {
+  claim_executor_run_plan_shell
+}
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+
+data gunbc_falsifier_step_timeout_minutes: Int = 170
+
+data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29135185172 receipt): the first corpus-reaching cold run was TIME-killed at the 120-min step ceiling with the corpus incomplete (1970 rows, closure 1396 modules, width 1) and floor peak 16146612224 bytes against a 16GiB slot budget, still growing - so 120 censored the measurement without bounding anything real (the memory cap is the true wall). 170 lets a nightly run reach either completion (exact-labeled receipt) or the cap kill (censored-labeled receipt); both are the falsifier doing its measurement job, and the job backstop DERIVES from this value so it stretches in step. Revisit down when the resolver graph-major module split (S2a move 2) shrinks cold-resolve wall and residency."
+
+data falsifier_plan_function: String = "gunbc_falsifier_batches"
+
+fn falsifier_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(gunbc.ci_spec.ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: falsifier_plan_function,
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn falsifier_step() -> Step {
+  RunStep {
+    name: Present { value: "affected-set falsifier (predict-only cold run)" },
+    id: Present { value: "floor" },
+    run: falsifier_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
+        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD"))
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_step_timeout_minutes }
+  }
+}
+
+data gunbc_falsifier_compile_clean_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16, lands with the per-PR import-closure scoping in tools.dag_compile_clean_scope): PR floors now compile only the affected entry closure, and main pushes already skip on an empty diff — so this step is the deterministic whole-tree execution of the compile-clean gate, on the falsifier cadence, mirroring how the predict-only cold run controls witness selection. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces the scope plan to WholeTree before any diff observation (a widen-to-more-checking control arm, not an escape hatch — it can only force the gate to run in full). Plan function gunbc_ci_plan_artifact_batches is batch 1 of the floor schedule: exactly the compile-clean anchor through the same executor path that installs and consumes the in-run compile receipt."
+
+fn compile_clean_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(gunbc.ci_spec.ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: plan_artifact_plan_function,
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn compile_clean_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "compile-clean whole-tree cold control (scoped-PR admission counterpart)" },
+    id: none,
+    run: compile_clean_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_compile_clean_cold_control_timeout_minutes }
+  }
+}
+
+data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step."
+
+fn native_cache_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: "gunbc_falsifier_native_cache_cold_batches",
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn native_cache_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "native-cache cold control (warm-tier admission counterpart)" },
+    id: none,
+    run: native_cache_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_NATIVE_CACHE_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_native_cache_cold_control_timeout_minutes }
+  }
+}
+
+fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn falsifier_job() -> Job {
+  Job {
+    id: "falsifier",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+data falsifier_cadence_note: String = "nightly (0 7 * * *) -> every 4h (operator ruling 2026-07-14): a once-daily divergence receipt goes unread; a 4h cadence makes the cold-run receipt a same-day dial. Overlap is handled structurally, not assumed away: the job backstop (230-min class) can tail past a 240-min period, so the workflow carries a queue-not-cancel concurrency group - a scheduled run firing while one is live QUEUES rather than killing a measuring run mid-corpus."
+
+data falsifier_cadence_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 0 },
+  hour: Listed { values: [0, 4, 8, 12, 16, 20] },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data falsifier_workflow: Workflow = {
+  name: "affected-set-falsifier",
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Schedule { cron: falsifier_cadence_cron }
+  ],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: "affected-set-falsifier",
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  },
+  env: Present {
+    value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
+  },
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    }
+  },
+  jobs: [falsifier_job()]
+}
+
+fn expected_falsifier_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: falsifier_workflow))
+}

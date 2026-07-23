@@ -2,9 +2,12 @@ module test.claim.seed_debt_bundle_item_2_floor_scope
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.realization_schedule {
+  SelectionOff,
   Runnable,
   RunnableDiscoveryBatch,
-  ScheduleWitnessEntry
+  ScheduleWitnessEntry,
+  CorpusWitnessKind,
+  runnable_resource_profile_negligible
 }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import std.types { List }
@@ -13,7 +16,8 @@ fn seed_debt_witness_entries() -> List<ScheduleWitnessEntry> {
   [
     ScheduleWitnessEntry {
       entry: "dag/test/claim/compile_source_model_witness_test.dag",
-      function: "compile_source_model_witnesses"
+      function: "compile_source_model_witnesses",
+      kind: CorpusWitnessKind
     }
   ]
 }
@@ -24,7 +28,10 @@ fn seed_debt_floor_scope_batches() -> List<List<Runnable>> {
       source_roots: witness_layer_roots,
       scan_dirs: [],
       explicit_entries: seed_debt_witness_entries(),
-      skip_unaffected_node_frontier: false
+      node_frontier_selection: SelectionOff,
+      exclude_substrings: [],
+      discovery_scope_dirs: [],
+      profile: runnable_resource_profile_negligible()
     }
   ]]
 }

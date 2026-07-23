@@ -1,5 +1,7 @@
 module examples.interp_test
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 type Temperature {
   celsius: Float
 }

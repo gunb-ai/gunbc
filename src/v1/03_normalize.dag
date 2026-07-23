@@ -7,8 +7,11 @@ import v1.std.core {
   make_error_node, module_items, authored_name_at,
   NoConnective, ArityMismatch
 }
+
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
+
 import std.types { container_expected_arity }
+
 
 type NormalizeResult {
   graph: ModuleGraph
@@ -55,11 +58,13 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
   flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
 }
 
+fn normalize_module_diagnostics(m: ResolvedModule, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let items = module_items(n: m.module)
+  flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
+}
+
 fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
-  let diags = flat_map(graph.modules, m => {
-    let items = module_items(n: m.module)
-    flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
-  })
+  let diags = flat_map(graph.modules, m => normalize_module_diagnostics(m: m, source_indices: source_indices))
   NormalizeResult {
     graph: graph,
     diagnostics: diags

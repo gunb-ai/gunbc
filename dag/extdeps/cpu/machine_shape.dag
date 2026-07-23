@@ -1,0 +1,84 @@
+module extdeps.cpu.machine_shape
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/CPU_cache"
+  }
+}
+
+type ShapeFromCatalogInput
+  = FromCpuModelCatalog {
+      domain: DomainId
+      l1_level: LevelId
+      l2_level: LevelId
+      l3_level: LevelId
+      row: CpuModelCatalogRow
+    }
+
+fn memory_level_from_l1_cache(level_id: LevelId, row: CpuModelCatalogRow) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: row.l1_cache.data_capacity_per_core
+    transfer_grain: Present { value: row.l1_cache.line_size }
+    bandwidth: none
+    latency: none
+  }
+}
+
+fn memory_level_from_l2_cache(level_id: LevelId, row: CpuModelCatalogRow) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: row.l2_cache.capacity_per_core
+    transfer_grain: Present { value: row.l2_cache.line_size }
+    bandwidth: none
+    latency: none
+  }
+}
+
+fn memory_level_from_l3_cache(level_id: LevelId, row: CpuModelCatalogRow) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: row.l3_cache.capacity
+    transfer_grain: Present { value: row.l3_cache.line_size }
+    bandwidth: none
+    latency: none
+  }
+}
+
+fn memory_shape_from_cpu_catalog(
+  l1_level: LevelId,
+  l2_level: LevelId,
+  l3_level: LevelId,
+  row: CpuModelCatalogRow
+) -> MemoryShape {
+  [
+    memory_level_from_l1_cache(level_id: l1_level, row: row),
+    memory_level_from_l2_cache(level_id: l2_level, row: row),
+    memory_level_from_l3_cache(level_id: l3_level, row: row),
+  ]
+}
+
+fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
+  match input {
+    FromCpuModelCatalog { domain: domain, l1_level: l1_level, l2_level: l2_level, l3_level: l3_level, row: row } =>
+      MachineShapeOk {
+        shape: MachineShape {
+          domains: [
+            ExecutionDomain {
+              id: domain
+              execution: execution_shape_independent_lanes(lane_count: row.threads)
+              memory: memory_shape_from_cpu_catalog(
+                l1_level: l1_level,
+                l2_level: l2_level,
+                l3_level: l3_level,
+                row: row
+              )
+            }
+          ]
+          edges: []
+        }
+      }
+  }
+}

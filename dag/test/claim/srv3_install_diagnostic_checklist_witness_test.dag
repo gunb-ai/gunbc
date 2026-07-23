@@ -1,10 +1,16 @@
 module test.claim.srv3_install_diagnostic_checklist
 
 import std.logic { Bool }
-import gunbc.srv3_install_diagnostic_checklist {
+import gunbc.srv3_os_install_diagnostic {
+  srv3_install_diagnostic_observe_script_for_intent,
   srv3_install_diagnostic_observe_script_declares_five_surfaces,
+  srv3_os_install_attempt_intent,
+}
+import gunbc.srv3_install_diagnostic_observe_script {
+  srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger,
+}
+import gunbc.srv3_install_diagnostic_checklist {
   srv3_install_diagnostic_checklist_entrypoint_is_declared,
-  srv3_install_diagnostic_observe_script,
 }
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
@@ -29,18 +35,29 @@ import gunbc.srv3_os_install_diagnostic {
   BootProgressNone,
   SolConsoleContentObservation,
 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
 import gunbc.network_identity_subsumption { srv3_pre_install_lease_table }
 import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, On }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import std.measure { byte_size }
+import std.disposition { Scaffold, Terminal, RealizationDispatch }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn observe_script_covers_five_surfaces() -> Bool {
   srv3_install_diagnostic_observe_script_declares_five_surfaces()
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "pgrep -x nbdkit")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "sha256sum")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "port_owner=")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "pgrep -x nbdkit")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "sha256sum")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "port_owner=")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
+}
+
+test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
+  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
+  !string_contains(s: script, pattern: "HTTP_CODE=if")
+    && !string_contains(s: script, pattern: "echo 000))")
+    && string_contains(s: script, pattern: "HTTP_CODE=$(curl")
 }
 
 test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
@@ -177,6 +194,16 @@ test fn parse_bmc_websocket_http_code_non_101_red_despite_serve_websocat_present
     }
 }
 
+<<<<<<< HEAD
+=======
+test fn observe_script_names_bash_emit_dissolution_scaffold() -> Bool {
+  match srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+>>>>>>> origin/main
 test fn checklist_entrypoint_carries_dissolution_trigger() -> Bool {
   srv3_install_diagnostic_checklist_entrypoint_is_declared()
 }

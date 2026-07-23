@@ -1,31 +1,28 @@
 module test.claim.access_iam_validation
 
-import std.types { NonEmptyStr, Bool }
-import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
-import product.network_topology {
-  NetworkLocality, Loopback, Lan, Internet, WslNat, WslBridged, DockerBridge, TailscaleOverlay
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn decision_is_permit(d: std.access.AccessDecision) -> Bool {
+  match d { Permit => true  std.access.Deny { reason: _ } => false }
 }
 
-fn decision_is_permit(d: AccessDecision) -> Bool {
-  match d { Permit => true  Deny { reason: _ } => false }
-}
-
-fn decision_is_deny(d: AccessDecision) -> Bool {
-  match d { Deny { reason: _ } => true  Permit => false }
+fn decision_is_deny(d: std.access.AccessDecision) -> Bool {
+  match d { std.access.Deny { reason: _ } => true  Permit => false }
 }
 
 type IamPrincipal {
-  arn: NonEmptyStr
-  source_locality: NetworkLocality
+  arn: std.types.NonEmptyStr
+  source_locality: product.network_topology.NetworkLocality
   mfa_present: Bool
 }
 
 type S3Action {
-  operation: NonEmptyStr
-  prefix: NonEmptyStr
+  operation: std.types.NonEmptyStr
+  prefix: std.types.NonEmptyStr
 }
 
-fn locality_is_internal(l: NetworkLocality) -> Bool {
+fn locality_is_internal(l: product.network_topology.NetworkLocality) -> Bool {
   match l {
     Internet => false
     Loopback => true
@@ -37,48 +34,48 @@ fn locality_is_internal(l: NetworkLocality) -> Bool {
   }
 }
 
-fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> AccessDecision {
+fn iam_decide(request: std.access.AccessRequest<IamPrincipal, S3Action, std.types.NonEmptyStr>) -> std.access.AccessDecision {
   if locality_is_internal(l: request.subject.source_locality)
      && request.action.prefix == "reports/"
      && request.subject.mfa_present {
-    Permit
+    std.access.Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 
-data iam_access_policy: AccessPolicy<IamPrincipal, S3Action, NonEmptyStr> = {
+data iam_access_policy: std.access.AccessPolicy<IamPrincipal, S3Action, std.types.NonEmptyStr> = {
   decide: iam_decide
 }
 
 test fn iam_internal_prefix_mfa_permits() -> Bool {
   decision_is_permit(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
-    action: { operation: "s3:GetObject", prefix: "reports/" },
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
+    action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" },
     object: "arn:aws:s3:::bucket/reports/q3.csv"
   }))
 }
 
 test fn iam_external_source_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Internet, mfa_present: true },
-    action: { operation: "s3:GetObject", prefix: "reports/" },
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Internet, mfa_present: true },
+    action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" },
     object: "arn:aws:s3:::bucket/reports/q3.csv"
   }))
 }
 
 test fn iam_wrong_prefix_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
-    action: { operation: "s3:GetObject", prefix: "secrets/" },
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
+    action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "secrets/" },
     object: "arn:aws:s3:::bucket/secrets/key.pem"
   }))
 }
 
 test fn iam_no_mfa_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: false },
-    action: { operation: "s3:GetObject", prefix: "reports/" },
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: false },
+    action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" },
     object: "arn:aws:s3:::bucket/reports/q3.csv"
   }))
 }

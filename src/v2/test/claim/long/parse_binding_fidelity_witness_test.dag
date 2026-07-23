@@ -1,0 +1,26 @@
+module v2.test.long.parse_binding_fidelity_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.test.parse.parse_binding_fidelity {
+  pbf_parse_does_not_collapse_to_token_ident,
+  pbf_parse_preserves_param_x_binding,
+  pbf_parse_preserves_param_y_binding,
+  pbf_resolved_add_accepts,
+  pbf_resolved_tree_has_distinct_param_bindings
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data parse_binding_fidelity_long_note: String = "Census add-module parse+resolve binding fidelity exceeds the per-PR 5s fast-lane eval budget; enrolled in commit_workflow for long-lane CI."
+
+test fn witness_parse_binding_fidelity_distinct_identifiers_holds() -> Bool {
+  pbf_parse_preserves_param_x_binding()
+    && pbf_parse_preserves_param_y_binding()
+    && pbf_parse_does_not_collapse_to_token_ident()
+}
+
+test fn witness_resolve_distinct_param_bindings_holds() -> Bool {
+  pbf_resolved_add_accepts()
+    && pbf_resolved_tree_has_distinct_param_bindings()
+}

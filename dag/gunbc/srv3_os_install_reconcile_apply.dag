@@ -1,5 +1,6 @@
 module gunbc.srv3_os_install_reconcile_apply
 
+<<<<<<< HEAD
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -46,16 +47,24 @@ import std.temporal_effect {
   PlanNoop,
   EffectApplied,
 }
+=======
+>>>>>>> origin/main
 
 data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
+<<<<<<< HEAD
     module_path: "gunbc.srv3_os_install_reconcile",
     decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+=======
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
+>>>>>>> origin/main
     field: WholeDeclaration,
   }
 }
 
+<<<<<<< HEAD
 fn load_durable_approval_grant_script() -> String {
   concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true"))
 }
@@ -66,6 +75,8 @@ fn srv3_install_reconcile_run_observe_script() -> String {
     srv3_install_reconcile_observe_meta_script(),
   )
 }
+=======
+>>>>>>> origin/main
 
 fn process_exit_succeeded(exit: ProcessExit) -> Bool {
   match exit {
@@ -74,6 +85,7 @@ fn process_exit_succeeded(exit: ProcessExit) -> Bool {
   }
 }
 
+<<<<<<< HEAD
 fn sleep_for_boot_once_read_back_script() -> String {
   concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep)))
 }
@@ -87,22 +99,55 @@ func srv3_os_install_reconcile_apply() -> ProcessExit
     return exit_failure(reason: concat("srv3-install-reconcile-apply: read grant: ", grant_run.stderr))
   }
   let grant = parse_durable_approval_grant_file(contents: grant_run.stdout)
+=======
+func srv3_os_install_reconcile_apply() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let intent = srv3_os_install_attempt_intent
+  let grant_r = srv3_durable_approval_grant_read_apply()
+  let grant_stdout = match srv3_shell_stdout_from_apply(r: grant_r) {
+    Present { value: out } => out
+    Absent =>
+      return match srv3_reconciliation_failure_reason(r: grant_r) {
+        Present { value: why } => exit_failure(reason: concat("srv3-install-reconcile-apply: read grant: ", why))
+        Absent => exit_failure(reason: "srv3-install-reconcile-apply: read grant: host_effect_apply failed")
+      }
+  }
+  let grant = parse_durable_approval_grant_file(contents: grant_stdout)
+>>>>>>> origin/main
   if !durable_grant_is_active(grant: grant) {
     return exit_failure(reason: "srv3-install-reconcile-apply: durable approval grant missing or invalid")
   }
 
+<<<<<<< HEAD
   let pre_observe_script = srv3_install_reconcile_run_observe_script()
   let pre_observe = shell.Exec.Run(script: shell_exec_via_bash(body: pre_observe_script))
   if !pre_observe.success {
     return exit_failure(reason: concat("srv3-install-reconcile-apply: pre-observe: ", pre_observe.stderr))
   }
   let pre_observed_at = match parse_observed_at_from_stdout(stdout: pre_observe.stdout) {
+=======
+  let pre_observe_r = srv3_host_effect_observe_read_apply()
+  let pre_observe_stdout = match srv3_shell_stdout_from_apply(r: pre_observe_r) {
+    Present { value: out } => out
+    Absent =>
+      return match srv3_reconciliation_failure_reason(r: pre_observe_r) {
+        Present { value: why } => exit_failure(reason: concat("srv3-install-reconcile-apply: pre-observe: ", why))
+        Absent => exit_failure(reason: "srv3-install-reconcile-apply: pre-observe: host_effect_apply failed")
+      }
+  }
+  let pre_observed_at = match parse_observed_at_from_stdout(stdout: pre_observe_stdout) {
+>>>>>>> origin/main
     Present { value: t } => t as Timestamp
     Absent =>
       return exit_failure(reason: "srv3-install-reconcile-apply: pre-observe missing surface=observed_at=")
   }
   let pre_observation = parse_srv3_install_debug_observation(
+<<<<<<< HEAD
     stdout: pre_observe.stdout,
+=======
+    stdout: pre_observe_stdout,
+>>>>>>> origin/main
     intent: intent,
   )
   let pre_result = reconcile_srv3_os_install(
@@ -132,6 +177,7 @@ func srv3_os_install_reconcile_apply() -> ProcessExit
     return exit_failure(reason: "srv3-install-reconcile-apply: boot-once-cd apply failed")
   }
 
+<<<<<<< HEAD
   let sleep_run = shell.Exec.Run(script: shell_exec_via_bash(body: sleep_for_boot_once_read_back_script()))
   if !sleep_run.success {
     return exit_failure(reason: concat("srv3-install-reconcile-apply: read-back sleep: ", sleep_run.stderr))
@@ -142,12 +188,36 @@ func srv3_os_install_reconcile_apply() -> ProcessExit
     return exit_failure(reason: concat("srv3-install-reconcile-apply: post-observe: ", post_observe.stderr))
   }
   let post_observed_at = match parse_observed_at_from_stdout(stdout: post_observe.stdout) {
+=======
+  let sleep_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_boot_once_read_back_sleep_apply(),
+    failure_prefix: "srv3-install-reconcile-apply: read-back sleep: ",
+  )
+  if !process_exit_succeeded(exit: sleep_exit) {
+    return sleep_exit
+  }
+
+  let post_observe_r = srv3_host_effect_observe_read_apply()
+  let post_observe_stdout = match srv3_shell_stdout_from_apply(r: post_observe_r) {
+    Present { value: out } => out
+    Absent =>
+      return match srv3_reconciliation_failure_reason(r: post_observe_r) {
+        Present { value: why } => exit_failure(reason: concat("srv3-install-reconcile-apply: post-observe: ", why))
+        Absent => exit_failure(reason: "srv3-install-reconcile-apply: post-observe: host_effect_apply failed")
+      }
+  }
+  let post_observed_at = match parse_observed_at_from_stdout(stdout: post_observe_stdout) {
+>>>>>>> origin/main
     Present { value: t } => t as Timestamp
     Absent =>
       return exit_failure(reason: "srv3-install-reconcile-apply: post-observe missing surface=observed_at=")
   }
   let post_observation = parse_srv3_install_debug_observation(
+<<<<<<< HEAD
     stdout: post_observe.stdout,
+=======
+    stdout: post_observe_stdout,
+>>>>>>> origin/main
     intent: intent,
   )
   let read_back_ok = boot_once_apply_read_back_ok(
@@ -192,6 +262,7 @@ func srv3_os_install_reconcile_apply() -> ProcessExit
     apply_succeeded: apply_succeeded,
     read_back_ok: read_back_ok,
   )
+<<<<<<< HEAD
   let echo_body = concat(
     shell_printf_line(line: apply_receipt),
     shell_printf_line(line: dry_receipt),
@@ -199,6 +270,13 @@ func srv3_os_install_reconcile_apply() -> ProcessExit
   let echo_run = shell.Exec.Run(script: shell_exec_via_bash(body: echo_body))
   if !echo_run.success {
     return exit_failure(reason: concat("srv3-install-reconcile-apply-receipt: ", echo_run.stderr))
+=======
+  let echo_exit = srv3_emit_typed_receipt(
+    receipt: srv3_typed_receipt_from_lines(lines: [apply_receipt, dry_receipt]),
+  )
+  if !process_exit_succeeded(exit: echo_exit) {
+    return echo_exit
+>>>>>>> origin/main
   }
   if !read_back_ok {
     return exit_failure(reason: "srv3-install-reconcile-apply: read-back failed after boot-once-cd")

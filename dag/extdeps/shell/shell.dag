@@ -1,6 +1,6 @@
 module extdeps.shell
 
-import std.types { FilePath, NonEmptyStr }
+import std.types { FilePath, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -17,6 +17,21 @@ service shell.Find {
     output { dirs: List<FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation Files {
+    input { workdir: FilePath, root: FilePath, name_glob: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "-C", "{workdir}", "find", "{root}", "-name", "{name_glob}"] }
     exit {
       0 => Unit
       nonzero => String "Find command failed"
@@ -51,39 +66,129 @@ service shell.Which {
   }
 }
 
-service shell.Exec {
-  operation Run {
-    input { script: String }
-
-    output {
-      exit_code: Int from "exit_code"
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-
-    transport shell { argv: ["sh", "-c", "{script}"] }
+service shell.Test {
+  operation IsExecutable {
+    input { path: FilePath }
+    output { executable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-x", "{path}"] }
     exit {
-      0 => Unit
-      nonzero => String "Script failed"
-    }
-    mock_response {
-      0 => { exit_code: 0, success: true, stdout: "", stderr: "" } "hermetic shell.Exec.Run success"
+      0 => Unit "Path is executable"
+      1 => Unit "Path is not executable"
     }
   }
 
-  operation Check {
-    input { command: String }
-    output { exists: Bool from "exit_success" }
+  operation IsNonEmpty {
+    input { path: FilePath }
+    output { nonempty: Bool from "exit_success" }
     readonly
+    transport shell { argv: ["test", "-s", "{path}"] }
+    exit {
+      0 => Unit "Path exists with size greater than zero"
+      1 => Unit "Path is missing or zero-byte"
+    }
+  }
 
-    transport shell { argv: ["sh", "-c", "{command}"] }
+  operation IsFile {
+    input { path: FilePath }
+    output { is_file: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-f", "{path}"] }
+    exit {
+      0 => Unit "Path is a regular file"
+      1 => Unit "Path is missing or not a regular file"
+    }
+  }
+}
+
+service shell.Mktemp {
+  operation Dir {
+    input {}
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-d"] }
     exit {
       0 => Unit
-      nonzero => String "Command failed"
+      nonzero => String "mktemp -d failed"
     }
-    mock_response {
-      0 => { exists: true } "hermetic shell.Exec.Check success"
+  }
+
+  operation DirWithTemplate {
+    input { template: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-d", "{template}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -d with template failed"
+    }
+  }
+}
+
+service shell.Mkdir {
+  operation Parents {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-p", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mkdir -p failed"
+    }
+  }
+}
+
+service shell.Remove {
+  operation RecursiveForce {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rm", "-rf", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "rm -rf failed"
+    }
+  }
+}
+
+service shell.Move {
+  operation File {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mv failed"
+    }
+  }
+}
+
+service shell.Chmod {
+  operation RecursiveWritable {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R u+w failed"
+    }
+  }
+}
+
+service shell.Copy {
+  operation File {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["cp", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "cp failed"
+    }
+  }
+
+  operation Recursive {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "cp -r failed"
     }
   }
 }

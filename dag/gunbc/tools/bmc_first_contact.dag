@@ -1,14 +1,8 @@
 module gunbc.tools.bmc_first_contact
 
-import extdeps.shell
-import extdeps.bmc.http
-import extdeps.bmc.openbmc { openbmc_factory_login }
-import std.types { NonEmptyStr, String, Secret }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 func bmc_first_contact() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   resp = redfish.Http.GetSystem(

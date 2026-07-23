@@ -1,9 +1,7 @@
 module test.claim.cost_estimate_float_witness_test
 
-import examples.cost_estimate { cost_projection_float_witness }
-import std.logic { Bool }
 
-data cost_estimate_float_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/money_carrier_cost_witness_test.rs (5-test-migration lane): the Float-in-v2 cost-projection witness, marker-discovered instead of the v1 Rust harness."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn cost_projection_float_witness_holds() -> Bool {
   cost_projection_float_witness()

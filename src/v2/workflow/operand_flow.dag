@@ -1,0 +1,98 @@
+module v2.workflow.operand_flow
+
+import v2.std.algebra { list_map }
+import v2.std.collection { List }
+import v2.std.dependency {
+  DependencyKind,
+  DependencyKindClassifier,
+  DependencyView,
+  classify_dependency_kind
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, content_hash }
+import std.measure { ByteSize }
+import std.types { ContentHash }
+import v2.workflow.realization_runner {
+  NodeKeyedGraphArtifact,
+  NodeKeyedGraphTransitiveBytesMissingRow,
+  NodeKeyedGraphTransitiveBytesSettled,
+  NodeKeyedGraphTransitiveBytesUnsettled,
+  node_keyed_graph_transitive_bytes
+}
+
+data operand_flow_module_note: String = "Phase 2 of machine-shape-orthogonal-scheduling.md §4: DependencyView carries no operand today, so the scheduler's DependencyKindClassifier<Bool> collapse (v2.workflow.scheduler) discards shared-operand structure. operand_root/operand_flow_for_edge derive it without touching DependencyView's shape: operand identity is the producer node's content_hash (the same identity v2.std.materialize keys Share on), footprint is the single node_keyed_graph_transitive_bytes authority (v2.workflow.realization_runner) — no parallel size walk. Every DependencyKind other than DataDependsOn carries no operand by construction (the classifier is the single source of truth for which kinds apply, not a per-callsite match). operand_flows is total over its input edges: a non-applicable kind or an unsettled/missing footprint each yield a typed, located OperandFlowRefused row rather than being silently dropped, so refusals stay countable (DESIGN §5)."
+
+fn operand_flow_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
+  DependencyKindClassifier {
+    contains: false,
+    binds_to: false,
+    type_depends_on: false,
+    data_depends_on: true,
+    effect_depends_on: false,
+    resource_depends_on: false,
+    module_depends_on: false,
+    barrier_before: false,
+    placement_depends_on: false,
+    model_depends_on: false,
+    projection_depends_on: false,
+    generated_from: false,
+    verified_by: false,
+    promoted_by: false,
+    bootstrap_depends_on: false
+  }
+}
+
+fn dependency_carries_operand(kind: DependencyKind) -> Bool {
+  classify_dependency_kind(classifier: operand_flow_dependency_kind_classifier(), kind: kind)
+}
+
+type OperandRootFacts
+  = OperandRoot { root: Node }
+  | OperandRootUnresolved { edge: DependencyView }
+
+fn operand_root(edge: DependencyView) -> OperandRootFacts {
+  if dependency_carries_operand(kind: edge.kind) {
+    OperandRoot { root: edge.source }
+  } else {
+    OperandRootUnresolved { edge: edge }
+  }
+}
+
+type OperandFlowRefusalCause
+  = OperandFlowNoOperand { edge: DependencyView }
+  | OperandFlowFootprintMissingRow { missing: ContentHash }
+  | OperandFlowFootprintUnsettled { pending: List<ContentHash> }
+
+type OperandFlowRow
+  = OperandFlow { edge: DependencyView, operand: ContentHash, footprint: ByteSize }
+  | OperandFlowRefused { edge: DependencyView, cause: OperandFlowRefusalCause }
+
+fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView) -> OperandFlowRow {
+  match operand_root(edge: edge) {
+    OperandRootUnresolved { edge: unresolved_edge } =>
+      OperandFlowRefused {
+        edge: unresolved_edge,
+        cause: OperandFlowNoOperand { edge: unresolved_edge }
+      }
+    OperandRoot { root: root } =>
+      let operand = content_hash(n: root)
+      match node_keyed_graph_transitive_bytes(artifact: artifact, root: operand) {
+        NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+          OperandFlow { edge: edge, operand: operand, footprint: bytes }
+        NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
+          OperandFlowRefused {
+            edge: edge,
+            cause: OperandFlowFootprintMissingRow { missing: missing }
+          }
+        NodeKeyedGraphTransitiveBytesUnsettled { pending: pending } =>
+          OperandFlowRefused {
+            edge: edge,
+            cause: OperandFlowFootprintUnsettled { pending: pending }
+          }
+      }
+  }
+}
+
+fn operand_flows(artifact: NodeKeyedGraphArtifact, edges: List<DependencyView>) -> List<OperandFlowRow> {
+  list_map(xs: edges, f: fn(edge) { operand_flow_for_edge(artifact: artifact, edge: edge) })
+}

@@ -148,7 +148,6 @@ type MergeGatingStatus
 
 data merge_freshness_gating_status: MergeGatingStatus = GatingComputedDeferred
 
-data merge_admission_gating_activation_trigger: String = "flip merge_freshness_gating_status from GatingComputedDeferred to GatingEnforced after real CI run proves admit-real-fresh AND block-stale/red"
 
 data merge_admission_enforcement_gating_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

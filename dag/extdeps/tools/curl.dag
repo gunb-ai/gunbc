@@ -1,6 +1,7 @@
 module extdeps.tools.curl
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { String }
+import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -22,24 +23,24 @@ data curl_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_curl }],
 }
 
-service curl.Http {
-  operation PostJsonFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: [
-        "curl",
-        "-sk",
-        "-X", "POST",
-        "{url}",
-        "-H", "Content-Type: application/json",
-        "--data", "@{request_body_file}",
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "curl POST JSON from file failed"
-    }
-  }
+data curl_localhost_connect_timeout: Second = second(count: 2)
+
+data curl_localhost_max_time: Second = second(count: 5)
+
+fn curl_bounded_get_flags(connect_timeout: Second, max_time: Second) -> String {
+  concat(
+    concat("--connect-timeout ", to_string(second_count(s: connect_timeout))),
+    concat(" --max-time ", to_string(second_count(s: max_time)))
+  )
+}
+
+fn curl_bounded_localhost_get_argv_prefix(connect_timeout: Second, max_time: Second) -> String {
+  concat("curl -sf ", curl_bounded_get_flags(connect_timeout: connect_timeout, max_time: max_time))
+}
+
+fn curl_localhost_bounded_get_argv_prefix() -> String {
+  curl_bounded_localhost_get_argv_prefix(
+    connect_timeout: curl_localhost_connect_timeout,
+    max_time: curl_localhost_max_time
+  )
 }

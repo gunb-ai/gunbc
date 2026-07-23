@@ -1,0 +1,112 @@
+module gunbc.fleet_converge_apply
+
+import std.types { String, List, Bool, Int }
+import product.placement_supply { HostIdentity }
+import gunbc.host_converge {
+  ConvergePolicy,
+  ConvergePolicyDerived,
+  ConvergePolicyUnsound,
+  HostConverge,
+  fleet_converge_policy,
+  find_by_identity,
+}
+import gunbc.host_effect {
+  HostEffect,
+  ConvergePlan,
+  NodeControlPlane,
+  HostOs,
+  HostEffectTransport,
+  EmitArtifactThenThinRun,
+  BootstrapFragment,
+  ThinInvocation,
+  host_effect_converge_loop_evidence,
+  HostEffectIntent,
+  HostEffectEvidence,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconciliation_converged,
+}
+
+fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
+  find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
+}
+
+fn converge_plan_effect(host_converge: HostConverge) -> HostEffect {
+  ConvergePlan { policy: host_converge }
+}
+
+fn converge_apply_for_host(
+  host_converge: HostConverge,
+  transport: HostEffectTransport,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+  match fleet_compute_host_for_identity(identity: host_converge.identity) {
+    Present { value: host } =>
+      Present {
+        value: host_effect_apply(
+          target: HostOs { node: host },
+          effect: converge_plan_effect(host_converge: host_converge),
+          evidence: host_effect_converge_loop_evidence,
+          transport: transport,
+        )
+      }
+    Absent => none
+  }
+}
+
+type FleetConvergeApplyResult =
+    FleetConvergeApplied { host_count: Int, all_converged: Bool }
+  | FleetConvergeApplyRefused { reason: String }
+
+fn converge_apply(policy: ConvergePolicy, transport: HostEffectTransport) -> FleetConvergeApplyResult {
+  match policy {
+    ConvergePolicyUnsound { reason: reason } =>
+      FleetConvergeApplyRefused { reason: concat("fleet_converge_apply: policy unsound — ", reason) }
+    ConvergePolicyDerived { hosts: hosts } => {
+      let folded = fold(
+        hosts,
+        init: FleetConvergeApplied { host_count: 0, all_converged: true },
+        f: fn(acc, host_converge) {
+          match acc {
+            FleetConvergeApplyRefused { reason: _ } => acc
+            FleetConvergeApplied { host_count: n, all_converged: ok } =>
+              match converge_apply_for_host(host_converge: host_converge, transport: transport) {
+                Present { value: r } =>
+                  FleetConvergeApplied {
+                    host_count: n + 1,
+                    all_converged: ok && reconciliation_converged(r: r),
+                  }
+                Absent =>
+                  FleetConvergeApplyRefused {
+                    reason: concat(
+                      "fleet_converge_apply: unknown fleet host identity ",
+                      host_converge.identity as String
+                    ),
+                  }
+              }
+          }
+        }
+      )
+      folded
+    }
+  }
+}
+
+fn converge_apply_fleet(transport: HostEffectTransport) -> FleetConvergeApplyResult {
+  converge_apply(policy: fleet_converge_policy(), transport: transport)
+}
+
+fn fleet_converge_thin_invocation(host: HostIdentity) -> ThinInvocation {
+  ThinInvocation { argv: ["gunbc", "converge", "--host", host as String] }
+}
+
+fn fleet_converge_apply_result_converged(r: FleetConvergeApplyResult) -> Bool {
+  match r {
+    FleetConvergeApplied { host_count: _, all_converged: ok } => ok
+    FleetConvergeApplyRefused { reason: _ } => false
+  }
+}

@@ -1,0 +1,114 @@
+module test.claim.gunbc_invoke_witness
+
+import gunbc.cli_invoke {
+  claim_executor_run_plan_shell,
+  claim_executor_run_plan_transport_argv,
+  claim_executor_verify_artifacts_shell,
+  source_roots_shell_flags,
+  SourceRootBare,
+  SourceRootRooted
+}
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import gunbc.ci_spec {
+  gunbc_ci_spec,
+  gunbc_ci_deploy_srv1_stage,
+  gunbc_ci_deploy_invoke,
+  scheduler_invoke,
+  ci_floor_build_verify_script,
+  ci_floor_required_artifact_names,
+  artifact_shell_path
+}
+import v2.std.collection { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gunbc_invoke_deploy_srv1_pre_migration_golden_note: String = "Hand-frozen pre-Phase-3a bytes from origin/main gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+
+data gunbc_ci_deploy_invoke_srv1_pre_migration_golden: String = concat(
+  concat("ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n"),
+  concat(
+    "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"",
+    concat(
+      " --entry dag/gunbc/live_deploy/apply.dag",
+      " --function live_deploy_apply_srv1_wet\n"
+    )
+  )
+)
+
+data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
+  concat("ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n"),
+  concat(
+    "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"",
+    concat(
+      " --entry dag/gunbc/live_deploy/WRONG_ENTRY.dag",
+      " --function live_deploy_apply_srv1_wet\n"
+    )
+  )
+)
+
+test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
+  let modeled = claim_executor_run_plan_shell(
+    source_roots: witness_layer_roots,
+    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+    plan_function: "gunbc_ci_floor_batches",
+    notice_title: Present { value: gunbc_ci_spec.notice_title },
+    rooted: true
+  )
+  scheduler_invoke(spec: gunbc_ci_spec) == modeled
+}
+
+test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
+  gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage) == gunbc_ci_deploy_invoke_srv1_pre_migration_golden
+}
+
+test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool {
+  gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage) != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
+}
+
+test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
+  witness_layer_source_flags(roots: witness_layer_roots) ==
+    source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootBare)
+    && source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootRooted { root_var: "$ROOT" }) ==
+      concat(" --source-root \"$ROOT/dag\"", " --source-root \"$ROOT/src/v2\"")
+}
+
+test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
+  let shell = claim_executor_run_plan_shell(
+    source_roots: witness_layer_roots,
+    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+    plan_function: "gunbc_ci_floor_batches",
+    notice_title: Present { value: "" },
+    rooted: true
+  )
+  !string_contains(s: shell, pattern: "--notice-title")
+}
+
+fn transport_argv_contains_flag(argv: List<String>, flag: String) -> Bool {
+  fold(argv, init: false, f: (acc, arg) => acc || arg == flag)
+}
+
+test fn gunbc_invoke_transport_argv_empty_notice_title_omits_flag_holds() -> Bool {
+  let argv = claim_executor_run_plan_transport_argv(
+    source_roots: witness_layer_roots,
+    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+    plan_function: "gunbc_ci_floor_batches",
+    notice_title: Present { value: "" }
+  )
+  !transport_argv_contains_flag(argv: argv, flag: "--notice-title")
+    && claim_executor_run_plan_transport_argv(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: "gunbc_ci_floor_batches",
+      notice_title: Absent
+    ) == argv
+}
+
+test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
+  let script = claim_executor_verify_artifacts_shell(artifact_paths: ["\"$ROOT/target/release/gunbc\""])
+  string_contains(s: script, pattern: "--verify-build-artifacts")
+    && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\"")
+    && ci_floor_build_verify_script() == claim_executor_verify_artifacts_shell(
+      artifact_paths: map(ci_floor_required_artifact_names, name => artifact_shell_path(name: name))
+    )
+}

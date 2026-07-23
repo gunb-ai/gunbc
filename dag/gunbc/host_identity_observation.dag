@@ -1,37 +1,5 @@
 module gunbc.host_identity_observation
 
-import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_effect {
-  ShellCommand,
-  NodeControlPlane,
-  OneShotIdempotent,
-  HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconciliation_converged,
-}
-
-data host_identity_short_hostname_script: String = "hostname -s 2>/dev/null || hostname"
-
-data host_identity_short_hostname_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
-data host_identity_short_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_short_hostname_script — hostname-read authored as String literal handed to ShellCommand { script } (medium-as-string; parallel shell-syntax authority for -s/2>/dev/null/||); DISSOLVES WHEN host_effect Phase B / orchestration emit (#6106 / shell-emission-model) models hostname-read as HostEffect orchestration intent rows (bash grammar rows), retiring this string leaf and medium_structure_exception_roster entry for dag/gunbc/host_identity_observation.dag"
 
 type HostIdentityObservationRow {
   short_hostname_raw: String
@@ -43,7 +11,7 @@ type HostIdentityObservation {
   probed_at: NonEmptyStr
 }
 
-data gunbc_host_identity_observation_scope_disposition: Disposition = Terminal {
+data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 
@@ -84,8 +52,8 @@ fn host_identity_observation_apply(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: target,
-    effect: ShellCommand { script: host_identity_short_hostname_script },
-    policy: OneShotIdempotent,
+    effect: HostIdentityShortHostnameRead,
+    evidence: host_effect_read_evidence,
     transport: transport,
   )
 }
@@ -95,8 +63,12 @@ fn host_identity_observation_from_apply(
   probed_at: NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
-    Converged { evidence: ShellEffectApplied { stdout: out, exit_code: _ }, applied: _ } =>
-      host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } =>
+          host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
+        ConvergePlanApplied { stdout: _, exit_code: _ } => none
+      }
     NotConverged { reason: _, applied: _ } => none
   }
 }

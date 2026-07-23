@@ -1,58 +1,10 @@
 module v2.extdeps.languages.rust_wire_serde
 
-import std.serialization {
-  VariantNaming,
-  AsAuthored,
-  SnakeCase,
-  ScreamingSnakeCase,
-  StripPrefixAndSnakeCase,
-  StripSuffixAndSnakeCase,
-  StripPrefixSuffixAndSnakeCase
-}
-import extdeps.languages.rust.emit {
-  rust_serde_rename_all_snake_case,
-  rust_serde_rename_all_screaming_snake_case
-}
-import v2.extdeps.languages.rust {
-  rust_concrete_token_node,
-  rust_inhabitant_atom,
-  rust_named_edge,
-  rust_reference_layer_tokens
-}
-import v2.std.algebra { Empty, fold_list, list_append }
-import v2.std.collection { List, Map, empty_map }
-import v2.std.compilers.lexing {
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule
-}
-import v2.std.compilers.target_model {
-  ConcreteSyntaxToken,
-  FixedToken,
-  TargetModel,
-  concrete_syntax_token_class,
-  target_reference_layer_tokens_node
-}
-import v2.std.grammar {
-  GrammarExpr,
-  GrammarProduction,
-  Sequence,
-  StampClass,
-  Terminal,
-  grammar_production_to_node,
-  grammar_relation_tokens_node
-}
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
-
 fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> String {
   match naming {
     AsAuthored => ""
-    SnakeCase => rust_serde_rename_all_snake_case
-    ScreamingSnakeCase => rust_serde_rename_all_screaming_snake_case
+    SnakeCase => extdeps.languages.rust.emit.rust_serde_rename_all_snake_case
+    ScreamingSnakeCase => extdeps.languages.rust.emit.rust_serde_rename_all_screaming_snake_case
     StripPrefixAndSnakeCase { prefix: _ } => ""
     StripSuffixAndSnakeCase { suffix: _ } => ""
     StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => ""
@@ -106,7 +58,7 @@ fn rust_ws_review_event_golden(naming: VariantNaming) -> String {
 }
 
 data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden(
-  naming: ScreamingSnakeCase
+  naming: std.serialization.ScreamingSnakeCase
 )
 
 data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
@@ -229,12 +181,12 @@ fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      rust_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
@@ -250,7 +202,7 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(
+      v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_ws_relation_rule_review_event,
         target: rust_ws_grammar_relation_row_node(row: rust_ws_grammar_relation_row(naming: naming))
       )
@@ -261,15 +213,15 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
 
 fn rust_ws_serialize_source_prefix_edges(naming: VariantNaming) -> List<Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_text,
       target: rust_inhabitant_atom(id: ^rust_ws_source_literal)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^serialize_source_field_source_grammar,
       target: rust_inhabitant_atom(id: ^rust_ws_production_string_variant_enum)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^grammar_relation_field_tokens,
       target: grammar_relation_tokens_node(
         tokens: rust_ws_review_event_tokens(naming: naming),
@@ -289,17 +241,17 @@ fn rust_ws_serialize_source_node(naming: VariantNaming) -> Node {
 
 fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
   [
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_ws_translation_rules_node(naming: naming)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_serialize_source,
       target: rust_ws_serialize_source_node(naming: naming)
     ),
-    rust_named_edge(
+    v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
     )
   ]
 }
@@ -322,12 +274,13 @@ fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
     lex: rust_ws_lex(),
     binding_spellings: empty_map(),
     authority_source_text: rust_ws_authority_source_text(naming: naming),
+    token_class_emit_transforms: empty_map(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
 data rust_wire_serde_screaming_snake_target: TargetModel = rust_wire_serde_target_model(
-  naming: ScreamingSnakeCase
+  naming: std.serialization.ScreamingSnakeCase
 )
 
-data rust_wire_serde_snake_case_target: TargetModel = rust_wire_serde_target_model(naming: SnakeCase)
+data rust_wire_serde_snake_case_target: TargetModel = rust_wire_serde_target_model(naming: std.serialization.SnakeCase)

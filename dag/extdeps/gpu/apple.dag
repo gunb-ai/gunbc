@@ -15,8 +15,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data apple_m5_gpu_capacity_grounding_note: String = "Apple M5 GPU shares system unified memory (no dedicated VRAM); capacity is configurable. 16 GiB is the published BASE unified-memory configuration of the M5 MacBook Pro. TDP is not separately published for the integrated GPU, so tdp_watts is omitted (none) rather than fabricated. Boost clock is not published, so boost_clock is omitted (none). Apple publishes no CUDA compute-capability level, so compute_capability is none."
-
 data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   vendor: apple,
   model: "Apple M5 GPU",
@@ -31,4 +29,7 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   tdp_watts: none,
   compute_capability: none,
   supported_runtimes: [Metal],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
 }

@@ -1,31 +1,150 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr }
+import std.types { String, Int, NonEmptyStr, List, ContentHash }
+import std.cache_identity { CacheInterfaceId }
 import std.access { AccessDecision }
+import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_converge { HostConverge }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import std.effects {
+  EffectShape,
+  KeySource,
+  ReadEffect,
+  AppendEffect,
+  IdempotencyEvidence,
+  LatticeEffect,
+  IdentityEffect,
+  NonIdempotent,
+}
 
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
+  | ConvergePlan { policy: HostConverge }
+  | Srv3InstallDiagnosticObserve {
+      bmc: NonEmptyStr,
+      port: Int,
+      iso_path: NonEmptyStr,
+      iso_content_hash: ContentHash,
+    }
+  | OsInstallActuatorToolchainEnsure {}
+  | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
+  | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
+  | Srv3InstallReconcileObserve { include_git_meta: Bool }
+  | DurableApprovalGrantRecord
+  | DurableApprovalGrantRead
+  | Srv3InstallMediaFetch
+  | Srv3SeededInstallMediaRemaster
+  | Srv3SeededInstallMediaToolchainEnsure
+  | Srv3SolConsoleCapture
+  | Srv3BmcwebSessionLogin
+  | Srv3BmcwebTokenExtract
+  | Srv3NbdProxyServe {
+      intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
+  | Srv3BootOnceReadBackSleep
+  | Srv3ReceiptEmit { lines: List<String> }
+  | HostIdentityShortHostnameRead
+  | LiveDeployApply { spec: DeploymentSpec }
+  | LiveDeployRetract { spec: DeploymentSpec }
+  | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
+  | LiveDeployDigestReadback { port: Int }
+  | DeployAccessPreflight {}
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }
   | BmcController { node: ComputeHost }
 
-type Policy = OneShotIdempotent | ConvergeToFixpoint
+type Drive = OneShot | ConvergeLoop
+
+type BootstrapFragment {
+  script: String
+}
+
+type ThinInvocation {
+  argv: List<String>
+}
 
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
+  | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
+
+data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
+  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
+}
+
+data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
+  reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
+}
+
+data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_apply",
+    decl_name: "fleet_converge_thin_invocation",
+    field: WholeDeclaration,
+  }
+}
+
+data emit_artifact_then_thin_run_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_emit",
+    decl_name: "fleet_converge_steady_state_doc_projection_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
 
 type HostEffectIntent {
   target: NodeControlPlane
   effect: HostEffect
-  policy: Policy
+  evidence: IdempotencyEvidence
   transport: HostEffectTransport
   privilege_denial: AccessDecision?
 }
 
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
+  | ConvergePlanApplied { exit_code: Int, stdout: String }
+
+fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
+  if host_effect_is_converge_loop_evidence(evidence: evidence) {
+    ConvergeLoop
+  } else {
+    OneShot
+  }
+}
+
+fn host_effect_drive(intent: HostEffectIntent) -> Drive {
+  host_effect_drive_from_evidence(evidence: intent.evidence)
+}
+
+data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
+
+data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
+
+data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+
+data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: AppendEffect,
+  reason: host_effect_converge_loop_reason,
+}
+
+fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
+  evidence == host_effect_converge_loop_evidence
+}
+
+fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
+  LatticeEffect { shape: shape }
+}

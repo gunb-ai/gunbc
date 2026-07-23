@@ -72,14 +72,28 @@ data corpus_ci_gate_row_typescript_same_language_source_emit_round_trip: ClaimWi
 
 data corpus_ci_gate_row_add_arrow_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "add arrow eval by execution keystone",
-  entry: "src/v2/test/claim/manual/add_arrow_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/add_arrow_eval_by_execution_test.dag",
   function: "add_arrow_eval_by_execution_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_pick_ingested_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "pick ingested if_expr Branch eval keystone (1/2)",
+  entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+  function: "pick_ingested_equals_eval_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_pick2_ingested_eval_generality: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "pick2 ingested if_expr Branch eval generality (3/4)",
+  entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+  function: "pick2_ingested_equals_eval_generality_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch eval by execution keystone",
-  entry: "src/v2/test/claim/manual/branch_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/branch_eval_by_execution_test.dag",
   function: "branch_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
@@ -100,7 +114,7 @@ data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusCla
 
 data corpus_ci_gate_row_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind eval by execution keystone",
-  entry: "src/v2/test/claim/manual/bind_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
   function: "bind_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
@@ -121,7 +135,7 @@ data corpus_ci_gate_row_bind_round_trip_keystone: ClaimWitnessCorpusClaimRunRow 
 
 data corpus_ci_gate_row_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop eval by execution keystone",
-  entry: "src/v2/test/claim/manual/loop_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
   function: "loop_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
@@ -247,7 +261,7 @@ data corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates: ClaimWitne
 
 data corpus_ci_gate_row_cwc_nary_coproduct_normalize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "n-ary coproduct type-alias RHS folds to kernel Disj",
-  entry: "src/v2/test/claim/manual/cwc_resolution_probe_test.dag",
+  entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
   function: "cwc_nary_coproduct_normalize_boundary_holds",
   expected: ExpectPass
 }
@@ -485,21 +499,21 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
 
 data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "SP-M1 spice RC tran ngspice emit matches golden",
-  entry: "src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_ngspice_oracle_test.dag",
   function: "spice_rc_ngspice_op_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_spice_rc_ngspice_nonempty: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "SP-M1 spice RC tran ngspice emit nonempty",
-  entry: "src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_ngspice_oracle_test.dag",
   function: "spice_rc_tran_emit_ngspice_nonempty_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "spice RC passive deck fixture authority (vin-R1-mid-C1-ground + .op)",
-  entry: "src/v2/extdeps/spice_rc_passive_deck_claims.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_passive_deck_claims_test.dag",
   function: "spice_rc_passive_deck_authority_holds",
   expected: ExpectPass
 }
@@ -509,6 +523,8 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_dag_add_emit_ingest_round_trip,
   corpus_ci_gate_row_english_emit_ingest_round_trip,
   corpus_ci_gate_row_add_arrow_eval_keystone,
+  corpus_ci_gate_row_pick_ingested_eval_keystone,
+  corpus_ci_gate_row_pick2_ingested_eval_generality,
   corpus_ci_gate_row_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_branch_if_then_else_emit_keystone,

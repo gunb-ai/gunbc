@@ -1,18 +1,5 @@
 module v2.lens.host_language_transport_script
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Violation,
-}
-import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 type TransportScriptArgShape
   = ComputedApplication
@@ -93,12 +80,10 @@ fn transport_script_lens_verdict(
   if transport_script_literal_ban_holds(facts: facts) {
     Holds
   } else {
-    Violation {
-      diagnostic: LensVerdictDiagnostic {
-        reason: "transport_script_literal_blob_in_script_position",
-        at: ModuleWholeFile { module_name: "v2.lens.host_language_transport_script" }
-      }
-    }
+    lens_verdict_module_violation(
+      reason: ^transport_script_literal_blob_in_script_position,
+      module_name: "v2.lens.host_language_transport_script"
+    )
   }
 }
 

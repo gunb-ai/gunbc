@@ -63,9 +63,15 @@ data relu_mul_add_wire_op_codes: List<Int> = [
   elemwise_relu_wire_op_code,
 ]
 
-data simd_kernel_handler_roadmap_bind: String = "bind: docs/plans/accelerator-demo-roundtrip.md §6 item 2 (execution lane)"
 
-data host_kernel_relu_mul_add_op_codes_scaffold_note: String = "regen-sync: src/v1/runtime_rust.dag RELU_MUL_ADD_OP_CODES must mirror relu_mul_add_wire_op_codes until feature:dag-kernel-realization-handler dissolves host literals into target_model emit; roadmap: simd_kernel_handler_roadmap_bind"
+data host_kernel_relu_mul_add_op_codes_scaffold_note: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.simd.kernel",
+    decl_name: "relu_mul_add_wire_op_codes",
+    field: WholeDeclaration
+  }
+}
 
 fn witness_relu_mul_add_wire_op_codes_are_locked_triplet() -> Bool {
   if relu_mul_add_wire_op_codes.length() != 3 {
@@ -125,5 +131,3 @@ data simd_kernel_float_execution_host_realization_marker: Disposition = Scaffold
     field: WholeDeclaration
   }
 }
-
-data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler (roadmap: simd_kernel_handler_roadmap_bind) — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands; retire host opcode literals (mirror relu_mul_add_wire_op_codes) and host FmaContractionPolicy→i64 bridge once bash-emit lane lands"

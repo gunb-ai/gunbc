@@ -1,0 +1,75 @@
+module test.claim.falsifier_workflow_witness_test
+
+import std.types { Bool, Int, String }
+import extdeps.cron.schedule_model { render_cron_schedule }
+import gunbc.falsifier_workflow {
+  falsifier_cadence_cron,
+  falsifier_workflow,
+  gunbc_falsifier_job_backstop_timeout_minutes,
+  gunbc_falsifier_step_timeout_minutes,
+  gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
+  gunbc_falsifier_native_cache_cold_control_timeout_minutes,
+  expected_falsifier_yml
+}
+import extdeps.github.actions { ConcurrencyMappingQueueNotMax, CancelInProgressBool }
+import gunbc.ci_workflow {
+  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
+}
+import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn falsifier_cron_renders_every_four_hours_utc() -> Bool {
+  render_cron_schedule(s: falsifier_cadence_cron) == "0 0,4,8,12,16,20 * * *"
+}
+
+fn falsifier_cron_render_discriminates() -> Bool {
+  !(render_cron_schedule(s: falsifier_cadence_cron) == "0 7 * * *")
+}
+
+fn falsifier_concurrency_queues_not_cancels() -> Bool {
+  match falsifier_workflow.concurrency {
+    Present { value: spec } =>
+      match spec {
+        ConcurrencyMappingQueueNotMax { group: g, cancel_in_progress: cip, explicit_single: _ } =>
+          g == "affected-set-falsifier" &&
+            match cip {
+              Present { value: c } =>
+                match c {
+                  CancelInProgressBool { value: v } => !v
+                  _ => false
+                }
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
+  gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+    && !(gunbc_falsifier_job_backstop_timeout_minutes() == gunbc_falsifier_step_timeout_minutes)
+}
+
+fn falsifier_artifact_path_is_workflow_file() -> Bool {
+  artifact_path(a: FalsifierYamlArtifact) == ".github/workflows/falsifier.yml"
+}
+
+fn falsifier_yaml_projection_evaluates() -> Bool {
+  length_of(s: expected_falsifier_yml()) > 0
+}
+
+fn length_of(s: String) -> Int {
+  s.length()
+}
+
+test fn falsifier_workflow_witness_holds() -> Bool {
+  falsifier_cron_renders_every_four_hours_utc()
+    && falsifier_cron_render_discriminates()
+    && falsifier_concurrency_queues_not_cancels()
+    && falsifier_backstop_is_step_sum_plus_prelude()
+    && falsifier_artifact_path_is_workflow_file()
+    && falsifier_yaml_projection_evaluates()
+}

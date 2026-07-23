@@ -1,39 +1,7 @@
 module v2.test.manual.branch_infer
 
-import v2.compiler.infer {
-  infer,
-  infer_branch_operand_resolved_type,
-  infer_branch_type_atoms_equal,
-  infer_branch_type_is_bool,
-  infer_grounding_admits_infer_facts,
-  inferred_facts_resolved_type,
-  inferred_facts_witness_for_node,
-  InferredTree
-}
-import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Branch,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { node_positional_child_targets }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  ManualAnchorAbsent,
-  UnifiedTestClaim
-}
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_atom(s: Symbol) -> Node {
   Node {
@@ -67,27 +35,33 @@ fn branch_infer_if_body_from_arms(
   }
 }
 
-fn branch_infer_bool_if_else_body_node() -> Node {
-  branch_infer_if_body_from_arms(
-    condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_two)
+fn branch_infer_bool_if_else_body_node() -> Outcome<Node> {
+  outcome_accepted(
+    value: branch_infer_if_body_from_arms(
+      condition: branch_infer_atom(s: ^dag_token_kw_true),
+      then_arm: dag_int_literal_fixture_one(),
+      else_arm: dag_int_literal_fixture_two()
+    )
   )
 }
 
-fn branch_infer_arm_mismatch_body_node() -> Node {
-  branch_infer_if_body_from_arms(
-    condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    else_arm: branch_infer_string_type_node()
+fn branch_infer_arm_mismatch_body_node() -> Outcome<Node> {
+  outcome_accepted(
+    value: branch_infer_if_body_from_arms(
+      condition: branch_infer_atom(s: ^dag_token_kw_true),
+      then_arm: dag_int_literal_fixture_one(),
+      else_arm: branch_infer_string_type_node()
+    )
   )
 }
 
-fn branch_infer_cond_not_bool_body_node() -> Node {
-  branch_infer_if_body_from_arms(
-    condition: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_two)
+fn branch_infer_cond_not_bool_body_node() -> Outcome<Node> {
+  outcome_accepted(
+    value: branch_infer_if_body_from_arms(
+      condition: dag_int_literal_fixture_one(),
+      then_arm: dag_int_literal_fixture_one(),
+      else_arm: dag_int_literal_fixture_two()
+    )
   )
 }
 
@@ -129,29 +103,38 @@ fn branch_infer_branch_result_is_int(tree: InferredTree, body: Node) -> Bool {
 }
 
 fn branch_infer_bool_cond_accepts_holds() -> Bool {
-  let body = branch_infer_bool_if_else_body_node()
-  let tree = branch_infer_resolved_tree(root: body)
-  match branch_infer_run(tree: tree) {
-    Accepted { value: inferred, diagnostics: _ } =>
-      branch_infer_cond_child_is_bool(tree: inferred, body: body)
-        && branch_infer_branch_result_is_int(tree: inferred, body: body)
+  match branch_infer_bool_if_else_body_node() {
+    Accepted { value: body, diagnostics: _ } =>
+      let tree = branch_infer_resolved_tree(root: body)
+      match branch_infer_run(tree: tree) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          branch_infer_cond_child_is_bool(tree: inferred, body: body)
+            && branch_infer_branch_result_is_int(tree: inferred, body: body)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn branch_infer_arm_mismatch_red_holds() -> Bool {
-  let body = branch_infer_arm_mismatch_body_node()
-  match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+  match branch_infer_arm_mismatch_body_node() {
+    Accepted { value: body, diagnostics: _ } =>
+      match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn branch_infer_cond_not_bool_red_holds() -> Bool {
-  let body = branch_infer_cond_not_bool_body_node()
-  match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+  match branch_infer_cond_not_bool_body_node() {
+    Accepted { value: body, diagnostics: _ } =>
+      match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -1,14 +1,8 @@
 module gunbc.tools.bmc_read_telemetry
 
-import extdeps.shell
-import extdeps.bmc.http
-import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
-import std.types { NonEmptyStr, String }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 func bmc_read_telemetry() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   netrc = shell.Env.Get(name: "BMC_NETRC_FILE")

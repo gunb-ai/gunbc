@@ -1,5 +1,8 @@
 module gunbc.os_install_actuator_selection
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 import gunbc.fleet_intent { srv1_host, srv2_host, ComputeHost }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
@@ -70,9 +73,23 @@ data srv2_actuator_toolchain_observation: ActuatorToolchainHostObservation = Act
   satisfied: true,
 }
 
-data srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger: String = "🟡 dissolve-on: per-host actuator observation forks — OsInstallActuatorReachFacts srv1_/srv2_ reach bools, srv1_/srv2_install_window_load ints, and reach_fact_for_host/install_window_load_for_host identity==dispatch; DISSOLVES WHEN reach and load observations are List rows keyed by HostIdentity so new actuator candidates do not force schema edits"
+data srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.os_install_actuator_selection",
+    decl_name: "OsInstallActuatorReachFacts",
+    field: WholeDeclaration
+  }
+}
 
-data srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger: String = "🟡 dissolve-on: srv3_os_install_actuator_host ActuatorUnsatisfiable arm fabricates srv1_host (§5 fail-open — typed refusal dropped); DISSOLVES WHEN consumers match OsInstallActuatorSelection or srv3_os_install_actuator_host becomes ComputeHost? so unsatisfiable is unrepresentable-as-host; live fleet pinned by srv3_os_install_actuator_selection_is_selected_on_live_fleet witness"
+data srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.os_install_actuator_selection",
+    decl_name: "srv3_os_install_actuator_host",
+    field: WholeDeclaration
+  }
+}
 
 data live_srv3_actuator_reach_facts: OsInstallActuatorReachFacts = OsInstallActuatorReachFacts {
   srv1_reaches_target_bmc: true,
@@ -220,10 +237,6 @@ fn host_satisfies_os_install_actuator_requirements(
       reach_facts: reach_facts,
     ),
   )
-}
-
-fn os_install_actuator_requirement_kind_count() -> Int {
-  os_install_actuator_requirement_kinds.length()
 }
 
 fn optional_compute_host_when_identity_matches(

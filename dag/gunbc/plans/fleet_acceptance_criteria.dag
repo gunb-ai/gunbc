@@ -178,9 +178,9 @@ fn fac_compile_clean_sharding() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_wave_summary() -> List<MarkdownBlock> {
+fn fac_completion_summary() -> List<MarkdownBlock> {
   [
-    h2(text: "What \"complete\" honestly means after the current wave"),
+    h2(text: "What \"complete\" honestly means today"),
     p(text: "Rails (honestly completable now): CD target-host proof first slice · privilege refusal before mutation · runner memory live-read carrier first slice · mechanism inventory baseline · resolver profile receipt · compile-clean shard algebra/exemplar."),
     p(text: "NOT complete until their named tier: srv1/srv2 runner allocation · full live host read seam · keyed-delta fold consumed by converge · closed-loop converge · periodic actuation · compute-fabric dispatch. The first set builds rails; the second set is where infra actually changes."),
   ]
@@ -196,7 +196,7 @@ fn fleet_acceptance_criteria_body() -> List<MarkdownBlock> {
   concat(fac_periodic_actuation(),
   concat(fac_strictlease_labels(),
   concat(fac_service_receipt(),
-  concat(fac_compile_clean_sharding(), fac_wave_summary()))))))))))
+  concat(fac_compile_clean_sharding(), fac_completion_summary()))))))))))
 }
 
 data fleet_acceptance_criteria_plan: Plan = Plan {

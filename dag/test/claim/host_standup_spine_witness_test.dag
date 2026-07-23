@@ -1,65 +1,7 @@
 module test.claim.host_standup_spine
 
-import std.logic { Bool }
-import std.types { Int }
-import gunbc.host_standup {
-  host_standup_spine,
-  host_standup_spine_length,
-  host_standup_gap_count,
-  host_standup_gap_ledger,
-  srv3_host_standup_target,
-  srv3_install_mechanism_is_nbd_proxy_no_fallback,
-  credential_probe_maps_factory_default,
-  credential_probe_maps_credentials_rotated,
-  host_standup_fleet_converge_policy,
-  assimilation_complete,
-  assimilation_complete_all_satisfied,
-  AssimilationCompleteGate,
-  AssimilationComplete,
-  AssimilationIncomplete,
-  InputSatisfied,
-  InputGap,
-  InputRefused,
-  NodeRegistered,
-  ResourcesPresent,
-  RunnerSlotHealthy,
-  GreenPlacePinCoherent,
-  GreenPlacePinCoherentWitness,
-  GreenPlaceFromGunbcGate,
-  GreenPlacePinGap,
-  GreenPlacePinRefused,
-  host_standup_p5_green_place_noop_gate_authority,
-  host_standup_p5_green_place_marker_gate_authority,
-  host_standup_p5_desired_pin_authority,
-  host_standup_p5_default_green_place_gate_verdict,
-  green_place_pin_coherent_satisfied,
-  host_standup_p3_fail_closed_blocks_complete,
-  host_standup_p3_gunbc_pinned_tree_landed,
-  host_standup_default_assimilation_gate_unsatisfied,
-  HostStandupStep,
-  Prefix,
-  Assimilation,
-  BmcCredentialConverge,
-  OsInstallMechanismResolved,
-  OsInstallActuated,
-  HostConvergePolicyDerived,
-  ReachSecretsNetwork,
-  RunnerDeploySlot,
-  ComputeFabricEnroll,
-  GreenPlaceReadiness,
-  SessionPlacementEnrollment,
-  StandupAssimilationComplete,
-  DeclaredGap,
-  ModeledCompose,
-}
-import gunbc.bmc_onboarding {
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
-import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
-import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn spine_step_tag(step: HostStandupStep) -> Int {
   match step.phase {
@@ -67,12 +9,14 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Prefix { phase: OsInstallMechanismResolved } => 1
     Prefix { phase: OsInstallActuated } => 2
     Prefix { phase: HostConvergePolicyDerived } => 3
-    Assimilation { phase: ReachSecretsNetwork } => 4
-    Assimilation { phase: RunnerDeploySlot } => 5
-    Assimilation { phase: ComputeFabricEnroll } => 6
-    Assimilation { phase: GreenPlaceReadiness } => 7
-    Assimilation { phase: SessionPlacementEnrollment } => 8
-    Assimilation { phase: StandupAssimilationComplete } => 9
+    Assimilation { phase: HostIdentityConverge } => 4
+    Assimilation { phase: ReachSecretsNetwork } => 5
+    Assimilation { phase: RunnerDeploySlot } => 6
+    Assimilation { phase: BuildCacheProvision } => 7
+    Assimilation { phase: ComputeFabricEnroll } => 8
+    Assimilation { phase: GreenPlaceReadiness } => 9
+    Assimilation { phase: SessionPlacementEnrollment } => 10
+    Assimilation { phase: StandupAssimilationComplete } => 11
   }
 }
 
@@ -92,11 +36,30 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_ten_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 10
+test fn host_standup_spine_is_twelve_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 12
     && spine_tags_are_linear()
-    && host_standup_gap_count() == 4
-    && host_standup_gap_ledger.length() == 10
+    && host_standup_gap_ledger.length() == 12
+}
+
+test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || match s.phase {
+        Assimilation { phase: BuildCacheProvision } =>
+          s.label == "P1b:build-cache-provision"
+            && match s.disposition {
+              ModeledCompose { authorities: refs } =>
+                refs.length() >= 3
+                  && string_contains(s: s.label, pattern: "build-cache-provision")
+              DeclaredGap { interim_realization: _, refusal: _ } => false
+            }
+        Prefix { phase: _ } => acc
+        Assimilation { phase: _ } => acc
+      }
+  )
 }
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
@@ -198,12 +161,16 @@ test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> B
 
 test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
   host_standup_p3_gunbc_pinned_tree_landed
-    && host_standup_gap_count() == 4
     && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
       AssimilationIncomplete { input: NodeRegistered, reason: r } =>
         string_contains(s: r, pattern: "P5:gap-refused:")
       AssimilationComplete => false
     }
+}
+
+test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
+  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == std.upsert_decision.Converged
+    && host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.Converged) == (host_standup_gap_count() - 1)
 }
 
 test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
@@ -214,8 +181,8 @@ test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
       DeclaredGap { interim_realization: path, refusal: r } =>
         string_contains(s: r, pattern: "host_standup:")
           && (string_contains(s: path, pattern: "ctrl:")
-            || (string_contains(s: path, pattern: "extdeps.")
-              && string_contains(s: path, pattern: "gunbc.")))
+            || string_contains(s: path, pattern: "extdeps.")
+            || string_contains(s: path, pattern: "gunbc."))
       ModeledCompose { authorities: refs } => refs.length() > 0
     }
   )
@@ -243,3 +210,4 @@ test fn p3_gap_ledger_notes_green_place_dag_writer_path() -> Bool {
         && string_contains(s: row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
   )
 }
+

@@ -10,13 +10,13 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_mvp1_fixture_emitted_rec_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_pick_arrow_domain_conj_node,
-  dag_mvp1_rec_construct_body_fixture,
-  dag_mvp1_rec_source_text,
-  dag_mvp1_rec_target_model,
-  dag_mvp1_type_atom_node
+  dag_fixture_emitted_rec_fn,
+  dag_fixture_int_inhabitant,
+  dag_pick_arrow_domain_conj_node,
+  dag_rec_construct_body_fixture,
+  dag_rec_source_text,
+  dag_rec_target_model,
+  dag_type_atom_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
@@ -45,9 +45,12 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data record_construct_emitted_root: Node = dag_mvp1_fixture_emitted_rec_fn
-data record_construct_target_model: TargetModel = dag_mvp1_rec_target_model()
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data record_construct_emitted_root: Node = dag_fixture_emitted_rec_fn
+data record_construct_target_model: TargetModel = dag_rec_target_model()
 
 fn record_construct_canonical_grounding(
   node: Node,
@@ -69,32 +72,32 @@ fn record_construct_canonical_grounding(
 }
 
 fn record_construct_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_fixture_emitted_rec_fn {
+  if node == dag_fixture_emitted_rec_fn {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_rec_construct_body_fixture {
+  } else if node == dag_rec_construct_body_fixture {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_pick_arrow_domain_conj_node() {
+  } else if node == dag_pick_arrow_domain_conj_node() {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_type_rec) {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
     Holds {
       value: record_construct_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_rec_v) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_rec_v) {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_rec_lit_nine) {
+  } else if node == dag_type_atom_node(identity: ^dag_rec_lit_nine) {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
-  } else if node == dag_mvp1_fixture_int_inhabitant {
+  } else if node == dag_fixture_int_inhabitant {
     Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
   } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
     Holds {
       value: record_construct_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else {
@@ -174,7 +177,7 @@ fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
     target: record_construct_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_rec_fn)
+      (result.target == dag_fixture_emitted_rec_fn)
         && record_construct_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false

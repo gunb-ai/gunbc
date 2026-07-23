@@ -1,37 +1,12 @@
 module gunbc.runner_unit_live_read
 
-import std.types { NonEmptyStr, String, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, Terminal }
-import extdeps.os.systemd {
-  SystemdCgroupMemoryLimit,
-  MemoryLimitUnbounded,
-  MemoryLimitBytes,
-  MemoryLimitAbsent,
-  parse_systemd_memory_limit_show,
-  systemd_memory_max_property,
-  systemd_memory_swap_max_property,
-  systemd_memory_high_property,
-}
-import gunbc.host_converge {
-  ConvergeTarget,
-  ConvergeVerdict,
-  Converged,
-  Drifted,
-  Absent,
-  converge_verdict,
-}
-import gunbc.ci_floor_measurement {
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
-}
 
 type RunnerUnitLiveReadRow {
   unit: NonEmptyStr
   memory_max_raw: String
   memory_swap_max_raw: String
   memory_high_raw: String
+  memory_current_raw: String
   probed_at: NonEmptyStr
 }
 
@@ -40,11 +15,25 @@ type RunnerUnitMemoryLiveRead {
   memory_max: SystemdCgroupMemoryLimit
   memory_swap_max: SystemdCgroupMemoryLimit
   memory_high: SystemdCgroupMemoryLimit
+  memory_current: SystemdCgroupMemoryLimit
   probed_at: NonEmptyStr
 }
 
-data gunbc_runner_unit_live_read_scope_disposition: Disposition = Terminal {
-  reason: "Slice-1 typed fixture/read carrier only: parses recorded systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Does NOT replace gunbc.runner_slot_show_effective_read ReadAbsent — the live fleet systemctl-show transport is a separate load-bearing node."
+data gunbc_runner_unit_live_read_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "Per-slot raw→typed read carrier: RunnerUnitLiveReadRow parses systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Live READ transport (systemctl show per property) is owned by gunbc.fleet_show_effective_read; this module keeps the typed shape + fixture rows."
+}
+
+data gunbc_runner_unit_live_read_absent_routing_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.testgen",
+    decl_name: "cross_repr_native_value_null",
+    field: WholeDeclaration,
+  }
+}
+
+data gunbc_runner_unit_live_read_absent_routing_note: Disposition = std.disposition.Terminal {
+  reason: "MemoryLimitAbsent routes through converge_verdict(effective:\"\", …) — semantically identical to ConvergeVerdict::Absent (converge_verdict short-circuits on empty effective). Mechanical import workaround: importing ConvergeVerdict::Absent shadows Optional::Absent at runtime so none/null match arms fail. Dissolves when Value::Null split grounds Optional vs coproduct-variant disambiguation (gunbc_runner_unit_live_read_absent_routing_scaffold bind)."
 }
 
 data gunbc_srv1_runner_unit_live_read_fixture: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
@@ -52,6 +41,7 @@ data gunbc_srv1_runner_unit_live_read_fixture: RunnerUnitLiveReadRow = RunnerUni
   memory_max_raw: "infinity",
   memory_swap_max_raw: "0",
   memory_high_raw: "infinity",
+  memory_current_raw: "",
   probed_at: "2026-07-01",
 }
 
@@ -61,7 +51,17 @@ fn runner_unit_live_read_typed(row: RunnerUnitLiveReadRow) -> RunnerUnitMemoryLi
     memory_max: parse_systemd_memory_limit_show(raw: row.memory_max_raw),
     memory_swap_max: parse_systemd_memory_limit_show(raw: row.memory_swap_max_raw),
     memory_high: parse_systemd_memory_limit_show(raw: row.memory_high_raw),
+    memory_current: parse_systemd_memory_limit_show(raw: row.memory_current_raw),
     probed_at: row.probed_at,
+  }
+}
+
+fn runner_unit_usage_exceeds_bytes(read: RunnerUnitMemoryLiveRead, target_bytes: ByteSize) -> Bool? {
+  match read.memory_current {
+    MemoryLimitBytes { bytes: current } =>
+      Present { value: byte_size_count(b: current) > byte_size_count(b: target_bytes) }
+    MemoryLimitUnbounded => none
+    MemoryLimitAbsent => none
   }
 }
 
@@ -78,7 +78,7 @@ fn memory_limit_converge_verdict_for_bytes_value(
   bytes_value: String,
 ) -> ConvergeVerdict {
   match observed {
-    MemoryLimitAbsent => Absent
+    MemoryLimitAbsent => converge_verdict(effective: "", expected: bytes_value)
     MemoryLimitUnbounded => Drifted
     MemoryLimitBytes { bytes: b } =>
       converge_verdict(
@@ -120,7 +120,7 @@ fn converge_target_live_verdict(
       match per_slot_memory_limit_for_property(read: read, property: p) {
         Present { value: observed } =>
           Present { value: memory_limit_converge_verdict_for_bytes_value(observed: observed, bytes_value: bv) }
-        Absent => none
+        _ => none
       }
     _ => none
   }
@@ -138,7 +138,7 @@ fn runner_unit_memory_max_drifts_against_cap(
 
 fn runner_unit_swap_max_converged(read: RunnerUnitMemoryLiveRead, target: ConvergeTarget) -> Bool {
   match converge_target_live_verdict(read: read, target: target) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }

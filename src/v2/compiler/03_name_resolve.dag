@@ -1,20 +1,36 @@
 module v2.compiler.name_resolve
+
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalize { NormalizedTree }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
+  namespace_bindings_augment_from_module_atoms,
   ResolvedTree,
-  resolve_with_namespace,
+  resolve_with_namespace_policy,
   try_edge_declared_binding
+}
+import v2.std.resolution_policy {
+  ImportScoped,
+  NameResolutionPolicy,
+  NamespaceOnlyY,
+  default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
   dag_surface_module_header_metadata_edge,
+  namespace_graft_already_grafted,
+  namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v2.compiler.namespace_graft {
+  namespace_graft_strip_provenance_marker
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, Map, Present, empty_map, map_get, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
@@ -130,7 +146,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match map_get(os, sym) {
+      match v2.std.collection.map_get(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
@@ -172,7 +188,7 @@ fn module_root_name_find_fold(
 fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   match fold_list(
     xs: roots,
-    empty: ModuleRootsValid { seen: Empty, diagnostics: None },
+    empty: ModuleRootsValid { seen: Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
@@ -235,14 +251,14 @@ fn module_root_find(
 ) -> Outcome<Node> {
   match fold_list(
     xs: roots,
-    empty: Accepted { value: NoPassingCandidate, diagnostics: None },
+    empty: Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: fold_state, diagnostics: _ } =>
           match fold_state {
             ManyPassingCandidates =>
-              Accepted { value: ManyPassingCandidates, diagnostics: None }
+              Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
               match qualified_name_from_module_node(root: root) {
                 Rejected { diagnostics: d } =>
@@ -258,7 +274,7 @@ fn module_root_find(
                         }
                       false => fold_state
                     },
-                    diagnostics: None
+                    diagnostics: v2.std.diagnostic.None
                   }
               }
           }
@@ -271,7 +287,7 @@ fn module_root_find(
         NoPassingCandidate =>
           Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
         OnePassingCandidate { candidate: root } =>
-          Accepted { value: root, diagnostics: None }
+          Accepted { value: root, diagnostics: v2.std.diagnostic.None }
         ManyPassingCandidates =>
           Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
       }
@@ -339,15 +355,34 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
+fn admit_named_exports_body_root(root: Node) -> Node {
+  if namespace_graft_already_grafted(root: root) {
+    admit_named_exports_descend_spine(
+      node: namespace_graft_strip_provenance_marker(root: root)
+    )
+  } else {
+    root
+  }
+}
+
+fn admit_named_exports_descend_spine(node: Node) -> Node {
+  match namespace_graft_spine_segment_edge_optional(node: node) {
+    Present { value: edge } =>
+      admit_named_exports_descend_spine(node: edge.target)
+    Absent => node
+  }
+}
+
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match root.kind {
+  let working = admit_named_exports_body_root(root: root)
+  match working.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
-        n: root,
+        n: working,
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,
@@ -418,7 +453,7 @@ fn admit_import_entry(
             diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
           }
         ImportVisible =>
-          match cross_tree_edge_decision(
+          match v2.std.cross_tree.resolution.cross_tree_edge_decision(
             index: index,
             from_qn: subject_qn,
             to_qn: import_edge.target,
@@ -468,7 +503,9 @@ fn admit_imports(
 fn admission_namespace_base(lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
+    symbol_index: empty_symbol_index(),
+    module_qn: Empty
   }
 }
 
@@ -479,12 +516,56 @@ fn subject_module_root_for_name(
   module_root_find(roots: roots, name: name)
 }
 
+fn namespace_admission_initial_state(
+  policy: NameResolutionPolicy,
+  lm: LanguageModel,
+  subject_module_root: Node,
+  subject_qn: QualifiedName
+) -> AdmissionState {
+  let base = admission_namespace_base(lm: lm)
+  match policy {
+    NamespaceOnlyY =>
+      admission_initial(base: base)
+    ImportScoped =>
+      admit_named_exports(
+        root: subject_module_root,
+        origin: subject_qn,
+        state: admission_initial(base: base)
+      )
+  }
+}
+
+fn admitted_subject_from_bindings(
+  bindings: Map<Symbol, Symbol>,
+  base: Namespace,
+  subject_module_root: Node,
+  validated_roots: FreeMonoid<Node>,
+  module_qn: QualifiedName
+) -> AdmittedSubject {
+  AdmittedSubject {
+    namespace: Namespace {
+      bindings: namespace_bindings_augment_from_module_atoms(
+        root: subject_module_root,
+        bindings: bindings
+      ),
+      canonical_symbols: base.canonical_symbols,
+      symbol_index: symbol_index_fill_module_roots(
+        index: empty_symbol_index(),
+        roots: validated_roots
+      ),
+      module_qn: module_qn
+    },
+    subject_root: subject_module_root
+  }
+}
+
 fn namespace_for_subject(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission,
   index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -500,32 +581,55 @@ fn namespace_for_subject(
         Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root) {
             let base = admission_namespace_base(lm: lm)
-            match admit_imports(
-              roots: validated_roots,
-              imports: admission.imports,
-              state: admit_named_exports(
-                root: subject_module_root,
-                origin: admission.subject.name,
-                state: admission_initial(base: base)
-              ),
-              subject_qn: admission.subject.name,
-              index: index,
-              active_roots: active_roots
-            ) {
-              AdmissionAccepted { bindings: b, origins: _ } =>
-                Accepted {
-                  value: AdmittedSubject {
-                    namespace: Namespace {
-                      bindings: b,
-                      canonical_symbols: base.canonical_symbols
-                    },
-                    subject_root: subject_module_root
-                  },
-                  diagnostics: validate_diag
+            let initial = namespace_admission_initial_state(
+              policy: policy,
+              lm: lm,
+              subject_module_root: subject_module_root,
+              subject_qn: admission.subject.name
+            )
+            match policy {
+              NamespaceOnlyY =>
+                match initial {
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
+                      ),
+                      diagnostics: validate_diag
+                    }
                 }
-              AdmissionRejected { diagnostics: d } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+              ImportScoped =>
+                match admit_imports(
+                  roots: validated_roots,
+                  imports: admission.imports,
+                  state: initial,
+                  subject_qn: admission.subject.name,
+                  index: index,
+                  active_roots: active_roots
+                ) {
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
+                      ),
+                      diagnostics: validate_diag
+                    }
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
                 }
             }
           } else {
@@ -545,20 +649,23 @@ fn resolve_with_admission_policy(
   roots: FreeMonoid<Node>,
   admission: Admission,
   index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
     admission: admission,
     index: index,
-    active_roots: active_roots
+    active_roots: active_roots,
+    policy: policy
   ) {
     Accepted { value: admitted, diagnostics: namespace_diag } =>
-      match resolve_with_namespace(
+      match resolve_with_namespace_policy(
         tree: admitted.subject_root,
         namespace: admitted.namespace,
-        lm: lm
+        lm: lm,
+        policy: policy
       ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>
           Accepted {
@@ -583,8 +690,9 @@ fn resolve_with_admission(
     lm: lm,
     roots: roots,
     admission: admission,
-    index: source_root_index_empty(),
-    active_roots: Empty
+    index: v2.std.cross_tree.resolution.source_root_index_empty(),
+    active_roots: Empty,
+    policy: default_name_resolution_policy()
   )
 }
 
@@ -600,6 +708,7 @@ fn resolve_with_admission_grounded(
     roots: roots,
     admission: admission,
     index: index,
-    active_roots: active_roots
+    active_roots: active_roots,
+    policy: default_name_resolution_policy()
   )
 }

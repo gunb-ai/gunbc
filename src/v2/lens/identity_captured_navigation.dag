@@ -1,0 +1,24 @@
+module v2.lens.identity_captured_navigation
+
+
+data identity_captured_navigation_bug_class_note: String = "The grammar wraps every parsed production in a TypeNode\{Conj\} carrying two labeled edges: ^grammar_production_identity_node_projection (a bare Atom TAG, meaningful only for identity/dispatch comparison, never a value) and ^grammar_production_captured_node_projection (the real parsed VALUE subtree). The single sanctioned reader for the identity edge is v2.extdeps.languages.dag.parse_production_emitted_identity_optional, which immediately collapses the identity edge's target Node down to a bare Optional<Symbol> via node_atom_identity_optional - the raw identity Node itself never escapes that function. This lens catches any OTHER navigation to the identity edge (via find_named_child(root: _, name: ^grammar_production_identity_node_projection)) whose result is not immediately and solely reduced through node_atom_identity_optional before flowing onward - a class of defect that would otherwise silently produce a semantically-meaningless bare Atom exactly where real content was expected."
+
+type IdentityCapturedNavigationViolation
+  = IdentityNodeEscapesAsValue {
+      source: Node,
+      at: Node,
+      reduction_count: Int,
+      extraneous_mentions: Int
+    }
+
+type Finding
+  = Suspect { violation: IdentityCapturedNavigationViolation }
+  | Unclassifiable { at: Node, cause: Symbol }
+
+data identity_captured_navigation_wall_note: String = "WallAfterGrounding, not WallNow: the .dag surface language has no type distinguishing an 'identity Atom' Node from a 'captured value' Node - both are plain Node values, so the lens proves safety by a NAME-AGNOSTIC mention-count shape (how many times does node_atom_identity_optional get called within the guarding match, and how many OTHER value-mentions remain after removing it and the Rejected arm's Absent) rather than by a decidable type check. It dissolves once the binder produced by a match arm's constructor pattern (Accepted\{value: id_node, ..\}) is itself a grounded, typed fact (SingleAuthority: one authoritative representation of 'this identifier is bound to an IdentityAtom vs a ValueNode', reachable once pattern-binder navigation is modeled - see the general-body-producer / namespace-resolution open threads) rather than inferred from a raw identifier-mention count. Declared residue today (fail-closed refusal, never silent): (a) only the find_named_child(name: ^grammar_production_identity_node_projection) call form is covered - a hand-rolled walk that matches e.label directly (Named\{name: nm\} => nm == ^grammar_production_identity_node_projection) without going through find_named_child is a distinct shape this lens does not yet recognize (the two known corpus instances of that shape, in complexity_accumulator_copy/analyze.dag and 03_ingest.dag, are skip-checks that never extract e.target as a value - safe by construction, not by this lens's coverage); (b) a contrived match whose Accepted arm calls node_atom_identity_optional on an UNRELATED identifier while the true identity binder escapes exactly once elsewhere would count as clean (mention-count shape, not a full dataflow proof) - both residues are typed, located Unclassifiable refusals when the shape can't be resolved, never a silent pass."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data identity_captured_navigation_fidelity_mapping_note: String = "IdentityNodeEscapesAsValue is exactly the dependency-fidelity under-claim arm's int-literal class (docs/plans/dependency-fidelity-design.md S5: 'a witnessed dependency edge with no declared authority \\| value flows through the captured projection; nothing declared it, so a consumer took the identity edge'). source is the find_named_child(name: ^grammar_production_identity_node_projection) call node - the witnessed edge's origin, undeclared as a value-producing authority. at is the enclosing match_expr whose arms consume the un-reduced identity node - the witnessed edge's dependent. v2.lens.identity_captured_navigation.fidelity projects Suspect findings into v2.lens.dependency_fidelity.UnderClaimedEdge\{source, dependent: at\} so this detector reports through the one verdict authority (DESIGN S3) rather than a bespoke parallel verdict type; Unclassifiable findings are typed refusals, not verdict-lattice members, and do not project."

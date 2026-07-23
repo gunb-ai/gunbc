@@ -2,26 +2,76 @@ module v2.lens.enforcement.contract
 
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.lens.registry { LensRegistryEntryV0, LensIdV0, Cost, Complexity, lens_registry_v0_cost, lens_registry_v0_complexity }
+import v2.std.algebra { length }
+import v2.std.integer { Int }
+import v2.lens.registry {
+  LensRegistryEntryV0, LensIdV0, Cost, Complexity,
+  lens_registry_v0_cost, lens_registry_v0_complexity,
+  lens_registry_v0_complexity_accumulator_copy,
+  lens_registry_v0_complexity_linearity_audit,
+  lens_registry_v0_complexity_lowering,
+  lens_registry_v0_coverage,
+  lens_registry_v0_dependency_fidelity,
+  lens_registry_v0_discrimination,
+  lens_registry_v0_disposition_redundancy,
+  lens_registry_v0_doc_reachability,
+  lens_registry_v0_duplicate_computation,
+  lens_registry_v0_effect_reach,
+  lens_registry_v0_mandatory_tag,
+  lens_registry_v0_extdeps_shape_transport_policy,
+  lens_registry_v0_fact_cardinality,
+  lens_registry_v0_fact_density,
+  lens_registry_v0_fn_family,
+  lens_registry_v0_grounding,
+  lens_registry_v0_host_language_transport_script,
+  lens_registry_v0_identical_variant_payload,
+  lens_registry_v0_inert_carrier,
+  lens_registry_v0_inert_lens,
+  lens_registry_v0_intent_linearity,
+  lens_registry_v0_interface_summary,
+  lens_registry_v0_languages_consumer_census,
+  lens_registry_v0_layering_imports,
+  lens_registry_v0_leaf_model_verification,
+  lens_registry_v0_live_read_classification,
+  lens_registry_v0_machine_shape,
+  lens_registry_v0_meta_exec_confinement,
+  lens_registry_v0_mock_totality,
+  lens_registry_v0_mutation_adequacy,
+  lens_registry_v0_non_fold_residue,
+  lens_registry_v0_realization_vocabulary_containment,
+  lens_registry_v0_schedule_lens,
+  lens_registry_v0_simulated_relationship,
+  lens_registry_v0_structural_similarity,
+  lens_registry_v0_subsumption,
+  lens_registry_v0_synthesis,
+  lens_registry_v0_test_migration_debt,
+  lens_registry_v0_unit_modeling,
+  lens_registry_v0_vacuity,
+  lens_registry_v0_visibility,
+  lens_registry_v0_wiring_liveness,
+  lens_registry_v0_witness_cost_locality
+}
 import v2.lens.enforcement.vocab {
-  SubjectRoster,
+  SubjectRoster, ScopeRoster,
   EnforcementMode, Blocking, AuditOnly, Advisory,
   ConsumerKind, FloorGate, WitnessOnly, NoConsumer,
+  ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
   NarrowingReason, TypeReflectionUnavailable,
   RedControlStatus, RedControlPassed, RedControlMissing, RedControlFailedToFlip,
   SelfApplicationStatus, SelfAppliesObserved, SelfExemptObserved, SelfApplicationAbsent,
-  ReceiptRef, HasReceiptRef, NoReceiptRef,
-  Timestamp
+  ReceiptRef, HasReceiptRef, NoReceiptRef
 }
-import v2.lens.common.construction_justification { ConstructionJustification, WallNow, RatchetForever }
-import std.disposition { SubstrateMandatoryTag }
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow, WallAfterGrounding, RatchetForever }
+import std.disposition { SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 
 type LensContract {
   entry: LensRegistryEntryV0
   mode: EnforcementMode
-  claimed_scope: SubjectRoster
+  claimed_scope: ScopeRoster
+  consumer_witness: ConsumerWitnessBinding
   exemptions: List<String>
   boundary: ConstructionJustification
 }
@@ -34,13 +84,19 @@ type CoverageReceipt {
   consumer_receipt_ref: ReceiptRef
   red_control_status: RedControlStatus
   self_application_status: SelfApplicationStatus
-  probed_at: Timestamp
 }
 
 data lens_contract_cost: LensContract = {
   entry: lens_registry_v0_cost,
   mode: Blocking,
-  claimed_scope: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: BoundConsumerWitness {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+      function: "complexity_budget_roster_family_gate_holds",
+      kind: CorpusWitnessKind
+    }
+  },
   exemptions: [],
   boundary: ConstructionJustification {
     class: WallNow {
@@ -53,45 +109,494 @@ data lens_contract_cost: LensContract = {
 data lens_contract_complexity: LensContract = {
   entry: lens_registry_v0_complexity,
   mode: AuditOnly,
-  claimed_scope: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
 }
 
-data receipt_cost: CoverageReceipt = {
-  contract_id: Cost,
-  discovered_subjects: SubjectRoster { entries: ["source_bridged_add", "source_bridged_bind", "source_bridged_branch", "source_bridged_loop"] },
-  scope_satisfaction: ScopeNarrowed {
-    missing: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
-    reason: TypeReflectionUnavailable { blocker: "decl_facts(roots) #5966/gunbc#5364" }
-  },
-  consumer_observed: WitnessOnly,
-  consumer_receipt_ref: NoReceiptRef,
-  red_control_status: RedControlPassed,
-  self_application_status: SelfApplicationAbsent,
-  probed_at: Timestamp { iso: "2026-07-02" }
+data lens_contract_complexity_accumulator_copy: LensContract = {
+  entry: lens_registry_v0_complexity_accumulator_copy,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
 }
 
-data receipt_complexity: CoverageReceipt = {
-  contract_id: Complexity,
-  discovered_subjects: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
-  scope_satisfaction: ScopeNarrowed {
-    missing: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
-    reason: TypeReflectionUnavailable { blocker: "decl_facts(roots) #5966/gunbc#5364" }
-  },
-  consumer_observed: WitnessOnly,
-  consumer_receipt_ref: NoReceiptRef,
-  red_control_status: RedControlPassed,
-  self_application_status: SelfApplicationAbsent,
-  probed_at: Timestamp { iso: "2026-07-02" }
+data lens_contract_complexity_linearity_audit: LensContract = {
+  entry: lens_registry_v0_complexity_linearity_audit,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_complexity_lowering: LensContract = {
+  entry: lens_registry_v0_complexity_lowering,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_coverage: LensContract = {
+  entry: lens_registry_v0_coverage,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_dependency_fidelity: LensContract = {
+  entry: lens_registry_v0_dependency_fidelity,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_discrimination: LensContract = {
+  entry: lens_registry_v0_discrimination,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_disposition_redundancy: LensContract = {
+  entry: lens_registry_v0_disposition_redundancy,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_doc_reachability: LensContract = {
+  entry: lens_registry_v0_doc_reachability,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_duplicate_computation: LensContract = {
+  entry: lens_registry_v0_duplicate_computation,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_effect_reach: LensContract = {
+  entry: lens_registry_v0_effect_reach,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_mandatory_tag: LensContract = {
+  entry: lens_registry_v0_mandatory_tag,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallNow }
+}
+
+data lens_contract_extdeps_shape_transport_policy: LensContract = {
+  entry: lens_registry_v0_extdeps_shape_transport_policy,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_fact_cardinality: LensContract = {
+  entry: lens_registry_v0_fact_cardinality,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_fact_density: LensContract = {
+  entry: lens_registry_v0_fact_density,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_fn_family: LensContract = {
+  entry: lens_registry_v0_fn_family,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_grounding: LensContract = {
+  entry: lens_registry_v0_grounding,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data lens_contract_host_language_transport_script: LensContract = {
+  entry: lens_registry_v0_host_language_transport_script,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_identical_variant_payload: LensContract = {
+  entry: lens_registry_v0_identical_variant_payload,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_inert_carrier: LensContract = {
+  entry: lens_registry_v0_inert_carrier,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_inert_lens: LensContract = {
+  entry: lens_registry_v0_inert_lens,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_intent_linearity: LensContract = {
+  entry: lens_registry_v0_intent_linearity,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_interface_summary: LensContract = {
+  entry: lens_registry_v0_interface_summary,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_languages_consumer_census: LensContract = {
+  entry: lens_registry_v0_languages_consumer_census,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_layering_imports: LensContract = {
+  entry: lens_registry_v0_layering_imports,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_leaf_model_verification: LensContract = {
+  entry: lens_registry_v0_leaf_model_verification,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_live_read_classification: LensContract = {
+  entry: lens_registry_v0_live_read_classification,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_machine_shape: LensContract = {
+  entry: lens_registry_v0_machine_shape,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_meta_exec_confinement: LensContract = {
+  entry: lens_registry_v0_meta_exec_confinement,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_mock_totality: LensContract = {
+  entry: lens_registry_v0_mock_totality,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_mutation_adequacy: LensContract = {
+  entry: lens_registry_v0_mutation_adequacy,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_non_fold_residue: LensContract = {
+  entry: lens_registry_v0_non_fold_residue,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_realization_vocabulary_containment: LensContract = {
+  entry: lens_registry_v0_realization_vocabulary_containment,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_schedule_lens: LensContract = {
+  entry: lens_registry_v0_schedule_lens,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_simulated_relationship: LensContract = {
+  entry: lens_registry_v0_simulated_relationship,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_structural_similarity: LensContract = {
+  entry: lens_registry_v0_structural_similarity,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_subsumption: LensContract = {
+  entry: lens_registry_v0_subsumption,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_synthesis: LensContract = {
+  entry: lens_registry_v0_synthesis,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data lens_contract_test_migration_debt: LensContract = {
+  entry: lens_registry_v0_test_migration_debt,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_unit_modeling: LensContract = {
+  entry: lens_registry_v0_unit_modeling,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data lens_contract_vacuity: LensContract = {
+  entry: lens_registry_v0_vacuity,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_visibility: LensContract = {
+  entry: lens_registry_v0_visibility,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+}
+
+data lens_contract_wiring_liveness: LensContract = {
+  entry: lens_registry_v0_wiring_liveness,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
+data lens_contract_witness_cost_locality: LensContract = {
+  entry: lens_registry_v0_witness_cost_locality,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_registry: List<LensContract> = [
   lens_contract_cost,
-  lens_contract_complexity
+  lens_contract_complexity,
+  lens_contract_complexity_accumulator_copy,
+  lens_contract_complexity_linearity_audit,
+  lens_contract_complexity_lowering,
+  lens_contract_coverage,
+  lens_contract_dependency_fidelity,
+  lens_contract_discrimination,
+  lens_contract_disposition_redundancy,
+  lens_contract_doc_reachability,
+  lens_contract_duplicate_computation,
+  lens_contract_effect_reach,
+  lens_contract_mandatory_tag,
+  lens_contract_extdeps_shape_transport_policy,
+  lens_contract_fact_cardinality,
+  lens_contract_fact_density,
+  lens_contract_fn_family,
+  lens_contract_grounding,
+  lens_contract_host_language_transport_script,
+  lens_contract_identical_variant_payload,
+  lens_contract_inert_carrier,
+  lens_contract_inert_lens,
+  lens_contract_intent_linearity,
+  lens_contract_interface_summary,
+  lens_contract_languages_consumer_census,
+  lens_contract_layering_imports,
+  lens_contract_leaf_model_verification,
+  lens_contract_live_read_classification,
+  lens_contract_machine_shape,
+  lens_contract_meta_exec_confinement,
+  lens_contract_mock_totality,
+  lens_contract_mutation_adequacy,
+  lens_contract_non_fold_residue,
+  lens_contract_realization_vocabulary_containment,
+  lens_contract_schedule_lens,
+  lens_contract_simulated_relationship,
+  lens_contract_structural_similarity,
+  lens_contract_subsumption,
+  lens_contract_synthesis,
+  lens_contract_test_migration_debt,
+  lens_contract_unit_modeling,
+  lens_contract_vacuity,
+  lens_contract_visibility,
+  lens_contract_wiring_liveness,
+  lens_contract_witness_cost_locality
 ]
 
-data coverage_receipt_registry: List<CoverageReceipt> = [
-  receipt_cost,
-  receipt_complexity
+data lens_contracts_pending_fn_body_reflection_note: String = "W3.3 registry-enrollment frontier (mandate step 4): every AuditOnly contract above with consumer_witness: NoConsumerWitness is enrolled-but-unreceipted by construction, not by omission - CoverageReceipt derivation (v2.lens.enforcement.receipts) is gated on fn_body_reflection_blocker (decl_facts marshals only the fn output skeleton today, not bodies), so a live receipt cannot be honestly derived for a lens whose subject discovery or red-control probe needs body-level facts. This is the SAME typed gate receipts.dag already uses for ScopeNarrowed\{reason: TypeReflectionUnavailable\{blocker: fn_body_reflection_blocker\}\} - not a new absorption, the existing one generalized to the newly-enrolled roster. gate.dag's find_receipt already answers ReceiptAbsent -> typed LegFails for every contract_id in this list (never a fabricated CoverageReceipt), so the frontier is counted and located, never silent. Dissolve-on: fn-body reflection lands in decl_facts, at which point each id below either derives a real CoverageReceipt (moves out of this list) or is re-justified with a narrower NarrowingReason - this list must shrink to [] or every remaining member must carry a fresher reason, it must never silently grow past what receipts.dag can honestly derive."
+
+data lens_contracts_pending_fn_body_reflection: List<LensIdV0> = [
+  ComplexityAccumulatorCopy,
+  ComplexityLinearityAudit,
+  ComplexityLowering,
+  Coverage,
+  DependencyFidelity,
+  Discrimination,
+  DispositionRedundancy,
+  DocReachability,
+  DuplicateComputation,
+  MandatoryTag,
+  ExtdepsShapeTransportPolicy,
+  FactCardinality,
+  FactDensity,
+  FnFamily,
+  Grounding,
+  HostLanguageTransportScript,
+  IdenticalVariantPayload,
+  InertCarrier,
+  InertLens,
+  IntentLinearity,
+  InterfaceSummary,
+  LanguagesConsumerCensus,
+  LayeringImports,
+  LeafModelVerification,
+  LiveReadClassification,
+  MachineShape,
+  MetaExecConfinement,
+  MockTotality,
+  MutationAdequacy,
+  NonFoldResidue,
+  RealizationVocabularyContainment,
+  ScheduleLens,
+  SimulatedRelationship,
+  StructuralSimilarity,
+  Subsumption,
+  Synthesis,
+  TestMigrationDebt,
+  UnitModeling,
+  Vacuity,
+  Visibility,
+  WiringLiveness,
+  WitnessCostLocality
 ]
+
+fn lens_contracts_pending_fn_body_reflection_count() -> Int {
+  length(xs: lens_contracts_pending_fn_body_reflection)
+}

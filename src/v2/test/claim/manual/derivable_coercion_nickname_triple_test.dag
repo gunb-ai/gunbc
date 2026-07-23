@@ -29,7 +29,7 @@ import v2.std.find_witness {
 }
 import v2.std.node { Node, Symbol }
 import v2.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
-import v2.std.verdict { Fail, Pass, Deferred }
+import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -42,6 +42,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {
@@ -208,7 +211,9 @@ test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_a
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -218,7 +223,9 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -228,6 +235,8 @@ data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

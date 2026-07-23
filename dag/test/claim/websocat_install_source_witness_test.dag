@@ -1,13 +1,7 @@
 module test.claim.websocat_install_source
 
-import std.logic { Bool }
-import extdeps.tools { SourceGitHubRelease }
-import extdeps.tools.websocat {
-  websocat_cli_tool,
-  websocat_github_repo,
-  websocat_github_tag,
-  websocat_install_path,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn websocat_cli_tool_installs_via_github_release_not_apt() -> Bool {
   match websocat_cli_tool.installable_via.first() {

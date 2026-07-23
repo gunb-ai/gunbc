@@ -8,19 +8,45 @@ import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
-  CiSpec, DiffPolicy, DiffMergeBase, Gate, RustMonolithGate,
-  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
+  CiSpec, DiffPolicy, DiffMergeBase, Gate,
+  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
+  gunbc_ci_regen_floor_gates,
   ci_release_features,
-  scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, git_fetch_script,
-  ci_release_build_script, gunbc_ci_rust_job_run, ci_floor_build_verify_script
+  scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
+  ci_floor_build_verify_script,
+  ci_repo_root_shell,
+  ci_documentation_only_floor_shortcut_retired_note,
 }
+import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
+import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.ci_materialization {
+  ci_floor_resolve_receipt_gate_script,
+  ci_floor_materialization_receipt_gate_script,
+}
+import gunbc.ci_workflow { ci_selection_control_script }
+import gunbc.merge_admission_produce {
+  ci_floor_disposition_marker_path,
+  ci_floor_disposition_marker_init_note,
+  ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
+  merge_admission_floor_disposition_documentation_only_skipped,
+  merge_admission_floor_disposition_floor_running,
+  merge_admission_stamp_invoke,
+  merge_admission_merge_base_ref,
+  ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
+  ci_merge_admission_gate_script,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/compile_clean_floor_skip_witness\" \"$ROOT/target/release/regen_floor_skip_witness\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/discover_source_root_ingest\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\" \"$ROOT/target/release/auth_declared_but_unwired_witness\" \"$ROOT/target/release/bootstrap_witness\" \"$ROOT/target/release/dag_collect_fingerprint_witness\" \"$ROOT/target/release/diagnostics_witness\" \"$ROOT/target/release/effects_rest_transport_witness\" \"$ROOT/target/release/infer_semantics_witness\" \"$ROOT/target/release/parse_witness\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
 data spec_alternate_notice: CiSpec = {
   gates: [],
+  witness_entries: [],
+  discovery_scan_dirs: [],
   diff_policy: {
     base: "upstream/dev",
     head: "HEAD",
@@ -56,25 +82,12 @@ fn symbol_in(syms: List<Symbol>, s: Symbol) -> Bool {
   fold(syms, init: false, f: fn(acc, x) { acc || (x == s) })
 }
 
-fn witness_rust_gate_split_is_real() -> Bool {
-  let rust = discriminant(v: RustMonolithGate)
-  let floor_syms = gate_arm_symbols(gates: gunbc_ci_floor_gates)
-  let rustjob_syms = gate_arm_symbols(gates: gunbc_ci_rust_job_gates)
-  let spec_syms = gate_arm_symbols(gates: gunbc_ci_spec.gates)
-  let rust_job_script = gunbc_ci_rust_job_run()
-  !symbol_in(syms: floor_syms, s: rust) &&
-    symbol_in(syms: rustjob_syms, s: rust) &&
-    bag_eq(xs: spec_syms, ys: floor_syms, eq: symbol_eq) &&
-    string_contains(s: rust_job_script, pattern: "dag/tools/rust_gates_ci.dag") &&
-    string_contains(s: rust_job_script, pattern: "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release")
-}
-
 fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   let arm_keys = coproduct_arm_keys(type_name: reflect_gate_type)
   match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
-        xs: gate_arm_symbols(gates: gunbc_ci_gates),
+        xs: gate_arm_symbols(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
         ys: arm_keys,
         eq: symbol_eq
       ) && bag_eq(
@@ -88,8 +101,8 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
 
 fn witness_roots_fold_into_scheduler() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: " --source-root src/v2") &&
-    string_contains(s: script, pattern: " --source-root dag")
+  string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"") &&
+    string_contains(s: script, pattern: " --source-root \"$ROOT/dag\"")
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
@@ -102,7 +115,7 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
 fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
   !string_contains(s: script, pattern: " --scan-dir") &&
-    string_contains(s: script, pattern: " --source-root src/v2")
+    string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"")
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
@@ -127,10 +140,12 @@ fn witness_notice_title_from_spec() -> Bool {
 
 fn witness_run_script_invokes_scheduler() -> Bool {
   let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
+  let floor_script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
     string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
     string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
-    !string_contains(s: script, pattern: "--bin claim_batch") &&
+    !string_contains(s: floor_script, pattern: "--bin claim_batch") &&
+    !string_contains(s: floor_script, pattern: "cargo build") &&
     !string_contains(s: script, pattern: "cargo run -p v1-compiler --release --bin claim_executor")
 }
 
@@ -178,8 +193,68 @@ fn witness_scheduler_uses_release_binary() -> Bool {
     !string_contains(s: scheduler_invoke(spec: gunbc_ci_spec), pattern: "cargo run")
 }
 
-fn witness_workflow_run_is_collapsed_script() -> Bool {
-  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_run_script(spec: gunbc_ci_spec)
+fn witness_workflow_run_is_floor_only_script() -> Bool {
+  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+}
+
+fn witness_documentation_only_floor_shortcut_retired() -> Bool {
+  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_retired_note) &&
+    string_contains(s: script, pattern: "gunbc#7023") &&
+    !string_contains(s: script, pattern: "_ci_floor_skip=$(\"") &&
+    !string_contains(s: script, pattern: "if [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then") &&
+    !string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
+    !string_contains(s: script, pattern: "CI_FLOOR_DISPOSITION=documentation_only_skipped") &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
+}
+
+fn witness_merge_base_ref_single_authority() -> Bool {
+  merge_admission_merge_base_ref == gunbc_ci_spec.diff_policy.base
+    && merge_admission_merge_base_ref == ci_merge_base_ref
+}
+
+fn witness_documentation_only_gate_skip_prefix_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_documentation_only_gate_skip_prefix"
+  )
+}
+
+fn witness_documentation_only_gate_skip_emits_dissolve_on_in_runners() -> Bool {
+  let marker = concat("# ", ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger)
+  string_contains(s: ci_floor_resolve_receipt_gate_script(), pattern: marker)
+    && string_contains(s: ci_floor_materialization_receipt_gate_script(), pattern: marker)
+    && string_contains(s: ci_selection_control_script(), pattern: marker)
+    && string_contains(s: ci_merge_admission_gate_script(), pattern: marker)
+}
+
+fn witness_floor_disposition_marker_init_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_floor_disposition_marker_init_script"
+  )
+}
+
+fn witness_floor_disposition_marker_init_emits_dissolve_on_in_floor_runner() -> Bool {
+  let marker = concat("# ", ci_floor_disposition_marker_init_shell_emit_dissolution_trigger)
+  string_contains(s: gunbc_ci_floor_only_script(spec: gunbc_ci_spec), pattern: marker)
+}
+
+fn witness_floor_disposition_marker_initialized_at_floor_start() -> Bool {
+  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  let stamp = concat(
+    concat("echo ", merge_admission_floor_disposition_floor_running),
+    concat(" > ", ci_floor_disposition_marker_path)
+  )
+  string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
+    string_contains(s: script, pattern: stamp)
+}
+
+fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
+  gunbc_ci_run_script(spec: gunbc_ci_spec) == concat(
+    concat(ci_release_build_script(), "\n"),
+    gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  )
 }
 
 test fn ci_spec_witnesses() -> Bool {
@@ -195,7 +270,14 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_verifies_nonempty_artifacts() &&
     witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
-    witness_workflow_run_is_collapsed_script() &&
-    witness_gate_roster_matches_coproduct_arms() &&
-    witness_rust_gate_split_is_real()
+    witness_workflow_run_is_floor_only_script() &&
+    witness_documentation_only_floor_shortcut_retired() &&
+    witness_floor_disposition_marker_initialized_at_floor_start() &&
+    witness_floor_disposition_marker_init_dissolve_on_named() &&
+    witness_floor_disposition_marker_init_emits_dissolve_on_in_floor_runner() &&
+    witness_merge_base_ref_single_authority() &&
+    witness_documentation_only_gate_skip_prefix_dissolve_on_named() &&
+    witness_documentation_only_gate_skip_emits_dissolve_on_in_runners() &&
+    witness_collapsed_run_script_is_build_plus_floor() &&
+    witness_gate_roster_matches_coproduct_arms()
 }

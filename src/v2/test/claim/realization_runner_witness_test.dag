@@ -1,0 +1,275 @@
+module v2.test.claim.realization_runner_witness
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorJob,
+  executor_job_for_node
+}
+import v2.workflow.realization_runner {
+  NodeKeyedGraphArtifact,
+  NodeKeyedGraphArtifactEntry,
+  NodeKeyedGraphRow,
+  NodeKeyedGraphTransitiveBytesMissingRow,
+  NodeKeyedGraphTransitiveBytesSettled,
+  NodeKeyedGraphTransitiveBytesUnsettled,
+  RunnerDispatchBlocked,
+  RunnerDispatchOk,
+  RunnerScheduleBlocked,
+  RunnerScheduleComplete,
+  node_keyed_graph_artifact_total_bytes,
+  node_keyed_graph_entry_value_bytes,
+  node_keyed_graph_rows_interned,
+  node_keyed_graph_transitive_bytes,
+  node_keyed_store_empty,
+  node_keyed_store_has_node,
+  node_keyed_store_node_count,
+  node_keyed_store_put,
+  runner_dispatch_batch,
+  runner_ordering_only,
+  runner_schedule_batch_count,
+  runner_schedule_contains_batch,
+  runner_schedule_plan_from_dependencies,
+  runner_schedule_store_covers_nodes,
+  runner_walk_batches
+}
+import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data runner_test_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^runner_test_a } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data runner_test_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^runner_test_b } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data runner_test_a_to_b: DependencyView = DependencyView {
+  source: runner_test_a_node,
+  dependent: runner_test_b_node,
+  kind: DataDependsOn,
+  usage_site: runner_test_b_node
+}
+
+data runner_test_nodes: List<Node> = [runner_test_a_node, runner_test_b_node]
+
+data runner_test_dependencies: List<DependencyView> = [runner_test_a_to_b]
+
+data runner_test_first_batch: ExecutorBatch = ExecutorBatch {
+  jobs: [executor_job_for_node(node: runner_test_a_node)]
+}
+
+data runner_test_second_batch: ExecutorBatch = ExecutorBatch {
+  jobs: [executor_job_for_node(node: runner_test_b_node)]
+}
+
+data runner_test_batches: List<ExecutorBatch> = [
+  runner_test_first_batch,
+  runner_test_second_batch
+]
+
+fn witness_node_keyed_store_put_and_has() -> Bool {
+  let store = node_keyed_store_put(
+    store: node_keyed_store_empty(),
+    node: runner_test_a_node,
+    value: runner_ordering_only
+  )
+  node_keyed_store_has_node(store: store, node: runner_test_a_node)
+    && !node_keyed_store_has_node(store: store, node: runner_test_b_node)
+    && (node_keyed_store_node_count(store: store) == 1)
+}
+
+fn witness_runner_schedule_batch_helpers() -> Bool {
+  match runner_schedule_plan_from_dependencies(
+    nodes: runner_test_nodes,
+    dependencies: runner_test_dependencies,
+    value: runner_ordering_only
+  ) {
+    RunnerScheduleComplete { batches: batches, store: _ } =>
+      (runner_schedule_batch_count(batches: batches) == 2)
+        && runner_schedule_contains_batch(batches: batches, batch: runner_test_first_batch)
+        && runner_schedule_contains_batch(batches: batches, batch: runner_test_second_batch)
+    RunnerScheduleBlocked { evidence: _ } => false
+  }
+}
+
+fn witness_runner_walk_populates_store_in_dependency_order() -> Bool {
+  match runner_walk_batches(
+    batches: runner_test_batches,
+    dependencies: runner_test_dependencies,
+    store: node_keyed_store_empty(),
+    value: runner_ordering_only
+  ) {
+    RunnerDispatchOk { store: store } =>
+      node_keyed_store_has_node(store: store, node: runner_test_a_node)
+        && node_keyed_store_has_node(store: store, node: runner_test_b_node)
+    RunnerDispatchBlocked { evidence: _ } => false
+  }
+}
+
+fn witness_runner_schedule_matches_executor_batches() -> Bool {
+  match runner_schedule_plan_from_dependencies(
+    nodes: runner_test_nodes,
+    dependencies: runner_test_dependencies,
+    value: runner_ordering_only
+  ) {
+    RunnerScheduleComplete { batches: batches, store: store } =>
+      (runner_schedule_batch_count(batches: batches) == 2)
+        && runner_schedule_store_covers_nodes(store: store, nodes: runner_test_nodes)
+    RunnerScheduleBlocked { evidence: _ } => false
+  }
+}
+
+fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
+  let batch = ExecutorBatch {
+    jobs: [executor_job_for_node(node: runner_test_b_node)]
+  }
+  match runner_dispatch_batch(
+    batch: batch,
+    dependencies: runner_test_dependencies,
+    store: node_keyed_store_empty(),
+    value: runner_ordering_only
+  ) {
+    RunnerDispatchBlocked { evidence: _ } => true
+    RunnerDispatchOk { store: _ } => false
+  }
+}
+
+data graph_artifact_row_c: NodeKeyedGraphRow = NodeKeyedGraphRow {
+  content_hash: "hash_c",
+  encoded_length: byte_size(count: 7),
+  child_refs: []
+}
+
+data graph_artifact_row_a: NodeKeyedGraphRow = NodeKeyedGraphRow {
+  content_hash: "hash_a",
+  encoded_length: byte_size(count: 3),
+  child_refs: ["hash_c"]
+}
+
+data graph_artifact_row_b: NodeKeyedGraphRow = NodeKeyedGraphRow {
+  content_hash: "hash_b",
+  encoded_length: byte_size(count: 5),
+  child_refs: ["hash_c"]
+}
+
+data graph_artifact_row_root: NodeKeyedGraphRow = NodeKeyedGraphRow {
+  content_hash: "hash_root",
+  encoded_length: byte_size(count: 10),
+  child_refs: ["hash_a", "hash_b"]
+}
+
+data graph_artifact_diamond: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+  rows: [
+    graph_artifact_row_c,
+    graph_artifact_row_a,
+    graph_artifact_row_b,
+    graph_artifact_row_root
+  ],
+  entries: [
+    NodeKeyedGraphArtifactEntry { store_node: "hash_store_node", value_root: "hash_root" }
+  ]
+}
+
+data graph_artifact_dangling: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+  rows: [
+    NodeKeyedGraphRow {
+      content_hash: "hash_dangling_root",
+      encoded_length: byte_size(count: 4),
+      child_refs: ["hash_never_encoded"]
+    }
+  ],
+  entries: []
+}
+
+data graph_artifact_duplicated: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+  rows: [graph_artifact_row_c, graph_artifact_row_c],
+  entries: []
+}
+
+fn witness_graph_artifact_shared_row_counted_once() -> Bool {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_root") {
+    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+      byte_size_count(b: bytes) == 25
+    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+  }
+}
+
+fn witness_graph_artifact_subgraph_bytes() -> Bool {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_a") {
+    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+      byte_size_count(b: bytes) == 10
+    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+  }
+}
+
+fn witness_graph_artifact_total_matches_fully_reachable_root() -> Bool {
+  byte_size_count(b: node_keyed_graph_artifact_total_bytes(artifact: graph_artifact_diamond)) == 25
+}
+
+fn witness_graph_artifact_entry_binds_value_root() -> Bool {
+  match node_keyed_graph_entry_value_bytes(
+    artifact: graph_artifact_diamond,
+    entry: NodeKeyedGraphArtifactEntry { store_node: "hash_store_node", value_root: "hash_b" }
+  ) {
+    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+      byte_size_count(b: bytes) == 12
+    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+  }
+}
+
+fn witness_graph_artifact_missing_child_ref_refuses() -> Bool {
+  match node_keyed_graph_transitive_bytes(
+    artifact: graph_artifact_dangling,
+    root: "hash_dangling_root"
+  ) {
+    NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
+      missing == "hash_never_encoded"
+    NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
+    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+  }
+}
+
+fn witness_graph_artifact_missing_root_refuses() -> Bool {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_absent") {
+    NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
+      missing == "hash_absent"
+    NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
+    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+  }
+}
+
+fn witness_graph_artifact_interning_check_discriminates() -> Bool {
+  node_keyed_graph_rows_interned(rows: graph_artifact_diamond.rows)
+    && !node_keyed_graph_rows_interned(rows: graph_artifact_duplicated.rows)
+}
+
+test fn realization_runner_witnesses() -> Bool {
+  witness_node_keyed_store_put_and_has()
+    && witness_runner_walk_populates_store_in_dependency_order()
+    && witness_runner_schedule_matches_executor_batches()
+    && witness_runner_schedule_batch_helpers()
+    && witness_runner_blocks_when_prerequisite_missing()
+}
+
+test fn node_keyed_graph_artifact_witnesses() -> Bool {
+  witness_graph_artifact_shared_row_counted_once()
+    && witness_graph_artifact_subgraph_bytes()
+    && witness_graph_artifact_total_matches_fully_reachable_root()
+    && witness_graph_artifact_entry_binds_value_root()
+    && witness_graph_artifact_missing_child_ref_refuses()
+    && witness_graph_artifact_missing_root_refuses()
+    && witness_graph_artifact_interning_check_discriminates()
+}

@@ -1,0 +1,42 @@
+module test.claim.stage0_crate_layout_witness
+
+import gunbc.stage0_crate_layout_generated { generated_stage0_dirs, generated_stage0_filenames }
+import v2.compiler.self_host.frontier {
+  hand_maintained_stage0_dirs,
+  hand_maintained_stage0_filenames,
+  compiler_frontier_self_emitted_count,
+  compiler_frontier_self_emitted_stage0_mod_basenames
+}
+import std.types { Bool, Int }
+
+fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
+  generated_stage0_filenames
+    |> any(f => f == "v2_compiler_use_site_verdict.rs")
+    && generated_stage0_filenames
+      |> any(f => f == "v2_compiler_parse_engine_hooks.rs")
+    && generated_stage0_filenames
+      |> any(f => f == "v2_compiler_discovery_enumeration.rs")
+}
+
+fn w_generated_stage0_filenames_match_frontier() -> Bool {
+  generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
+    && generated_stage0_filenames
+      |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
+}
+
+fn w_generated_stage0_dirs_match_frontier() -> Bool {
+  generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
+    && generated_stage0_dirs
+      |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))
+}
+
+fn w_self_emitted_derived_count() -> Bool {
+  compiler_frontier_self_emitted_stage0_mod_basenames().length() == compiler_frontier_self_emitted_count()
+}
+
+test fn stage0_crate_layout_witnesses() -> Bool {
+  w_hand_maintained_stage0_filenames_include_self_emitted()
+    && w_generated_stage0_filenames_match_frontier()
+    && w_generated_stage0_dirs_match_frontier()
+    && w_self_emitted_derived_count()
+}

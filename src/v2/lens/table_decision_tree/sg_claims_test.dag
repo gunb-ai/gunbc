@@ -1,19 +1,7 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Unrealized,
-}
-import v2.lens.table_decision_tree {
-  table_decision_tree_fact_for_fn
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 data tdt_witness_module: String = "v2.lens.table_decision_tree"
@@ -44,24 +32,20 @@ fn witness_tdt_unrealized_red_on_holds() -> Bool {
 
 fn witness_tdt_locus_green_on_fact() -> Bool {
   match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
-    Unrealized { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m == tdt_witness_module
-    }
+    Unrealized { diagnostic: d } =>
+      lens_verdict_diagnostic_locus_module(d: d) == tdt_witness_module
     _ => false
   }
 }
 
 fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
-  let perturbed = Unrealized {
-    diagnostic: LensVerdictDiagnostic {
-      reason: "table_decision_tree_perturbed",
-      at: ModuleWholeFile { module_name: "v2.lens.table_decision_tree_wrong_module" }
-    }
-  }
+  let perturbed = lens_verdict_module_unrealized(
+    reason: ^table_decision_tree_perturbed,
+    module_name: "v2.lens.table_decision_tree_wrong_module"
+  )
   match perturbed {
-    Unrealized { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m != tdt_witness_module
-    }
+    Unrealized { diagnostic: d } =>
+      lens_verdict_diagnostic_locus_module(d: d) != tdt_witness_module
     _ => false
   }
 }

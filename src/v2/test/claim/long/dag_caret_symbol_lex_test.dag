@@ -1,0 +1,30 @@
+module v2.test.long.dag_caret_symbol_lex
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn caret_lex_accepts_symbol_literal_holds() -> Bool {
+  match tokenize(text: "^foo", file: ^probe, rules: dag_language_model().lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn caret_parse_accepts_symbol_literal_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: "module probe.t\nfn f() -> Int { ^foo }\n", file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn caret_lex_rejects_unknown_char_control_holds() -> Bool {
+  match tokenize(text: "`bad", file: ^probe, rules: dag_language_model().lex) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+  }
+}

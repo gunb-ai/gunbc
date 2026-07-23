@@ -1,0 +1,51 @@
+module v2.compiler.build_workspace_grant
+
+import std.effect_grant {
+  Read, Write,
+  NamespacePosition,
+  RealTransport,
+  LifecycleByConstruction, LifecycleByConvention,
+  Grant, Envelope,
+}
+import std.materialization_ladder { Frame }
+
+data build_workspace_grant_note: String = "FLAG A interim (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the FIRST envelope row, dissolving the undecidable 'can a build run hermetically?' question into a SHAPE over the landed std.effect_grant model -- a row, not a mode exception. A build is admissible in a replay-lane run when its envelope is: Read under the substrate closure, the pinned toolchain root, AND its own workspace subtree; Write under its own workspace subtree; and NO network grant. The workspace Read grant resolves the ownership-implies-read question the initial row deferred (P-B, build_transport_admission): a real build reads its own workspace -- the emitted sources it was handed and the intermediate artifacts it produces during linking -- so the workspace is Read+Write, not Write alone. The 'no network' property is fail-closed BY CONSTRUCTION (DESIGN 5): the absence of a UriTree grant means admit_effect refuses any network target -- there is no arm to widen. This is the SINGLE build-envelope authority (DESIGN 3); its one consumer is v2.compiler.build_transport_admission.build_transport_admissible. dissolve-on = P-B wires std.effect_grant.admit_effect into the v2 effect-io host build/write dispatch -- src/v2/extdeps/runtimes/v2_effect_io_host.effect_io_host_dispatch_write blanket-refuses every hermetic write today (effect_io_host_hermetic_write_rejected, gated on the boolean execution_mode_is_wet_dispatch); that gate becomes an admit_effect(env, Write, target) check whose refusal is the modeled EffectOutsideGrant, and the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic) runs only on an Admitted verdict."
+
+data build_workspace_grant_lifecycle_note: String = "Lifecycle grades, carried honestly (std.effect_grant.LifecycleGrade, the construction/validation axis of DESIGN 5). The substrate-closure and pinned-toolchain Read grants are LifecycleByConstruction: content-addressed / pinned inputs are immutable, so no persistence-past-frame concern applies. The workspace Read and Write grants are the honest weaker LifecycleByConvention: an interim /tmp-style scratch whose cleanup can fail or be forgotten (the same subtree the build reads its own intermediates from). Upgrading it to LifecycleByConstruction (ephemeral container / netns-scoped scratch that teardown erases) is a later row, never conflated with the strong grade now. HANDOFF (P3-native lane): the pinned toolchain Read root is modeled here as a POSITION; its version must be folded into the build artifact key (content-addressing) so the build's inputs are replayable -- keyed there, positioned here."
+
+fn build_workspace_grant_envelope(
+  workspace_root: NamespacePosition,
+  substrate_closure_root: NamespacePosition,
+  toolchain_root: NamespacePosition,
+  frame: Frame
+) -> Envelope {
+  Envelope {
+    frame: frame,
+    grants: [
+      Grant {
+        verb: Read,
+        root: substrate_closure_root,
+        binding: RealTransport,
+        lifecycle: LifecycleByConstruction
+      },
+      Grant {
+        verb: Read,
+        root: toolchain_root,
+        binding: RealTransport,
+        lifecycle: LifecycleByConstruction
+      },
+      Grant {
+        verb: Read,
+        root: workspace_root,
+        binding: RealTransport,
+        lifecycle: LifecycleByConvention
+      },
+      Grant {
+        verb: Write,
+        root: workspace_root,
+        binding: RealTransport,
+        lifecycle: LifecycleByConvention
+      },
+    ]
+  }
+}

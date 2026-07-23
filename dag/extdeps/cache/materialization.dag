@@ -1,0 +1,143 @@
+module extdeps.cache.materialization
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { Bool, Int, List, String }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  EvictionPolicy, Ttl, Lru, SizeBounded, Never, Manual,
+  PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
+}
+import std.materialization_ladder {
+  CacheProvider, CacheCoverage, Frame,
+  ProviderTier, MemoTier, ArtifactTier, CasTier,
+  CacheKeying, ContentKeyed, ExistenceKeyed,
+  provider_row, scope_exit_eviction, space_packed_eviction
+}
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  CatalogKeyDerivationFacts,
+  CatalogKeyInputs, ContentAddressed, NativeInternal, HandAuthored
+}
+import extdeps.cache.catalog_placement { CacheInterfaceCatalogPlacement }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
+  }
+}
+
+data catalog_materialization_note: String = "C0 (operator ruling, 2026-07-09): extdeps stays the ground-truth/interface layer — the catalog cites what a cache system IS — but every USE of a cache goes through materialization, so nobody re-invents memo. This projection is the only door from a catalog row into the ladder: provider = catalog row + role (scope, coverage); tier/keying/eviction are DERIVED from the cited facts, never restated at the provider site. The two eviction vocabularies are distinct concepts, not a fork — and since 2026-07-11 they carry distinct NAMES (the cross-parent no-ambiguity wall found the homonym): std.cache_interface.EvictionPolicy is the cited MECHANISM (Ttl/Lru/SizeBounded/Never/Manual — what the upstream does), the ladder's EvictionClass is the REQUIRED CLASS (ScopeExit derived from frame exit, or SpacePacked = bounded and sound-to-drop — rule 3). The mapping: InProcess locality => ScopeExit by construction (the process frame's exit IS the eviction); Ttl/Lru/SizeBounded => SpacePacked (bounded, dropping pure facts is sound); Never/Manual outside a process => ProjectionRefused — a store with unbounded or human-gated growth cannot satisfy rule 3, and the refusal points at the catalog row that needs a declared budget, typed and countable, never a silent shrink of the provider list."
+
+data catalog_keying_note: String = "Keying projection is refuse-leaning (section 5): ContentAddressed and NativeInternal (the tool's internal hash of cited inputs) project to ContentKeyed; HandAuthored projects to ExistenceKeyed — a hand-authored key string is not proven content-complete until a key-completeness receipt upgrades it (extdeps.cache.key_completeness is that oracle's home); and prefix_fallback_allowed forces ExistenceKeyed regardless, because a prefix restore names a bucket, not an identity (the actions-cache staleness class, cousin of the #6352 build-if-absent wall)."
+
+type CatalogProjectionRefusalReason
+  = NeverEvictionOutsideProcess
+  | ManualEvictionOutsideProcess
+
+type CatalogProviderProjection
+  = ProjectedProvider { provider: CacheProvider }
+  | ProjectionRefused { interface: CacheInterfaceId, reason: CatalogProjectionRefusalReason }
+
+fn catalog_keying(kd: CatalogKeyDerivationFacts) -> CacheKeying {
+  if kd.prefix_fallback_allowed {
+    ExistenceKeyed
+  } else {
+    match kd.key_inputs {
+      ContentAddressed => ContentKeyed
+      NativeInternal { cited_inputs: _ } => ContentKeyed
+      HandAuthored { cited_inputs: _ } => ExistenceKeyed
+    }
+  }
+}
+
+fn catalog_tier(p: CacheInterfaceCatalogPlacement, keying: CacheKeying) -> ProviderTier {
+  match p.locality {
+    InProcess => MemoTier { keying: keying }
+    PerRunnerFilesystem => ArtifactTier { keying: keying }
+    PerHostFilesystem => ArtifactTier { keying: keying }
+    CrossHostNetwork => CasTier { keying: keying }
+  }
+}
+
+fn catalog_bounded_projection(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage,
+  tier: ProviderTier
+) -> CatalogProviderProjection {
+  match facts.placement.eviction {
+    Ttl { days: d } => ProjectedProvider {
+      provider: provider_row(
+        id: facts.identity,
+        scope: scope,
+        coverage: coverage,
+        tier: tier,
+        eviction: space_packed_eviction(budget: concat("cited ttl, days: ", to_string(d)))
+      )
+    }
+    Lru => ProjectedProvider {
+      provider: provider_row(
+        id: facts.identity,
+        scope: scope,
+        coverage: coverage,
+        tier: tier,
+        eviction: space_packed_eviction(budget: "cited lru, space-packed by the backend")
+      )
+    }
+    SizeBounded { cap_bytes: _ } => ProjectedProvider {
+      provider: provider_row(
+        id: facts.identity,
+        scope: scope,
+        coverage: coverage,
+        tier: tier,
+        eviction: space_packed_eviction(budget: "cited size-bounded cap")
+      )
+    }
+    Never => ProjectionRefused { interface: facts.identity, reason: NeverEvictionOutsideProcess }
+    Manual => ProjectionRefused { interface: facts.identity, reason: ManualEvictionOutsideProcess }
+  }
+}
+
+fn provider_from_catalog(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage
+) -> CatalogProviderProjection {
+  let keying = catalog_keying(kd: facts.key_derivation)
+  let tier = catalog_tier(p: facts.placement, keying: keying)
+  match facts.placement.locality {
+    InProcess => ProjectedProvider {
+      provider: provider_row(
+        id: facts.identity,
+        scope: scope,
+        coverage: coverage,
+        tier: tier,
+        eviction: scope_exit_eviction()
+      )
+    }
+    PerRunnerFilesystem => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
+    PerHostFilesystem => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
+    CrossHostNetwork => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
+  }
+}
+
+fn projection_is_refused(p: CatalogProviderProjection) -> Bool {
+  match p {
+    ProjectedProvider { provider: _ } => false
+    ProjectionRefused { interface: _, reason: _ } => true
+  }
+}
+
+fn projected_providers(ps: List<CatalogProviderProjection>) -> List<CacheProvider> {
+  ps |> flat_map(p => match p {
+    ProjectedProvider { provider: prov } => [prov]
+    ProjectionRefused { interface: _, reason: _ } => []
+  })
+}
+
+fn projection_refusal_count(ps: List<CatalogProviderProjection>) -> Int {
+  ps |> filter(p => projection_is_refused(p: p)) |> count()
+}

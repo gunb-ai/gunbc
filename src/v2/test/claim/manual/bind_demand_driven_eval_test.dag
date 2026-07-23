@@ -5,12 +5,23 @@ import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   eval_context_with_semantics,
+  eval_with_context,
+  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_evaluator_interpretation,
+  v2_evaluator_interpretation_structure_witness
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Absent,
@@ -24,6 +35,7 @@ import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -41,12 +53,15 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  MintedOccurrence,
   Named,
   Node,
+  OccurrenceId,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  Value,
   SyntheticOccurrence,
 }
 import v2.std.runtime {
@@ -76,6 +91,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bind_eval_atom(s: Symbol) -> Node {
   Node {
@@ -103,26 +121,40 @@ fn bind_eval_one_value() -> RuntimeValue {
 }
 
 fn bind_eval_lit_one() -> Node {
-  bind_eval_atom(s: ^bind_eval_lit_one_sym)
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
+        occurrence_id: SyntheticOccurrence,
+        children: []
+      }
+  }
+}
+
+data bind_eval_counted_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
+}
+
+fn bind_eval_counted() -> Node {
+  bind_eval_counted_value_node
 }
 
 fn bind_eval_divergent() -> Node {
   bind_eval_atom(s: ^bind_eval_divergent_sym)
 }
 
-fn bind_eval_counted() -> Node {
-  bind_eval_atom(s: ^bind_eval_counted_sym)
-}
-
 fn bind_eval_counted_slot_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: bind_eval_atom(s: ^bind_eval_counted_slot_sym)
+    identity: ^bind_eval_counted_slot_sym
   }
 }
 
 fn bind_eval_touch_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: bind_eval_atom(s: ^bind_eval_touch_counter_sym)
+    identity: ^bind_eval_touch_counter_sym
   }
 }
 
@@ -134,7 +166,7 @@ fn bind_eval_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingKey) -> Int {
-  match map_get(m: env.bindings, key: key) {
+  match v2.std.collection.map_get(m: env.bindings, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => bind_eval_int_from_runtime(value: v)
@@ -153,18 +185,30 @@ fn bind_eval_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == bind_eval_lit_one() {
-    outcome_accepted(value: bind_eval_one_value())
-  } else if node == bind_eval_divergent() {
-    outcome_rejected(d: bind_eval_diagnostic(n: node))
-  } else if node == bind_eval_counted() {
-    if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
-      outcome_rejected(d: bind_eval_diagnostic(n: node))
-    } else {
-      outcome_accepted(value: bind_eval_one_value())
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: bind_eval_one_value())
+        } else {
+          outcome_rejected(d: bind_eval_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
   } else {
-    outcome_rejected(d: bind_eval_diagnostic(n: node))
+    match node.kind {
+      ComputationNode { behavior: Value } =>
+        if node == bind_eval_counted_value_node {
+          if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
+            outcome_rejected(d: bind_eval_diagnostic(n: node))
+          } else {
+            outcome_accepted(value: bind_eval_one_value())
+          }
+        } else {
+          outcome_rejected(d: bind_eval_diagnostic(n: node))
+        }
+      _ => outcome_rejected(d: bind_eval_diagnostic(n: node))
+    }
   }
 }
 
@@ -196,7 +240,7 @@ fn bind_eval_bind_value(
   let bound = EvaluationEnvironment {
     bindings: map_insert(m: env.bindings, key: key, value: value)
   }
-  let touched = if key.declaration == bind_eval_counted_slot_key().declaration {
+  let touched = if key.identity == bind_eval_counted_slot_key().identity {
     let next = bind_eval_touch_from_env(env: bound, key: bind_eval_touch_key()) + 1
     EvaluationEnvironment {
       bindings: map_insert(
@@ -251,7 +295,7 @@ fn bind_eval_bind_node(value: Node, body: Node) -> Node {
     kind: ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: bind_eval_counted_slot_key().declaration },
+      Edge { label: Positional, target: bind_eval_atom(s: ^bind_eval_counted_slot_sym) },
       Edge { label: Positional, target: value },
       Edge { label: Positional, target: body }
     ]
@@ -382,4 +426,109 @@ fn bind_eval_divergent_value_rejects_holds() -> Bool {
 
 test fn bind_demand_driven_eval_keystone_holds() -> Bool {
   bind_eval_counted_value_body_holds() && bind_eval_divergent_value_rejects_holds()
+}
+
+fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: MintedOccurrence { id: OccurrenceId { value: id } },
+    children: []
+  }
+}
+
+fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: binder },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  }
+}
+
+fn bind_eval_bound_reference_reads_value_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node_with_binder(
+        binder: bind_eval_atom(s: ^bind_eval_ref_slot_sym),
+        value: bind_eval_lit_one(),
+        body: bind_eval_atom(s: ^bind_eval_ref_slot_sym)
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+fn bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node_with_binder(
+        binder: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1),
+        value: bind_eval_lit_one(),
+        body: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 2)
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+data bind_eval_occurrence_identity_defect_note: String = "The reference-binding witnesses below pin the FLAG D binding-key protocol (docs/plans/general-body-producer-design.md section 9, signed 2026-07-10). GREEN: a bound body reference reads its value through the environment when binder and reference atoms share binding identity regardless of occurrence (parse-shaped MintedOccurrence 1 vs 2 — exactly what 02_parse stamp_terminal mints for source text). GREEN: occurrence-normalized structural equals still read. Dissolved: FLAG D binding-key re-grounding merged — EnvironmentBindingKey keyed on identity, silent allocate_literal fall-through deleted for non-literals."
+
+fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node_with_binder(
+        binder: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1),
+        value: bind_eval_lit_one(),
+        body: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1)
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+fn bind_eval_unbound_reference_refuses_holds() -> Bool {
+  let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
+  let tree = bind_eval_admitted_tree(root: ref_node)
+  match eval_with_context(
+    tree: tree,
+    context: bind_eval_context(),
+    inputs: inputs_root_only(root: ref_node)
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn bind_eval_default_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^bind_eval_runtime_id,
+    interpretation: v2_evaluator_interpretation(),
+    structure_witness: v2_evaluator_interpretation_structure_witness()
+  )
+}
+
+fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
+  let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
+  let tree = bind_eval_admitted_tree(root: ref_node)
+  match eval_with_context(
+    tree: tree,
+    context: bind_eval_default_context(),
+    inputs: inputs_root_only(root: ref_node)
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn bind_reference_binding_protocol_witnesses_hold() -> Bool {
+  bind_eval_bound_reference_reads_value_holds()
+    && bind_eval_minted_occurrence_equal_reference_reads_holds()
+    && bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds()
+    && bind_eval_unbound_reference_refuses_holds()
+    && bind_eval_unbound_reference_default_algebra_refuses_holds()
 }

@@ -1,6 +1,9 @@
 module v2.std.compilers.lexing
 
-import v2.std.algebra { Empty, fold_list, length, list_snoc_item, skip }
+import std.algebra { Empty }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
@@ -229,4 +232,17 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
 
 fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
   symbol_intern_lexeme(lexeme: lexeme)
+}
+
+data symbol_lexeme_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.compilers.lexing",
+    decl_name: "symbol_lexeme",
+    field: WholeDeclaration
+  }
+}
+
+fn symbol_lexeme(sym: Symbol) -> String {
+  symbol_lexeme(sym: sym)
 }

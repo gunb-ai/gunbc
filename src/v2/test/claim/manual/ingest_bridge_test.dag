@@ -2,7 +2,7 @@ module v2.test.manual.ingest_bridge
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.text { string_is_empty }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
   parse_tree_to_emitted_node,
@@ -23,15 +23,15 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.extdeps.languages.dag {
-  dag_mvp1_binding_spellings,
-  dag_mvp1_declared_inhabitants_root,
-  dag_mvp1_fidelity_quotient_node,
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_selection_policy_node,
-  dag_mvp1_serialize_source_node,
-  dag_mvp1_source_text,
-  dag_mvp1_target_model,
-  dag_wave1_lex
+  dag_binding_spellings,
+  dag_declared_inhabitants_root,
+  dag_fidelity_quotient_node,
+  dag_fixture_emitted_add_fn,
+  dag_selection_policy_node,
+  dag_serialize_source_node,
+  dag_source_text,
+  dag_target_model,
+  dag_lex
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
@@ -60,6 +60,10 @@ import v2.std.verification {
   UnifiedTestClaim,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.effects { atom_node }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn ingest_fixture_token() -> Token {
   Token {
@@ -78,7 +82,7 @@ fn ingest_fixture_root() -> GrammarRoot {
       head: GrammarProduction {
         name: ^ingest_fixture_start,
         expression: Terminal { token_class: ^ingest_fixture_tok, stamp: StampClass },
-        emitted: dag_mvp1_fixture_emitted_add_fn
+        emitted: dag_fixture_emitted_add_fn
       },
       tail: Empty
     },
@@ -124,11 +128,11 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_mvp1_selection_policy_node() },
-      Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_mvp1_declared_inhabitants_root() },
+      Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
+      Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
       Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
-      Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_mvp1_serialize_source_node() },
-      Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_mvp1_fidelity_quotient_node() }
+      Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_serialize_source_node() },
+      Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -137,10 +141,10 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
 fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
   TargetModel {
     bundle: bundle,
-    lex: dag_wave1_lex(),
-    binding_spellings: dag_mvp1_binding_spellings(),
+    lex: dag_lex(),
+    binding_spellings: dag_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: dag_mvp1_source_text,
+    authority_source_text: dag_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -173,10 +177,10 @@ fn ingest_recovers_emitted_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
-          recovered == dag_mvp1_fixture_emitted_add_fn
+          recovered == dag_fixture_emitted_add_fn
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -188,10 +192,10 @@ fn ingest_bridge_to_canonical_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: core, diagnostics: _ } =>
-          core == dag_mvp1_fixture_emitted_add_fn
+          core == dag_fixture_emitted_add_fn
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -203,7 +207,7 @@ fn ingest_fails_closed_off_frontier_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
+        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
@@ -217,7 +221,7 @@ fn ingest_fails_closed_ambiguous_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: ingest_fixture_model_ambiguous(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+        source_model: ingest_fixture_model_ambiguous(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
@@ -237,7 +241,7 @@ fn ingest_unstamped_node() -> Node {
 fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   match parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
-    source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+    source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -249,8 +253,8 @@ fn ingest_cross_language_compile_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
-        source_model: ingest_fixture_model(emitted: dag_mvp1_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
-        target_model: dag_mvp1_target_model()
+        source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
+        target_model: dag_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
           string_is_empty(s: source.carried) == false
@@ -276,8 +280,8 @@ fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
 data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: forward interpreter bridge claim compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ^ingest_fixture_start,
-  expected_value: ^ingest_fixture_start,
+  input: atom_node(s: ^ingest_fixture_start),
+  expected_value: atom_node(s: ^ingest_fixture_start),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -285,6 +289,6 @@ data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),
-  expected_value: ^ingest_bridge_realized,
+  expected_value: atom_node(s: ^ingest_bridge_realized),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }

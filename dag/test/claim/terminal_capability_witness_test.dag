@@ -1,9 +1,7 @@
 module test.claim.terminal_capability_witness
 
-import std.render { Append, CursorAction, Frame, Overwrite, RenderCapability, Viewport, Chars, cursor_action_under }
-import std.symbols { Ascii, Unicode }
-import extdeps.render.terminal { project_frame }
-import extdeps.render.terminal_capability { TerminalEnvironment, detect_capability }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data interactive_tty: TerminalEnvironment = TerminalEnvironment {
   is_tty: true, ci: false, no_color: false, dumb_term: false
@@ -23,7 +21,7 @@ data no_color_tty: TerminalEnvironment = TerminalEnvironment {
 
 data demo_viewport: Viewport = Viewport { width: 80, height: 24, unit: Chars }
 
-data dynamic_frame: Frame = Frame { lines: [], cursor_action: Overwrite }
+data dynamic_frame: std.render.Frame = std.render.Frame { lines: [], cursor_action: Overwrite }
 
 fn w_interactive_is_addressable_unicode_color() -> Bool {
   let cap = detect_capability(env: interactive_tty)

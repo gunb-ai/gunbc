@@ -34,21 +34,25 @@ import v2.std.compilers.target_model {
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply,
-  target_value_expression_primitive_apply_to_concrete_tokens
+  target_value_expression_primitive_apply_to_concrete_tokens,
+  render_target_text
 }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.typescript {
   ts_lex_rule,
-  ts_mvp1_binding_spellings,
+  ts_binding_spellings,
   ts_value_expression_projection
 }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.collection { List }
 import v2.std.algebra { Equal, Greater, Less, Ordering, zip_eq }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn op_grounding_test_lex() -> LexRules {
   ModeledLexRules {
@@ -75,7 +79,7 @@ fn op_grounding_test_model() -> TargetModel {
   TargetModel {
     bundle: op_grounding_test_bundle(),
     lex: op_grounding_test_lex(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -133,9 +137,14 @@ fn op_grounding_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<St
       catalog: catalog
     ),
     f: fn(tokens) {
-      serialize_concrete_syntax_tokens_to_source_string(
-        target: op_grounding_test_model(),
-        tokens: tokens
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: op_grounding_test_model(),
+          tokens: tokens
+        ),
+        f: fn(carrier) {
+          Accepted { value: render_target_text(t: carrier), diagnostics: None }
+        }
       )
     }
   )

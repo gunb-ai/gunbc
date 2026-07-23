@@ -1,15 +1,7 @@
 module v2.test.workflow.affected_testgen_ci_runner_gate
 
-import v2.std.logic { Bool }
-import v2.test.workflow.affected_testgen_ci_runner {
-  affected_testgen_dependency_diff_selects_generated_claim_holds,
-  affected_testgen_dependency_frontier_reaches_generated_input_holds,
-  affected_testgen_fusion_holds,
-  affected_testgen_generated_claim_run_passes_holds,
-  affected_testgen_generator_emits_expected_claim_holds,
-  affected_testgen_selects_one_generated_claim_holds,
-  affected_testgen_unrelated_diff_selects_no_claims_holds
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test data witness_affected_testgen_generator_emits_expected_claim_green: Bool = affected_testgen_generator_emits_expected_claim_holds()
 

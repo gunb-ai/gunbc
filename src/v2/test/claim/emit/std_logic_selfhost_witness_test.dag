@@ -1,0 +1,109 @@
+module v2.test.emit.std_logic_selfhost_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
+
+data std_logic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
+
+fn sl_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+}
+
+fn sl_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+
+fn sl_nil() -> Node { sl_conj(children: []) }
+
+fn sl_atom(s: String) -> Node { rust_inhabitant_atom(id: s) }
+
+fn sl_cell(item: Node, rest: Node) -> Node {
+  sl_conj(children: [ sl_pos(target: item), sl_pos(target: rest) ])
+}
+
+fn sl_variant_nullary(name: String) -> Node {
+  sl_conj(children: [ sl_pos(target: sl_atom(s: name)) ])
+}
+
+fn sl_variant_list(variants: List<Node>) -> Node {
+  fold_list_right(xs: variants, empty: sl_nil(), snoc: fn(acc, v) { sl_cell(item: v, rest: acc) })
+}
+
+fn sl_variant_block(variants: List<Node>) -> Node {
+  sl_conj(children: [ sl_pos(target: sl_variant_list(variants: variants)) ])
+}
+
+fn sl_named_edge(name: String, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn sl_coproduct_enum(variant_edges: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: variant_edges,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sl_derive_attr(binding: Symbol) -> Node {
+  sl_conj(children: [ sl_pos(target: rust_inhabitant_atom(id: binding)) ])
+}
+
+fn sl_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
+  sl_conj(children: [
+    sl_pos(target: sl_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
+    sl_pos(target: sl_atom(s: name)),
+    sl_pos(target: sl_variant_block(variants: variants))
+  ])
+}
+
+fn std_logic_bool_decl() -> Node {
+  sl_enum_nongeneric(
+    name: "Bool",
+    coproduct: sl_coproduct_enum(variant_edges: [
+      sl_named_edge(name: "True", target: sl_conj(children: [])),
+      sl_named_edge(name: "False", target: sl_conj(children: []))
+    ]),
+    variants: [ sl_variant_nullary(name: "True"), sl_variant_nullary(name: "False") ]
+  )
+}
+
+fn std_logic_bool_emit_text() -> Outcome<String> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(
+      rules: rust_enum_general_decl_productions_only_translation_rules(),
+      emitted: std_logic_bool_decl()
+    ),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(
+                  target: rust_enum_general_decl_structural_target_model(),
+                  tokens: tokens
+                ),
+                f: fn(medium) { outcome_accepted(value: medium.carried) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn std_logic_bool_emit_matches(golden: String) -> Bool {
+  match std_logic_bool_emit_text() {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn std_logic_bool_type_decl_self_emits() -> Bool {
+  std_logic_bool_emit_matches(golden: std_logic_bool_enum_golden)
+    && !std_logic_bool_emit_matches(golden: std_logic_bool_wrong_golden)
+}

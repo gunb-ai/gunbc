@@ -1,5 +1,6 @@
 module gunbc.srv3_seeded_install_media
 
+<<<<<<< HEAD
 import extdeps.os.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.os.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaArtifactRow,
@@ -37,20 +38,35 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool, ContentHash }
 import std.resources { Network }
+=======
+>>>>>>> origin/main
 
-data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = Terminal {
+data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
 }
 
-data srv3_seeded_install_media_remaster_scaffold: Disposition = Scaffold {
+data srv3_seeded_install_media_remaster_scaffold: Disposition = std.disposition.Terminal {
+  reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
+}
+
+data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = std.disposition.Terminal {
+  reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply_gated(ci_deploy_srv1_access) to realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
+}
+
+data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = std.disposition.Terminal {
+  reason: "install_media_remaster_toolchain_ensure dissolved onto host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (srv3_ensure_apt_tool + xorriso version probe) - no concat-built bash script remains"
+}
+
+data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_bash_emit_dissolution_trigger",
-    field: WholeDeclaration,
+    module_path: "gunbc.srv3_os_install_actuate_scope",
+    decl_name: "srv3_autoinstall_seed_delivery_refusal",
+    field: WholeDeclaration
   }
 }
 
+<<<<<<< HEAD
 data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -169,34 +185,32 @@ data srv4_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_
   artifact: srv4_seeded_install_media_artifact,
 )
 
+=======
+>>>>>>> origin/main
 func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
-  let script = install_media_remaster_toolchain_ensure_script()
-  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("seeded-install-media-toolchain-ensure: ", run.stderr))
-  }
+  srv3_reconciliation_to_process_exit(
+    r: srv3_seeded_install_media_toolchain_ensure_apply(),
+    failure_prefix: "seeded-install-media-toolchain-ensure: ",
+  )
 }
 
 func srv3_seeded_install_media_remaster() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
-  let ensure_script = install_media_remaster_toolchain_ensure_script()
-  let ensure_run = shell.Exec.Run(script: shell_exec_via_bash(body: ensure_script))
-  if ensure_run.success == false {
-    return exit_failure(reason: concat("seeded-install-media-remaster: toolchain ensure failed: ", ensure_run.stderr))
+  let ensure_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_seeded_install_media_toolchain_ensure_apply(),
+    failure_prefix: "seeded-install-media-remaster: toolchain ensure failed: ",
+  )
+  match ensure_exit {
+    ExitSuccess => {}
+    _ => return ensure_exit
   }
-
-  let script = install_media_remaster_script(artifact: srv3_seeded_install_media_artifact)
-  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
-  if run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("seeded-install-media-remaster: ", run.stderr))
-  }
+  srv3_reconciliation_to_process_exit(
+    r: srv3_seeded_install_media_remaster_apply(),
+    failure_prefix: "seeded-install-media-remaster: ",
+  )
 }
 
 func srv4_seeded_install_media_remaster() -> ProcessExit
@@ -241,11 +255,13 @@ fn srv3_seeded_autoinstall_delivery_is_on_iso() -> Bool {
 
 fn srv3_seeded_grub_cmdline_names_nocloud() -> Bool {
   string_contains(s: srv3_seeded_grub_kernel_cmdline as String, pattern: "autoinstall ds=nocloud")
-    && install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
 }
 
 fn srv3_seeded_install_media_unattended_not_proven_yet() -> Bool {
-  string_contains(s: srv3_seeded_install_media_unattended_not_proven_marker, pattern: "NOT proven by execution")
+  match srv3_seeded_install_media_unattended_not_proven_marker {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {
@@ -255,6 +271,6 @@ fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {
 }
 
 fn srv3_seeded_install_media_toolchain_ensure_is_privileged_gated() -> Bool {
-  string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y")
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "deploy-access-preflight: FAIL sudo -n /usr/bin/apt-get")
+  srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated()
+    && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()
 }

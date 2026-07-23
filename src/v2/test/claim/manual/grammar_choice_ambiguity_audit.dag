@@ -1,0 +1,46 @@
+module v2.test.manual.grammar_choice_ambiguity_audit
+
+
+fn witness_python_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: python_grammar_root())
+}
+
+fn witness_python_grammar_validate_accepts_with_overlap_residue() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_dag_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: dag_grammar_root())
+}
+
+fn witness_dag_zero_nullable_choice_ambiguity() -> Bool {
+  is_empty(xs: grammar_nullable_ambiguity_rows(
+    roster: grammar_choice_ambiguity_roster(root: dag_grammar_root())
+  ))
+}
+
+fn witness_dag_overlap_residue_row_count() -> Int {
+  length(xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()))
+}
+
+fn witness_dag_grammar_validate_accepts() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: dag_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_dag_first_choice_ambiguity_production() -> Symbol {
+  match list_at_optional(
+    xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
+    index: 0
+  ) {
+    Present { value: row } => row.production
+    Absent => ^grammar_choice_ambiguity_roster_empty
+  }
+}

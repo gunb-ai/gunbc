@@ -17,7 +17,7 @@ import v2.extdeps.languages.english {
   english_inhabitant_atom,
   english_noun_facts_node,
   english_noun_inhabitant_node,
-  english_wave1_lex
+  english_lex
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.algebra { fold_list }
@@ -47,6 +47,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data english_emit_add_emitted_root: Node = english_add_fn_emitted_node()
 
@@ -200,7 +203,7 @@ fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
   match tokenize(
     text: source.carried,
     file: ^english_emit_add_round_trip_fixture_file,
-    rules: english_wave1_lex()
+    rules: english_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: tokens, diagnostics: _ } =>

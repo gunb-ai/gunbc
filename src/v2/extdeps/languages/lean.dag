@@ -37,15 +37,8 @@ import v2.std.compilers.lexing {
 }
 import v2.std.collection { List, Map, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  BooleanAlgebra,
-  Cons,
-  Empty,
-  boolean_algebra_type_node,
-  commutative_ring_type_node,
-  fold_list,
-  list_snoc_item
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -271,7 +264,7 @@ data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   representation: ^lean_repr_bool_inductive
 }
 
-data lean_mvp1_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
+data lean_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
 data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_int8,
   lean_facts_int16,
@@ -422,17 +415,10 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
   }
 }
 
-fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: lean_primitive_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: lean_primitive_bundle_from_facts(facts: facts)
-      )
-    }
-  )
+fn lean_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
+    lean_primitive_bundle_from_facts(facts: facts)
+  })
 }
 
 fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
@@ -453,7 +439,7 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn lean_mvp1_token_class_tail() -> List<Symbol> {
+fn lean_token_class_tail() -> List<Symbol> {
   [
     ^lean_token_name_dec,
     ^lean_token_lparen,
@@ -472,34 +458,27 @@ fn lean_mvp1_token_class_tail() -> List<Symbol> {
   ]
 }
 
-fn lean_mvp1_formal_token_classes() -> List<Symbol> {
+fn lean_formal_token_classes() -> List<Symbol> {
   Cons {
     head: ^lean_token_kw_def,
-    tail: lean_mvp1_token_class_tail()
+    tail: lean_token_class_tail()
   }
 }
 
 fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: classes,
-    empty: Empty,
-    cons: fn(acc, token_class) {
-      list_snoc_item(
-        xs: acc,
-        item: grammar_formal_terminal(identity: token_class)
-      )
-    }
-  )
+  list_map(xs: classes, f: fn(token_class) {
+    grammar_formal_terminal(identity: token_class)
+  })
 }
 
-fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
+fn lean_def_dec_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^lean_production_mvp1_def_dec),
-    rhs: lean_formal_rhs_from_token_classes(classes: lean_mvp1_formal_token_classes())
+    lhs: grammar_formal_nonterminal(identity: ^lean_production_def_dec),
+    rhs: lean_formal_rhs_from_token_classes(classes: lean_formal_token_classes())
   }
 }
 
-data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
+data lean_def_dec_formal_production_authority: FormalProduction = lean_def_dec_formal_production()
 
 fn lean_grammar_sequence_from_nonempty(
   head: Symbol,
@@ -517,10 +496,10 @@ fn lean_grammar_sequence_from_nonempty(
   )
 }
 
-fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
+fn lean_def_dec_parse_expr() -> GrammarExpr {
   lean_grammar_sequence_from_nonempty(
     head: ^lean_token_kw_def,
-    tail: lean_mvp1_token_class_tail()
+    tail: lean_token_class_tail()
   )
 }
 
@@ -538,7 +517,7 @@ fn lean_numeric_literal_lex_rule() -> LexRule {
   }
 }
 
-fn lean_wave1_lex_rules() -> LexRuleSet {
+fn lean_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       lean_lex_rule(token_class: ^lean_token_kw_termination_by, text: "\n  termination_by "),
@@ -556,38 +535,38 @@ fn lean_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn lean_wave1_lex() -> LexRules {
-  ModeledLexRules { root: lean_wave1_lex_rules() }
+fn lean_lex() -> LexRules {
+  ModeledLexRules { root: lean_lex_rules() }
 }
 
-fn lean_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn lean_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: lean_wave1_lex_rules(),
+    rules: lean_lex_rules(),
     token_class: sym
   )
 }
 
-fn lean_wave1_grammar_root() -> GrammarRoot {
+fn lean_grammar_root() -> GrammarRoot {
   let start = GrammarProduction {
-    name: ^lean_production_mvp1_def_dec,
-    expression: lean_mvp1_def_dec_parse_expr(),
+    name: ^lean_production_def_dec,
+    expression: lean_def_dec_parse_expr(),
     emitted: grammar_atom(identity: ^lean_surface_def_item)
   }
   GrammarRoot {
-    start: ^lean_production_mvp1_def_dec,
+    start: ^lean_production_def_dec,
     productions: [start],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
-fn lean_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: lean_wave1_grammar_root() }
+fn lean_grammar() -> ParseGrammar {
+  ModeledGrammar { root: lean_grammar_root() }
 }
 
 fn lean_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: lean_wave1_lex(),
-    grammar: lean_wave1_grammar()
+    lex: lean_lex(),
+    grammar: lean_grammar()
   }
 }
 
@@ -595,8 +574,8 @@ fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: lean_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
-      fixture: lean_mvp1_source_text,
-      production: lean_mvp1_def_dec_formal_production(),
+      fixture: lean_source_text,
+      production: lean_def_dec_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^lean_surface_def_item)
     }
   }
@@ -608,9 +587,9 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       lean_catalog_surface_symbol(sym: sym) ||
-        lean_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: lean_wave1_grammar(), sym: sym) ||
-        sym == ^lean_mvp1_source_literal
+        lean_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: lean_grammar(), sym: sym) ||
+        sym == ^lean_source_literal
     }
   }
 }
@@ -675,18 +654,14 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
 }
 
 fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
-    xs: lean_primitive_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: lean_scalar_algebra_inhabitance(facts: facts))
-    }
-  )
+  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
+    lean_scalar_algebra_inhabitance(facts: facts)
+  })
 }
 
-fn lean_model_core_wave1() -> ModelCore {
+fn lean_model_core() -> ModelCore {
   ModelCore {
-    primitives: lean_wave1_primitive_fact_bundles(),
+    primitives: lean_primitive_fact_bundles(),
     inhabitance: lean_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -694,12 +669,12 @@ fn lean_model_core_wave1() -> ModelCore {
   }
 }
 
-fn lean_language_model_wave1() -> LanguageModel {
+fn lean_language_model() -> LanguageModel {
   LanguageModel {
-    lex: lean_wave1_lex(),
-    grammar: lean_wave1_grammar(),
+    lex: lean_lex(),
+    grammar: lean_grammar(),
     language_identity: ^lean_language_model_surface_id,
     canonical_symbols: lean_language_model_canonical_symbols(),
-    core: lean_model_core_wave1()
+    core: lean_model_core()
   }
 }

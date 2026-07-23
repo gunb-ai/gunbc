@@ -1,43 +1,31 @@
 module test.claim.nbd_proxy_serve_transport
 
-import std.logic { Bool }
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  nbd_proxy_serve_transport_intent,
-  nbd_proxy_serve_program_foreground_command_is_websocat,
-  nbd_proxy_serve_program_statement_count,
-  nbd_proxy_serve_bash_emit_dissolution_trigger,
-  nbd_proxy_serve_cited_tool_row_count,
-  nbd_proxy_serve_cited_tool_names,
-  bmcweb_session_login_program,
-  bmcweb_session_token_env_ref,
-  srv3_nbd_proxy_local_port,
-  nbd_proxy_serve_requires_host_as_nbd_server,
-}
-import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
   bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"
 }
 
-test fn nbd_proxy_serve_program_is_structured_not_concat_blob() -> Bool {
+test fn nbd_proxy_serve_argv_is_typed_not_shell_supervision_program() -> Bool {
   let intent = nbd_proxy_serve_transport_intent(
     bmc_host: asrock_srv3_live_bmc_host,
     session_token: bmcweb_session_token_env_ref,
     ws_path: bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0),
     iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso",
-    local_nbd_port: srv3_nbd_proxy_local_port,
+    local_nbd_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
   )
-  nbd_proxy_serve_program_statement_count(intent: intent) == 5
-    && nbd_proxy_serve_program_foreground_command_is_websocat(intent: intent)
-    && nbd_proxy_serve_cited_tool_row_count() == 3
+  nbd_proxy_serve_websocat_argv_leading_tool_is_websocat(intent: intent)
+    && nbd_proxy_serve_nbdkit_argv_includes_iso(intent: intent)
+    && nbd_proxy_serve_has_no_shell_supervision_grammar(intent: intent)
+    && string_contains(
+      s: nbd_proxy_serve_nbdkit_unit_name(lease_key: srv3_nbd_proxy_lease_key) as String,
+      pattern: "nbd-proxy-",
+    )
+    && string_contains(
+      s: nbd_proxy_serve_websocat_unit_name(lease_key: srv3_nbd_proxy_lease_key) as String,
+      pattern: "-ws",
+    )
     && nbd_proxy_serve_cited_tool_names_includes_nbdkit()
     && nbd_proxy_serve_cited_tool_names_includes_websocat()
     && nbd_proxy_serve_cited_tool_names_includes_socat()
@@ -67,19 +55,57 @@ fn nbd_proxy_serve_cited_tool_names_includes_socat() -> Bool {
   )
 }
 
-test fn nbd_proxy_serve_carrier_names_bash_emit_dissolution_trigger() -> Bool {
-  string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "medium_structure_exception_roster")
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "ShellProgram")
+test fn nbd_proxy_serve_supervision_marker_red_control_holds() -> Bool {
+  nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "trap 'kill $PID' EXIT")
+    && nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "nbdkit -p 10809 &")
+    && nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "echo $!")
+    && !nbd_proxy_serve_argv_surface_contains_supervision_marker(
+      surface: "websocat --text --header=\"Authorization: Token abc\" wss://host/vm/0/0",
+    )
 }
 
-test fn bmcweb_session_login_program_uses_curl_authority_not_inline_secret() -> Bool {
-  bmcweb_session_login_program(
+test fn nbd_proxy_serve_carrier_names_systemd_realization_dissolution_trigger() -> Bool {
+  match nbd_proxy_serve_systemd_realization_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn bmcweb_session_login_argv_uses_curl_authority_not_inline_secret() -> Bool {
+  witness_bmcweb_session_login_argv_semantic_surface_holds()
+}
+
+fn witness_bmcweb_session_login_argv_semantic_surface_holds() -> Bool {
+  let body = "/tmp/bmcweb-login.json" as NonEmptyStr
+  let response = "/tmp/bmcweb-login-response.json" as NonEmptyStr
+  let curl_args = bmcweb_session_login_curl_args(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: "/tmp/bmcweb-login.json",
-    response_path: "/tmp/bmcweb-login-response.json",
-  ).statements.length() == 1
+    request_body_file: body,
+    response_path: response,
+  )
+  let argv = bmcweb_session_login_argv(
+    bmc_host: asrock_srv3_live_bmc_host,
+    request_body_file: body,
+    response_path: response,
+  )
+  let curl_args_surface = fold(
+    curl_args,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  let argv_surface = fold(
+    argv,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.name
     && curl_cli_tool.name == "curl"
+    && string_contains(s: argv_surface, pattern: curl_args_surface)
+    && string_contains(s: argv_surface, pattern: "-o")
+    && string_contains(s: argv_surface, pattern: body as String)
+    && string_contains(s: argv_surface, pattern: response as String)
+    && string_contains(s: argv_surface, pattern: "https://")
+    && string_contains(s: argv_surface, pattern: "/login")
 }
 
 test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {

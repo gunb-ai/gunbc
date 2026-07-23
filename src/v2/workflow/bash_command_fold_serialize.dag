@@ -1,0 +1,567 @@
+module v2.workflow.bash_command_fold_serialize
+
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash {
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_assign_emitted,
+  bash_stmt_assign_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_stmt_pipe_emitted,
+  bash_stmt_pipe_target_model,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
+  bash_word_cmdsubst_emitted,
+  bash_word_cmdsubst_target_model
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_serialize_refused,
+  bash_fold_target_model_for_emitted_witness,
+  bash_fold_unsupported_variant_diagnostic
+}
+import v2.std.algebra {
+  list_head,
+  list_tail,
+  HeadFound,
+  HeadAbsent,
+  TailFound,
+  TailAbsent
+}
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.witness { Holds, Violates, Witness }
+
+data bash_command_fold_serialize_layer_note: String = "Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler)."
+
+fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Outcome<String> {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 0) {
+    Present { value: tag } =>
+      match tag.kind {
+        TypeNode { connective: Atom { identity: binding } } => binding
+        _ => ^bash_production_fold_unsupported
+      }
+    Absent => ^bash_production_fold_unsupported
+  }
+}
+
+fn bash_fold_serialize_leaf_node(
+  emitted: Node,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Outcome<String> {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: "",
+    production_binding: production_binding,
+    rule_name: rule_name
+  ) {
+    Holds { value: target } =>
+      bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
+    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+  }
+}
+
+fn bash_fold_serialize_stmts_semi_from(
+  acc: String,
+  first: Bool,
+  rest: List<Node>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_fold_serialize_node(stmt: s),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, concat("; ", part)) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
+  bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
+}
+
+fn bash_fold_flatten_stmt_list(list_node: Node) -> List<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 0) {
+    Present { value: first } =>
+      match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 1) {
+        Present { value: second } =>
+          concat(bash_fold_flatten_stmt_list(list_node: first), [second])
+        Absent => [first]
+      }
+    Absent => []
+  }
+}
+
+fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
+  bash_fold_serialize_stmts_semi(stmts: bash_fold_flatten_stmt_list(list_node: list_node))
+}
+
+fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: inner } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: redir_tag } =>
+          match redir_tag.kind {
+            TypeNode { connective: Atom { identity: redir_binding } } =>
+              bind_outcome(
+                o: bash_fold_serialize_node(stmt: inner),
+                f: fn(stmt_spelling) {
+                  if redir_binding == ^bash_production_fold_redir_stderr_null {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: "2>/dev/null"
+                      )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_stdout_and_stderr_null {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: ">/dev/null 2>&1"
+                      )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_stdout_to_stderr {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: ">&2"
+                      )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_to_file {
+                    match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
+                      Present { value: path_node } =>
+                        bind_outcome(
+                          o: bash_fold_serialize_word_node(word: path_node),
+                          f: fn(path_spelling) {
+                            bash_fold_serialize_emit_from_node(
+                              emitted: bash_stmt_with_redir_emitted,
+                              target: bash_stmt_with_redir_target_model(
+                                stmt: stmt_spelling,
+                                redir: concat("> ", path_spelling)
+                              )
+                            )
+                          }
+                        )
+                      Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+                    }
+                  } else {
+                    bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
+                  }
+                }
+              )
+            _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+          }
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: word), index: 0) {
+    Present { value: kind_node } =>
+      match kind_node.kind {
+        TypeNode { connective: Atom { identity: kind } } =>
+          if kind == ^bash_fold_word_kind_lit {
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_lit_word,
+              rule_name: ^bash_production_fold_lit_word
+            )
+          } else if kind == ^bash_fold_word_kind_var {
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_var_word,
+              rule_name: ^bash_production_fold_var_word
+            )
+          } else if kind == ^bash_fold_word_kind_concat {
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_concat_word,
+              rule_name: ^bash_production_fold_concat_word
+            )
+          } else if kind == ^bash_fold_word_kind_cmdsubst {
+            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
+              Present { value: body } =>
+                bind_outcome(
+                  o: bash_fold_serialize_node(stmt: body),
+                  f: fn(body_spelling) {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_word_cmdsubst_emitted,
+                      target: bash_word_cmdsubst_target_model(body: body_spelling)
+                    )
+                  }
+                )
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
+          } else if kind == ^bash_build_refused_empty_word_list {
+            Rejected {
+              diagnostics: Some {
+                diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_word_list)]
+              }
+            }
+          } else {
+            bash_fold_serialize_refused(variant: ^bash_fold_serialize_word_kind_unsupported)
+          }
+        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_word_list_spelling_from(
+  acc: String,
+  first: Bool,
+  rest: List<Node>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: w } =>
+      bind_outcome(
+        o: bash_fold_serialize_word_node(word: w),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, part) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
+  bash_fold_serialize_word_list_spelling_from(
+    acc: "",
+    first: true,
+    rest: bash_fold_flatten_stmt_list(list_node: parts)
+  )
+}
+
+fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
+  bash_fold_serialize_leaf_node(
+    emitted: stmt,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  )
+}
+
+fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: name_node } =>
+      match name_node.kind {
+        TypeNode { connective: Atom { identity: name } } =>
+          match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+            Present { value: value } =>
+              bind_outcome(
+                o: bash_fold_serialize_word_node(word: value),
+                f: fn(value_spelling) {
+                  bash_fold_serialize_emit_from_node(
+                    emitted: bash_stmt_assign_emitted,
+                    target: bash_stmt_assign_target_model(
+                      name: name,
+                      value: value_spelling
+                    )
+                  )
+                }
+              )
+            Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+          }
+        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_exit_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: code_node } =>
+      match code_node.kind {
+        TypeNode { connective: Atom { identity: code } } =>
+          bash_fold_serialize_emit_from_node(
+            emitted: bash_stmt_exit_emitted,
+            target: bash_stmt_exit_target_model(code: code)
+          )
+        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: left } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: right } =>
+          bind_outcome(
+            o: bash_fold_serialize_node(stmt: left),
+            f: fn(left_spelling) {
+              bind_outcome(
+                o: bash_fold_serialize_node(stmt: right),
+                f: fn(right_spelling) {
+                  bash_fold_serialize_emit_from_node(
+                    emitted: bash_stmt_andor_emitted,
+                    target: bash_stmt_andor_target_model(
+                      left: left_spelling,
+                      op: "&&",
+                      right: right_spelling
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: left } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: right } =>
+          bind_outcome(
+            o: bash_fold_serialize_node(stmt: left),
+            f: fn(left_spelling) {
+              bind_outcome(
+                o: bash_fold_serialize_node(stmt: right),
+                f: fn(right_spelling) {
+                  bash_fold_serialize_emit_from_node(
+                    emitted: bash_stmt_andor_emitted,
+                    target: bash_stmt_andor_target_model(
+                      left: left_spelling,
+                      op: "||",
+                      right: right_spelling
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: left } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: right } =>
+          bind_outcome(
+            o: bash_fold_serialize_node(stmt: left),
+            f: fn(left_spelling) {
+              bind_outcome(
+                o: bash_fold_serialize_node(stmt: right),
+                f: fn(right_spelling) {
+                  bash_fold_serialize_emit_from_node(
+                    emitted: bash_stmt_pipe_emitted,
+                    target: bash_stmt_pipe_target_model(
+                      left: left_spelling,
+                      right: right_spelling
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: cond } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: body } =>
+          bind_outcome(
+            o: bash_fold_serialize_node(stmt: cond),
+            f: fn(cond_spelling) {
+              bind_outcome(
+                o: bash_fold_serialize_stmt_list_semi(list_node: body),
+                f: fn(body_spelling) {
+                  bind_outcome(
+                    o: bash_stmt_if_target_model(
+                      cond: cond_spelling,
+                      body: body_spelling
+                    ),
+                    f: fn(target) {
+                      bash_fold_serialize_emit_from_node(
+                        emitted: bash_stmt_if_emitted,
+                        target: target
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: body } =>
+      bind_outcome(
+        o: bash_fold_serialize_stmt_list_semi(list_node: body),
+        f: fn(body_spelling) {
+          bash_fold_serialize_emit_from_node(
+            emitted: bash_stmt_subshell_emitted,
+            target: bash_stmt_subshell_target_model(body: body_spelling)
+          )
+        }
+      )
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: inner } =>
+      bind_outcome(
+        o: bash_fold_serialize_node(stmt: inner),
+        f: fn(inner_spelling) {
+          bash_fold_serialize_emit_from_node(
+            emitted: bash_stmt_negation_emitted,
+            target: bash_stmt_negation_target_model(inner: inner_spelling)
+          )
+        }
+      )
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
+fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
+  let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
+  if binding == ^bash_production_fold_command {
+    bash_fold_serialize_command_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_assign {
+    bash_fold_serialize_assign_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_exit {
+    bash_fold_serialize_exit_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_and_then {
+    bash_fold_serialize_and_then_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_or_else {
+    bash_fold_serialize_or_else_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_pipe {
+    bash_fold_serialize_pipe_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_if {
+    bash_fold_serialize_if_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_subshell {
+    bash_fold_serialize_subshell_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_with_redir {
+    bash_fold_serialize_with_redir_node(stmt: stmt)
+  } else if binding == ^bash_build_stmt_negation {
+    bash_fold_serialize_negation_node(stmt: stmt)
+  } else if binding == ^bash_build_refused_empty_stmt_list {
+    Rejected {
+      diagnostics: Some {
+        diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_stmt_list)]
+      }
+    }
+  } else {
+    bash_fold_serialize_leaf_node(
+      emitted: stmt,
+      production_binding: binding,
+      rule_name: ^bash_relation_rule_fold_unsupported
+    )
+  }
+}
+
+fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
+  match list_head(xs: stmts) {
+    HeadAbsent => Accepted { value: "", diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_fold_serialize_node(stmt: s),
+        f: fn(part) {
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } =>
+              bind_outcome(
+                o: bash_fold_serialize_body(stmts: t),
+                f: fn(rest) {
+                  Accepted { value: concat(concat(part, "\n"), rest), diagnostics: None }
+                }
+              )
+            TailAbsent => Accepted { value: concat(part, "\n"), diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
+  bind_outcome(
+    o: bash_fold_serialize_body(stmts: stmts),
+    f: fn(body) {
+      if set_e {
+        Accepted { value: concat("set -e\n", body), diagnostics: None }
+      } else {
+        Accepted { value: body, diagnostics: None }
+      }
+    }
+  )
+}

@@ -7,11 +7,11 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.extdeps.languages.bash {
   bash_lhs_exact_relation_row_witness,
-  bash_mvp1_concrete_tokens,
-  bash_mvp1_emitted_command,
-  bash_mvp1_source_text,
-  bash_mvp1_lex,
-  bash_mvp1_target_model,
+  bash_concrete_tokens,
+  bash_emitted_command,
+  bash_source_text,
+  bash_lex,
+  bash_target_model,
   bash_bound_words_target_model,
   bash_embedded_quote_target_model,
   bash_bound_words_emitted_command,
@@ -69,6 +69,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -116,7 +119,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
 fn bash_lhs_exact_arrow_emitted_rejects() -> Bool {
   match bash_lhs_exact_relation_row_witness(
     lhs: ^bash_production_command,
-    tokens: bash_mvp1_concrete_tokens(),
+    tokens: bash_concrete_tokens(),
     emitted: bash_arrow_emitted_red_fixture()
   ) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
@@ -129,14 +132,14 @@ test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
 }
 
 data bash_emit_inferred_tree: InferredTree = InferredTree {
-  root: bash_mvp1_emitted_command,
+  root: bash_emitted_command,
   facts: Map {
     lookup: bash_facts_lookup
   }
 }
 
 fn anchor_bash_emit_accepts() -> Outcome<Medium<String>> {
-  emit(tree: bash_emit_inferred_tree, target: bash_mvp1_target_model())
+  emit(tree: bash_emit_inferred_tree, target: bash_target_model())
 }
 
 data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
@@ -144,7 +147,7 @@ data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_mvp1_source_text) && (d == None)
+      (source.carried == bash_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -157,7 +160,7 @@ data bash_empty_bundle: Node = Node {
 
 data bash_missing_rules_target: TargetModel = TargetModel {
   bundle: bash_empty_bundle,
-  lex: bash_mvp1_lex(),
+  lex: bash_lex(),
   binding_spellings: empty_map(),
   token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -167,7 +170,7 @@ data bash_missing_rules_target: TargetModel = TargetModel {
 fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: bash_missing_rules_target,
-    emitted: bash_mvp1_emitted_command
+    emitted: bash_emitted_command
   )
 }
 

@@ -1,8 +1,7 @@
 module test.claim.reviewer_source_witness_test
 
-import ctrl.review_verdict { reviewer_source }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_policy_id: NonEmptyStr = "sec-1"
 data witness_policy_version: NonEmptyStr = "v2"
@@ -11,7 +10,7 @@ data witness_policy_string: NonEmptyStr = "policy"
 
 fn witness_agent_claude_is_llm() -> Bool {
   match reviewer_source(reviewer: AgentReviewer { provider: Claude }) {
-    Llm => true
+    LlmSource => true
     _ => false
   }
 }

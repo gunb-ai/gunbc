@@ -1,6 +1,6 @@
 module v2.test.manual.fn_as_value
 
-data fn_as_value_provenance: String = "Floor witnesses migrated from src/v1/tests/src/fn_as_value_test.rs (5-test-migration lane): first-class fn references and generic instantiation regressions, re-expressed as marker-discovered test fns on the same interpreter execution path."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Rec { v: Int }
 

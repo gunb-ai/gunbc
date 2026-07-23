@@ -11,20 +11,19 @@ import v2.compiler.program_assembly {
   assemble_program_from_ingest,
   assemble_program_from_module_roots
 }
-import v2.compiler.source_authority {
-    DagSourceReadWitness,
-  SourceRootIngest,
-}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
-import v2.std.cross_tree.import_model { V2Tree }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.std.node {
   Atom,
   Conj,
@@ -34,6 +33,16 @@ import v2.std.node {
   Symbol,
   SyntheticOccurrence,
   TypeNode
+}
+import v2.std.qualified_name { QualifiedName }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pa_graft_module_root(root: Node) -> Node {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: grafted, diagnostics: _ } => grafted
+    Rejected { diagnostics: _ } => root
+  }
 }
 
 fn pa_qn_node(seg: Symbol) -> Node {
@@ -101,12 +110,14 @@ fn pa_subject_with_import_use() -> Node {
 
 fn pa_cross_file_roots() -> FreeMonoid<Node> {
   Cons {
-    head: pa_subject_with_import_use(),
+    head: pa_graft_module_root(root: pa_subject_with_import_use()),
     tail: Cons {
-      head: pa_module_root(
-        seg: ^pa_imported_seg,
-        export_sym: ^pa_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: pa_graft_module_root(
+        root: pa_module_root(
+          seg: ^pa_imported_seg,
+          export_sym: ^pa_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -115,16 +126,20 @@ fn pa_cross_file_roots() -> FreeMonoid<Node> {
 
 fn pa_duplicate_module_roots() -> FreeMonoid<Node> {
   Cons {
-    head: pa_module_root(
-      seg: ^pa_subject_seg,
-      export_sym: ^pa_imported_decl,
-      export_atom: ^dag_c3_surface_sugar_service
+    head: pa_graft_module_root(
+      root: pa_module_root(
+        seg: ^pa_subject_seg,
+        export_sym: ^pa_imported_decl,
+        export_atom: ^dag_c3_surface_sugar_service
+      )
     ),
     tail: Cons {
-      head: pa_module_root(
-        seg: ^pa_subject_seg,
-        export_sym: ^pa_other_export,
-        export_atom: ^dag_c3_surface_sugar_type
+      head: pa_graft_module_root(
+        root: pa_module_root(
+          seg: ^pa_subject_seg,
+          export_sym: ^pa_other_export,
+          export_atom: ^dag_c3_surface_sugar_type
+        )
       ),
       tail: Empty
     }

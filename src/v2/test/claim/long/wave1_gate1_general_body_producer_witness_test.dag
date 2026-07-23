@@ -1,0 +1,26 @@
+module v2.test.long.wave1_gate1_general_body_producer_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wave1_gate1_long_witness_note: String = "Wave 1 exit gate 1 execution witnesses (long lane): full tokenize→parse_module→normalize→resolve ingest paths exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Proven here by execution: add fn_decl lowers to Arrow+Transform; classical_not lowers to Arrow+Match — without the fixture-bound MVP producer bridge. Fast compile-gate import closure lives in self_host/wave1_gate1_general_body_producer_witness_test.dag. Local recipe: claim_batch --source-root src/v2 --source-root dag --entry src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag --function <name>."
+
+test fn wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds() -> Bool {
+  wave1_gate1_normalized_add_yields_arrow_transform_holds()
+}
+
+test fn wave1_gate1_ingested_add_normalize_resolves_holds() -> Bool {
+  wave1_gate1_normalized_add_resolves_holds()
+}
+
+test fn wave1_gate1_ingested_add_resolved_arrow_transform_holds() -> Bool {
+  wave1_gate1_resolved_add_arrow_transform_holds()
+}
+
+test fn wave1_gate1_ingested_match_normalize_yields_match_holds() -> Bool {
+  ingested_classical_not_arrow_has_match_holds()
+}
+
+test fn wave1_gate1_ingested_match_resolves_holds() -> Bool {
+  ingested_classical_not_resolves_holds()
+}

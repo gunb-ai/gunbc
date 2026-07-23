@@ -1,4 +1,5 @@
 module v2.lens.affected_set_examples
+
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -41,6 +42,7 @@ import v2.lens.affected_set {
   ReasonDiagnostics
 }
 import v2.std.dependency { DependencyView }
+
 data affected_set_example_hash: Hash = affected_set_example_hash
 
 data affected_set_example_node: Node = Node {

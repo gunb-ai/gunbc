@@ -1,0 +1,73 @@
+module gunbc.plans.solve_higher_order_design
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
+
+fn solve_higher_order_design_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** design ruling, captured pre-un-shelve (the language-target self-host lane is §4-shelved until soon after the Rust fixed point). This doc is a **scaffold**: at un-shelve the *structural*-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`) plus a DESIGN §4 anchor, and the *numerical*-solve gap is authored at its own trigger (the three orthogonal facts below) — then this file dissolves. Until then it is the single place the rationale lives, so it is not re-litigated or misplaced."),
+    p(text: "**One-line ruling:** `solve` is **not** a substrate primitive — for either solve family. **Structural** solving (unification, resolve, affected-set closure, coercion) already exists and is grounded: `ConstraintGraph` / `solve_constraints` / `ConstraintSatisfactionPredicate` (`src/v2/std/constraints.dag:28-137`, `constraint_satisfaction_predicate.dag:4-14`) ground a node by *selecting from a candidate set* (`[root]`) under a **structural** predicate (`candidate == source_facts`); if more structural solving is needed, **extend that authority — do not mint a parallel `Residual`/`Constraint` + `solve`** (that would be the §3 fork this doc preaches against). **Numerical / iterative** solving (a residual over the reals — SPICE ODE, Newton, relaxation) is **currently ABSENT from the substrate**: it is expressible by neither `solve_constraints` (structural `==`) nor `find_witness` (finite selection from a supplied `CandidateSet`). When built it is **three orthogonal facts** (a finite loop measure + `TerminationProof`, a typed residual-acceptance contract, and a solver-method handler), still not a primitive. Minting a `solve` primitive would violate three axioms at once."),
+    hr(),
+    h2(text: "Why — forced by the axioms, not chosen"),
+    h3(text: "A closed system ⇒ a heuristic is never necessary (§4) ⇒ a black-box `solve` is forbidden"),
+    p(text: "DESIGN §4: \"in a closed system a heuristic is never necessary — the richer source always exists or can be written,\" and §2: \"nothing is opaque that isn't *genuinely* atomic.\" A `solve` primitive is an opaque box that hides an iterative method behind a name. That is precisely the anemic-leaf pattern (`decompress → map → reduce` un-run) at the substrate level. The richer source *does* exist — the iteration, the residual, and the residual-acceptance test are each nameable and grounded (a typed error-bound contract is legitimate *semantics*, not a heuristic) — so the box is never necessary."),
+    h3(text: "Bounded-forward execution ⇒ `solve` is the fixpoint *reading*, encoded acyclically (§4)"),
+    p(text: "On its face `solve` fights \"bounded and forward … never cyclic values.\" It doesn't, because the substrate already resolves that tension, and each solve family reuses it:"),
+    ul(items: [
+      li(text: "**\"cyclic relations via acyclic encodings.\"** A constraint (a circuit's KCL node-equation `Σi = 0`, a sequential-logic fixed point) is *mutual/cyclic*. It is never represented as a cyclic value — it is encoded as an **acyclic residual function** (given a candidate assignment, forward-evaluate \"how far off am I\") plus a **`Loop`** that iterates the residual toward its acceptance contract. Recursion is already sugar over `Loop`; a Newton / time-stepping / relaxation solver *is* that `Loop` — the **numerical** family the substrate does not yet express."),
+      li(text: "**structural solving already has its authority.** The \"find the thing that satisfies\" machinery is load-bearing and grounded *today*: `find_witness` (`src/v2/std/find_witness.dag:240`) **selects** a witness from a **finite supplied `CandidateSet`** under a predicate — it does **not** iterate candidates or evaluate a numerical residual — and `solve_constraints` / `ConstraintGraph` (`src/v2/std/constraints.dag:28-137`) ground a node by selecting from a candidate set (`[root]`) under the **structural** predicate `candidate == source_facts`. Unification, resolve, and affected-set closure are this structural solve family. More structural solving = extend `solve_constraints`, never a second authority."),
+    ]),
+    h3(text: "Single authority ⇒ a `solve` primitive nicknames what already exists (§3)"),
+    p(text: "For the **structural** family, `Loop` + the existing `solve_constraints` / `ConstraintGraph` authority already compose to \"select an assignment that satisfies a structural predicate under a bound.\" A parallel `solve` primitive — or a parallel `Residual`/`Constraint` + `solve` authority — is a **second name** for that composition: the §3 nicknaming violation at the most expensive layer to fork (the substrate). We generate from concepts; a substrate nickname duplicates into every derived thing (emit, testgen, lenses). For the **numerical** family there is nothing to nickname *yet* — it is absent — so it is authored once, as the three orthogonal facts below, not forked in."),
+    hr(),
+    h2(text: "The decomposition — structural exists, numerical is three orthogonal facts"),
+    CodeBlock {
+      code: "solve_numeric  ≜  Loop(\n                    body:       step( residual(model, candidate) ),   // solver method = extdeps handler\n                    measure:    finite_measure  ⊢ TerminationProof,   // termination.dag — separate from descent\n                    accept_when: residual_within(contract),           // typed norm/units/bound contract — semantics\n                    on_exhaust:  Refuse{ iters, residual }            // §5 fail-closed\n                  )\n// STRUCTURAL solving already exists: ConstraintGraph / solve_constraints (constraints.dag). NUMERICAL solving is ABSENT."
+    },
+    TableBlock {
+      header: row(cells: [cell(text: "fact (numerical, when built)"), cell(text: "what it is"), cell(text: "grounded on")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "**finite loop measure + `TerminationProof`**"), cell(text: "the iteration bound. `DescentEvidence` (`Strict` \\| `NonIncreasing` \\| `DescentUnknown`) is *per-step* evidence, **not** the bound — strictly-decreasing residuals over the reals need not terminate finitely"), cell(text: "`TerminationProof` (`dag/std/termination.dag:150`), a **separate** type from `DescentEvidence` (`termination.dag:5-8`)")]),
+        row(cells: [cell(text: "**residual-acceptance contract**"), cell(text: "a typed norm + units + error bound (\"residual within tolerance\"). This is **grounded semantics** — a typed contract, cf. the cardinality/refinement machinery — **not** a §4 heuristic escape hatch (correcting the earlier framing that implied \"tolerance = heuristic\")"), cell(text: "a typed error-bound contract (authored with the numerical gap)")]),
+        row(cells: [cell(text: "**solver method**"), cell(text: "the numerical kernel — Newton / LU-solve / ODE-integrator / relaxation"), cell(text: "an **extdeps realization handler** — the §2/§3 transport pattern (one agnostic shape, N handlers: LAPACK / ngspice / pure-dag Newton)")]),
+      ],
+    },
+    p(text: "Structural solving is *not* in this table because it already exists — it is the `solve_constraints` / `ConstraintGraph` authority, extended in place. Only the **numerical** family is decomposed here, and only its solver-method handler is not pure substrate: that is a transport handler bound to an agnostic shape, exactly like `cc` compiling or `ngspice` simulating. Dispatch over handlers lives in `extdeps/`, never in the interface (§3)."),
+    hr(),
+    h2(text: "The proof it is sufficient: **the compiler already solves structurally, and no solve is a primitive**"),
+    p(text: "This is the decisive point. **Structural** `solve` is not a proposal to add — it is already load-bearing in the tree, grounded on `solve_constraints` / `ConstraintGraph`, in higher-order form:"),
+    ul(items: [
+      li(text: "**Type unification** is a structural constraint solve."),
+      li(text: "**The resolver's fixed point** is a structural solve."),
+      li(text: "**Affected-set closure** is a structural solve (iterate the edge relation to a stable fixpoint — the `|E|`-sweep)."),
+      li(text: "**Coercion** (`coercion_fold` via `find_witness`) is \"select the assignment that makes one model inhabit another\" — a finite-selection structural solve."),
+    ]),
+    p(text: "Every one is a bounded fold / `Loop` selecting under a structural predicate, grounded on the existing authority. None is a primitive, and none needs a new one. **Numerical** solving is the honest exception: the compiler does *not* do it today, so \"solve is higher-order, not a primitive\" holds for it as a **typed frontier GAP** — expressible by the three orthogonal facts above the moment it earns its keep, still without a primitive. So the ruling holds for both families: structural = grounded-and-existing (extend, don't fork); numerical = honestly-absent."),
+    hr(),
+    h2(text: "The honest residue — structural extends, numerical is a declared gap"),
+    p(text: "Not a primitive, and not a new connective or behavior — for neither family:"),
+    ol(items: [
+      li(text: "**Structural — zero new authority.** If more structural solving is needed, extend the existing `solve_constraints` / `ConstraintGraph` (`src/v2/std/constraints.dag`). Minting a `Residual`/`Constraint` + `solve` fold here would be a §3 fork of an authority that already exists."),
+      li(text: "**Numerical — a declared, ABSENT typed gap, not a fork.** When it earns its keep it is modeled as the three orthogonal facts above: a finite loop measure + `TerminationProof`, a typed residual-acceptance contract, and a solver-method extdeps handler. This is un-shelve-scale modeling; it is authored at its own trigger, not pretended-present now."),
+    ]),
+    p(text: "Zero new connectives. Zero new behaviors. Structural: extend one existing authority. Numerical: one declared gap with a named trigger."),
+    hr(),
+    h2(text: "The load-bearing fail-closed property (do not lose this)"),
+    p(text: "A non-converging numerical solve **refuses** — a typed, located diagnostic carrying iteration count and final residual. It **never** fabricates a plausible answer (a \"return best-so-far\", a silent clamp, a default). That is the §5 absorbing-fallback trap: substituting ⊤-as-answer for ⊤-as-ignorance, its frequency zeroed by construction so the deficit never ranks for fixing. A solver that degrades to keep going is not being cautious — it is a fail-open one config edit from silent. The failure arm must refuse, never widen. Concretely: **exhausting the finite loop measure without meeting the residual-acceptance contract REFUSES** (typed, carrying iters + residual). Two corrections to an earlier framing: the acceptance contract is a **typed norm/units/error-bound contract = grounded semantics**, *not* a tolerance-flag heuristic; and the loop bound is the finite **measure + `TerminationProof`**, *not* `DescentEvidence` (which is per-step evidence, fail-closed to `DescentUnknown`, and a distinct concern from the acceptance test)."),
+    hr(),
+    h2(text: "Placement: `solve` is **off the critical path** for the language lane"),
+    p(text: "Important for the dependency map: the exotic analog/HDL targets that motivated this question **do not need `solve` in the compiler**. SPICE and Verilog *emit* a netlist / RTL, and a **host simulator** (`ngspice`, `verilator`, `iverilog`) performs the solve. So there the solver is a `run_ngspice`-style **transport handler** whose executable identity is bound in its extdeps transport row (the `HostTransportDescriptor` / `ProcessProgram` in `host_transport.dag`), dispatched generically — not a compiler-internal operation, and not a new branch in a central switch (that is the F4 de-fork the frontier doc calls out)."),
+    p(text: "`solve`-as-first-class-substrate only bites if the *compiler itself* must solve internally. Structural solving there is already done, higher-order and grounded on `solve_constraints` (unification / resolve / affected-set). **Numerical** in-substrate solving is the absent typed gap. So `solve` is a foundation item **F6** that the language targets can proceed without; the numerical model is authored when a first-class in-substrate solver earns its keep (e.g. a pure-dag SPICE realization that does not shell out to ngspice), priced by that displaced cost — not before."),
+  ]
+}
+
+data solve_higher_order_design_plan: Plan = Plan {
+  slug: "solve-higher-order-design",
+  title: "`solve` is higher-order, not a primitive — the standing rationale",
+  body: solve_higher_order_design_body(),
+  dissolution: HasTrigger {
+    text: "This doc dissolves when the lane un-shelves: the **structural**-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`; `.dag` has no comment trivia — encode as `data … : String`) plus a DESIGN §4 anchor, and the **numerical**-solve gap is authored at its own trigger as the three orthogonal facts above (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) — no parallel `Residual`/`Constraint` authority is minted. Until then, this is the single authority for the ruling."
+  }
+}

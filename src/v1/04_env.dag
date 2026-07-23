@@ -1,15 +1,25 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr }
+
+import std.types { SourceSpan, is_kernel_type }
+
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
+  str_bindings: Map<String, TypeBinding>
+  ancestry_str_bindings: Map<String, TypeBinding>
+  parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
+  source_visible_names: Map<String, Bool>
+  symbol_index: SymbolIndex
+  module_path: String
 }
 
 type TypeBinding {
@@ -18,10 +28,718 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
+data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
+
+data qualified_module_projection_invariant: String = "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics)."
+
+type GlobalBareCandidate {
+  module_path: String
+  binding: TypeBinding
+}
+
+type GlobalBareLookupState
+  = GlobalBareUniqueBinding { module_path: String, binding: TypeBinding }
+  | GlobalBareAmbiguousBinding { candidates: List<GlobalBareCandidate> }
+
+type ImportBinding {
+  name: String
+  resolved: Node
+}
+
+type ScopeBinding {
+  name: String
+  resolved: Node
+  provenance: SubValueRelation
+}
+
+type ServiceCensusEntry {
+  module_path: String
+  item: Node
+}
+
+type SymbolIndex {
+  entries: Map<String, Node>
+  global_bare: Map<String, GlobalBareLookupState>
+  services: Map<String, ServiceCensusEntry>
+}
+
+type Scope {
+  locals: Map<String, ScopeBinding>
+}
+
+fn empty_symbol_index() -> SymbolIndex {
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map() }
+}
+
+fn empty_type_env() -> TypeEnv {
+  TypeEnv {
+    module_path: "",
+    bindings: empty_map(),
+    str_bindings: empty_map(),
+    ancestry_str_bindings: empty_map(),
+    parents: [],
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: empty_map(),
+    intern_table: empty_intern_table(),
+    source_visible_names: empty_map(),
+    symbol_index: empty_symbol_index()
+  }
+}
+
+fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
+  map_get(index.entries, qualified_name)
+}
+
+fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
+  candidates |> any(c => c.binding.resolved == resolved)
+}
+
+fn symbol_index_track_global_bare(
+  global_bare: Map<String, GlobalBareLookupState>,
+  module_path: String,
+  binding: TypeBinding
+) -> Map<String, GlobalBareLookupState> {
+  match map_get(global_bare, binding.name) {
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      if global_bare_candidates_contain(candidates: cands, resolved: binding.resolved) {
+        global_bare
+      } else {
+        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
+          candidates: concat(cands, [GlobalBareCandidate { module_path: module_path, binding: binding }])
+        })
+      }
+    Present { value: GlobalBareUniqueBinding { module_path: existing_path, binding: existing } } =>
+      if existing.resolved == binding.resolved {
+        global_bare
+      } else {
+        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
+          candidates: [
+            GlobalBareCandidate { module_path: existing_path, binding: existing },
+            GlobalBareCandidate { module_path: module_path, binding: binding }
+          ]
+        })
+      }
+    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { module_path: module_path, binding: binding })
+  }
+}
+
+fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
+  SymbolIndex {
+    entries: map_insert(index.entries, qualified_name, resolved),
+    global_bare: index.global_bare,
+    services: index.services
+  }
+}
+
+fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: TypeBinding) -> SymbolIndex {
+  SymbolIndex {
+    entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
+    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
+    services: index.services
+  }
+}
+
+fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: String, item: Node) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item })
+  }
+}
+
+fn empty_scope() -> Scope {
+  Scope { locals: empty_map() }
+}
+
+fn scope_lookup(scope: Scope, name: String) -> ScopeBinding? {
+  map_get(scope.locals, name)
+}
+
+fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
+  Scope { locals: map_insert(scope.locals, binding.name, binding) }
+}
+
+data ancestry_cache_sharing_dissolution_trigger: String = "DISSOLVED (v1-run-stability-throughline, single-parent ancestry share): build_type_env / build_type_env_unresolved formerly recomputed ancestry_str_bindings as a fresh per-module map_merge(parent.interface.env.ancestry_str_bindings, parent.interface.env.str_bindings) in the single-import case — provably byte-identical to parent.interface.cache.str_bindings (interface.cache.str_bindings == map_merge(env.ancestry_str_bindings, env.str_bindings) by construction at both build sites, line 5973/6081), which is exactly ancestry_cache.str_bindings when count==1 (union of one parent cache is that cache, Rc-shared unchanged). So all three branches resolved to ancestry_cache.str_bindings and the conditional collapsed to `let ancestry_str_bindings = ancestry_cache.str_bindings` — one Rc-borrow, no fresh HAMT per module. Kills the O(M²) SipHash/map_merge churn on single-import chains and lets chains Rc-share the parent's already-retained str_bindings spine (§2 redundancy, §6 bare-minimum-cost; construction not validation — the recompute is now unwritable). Full SymbolIndex authority is the follow-on (type-env-single-authority-design.md)."
+
+type TypeEnvCache {
+  deps_map: Map<String, List<String>>
+  str_bindings: Map<String, TypeBinding>
+  cycle_set_str: Map<String, Bool>
+  variant_locals: Map<String, TypeBinding>
+}
+
+data visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability."
+
+fn empty_type_env_cache() -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: empty_map(),
+    str_bindings: empty_map(),
+    cycle_set_str: empty_map(),
+    variant_locals: empty_map()
+  }
+}
+
+type TypeEnvCacheMergeConflict {
+  name: String
+  import_path: String
+  existing_site: String
+  incoming_site: String
+  span: SourceSpan
+  same_tree: Bool
+}
+
+data source_tree_partition_note: String = "Tree partition for the binding-fork ledger (lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). Tree does NOT decide refuse-vs-ledger anymore - it only LABELS the dissolution partition of an already-ledgered fork: same-tree (both decls under one tree, incl. dag-vs-dag across dirs) = a homonym/fork to consolidate within that tree; cross-tree (dag/ vs src/v2/) = the v1-seed-vs-v2 whole-file duplication the namespace census named; kernel-synthetic sites (<kernel:...>) are their own tree = the kernel-shadow class. ALL of these are LEDGERED (pre-existing forks already resolved on main by overlay-wins; refusing retroactively would regress working resolution), keeping the pre-guard import-order winner. Refusal is reserved for forks a PR NEWLY introduces (the novelty gate, a separate follow-up comparing this ledger to a drift-gated baseline). Partition on tree, never dir."
+
+fn source_tree_of(file: String) -> String {
+  if contains(file, "<kernel:") {
+    "kernel"
+  } else if contains(file, "src/v2") {
+    "src/v2"
+  } else if contains(file, "src/v1") {
+    "src/v1"
+  } else if contains(file, "dag/") {
+    "dag"
+  } else {
+    "other"
+  }
+}
+
+fn conflict_is_cross_tree(c: TypeEnvCacheMergeConflict) -> Bool {
+  source_tree_of(file: c.existing_site) != source_tree_of(file: c.incoming_site)
+}
+
+type GuardedTypeEnvCacheMerge {
+  cache: TypeEnvCache
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+data guarded_cache_union_note: String = "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks."
+
+fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
+  if a.resolved.span == b.resolved.span {
+    true
+  } else {
+    a == b
+  }
+}
+
+data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
+
+fn guarded_union_str_bindings_into_acc(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
+    match map_get(overlay, name) {
+      Absent => state
+      Present { value: incoming } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, incoming),
+            conflicts: state.conflicts
+          }
+          Present { value: existing } =>
+            if binding_same_authority(a: existing, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: map_insert(state.bindings, name, incoming),
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn guarded_union_str_bindings_into_overlay(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(acc |> map_keys, init: GuardedStrBindingsUnion { bindings: overlay, conflicts: conflicts }, f: (state, name) =>
+    match map_get(acc, name) {
+      Absent => state
+      Present { value: accumulated } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, accumulated),
+            conflicts: state.conflicts
+          }
+          Present { value: incoming } =>
+            if binding_same_authority(a: accumulated, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: state.bindings,
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: accumulated.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: accumulated.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn guarded_union_str_bindings(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  if (acc |> count) >= (overlay |> count) {
+    guarded_union_str_bindings_into_acc(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  } else {
+    guarded_union_str_bindings_into_overlay(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  }
+}
+
+type GuardedStrBindingsUnion {
+  bindings: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+fn union_deps_map_into_acc(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: existing } => if existing == incoming { m } else { map_insert(m, name, incoming) }
+        }
+    }
+  )
+}
+
+fn union_deps_map_into_overlay(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: _incoming } => m
+        }
+    }
+  )
+}
+
+fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  if (acc |> count) >= (overlay |> count) {
+    union_deps_map_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_deps_map_into_overlay(acc: acc, overlay: overlay)
+  }
+}
+
+fn union_bool_set_into_acc(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(m, name) {
+      Present { value: _ } => m
+      Absent =>
+        match map_get(overlay, name) {
+          Present { value: v } => map_insert(m, name, v)
+          Absent => m
+        }
+    }
+  )
+}
+
+fn union_bool_set_into_overlay(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: incoming } => if incoming == accumulated { m } else { map_insert(m, name, accumulated) }
+        }
+    }
+  )
+}
+
+fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  if (acc |> count) >= (overlay |> count) {
+    union_bool_set_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_bool_set_into_overlay(acc: acc, overlay: overlay)
+  }
+}
+
+fn union_variant_locals_into_acc(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: _existing } => map_insert(m, name, incoming)
+        }
+    }
+  )
+}
+
+fn union_variant_locals_into_overlay(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: _incoming } => m
+        }
+    }
+  )
+}
+
+fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  if (acc |> count) >= (overlay |> count) {
+    union_variant_locals_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_variant_locals_into_overlay(acc: acc, overlay: overlay)
+  }
+}
+
+fn merge_type_env_cache_guarded(
+  base: TypeEnvCache,
+  overlay: TypeEnvCache,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedTypeEnvCacheMerge {
+  let str_union = guarded_union_str_bindings(acc: base.str_bindings, overlay: overlay.str_bindings, import_path: import_path, conflicts: conflicts)
+  GuardedTypeEnvCacheMerge {
+    cache: TypeEnvCache {
+      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+      str_bindings: str_union.bindings,
+      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
+    },
+    conflicts: str_union.conflicts
+  }
+}
+
+fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: map_merge(base.deps_map, overlay.deps_map),
+    str_bindings: map_merge(base.str_bindings, overlay.str_bindings),
+    cycle_set_str: map_merge(base.cycle_set_str, overlay.cycle_set_str),
+    variant_locals: map_merge(base.variant_locals, overlay.variant_locals)
+  }
+}
+
+fn lookup_binding_local_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+  match intern_find(table: env.intern_table, s: name) {
+    Present { value: ident } =>
+      match map_get(env.bindings, ident) {
+        Present { value: binding } => Present { value: binding }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(bindings |> map_values, init: empty_map(), f: (acc, binding) =>
+    map_insert(acc, binding.name, binding)
+  )
+}
+
+fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
+  match map_get(env.str_bindings, name) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      match map_get(env.ancestry_str_bindings, name) {
+        Present { value: binding } => Present { value: binding }
+        Absent =>
+          match intern_find(table: env.intern_table, s: name) {
+            Present { value: id } => map_get(env.bindings, id)
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+  match lookup_binding_by_name_local(env: env, name: name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => lookup_binding_after_global_bare(env: env, name: name)
+  }
+}
+
+fn lookup_binding_after_global_bare(env: TypeEnv, name: String) -> TypeBinding? {
+  match global_bare_lookup(env: env, name: name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => lookup_qualified_module_projection(env: env, name: name)
+  }
+}
+
+fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding? {
+  match contains(name, ".") {
+    false => Absent
+    true =>
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+        Present { value: resolved } =>
+          Present {
+            value: TypeBinding {
+              name: name,
+              resolved: resolved,
+              provenance: SubValueUnknown
+            }
+          }
+        Absent => Absent
+      }
+  }
+}
+
+type SegmentLcpScan {
+  remaining: List<String>
+  matched: Int
+  live: Bool
+}
+
+fn segment_lcp_len(a: List<String>, b: List<String>) -> Int {
+  let scan = fold(a, init: SegmentLcpScan { remaining: b, matched: 0, live: true }, f: (acc, seg) =>
+    if acc.live {
+      match acc.remaining |> first {
+        Present { value: bh } =>
+          if bh == seg {
+            SegmentLcpScan { remaining: acc.remaining |> skip(1), matched: acc.matched + 1, live: true }
+          } else {
+            SegmentLcpScan { remaining: acc.remaining, matched: acc.matched, live: false }
+          }
+        Absent => SegmentLcpScan { remaining: acc.remaining, matched: acc.matched, live: false }
+      }
+    } else { acc }
+  )
+  scan.matched
+}
+
+type GlobalBareNearestScan {
+  best_lcp: Int
+  best: TypeBinding?
+  tie: Bool
+}
+
+type GlobalBareNearestCandidateScan {
+  best_lcp: Int
+  best: GlobalBareCandidate?
+  tie: Bool
+}
+
+fn global_bare_nearest_ancestor_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
+  let env_segs = module_path_segments(path: env_module_path)
+  let scan = fold(candidates, init: GlobalBareNearestCandidateScan { best_lcp: 0 - 1, best: none, tie: false }, f: (acc, cand) =>
+    let l = segment_lcp_len(a: env_segs, b: module_path_segments(path: cand.module_path))
+    if l > acc.best_lcp {
+      GlobalBareNearestCandidateScan { best_lcp: l, best: Present { value: cand }, tie: false }
+    } else if l == acc.best_lcp {
+      GlobalBareNearestCandidateScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
+    } else { acc }
+  )
+  match scan.tie {
+    true => Absent
+    false => scan.best
+  }
+}
+
+fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
+  match global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates) {
+    Present { value: cand } => Present { value: cand.binding }
+    Absent => Absent
+  }
+}
+
+fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+        true => Present { value: mp }
+        false => Absent
+      }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match global_bare_nearest_ancestor_candidate(env_module_path: owner_module_path, candidates: cands) {
+        Present { value: cand } =>
+          match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+            true => Present { value: cand.module_path }
+            false => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: binding.resolved) == name
+}
+
+fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  fold(params, init: empty_map(), f: (acc, p) =>
+    let pt = param_node_type_expr(n: p)
+    let pname = param_node_name_at(n: p, source_indices: source_indices)
+    let tname = authored_name_at(source_indices: source_indices, node: pt)
+    if (pt.children |> count) == 0 && pt.connective == NoConnective && pname != "" && (pname == tname || pname == pt.name) {
+      map_insert(acc, pname, true)
+    } else { acc }
+  )
+}
+
+data qualify_declaration_position_invariant: String = "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction."
+
+fn qualify_decl_reference_positions(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+  let inf2 = qualify_borrowed_inferred(inferred: n.inferred, owner_module_path: owner_module_path, env: env, excluded: excluded)
+  let ch2 = n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
+  node_with_children(n: node_with_inferred(n: n, inferred: inf2), children: ch2)
+}
+
+fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+  let qualified_children = if (n.connective == NoConnective) {
+    n.children |> map(c => qualify_borrowed_type_names(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
+  } else {
+    n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
+  }
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let is_type_var = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  let rewrite = n.connective == NoConnective
+    && name != ""
+    && !contains(name, ".")
+    && !is_kernel_type(name: name)
+    && !map_has(excluded, name)
+    && !is_type_var
+  let owner_hit = if rewrite {
+    global_bare_owner_module(env: env, owner_module_path: owner_module_path, name: name)
+  } else { none }
+  match owner_hit {
+    Present { value: mp } =>
+      if mp == "" {
+        node_with_children(n: n, children: qualified_children)
+      } else {
+        let qname = concat(mp, ".", name)
+        Node {
+          name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
+          children: qualified_children, connective: n.connective, params: n.params,
+          inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+          body: n.body, transport: n.transport, properties: n.properties,
+          type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+          has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+          expr_data: n.expr_data
+        }
+      }
+    Absent => node_with_children(n: n, children: qualified_children)
+  }
+}
+
+fn node_with_children(n: Node, children: List<Node>) -> Node {
+  Node {
+    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    children: children, connective: n.connective, params: n.params,
+    inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+    body: n.body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+    expr_data: n.expr_data
+  }
+}
+
+fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
+  Node {
+    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    children: n.children, connective: n.connective, params: n.params,
+    inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+    body: n.body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+    expr_data: n.expr_data
+  }
+}
+
+fn qualify_borrowed_inferred(inferred: InferredNode?, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> InferredNode? {
+  match inferred {
+    Present { value: Resolved { node: t } } =>
+      Present { value: Resolved { node: qualify_borrowed_type_names(n: t, owner_module_path: owner_module_path, env: env, excluded: excluded) } }
+    _ => inferred
+  }
+}
+
+fn qualified_all_but_last(name: String) -> String {
+  let segs = module_path_segments(path: name)
+  let seg_count = segs |> count
+  if seg_count <= 1 {
+    ""
+  } else {
+    let scan = fold(segs |> take(seg_count - 1), init: "", f: (acc, seg) =>
+      if acc == "" { seg } else { concat(acc, ".", seg) }
+    )
+    scan
+  }
+}
+
+fn record_global_bare_ambiguous_silent_pick(
+  env_module_path: String,
+  name: String,
+  cands: List<GlobalBareCandidate>
+) -> Unit {
+  let cand_count = cands |> count
+  match global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: cands) {
+    Present { value: cand } =>
+      resolution_silent_pick_record_global_bare_lcp_pick(
+        env_module_path: env_module_path,
+        name: name,
+        candidate_count: cand_count,
+        chosen_module_path: cand.module_path
+      )
+    Absent =>
+      resolution_silent_pick_record_global_bare_lcp_tie(
+        env_module_path: env_module_path,
+        name: name,
+        candidate_count: cand_count
+      )
+  }
+}
+
+fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
+      if resolution_silent_pick_is_enabled() && (cands |> count) >= 2 {
+        record_global_bare_ambiguous_silent_pick(env_module_path: env.module_path, name: name, cands: cands)
+      }
+      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
+    }
+    Absent => Absent
+  }
+}
+
+fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
+    Absent => false
+  }
+}
+
+fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
+  match map_get(env.bindings, ident) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      let name = intern_str(table: env.intern_table, id: ident)
+      lookup_binding_by_name(env: env, name: name)
+  }
+}
+
 fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
   match map_get(env.recursive_type_set, ident) {
     Present { value: _ } => true
-    _ => false
+    Absent => false
   }
 }
 
@@ -33,16 +751,39 @@ fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
 }
 
 fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
-  match map_get(env.bindings, ident) {
+  match lookup_binding(env: env, ident: ident) {
     Present { value: binding } => Present { value: binding.resolved }
     Absent => Absent
   }
 }
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
-  match intern_find(table: env.intern_table, s: name) {
-    Present { value: id } => lookup_type(env: env, ident: id)
+  match lookup_binding_by_name(env: env, name: name) {
+    Present { value: binding } =>
+      match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
+        true => Present { value: binding.resolved }
+        false =>
+          match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
+            Present { value: arm } => Present { value: arm }
+            Absent => Present { value: binding.resolved }
+          }
+      }
     Absent => Absent
+  }
+}
+
+fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {
+  match owner.connective {
+    Disj =>
+      match find_child_named(n: owner, name: name, source_indices: env.source_indices) {
+        Present { value: arm } =>
+          match (arm.children |> count) == 0 {
+            true => Present { value: arm }
+            false => Absent
+          }
+        Absent => Absent
+      }
+    _ => Absent
   }
 }
 
@@ -52,7 +793,20 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.ident {
-    Present { value: id } => lookup_type(env: env, ident: id)
+    Present { value: id } =>
+      match lookup_type(env: env, ident: id) {
+        Present { value: resolved } =>
+          let name = authored_name(env: env, node: node)
+          match resolved.connective == Disj && authored_name_at(source_indices: env.source_indices, node: resolved) != name {
+            true =>
+              match variant_arm_type_projection(env: env, owner: resolved, name: name) {
+                Present { value: arm } => Present { value: arm }
+                Absent => Present { value: resolved }
+              }
+            false => Present { value: resolved }
+          }
+        Absent => Absent
+      }
     Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
   }
 }
@@ -65,9 +819,20 @@ fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
 }
 
 fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
-  match map_get(env.inductive_fields, type_name) {
+  let local = match map_get(env.inductive_fields, type_name) {
     Present { value: fields } => fields
     Absent => []
+  }
+  if local |> count > 0 {
+    local
+  } else {
+    fold(env.parents, init: [], f: (acc, parent) =>
+      if acc |> count > 0 {
+        acc
+      } else {
+        inductive_fields_for(env: parent, type_name: type_name)
+      }
+    )
   }
 }
 
@@ -76,12 +841,22 @@ fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, fie
     |> any(f => f.variant_name == variant_name && f.field_name == field_name)
 }
 
+data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
+
+fn append_inductive_field_absent(existing: List<InductiveField>, incoming: InductiveField) -> List<InductiveField> {
+  if existing |> any(f => inductive_field_key(f: f) == inductive_field_key(f: incoming)) {
+    existing
+  } else {
+    concat(existing, [incoming])
+  }
+}
+
 fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }]))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
 }
 
 fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
@@ -89,18 +864,44 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }]))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
+}
+
+data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
+
+fn recursion_shape_key(shape: RecursionShape) -> String {
+  match shape {
+    DirectRecursion => "direct"
+    ListRecursion => "list"
+    OptionalRecursion => "optional"
+    SetRecursion => "set"
+    MapValueRecursion => "map_value"
+  }
+}
+
+fn inductive_field_key(f: InductiveField) -> String {
+  concat(concat(concat(concat(concat(concat(f.variant_name, "|"), f.field_name), "|"), recursion_shape_key(shape: f.shape)), "|"), f.element_type)
 }
 
 fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
   right |> map_keys |> fold(init: left, f: (acc, type_name) =>
     match map_get(right, type_name) {
       Present { value: incoming } =>
-        let existing = match map_get(acc, type_name) {
-          Present { value: fs } => fs
-          Absent => []
+        match map_get(acc, type_name) {
+          Present { value: existing } =>
+            if existing == incoming {
+              acc
+            } else {
+              let seen = existing |> fold(init: empty_set(), f: (s, f) => set_insert(s, inductive_field_key(f: f)))
+              let additions = incoming |> filter(f => set_contains(seen, inductive_field_key(f: f)) == false)
+              if additions |> count == 0 {
+                acc
+              } else {
+                map_insert(acc, type_name, concat(existing, additions))
+              }
+            }
+          Absent => map_insert(acc, type_name, incoming)
         }
-        map_insert(acc, type_name, concat(existing, incoming))
       Absent => acc
     }
   )
@@ -116,15 +917,27 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
-  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
-  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
-  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
-  let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
-  let merged_intern_table = match envs |> first {
-    Present { value: first_env } => first_env.intern_table
-    Absent => empty_intern_table()
-  }
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+
+
+fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
+  fold(tp_names, init: env, f: (e, tp_name) =>
+    let tp_binding = TypeBinding {
+      name: tp_name,
+      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
+    }
+    TypeEnv { module_path: e.module_path,
+      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
+      str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
+      ancestry_str_bindings: e.ancestry_str_bindings,
+      parents: e.parents,
+      recursive_types: e.recursive_types,
+      recursive_type_set: e.recursive_type_set,
+      inductive_fields: e.inductive_fields,
+      source_indices: e.source_indices,
+      intern_table: e.intern_table,
+      source_visible_names: map_insert(e.source_visible_names, tp_name, true),
+      symbol_index: e.symbol_index
+    }
+  )
 }

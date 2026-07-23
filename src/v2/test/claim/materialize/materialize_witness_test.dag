@@ -1,0 +1,90 @@
+module v2.test.materialize.materialize_witness
+
+import v2.std.materialize {
+  materialize_redundant_computation_count,
+  materialize_has_duplicate_computation,
+  materialize_distinct_computation_count,
+  materialize_node_count,
+  distinct_hashes,
+  hashes_contain
+}
+import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
+import std.realization_schedule {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  cost_account_predicted_zero,
+  runnable_resource_profile_negligible
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn conj2(a: Node, b: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^left }, target: a },
+      Edge { label: Named { name: ^right }, target: b }
+    ]
+  )
+}
+
+fn dup_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^x)) }
+
+fn distinct_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^y)) }
+
+test fn duplicate_subtree_is_one_redundant_computation() -> Bool {
+  materialize_redundant_computation_count(root: dup_fixture()) == 1
+}
+
+test fn duplicate_subtree_flagged() -> Bool {
+  materialize_has_duplicate_computation(root: dup_fixture())
+}
+
+test fn distinct_subtrees_have_no_redundancy() -> Bool {
+  materialize_redundant_computation_count(root: distinct_fixture()) == 0
+}
+
+test fn distinct_subtrees_not_flagged() -> Bool {
+  !materialize_has_duplicate_computation(root: distinct_fixture())
+}
+
+test fn dup_fixture_node_and_distinct_counts() -> Bool {
+  (materialize_node_count(root: dup_fixture()) == 3)
+    && (materialize_distinct_computation_count(root: dup_fixture()) == 2)
+}
+
+test fn distinct_fixture_all_distinct() -> Bool {
+  materialize_distinct_computation_count(root: distinct_fixture()) == 3
+}
+
+fn witness_plan_schedule() -> List<List<Runnable>> {
+  [
+    [RunnableSingleClaim {
+      entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
+      function: "duplicate_subtree_flagged"
+      profile: runnable_resource_profile_negligible()
+    }]
+  ]
+}
+
+test fn node_content_hash_is_realization_plan_target() -> Bool {
+  let root = dup_fixture()
+  let other = distinct_fixture()
+  let plan = RealizationPlan {
+    target: content_hash(n: root)
+    objective: RealizationObjective { goals: [] }
+    schedule: witness_plan_schedule()
+    total: cost_account_predicted_zero()
+  }
+  hashes_contain(hs: distinct_hashes(root: root), h: plan.target)
+    && !hashes_contain(hs: distinct_hashes(root: other), h: plan.target)
+}

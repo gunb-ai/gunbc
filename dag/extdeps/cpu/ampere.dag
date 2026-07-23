@@ -1,11 +1,5 @@
 module extdeps.cpu.ampere
 
-import extdeps.cpu.types { Architecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
-import extdeps.vendor.ampere { ampere }
-import std.measure { hardware_thread_count, hertz, watt }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -13,6 +7,101 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "en.wikipedia.org/wiki/Ampere_Altra"
   }
 }
+
+data ampere_altra_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf"
+  }
+}
+
+data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/assets/Altra_Rev_A1_DS_v1_50_20240130_3375c3dec5_1c5d4604fa.pdf"
+  }
+}
+
+data ampere_altra_l1_data_capacity_per_core: ByteSize = byte_size(65536)
+data ampere_altra_l1_instruction_capacity_per_core: ByteSize = byte_size(65536)
+data ampere_altra_l1_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: ampere_altra_l1_data_capacity_per_core,
+  instruction_capacity_per_core: ampere_altra_l1_instruction_capacity_per_core,
+  line_size: ampere_altra_l1_line_size,
+}
+
+data ampere_altra_l1_cache_citations: List<CacheGeometryCitation> = [
+  {
+    field: "data_capacity_per_core"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+  {
+    field: "instruction_capacity_per_core"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+  {
+    field: "line_size"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+]
+
+data ampere_altra_l2_capacity_per_core: ByteSize = byte_size(1048576)
+data ampere_altra_l2_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: ampere_altra_l2_capacity_per_core,
+  line_size: ampere_altra_l2_line_size,
+}
+
+data ampere_altra_l2_cache_citations: List<CacheGeometryCitation> = [
+  {
+    field: "capacity_per_core"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+  {
+    field: "line_size"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+]
+
+data ampere_altra_max_l3_capacity: ByteSize = byte_size(16777216)
+data ampere_altra_l3_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_max_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: ampere_altra_max_l3_capacity,
+  line_size: ampere_altra_l3_line_size,
+}
+
+data ampere_altra_max_l3_cache_citations: List<CacheGeometryCitation> = [
+  {
+    field: "capacity"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+  {
+    field: "line_size"
+    authority: ampere_altra_rev_a1_datasheet_authority
+  },
+]
+
+data ampere_altra_classic_l3_capacity: ByteSize = byte_size(33554432)
+
+data ampere_altra_classic_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: ampere_altra_classic_l3_capacity,
+  line_size: ampere_altra_l3_line_size,
+}
+
+data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
+  {
+    field: "capacity"
+    authority: ampere_altra_classic_rev_a1_datasheet_authority
+  },
+  {
+    field: "line_size"
+    authority: ampere_altra_classic_rev_a1_datasheet_authority
+  },
+]
 
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
@@ -24,6 +113,12 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
   tdp_watts: watt(183),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_max_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_max_l3_cache_citations,
 }
 
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
@@ -36,4 +131,10 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
   tdp_watts: watt(124),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_classic_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_classic_l3_cache_citations,
 }

@@ -1,0 +1,36 @@
+module v2.test.emit.logic_ground_truth
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn gt_complement(a: Bool) -> Bool { bool_boolean_algebra.complement(a) }
+
+fn gt_meet(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.meet(a, b) }
+
+fn gt_join(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.join(a, b) }
+
+fn is_false(b: Bool) -> Bool { match b { True => False, False => True } }
+
+fn is_true(b: Bool) -> Bool { match b { True => True, False => False } }
+
+test fn logic_complement_truth_table() -> Bool {
+  is_false(b: gt_complement(a: True)) && is_true(b: gt_complement(a: False))
+}
+
+test fn logic_meet_truth_table() -> Bool {
+  is_true(b: gt_meet(a: True, b: True))
+    && is_false(b: gt_meet(a: True, b: False))
+    && is_false(b: gt_meet(a: False, b: True))
+    && is_false(b: gt_meet(a: False, b: False))
+}
+
+test fn logic_join_truth_table() -> Bool {
+  is_true(b: gt_join(a: True, b: True))
+    && is_true(b: gt_join(a: True, b: False))
+    && is_true(b: gt_join(a: False, b: True))
+    && is_false(b: gt_join(a: False, b: False))
+}
+
+test fn logic_truth_tables_all() -> Bool {
+  logic_complement_truth_table() && logic_meet_truth_table() && logic_join_truth_table()
+}

@@ -1,15 +1,7 @@
 module test.claim.merge_admission_deployed_gate_control
 
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  Success,
-  merge_admission_would_block,
-}
-import gunbc.ci_failure_class {
-  merge_admission_blocks_merge,
-  merge_freshness_verdict_is_consumed_to_block,
-}
-import std.types { ContentHash }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data control_base_b0: ContentHash = "merge-admission-deployed-gate-control-base-b0"
 data control_base_b1: ContentHash = "merge-admission-deployed-gate-control-base-b1"

@@ -1,0 +1,89 @@
+module gunbc.live_deploy.intent
+
+import std.types { String, NonEmptyStr, Int }
+import std.measure { Second }
+import extdeps.tools.curl {
+  curl_bounded_localhost_get_argv_prefix,
+  curl_localhost_connect_timeout,
+  curl_localhost_max_time,
+}
+import gunbc.live_deploy.service_ready {
+  ServiceNotReady,
+  live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_unit_authority,
+  live_deploy_service_ready_endpoint_authority,
+  UnitDiagnosisUnavailable,
+}
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
+
+type TransportCurlHealthzProbe {
+  health_url: NonEmptyStr
+}
+
+type ServiceReadyGate {
+  probe: TransportCurlHealthzProbe
+  timeout: Second
+  on_not_ready: ServiceNotReady
+}
+
+type LiveDeployReadback {
+  after: ServiceReadyGate
+  port: Int
+}
+
+fn live_deploy_health_url_for_port(port: Int) -> NonEmptyStr {
+  concat(concat("http://127.0.0.1:", to_string(port)), roadmap_site_health_path) as NonEmptyStr
+}
+
+fn live_deploy_service_ready_gate_for_spec(spec: DeploymentSpec) -> ServiceReadyGate {
+  let port = deployment_plan_listen_port(spec: spec)
+  ServiceReadyGate {
+    probe: TransportCurlHealthzProbe {
+      health_url: live_deploy_health_url_for_port(port: port),
+    },
+    timeout: live_deploy_service_ready_poll_bound,
+    on_not_ready: ServiceNotReady {
+      unit: live_deploy_service_ready_unit_authority,
+      endpoint: live_deploy_service_ready_endpoint_authority,
+      waited: live_deploy_service_ready_poll_bound,
+      last_probe: "health probe never succeeded",
+      unit_diagnosis: UnitDiagnosisUnavailable,
+    },
+  }
+}
+
+fn live_deploy_readback_for_spec(spec: DeploymentSpec) -> LiveDeployReadback {
+  LiveDeployReadback {
+    after: live_deploy_service_ready_gate_for_spec(spec: spec),
+    port: deployment_plan_listen_port(spec: spec),
+  }
+}
+
+data live_deploy_unit_diagnosis_capture_exit_note: String = "The capture ends in 'exit 0' DELIBERATELY, and this is not the escape hatch DESIGN 5 forbids -- read what the exit code answers. Here it answers 'did the capture run', NOT 'is the service healthy'. The health verdict was already decided, fail-closed, by the poll bound this capture runs after; the captured value is a String that is printed and never matched, compared, or branched on, so no arm here can turn a refusal into a pass. Conflating capture-failure with unit-failure is the state-space conflation to avoid: the unit's real state is in the captured TEXT, which says 'Active: failed' in its own words, and a capture that fails yields a descriptive string rather than a pass.
+
+WHAT THE exit 0 IS AND IS NOT, stated precisely, because an overstated rationale is the same debt this module's poll-bound reason was just corrected for. systemctl status exits 3 for a dead-or-failed unit, which is exactly the case we capture in. But on the path this actually runs -- interpreter runtime through host_effect_apply_gated, plain 'bash -s', no pipefail -- the trailing pipe to tail ALREADY yields status 0, because a pipeline takes its LAST command's status and tail succeeds. Measured both ways, 2026-07-21: without pipefail 'exit 3 | tail' reports 0; with 'set -o pipefail' the same pipeline reports 3. So systemctl's nonzero is masked by tail before the exit 0 is ever reached, and the exit 0 is DEFENSIVE, not load-bearing today. It earns its place by covering two live futures rather than a present need: it still holds if the tail is later dropped, and it becomes load-bearing the moment this capture routes through a pipefail shell -- which is not hypothetical, since several live_deploy and gunbc scripts set 'set -euo pipefail', the emitted apply among them. Without either guard the realizer would see a nonzero exit, return NotConverged, and DISCARD stdout, so the diagnostic would go dark exactly when it is needed and report only that it failed to report."
+
+fn live_deploy_unit_status_tail_command(unit: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl status --no-pager --full ", unit as String),
+    " 2>&1 | tail -n 40"
+  )
+}
+
+fn live_deploy_unit_diagnosis_command(unit: NonEmptyStr) -> String {
+  concat(live_deploy_unit_status_tail_command(unit: unit), "; exit 0")
+}
+
+fn live_deploy_health_probe_curl_command(health_url: NonEmptyStr) -> String {
+  concat(
+    concat(
+      curl_bounded_localhost_get_argv_prefix(
+        connect_timeout: curl_localhost_connect_timeout,
+        max_time: curl_localhost_max_time
+      ),
+      " "
+    ),
+    concat("\"", health_url as String, "\"")
+  )
+}

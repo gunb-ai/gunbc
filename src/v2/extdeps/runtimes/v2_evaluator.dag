@@ -1,17 +1,39 @@
 module v2.extdeps.runtimes.v2_evaluator
 
-import v2.std.collection { List, Map, map_insert }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional,
+  map_insert
+}
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_eval_literal_atom,
+  dag_node_is_int_literal_atom
+}
+import v2.std.integer {
+  Int,
+  int_add,
+  integer_byte_bit_at,
+  integer_int_to_signed_i32_le_bytes,
+  integer_signed_i32_le_bytes_to_int
+}
 import v2.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected,
+  node_locus,
+  port_locus,
   Diagnostic,
   ExternalContractUnknown,
-  None,
-  Outcome,
   Unavailable,
-  node_locus,
-  outcome_rejected,
-  port_locus
+  None,
+  AmbiguousIntent
 }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -20,9 +42,18 @@ import v2.std.model_core {
   ModelCore,
   PrimitiveOperationRef,
   ResourceAccess,
-  wave1_model_core
+  bool_model_core
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node {
+  Atom,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+  node_for_structural_equality
+}
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
   AllocationSemantics,
   BindInterpreter,
@@ -65,169 +96,352 @@ type V4EvaluatorRuntime {
   boundary: ResourceEffectBoundary
 }
 
-fn v2_eval_wave1_unit_type_node() -> Node {
+fn v2_eval_unit_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_unit_type_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data v2_eval_wave1_bool_literal_pin: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_bool_literal_symbol } },
+data v2_eval_bool_literal_pin: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data v2_eval_wave1_unit_literal_pin: Node = v2_eval_wave1_unit_type_node()
+data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
 
-fn v2_eval_wave1_bool_true_byte() -> Byte {
+fn v2_eval_bool_true_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn v2_eval_wave1_bool_true_primitive() -> RuntimeValue {
+fn v2_eval_bool_true_primitive() -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_wave1_bool_literal_pin,
-      bytes: [v2_eval_wave1_bool_true_byte()]
+      primitive_type: v2_eval_bool_literal_pin,
+      bytes: [v2_eval_bool_true_byte()]
     }
   }
 }
 
-fn v2_eval_wave1_unit_runtime_value() -> RuntimeValue {
+fn v2_eval_unit_runtime_value() -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue {
-      unit_type: v2_eval_wave1_unit_literal_pin
+      unit_type: v2_eval_unit_literal_pin
     }
   }
 }
 
-fn v2_eval_wave1_boundary_operation_node() -> Node {
+fn v2_eval_boundary_operation_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_boundary_operation_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn v2_eval_wave1_effect_signature_node() -> Node {
+fn v2_eval_effect_signature_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_boundary_effect_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn v2_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {
+fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^v2_eval_wave1_semantics_deferred,
+    reason: ^v2_eval_semantics_deferred,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn v2_eval_wave1_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
+fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
   Violates {
     diagnostic: Diagnostic {
-      reason: ^v2_eval_wave1_binding_miss,
-      at: port_locus(port: ^v2_eval_wave1_binding_miss),
+      reason: ^v2_eval_binding_miss,
+      at: port_locus(port: ^v2_eval_binding_miss),
       correction: Unavailable { reason: AmbiguousIntent }
     }
   }
 }
 
-fn v2_eval_wave1_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+fn v2_eval_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
   Map {
-    lookup: v2_eval_wave1_binding_lookup_miss
+    lookup: v2_eval_binding_lookup_miss
   }
 }
 
-fn v2_eval_wave1_empty_environment() -> EvaluationEnvironment {
+fn v2_eval_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
-    bindings: v2_eval_wave1_empty_bindings()
+    bindings: v2_eval_empty_bindings()
   }
 }
 
-fn v2_eval_wave1_empty_frame() -> EvaluationFrame {
+fn v2_eval_empty_frame() -> EvaluationFrame {
   EvaluationFrame {
-    current: v2_eval_wave1_unit_type_node(),
-    environment: v2_eval_wave1_empty_environment()
+    current: v2_eval_unit_type_node(),
+    environment: v2_eval_empty_environment()
   }
 }
 
-fn v2_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+fn v2_eval_int_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
 }
 
-fn v2_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: v2_eval_int_type_node(),
+      bytes: integer_int_to_signed_i32_le_bytes(value: value)
+    }
+  }
+}
+
+fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: v2_eval_bool_literal_pin,
+      bytes: if is_true {
+        [Byte { bits: [true, false, false, false, false, false, false, false] }]
+      } else {
+        [Byte { bits: [false, false, false, false, false, false, false, false] }]
+      }
+    }
+  }
+}
+
+data v2_eval_literal_shape_predicate_note: String = "🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom Atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Atom rows project dag_node_is_eval_literal_atom (dag.dag single authority); magnitudes are supplied by the interpretation algebra allocate_literal hook, not by this runtime. Non-Atom TypeNodes (Conj record/variant constructs) route to allocate_literal in eval_type_node_atom directly."
+
+fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
+  if node == v2_eval_bool_literal_pin {
+    true
+  } else if node == v2_eval_unit_literal_pin {
+    true
+  } else if dag_node_is_eval_literal_atom(node: node) {
+    true
+  } else {
+    false
+  }
+}
+
+fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if !v2_eval_is_literal_shaped_node(node: node) {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  } else if node == v2_eval_bool_literal_pin {
+    outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
+  } else if node == v2_eval_unit_literal_pin {
+    outcome_accepted(value: v2_eval_unit_runtime_value())
+  } else if dag_node_is_int_literal_atom(node: node) {
+    bind_outcome(
+      o: dag_int_literal_magnitude_int_from_node(node: node),
+      f: fn(value) {
+        outcome_accepted(value: v2_eval_int_runtime_value(value: value))
+      }
+    )
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_token_kw_true {
+          outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
+        } else if id == ^dag_token_kw_false {
+          outcome_accepted(value: v2_eval_bool_runtime_value(is_true: false))
+        } else {
+          outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+        }
+      _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    }
+  }
+}
+
+fn v2_eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v2_eval_wave1_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == v2_eval_wave1_bool_literal_pin {
-    Accepted { value: v2_eval_wave1_bool_true_primitive(), diagnostics: None }
-  } else if node == v2_eval_wave1_unit_literal_pin {
-    Accepted { value: v2_eval_wave1_unit_runtime_value(), diagnostics: None }
+fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == v2_eval_bool_literal_pin {
+    Accepted { value: v2_eval_bool_true_primitive(), diagnostics: None }
+  } else if node == v2_eval_unit_literal_pin {
+    Accepted { value: v2_eval_unit_runtime_value(), diagnostics: None }
   } else {
-    v2_eval_wave1_represent_literal(node: node, env: env)
+    v2_eval_represent_literal(node: node, env: env)
   }
 }
 
-fn v2_eval_wave1_call_primitive(
+fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
+  match value {
+    RuntimePrimitive { value: p } =>
+      if p.primitive_type == v2_eval_int_type_node() {
+        integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
+      } else {
+        outcome_rejected(d: v2_eval_runtime_diagnostic(node: p.primitive_type))
+      }
+    _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2_eval_int_type_node()))
+  }
+}
+
+data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) — parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes."
+
+fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      if p.primitive_type == v2_eval_bool_literal_pin {
+        match list_at_optional(xs: p.bytes, index: 0) {
+          Present { value: b } => integer_byte_bit_at(b: b, shift: 0) == 1
+          Absent => false
+        }
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
+fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
+    _ => false
+  }
+}
+
+fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm } =>
+          outcome_accepted(value: arm)
+      }
+    Absent =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
+}
+
+fn v2_eval_transform_operator_symbol(node: Node) -> Outcome<Symbol> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: op_node } =>
+      match op_node.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(value: id)
+        _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: op_node))
+      }
+    Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
+}
+
+fn v2_eval_call_primitive(
   node: Node,
-  _args: List<RuntimeValue>,
+  args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+  bind_outcome(
+    o: v2_eval_transform_operator_symbol(node: node),
+    f: fn(op) {
+      if op == ^dag_token_plus {
+        if count(args) == 2 {
+          match list_at_optional(xs: args, index: 0) {
+            Present { value: left } =>
+              match list_at_optional(xs: args, index: 1) {
+                Present { value: right } =>
+                  bind_outcome(
+                    o: v2_eval_runtime_value_as_int(value: left),
+                    f: fn(l) {
+                      bind_outcome(
+                        o: v2_eval_runtime_value_as_int(value: right),
+                        f: fn(r) {
+                          outcome_accepted(
+                            value: v2_eval_int_runtime_value(value: int_add(a: l, b: r))
+                          )
+                        }
+                      )
+                    }
+                  )
+                Absent =>
+                  outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+              }
+            Absent =>
+              outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+          }
+        } else {
+          outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+        }
+      } else {
+        outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+      }
+    }
+  )
 }
 
-fn v2_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+fn v2_eval_choose_branch(
+  node: Node,
+  condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if count(node.children) == 3 {
+    if v2_eval_runtime_bool_is_true(value: condition) {
+      v2_eval_nth_child_target(node: node, wanted: 1)
+    } else if v2_eval_runtime_bool_is_false(value: condition) {
+      v2_eval_nth_child_target(node: node, wanted: 2)
+    } else {
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    }
+  } else {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
 }
 
-fn v2_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: node))
+fn v2_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
 }
 
-fn v2_eval_wave1_bind_value(
+fn v2_eval_bind_value(
   key: EnvironmentBindingKey,
   value: RuntimeValue,
   env: EvaluationEnvironment
 ) -> Outcome<EvaluationEnvironment> {
   Accepted {
     value: EvaluationEnvironment {
-      bindings: map_insert(m: env.bindings, key: key, value: value)
+      bindings: map_insert(
+        m: env.bindings,
+        key: key,
+        value: value
+      )
     },
     diagnostics: None
   }
 }
 
-fn v2_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn v2_eval_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v2_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: call.callee))
+fn v2_eval_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v2_eval_runtime_diagnostic(node: call.callee))
 }
 
-fn v2_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn v2_eval_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+fn v2_eval_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: v } =>
-      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
     Return { value: v } =>
-      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
     Raise { diagnostic: d } =>
       outcome_rejected(d: d)
     Suspend { continuation: c } =>
-      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: c.current))
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: c.current))
   }
 }
 
-fn v2_eval_wave1_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
+fn v2_eval_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
   match control {
     Continue { value: v } =>
       Accepted { value: v, diagnostics: None }
@@ -236,62 +450,62 @@ fn v2_eval_wave1_terminal_value(control: ControlTransfer, frame: EvaluationFrame
     Raise { diagnostic: d } =>
       outcome_rejected(d: d)
     Suspend { continuation: c } =>
-      outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: c.current))
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: c.current))
   }
 }
 
-fn v2_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
+fn v2_eval_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
   BoundaryAllowance {
     operation: PrimitiveOperationRef {
-      operation: v2_eval_wave1_boundary_operation_node(),
+      operation: v2_eval_boundary_operation_node(),
       effect_signature: EffectSignature {
-        signature: v2_eval_wave1_effect_signature_node()
+        signature: v2_eval_effect_signature_node()
       }
     },
     resource: ResourceAccess {
-      resource: v2_eval_wave1_boundary_operation_node()
+      resource: v2_eval_boundary_operation_node()
     },
     allowed: allowed
   }
 }
 
-fn v2_eval_wave1_resource_boundary() -> ResourceEffectBoundary {
+fn v2_eval_resource_boundary() -> ResourceEffectBoundary {
   ResourceEffectBoundary {
-    ffi: v2_eval_wave1_boundary_allowance(allowed: false),
-    exceptions: v2_eval_wave1_boundary_allowance(allowed: false),
-    async: v2_eval_wave1_boundary_allowance(allowed: false),
-    concurrency: v2_eval_wave1_boundary_allowance(allowed: false),
-    identity_reference: v2_eval_wave1_boundary_allowance(allowed: false)
+    ffi: v2_eval_boundary_allowance(allowed: false),
+    exceptions: v2_eval_boundary_allowance(allowed: false),
+    async: v2_eval_boundary_allowance(allowed: false),
+    concurrency: v2_eval_boundary_allowance(allowed: false),
+    identity_reference: v2_eval_boundary_allowance(allowed: false)
   }
 }
 
-fn v2_evaluator_model_core_wave1() -> ModelCore {
-  wave1_model_core()
+fn v2_evaluator_model_core() -> ModelCore {
+  bool_model_core()
 }
 
-fn v2_evaluator_value_representation_wave1() -> ValueRepresentationModel {
+fn v2_evaluator_value_representation() -> ValueRepresentationModel {
   ValueRepresentationModel {
-    represent_literal: v2_eval_wave1_represent_literal,
-    represent_result: v2_eval_wave1_represent_result
+    represent_literal: v2_eval_represent_literal,
+    represent_result: v2_eval_represent_result
   }
 }
 
-fn v2_evaluator_interpretation_wave1() -> InterpretationAlgebra {
+fn v2_evaluator_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: v2_eval_wave1_allocate_literal
+      allocate_literal: v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: v2_eval_wave1_call_primitive
+      call_primitive: v2_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: v2_eval_wave1_choose_branch
+      choose_branch: v2_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: v2_eval_wave1_step_loop
+      step_loop: v2_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: v2_eval_wave1_bind_value
+      bind_value: v2_eval_bind_value
     },
     match: MatchInterpreter {
       choose_arm: runtime_reject_match_arm
@@ -301,41 +515,41 @@ fn v2_evaluator_interpretation_wave1() -> InterpretationAlgebra {
 
 fn v2_evaluator_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_wave1_allocate_literal_sym,
-    call_primitive: ^v2_eval_wave1_call_primitive_sym,
-    choose_branch: ^v2_eval_wave1_choose_branch_sym,
-    step_loop: ^v2_eval_wave1_step_loop_sym,
-    bind_value: ^v2_eval_wave1_bind_value_sym,
+    allocate_literal: ^v2_eval_allocate_literal_sym,
+    call_primitive: ^v2_eval_call_primitive_sym,
+    choose_branch: ^v2_eval_choose_branch_sym,
+    step_loop: ^v2_eval_step_loop_sym,
+    bind_value: ^v2_eval_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
-fn v2_evaluator_execution_wave1() -> ExecutionSemantics {
+fn v2_evaluator_execution() -> ExecutionSemantics {
   ExecutionSemantics {
     allocation: AllocationSemantics {
-      allocate: v2_eval_wave1_allocate
+      allocate: v2_eval_allocate
     },
     calls: CallSemantics {
-      call: v2_eval_wave1_call,
-      return_value: v2_eval_wave1_return_value
+      call: v2_eval_call,
+      return_value: v2_eval_return_value
     },
     control: ControlSemantics {
-      transfer: v2_eval_wave1_transfer,
-      terminal_value: v2_eval_wave1_terminal_value
+      transfer: v2_eval_transfer,
+      terminal_value: v2_eval_terminal_value
     }
   }
 }
 
-fn v2_evaluator_boundary_wave1() -> ResourceEffectBoundary {
-  v2_eval_wave1_resource_boundary()
+fn v2_evaluator_boundary() -> ResourceEffectBoundary {
+  v2_eval_resource_boundary()
 }
 
-fn v2_evaluator_runtime_wave1() -> V4EvaluatorRuntime {
+fn v2_evaluator_runtime() -> V4EvaluatorRuntime {
   V4EvaluatorRuntime {
     runtime_identity: ^v2_evaluator_runtime_id,
-    core: v2_evaluator_model_core_wave1(),
-    values: v2_evaluator_value_representation_wave1(),
-    execution: v2_evaluator_execution_wave1(),
-    boundary: v2_evaluator_boundary_wave1()
+    core: v2_evaluator_model_core(),
+    values: v2_evaluator_value_representation(),
+    execution: v2_evaluator_execution(),
+    boundary: v2_evaluator_boundary()
   }
 }

@@ -1,6 +1,7 @@
 module v2.test.algebra_laws.zip_eq_list_equality
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { zip_eq }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   CompilesClaim,

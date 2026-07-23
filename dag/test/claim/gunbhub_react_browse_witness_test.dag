@@ -1,11 +1,7 @@
 module test.claim.gunbhub_react_browse_witness
 
-import gunbc.gunbhub_serve { gunbhub_browse_page }
-import extdeps.languages.html {
-  EmitOk,
-  EmitRejected,
-  try_serialize_html_source,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn browse_page_html() -> String {
   match try_serialize_html_source(node: gunbhub_browse_page()) {

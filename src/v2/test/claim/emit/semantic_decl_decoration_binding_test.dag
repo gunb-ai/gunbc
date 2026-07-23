@@ -1,0 +1,54 @@
+module v2.test.emit.semantic_decl_decoration_binding_test
+
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclDecorationLine,
+  semantic_decl_emission_from_target,
+  target_semantic_decl_coproduct_decoration_lines
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
+import v2.std.collection { List, fold_list }
+import v2.std.text { is_empty }
+import std.algebra { Empty }
+
+fn bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn lines_use_enum_copy_binding(lines: List<TargetSemanticDeclDecorationLine>) -> Bool {
+  fold_list(
+    xs: lines,
+    empty: false,
+    cons: fn(acc, line) {
+      if acc {
+        true
+      } else {
+        line.surface_binding == ^rust_decl_derive_enum_copy_binding
+      }
+    }
+  )
+}
+
+test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
+  match semantic_decl_emission_from_target(target: rust_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_decl_coproduct_decoration_lines(
+        projection: emission.surface,
+        coproduct: bool_coproduct()
+      ) {
+        Accepted { value: lines, diagnostics: _ } =>
+          !is_empty(xs: lines) && lines_use_enum_copy_binding(lines: lines)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

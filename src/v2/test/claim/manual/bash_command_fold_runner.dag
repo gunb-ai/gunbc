@@ -1,6 +1,6 @@
 module v2.test.manual.bash_command_fold_runner
 
-import std.realization_schedule { Runnable, RunnableSingleClaim }
+import std.realization_schedule { Runnable, RunnableSingleClaim, runnable_resource_profile_negligible }
 import v2.std.collection { List }
 
 data bash_fold_test_entry: String = "src/v2/test/claim/bash_command_fold_test.dag"
@@ -10,243 +10,303 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
     [
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_relation_row_true_witness_holds"
+        function: "bash_fold_relation_row_true_witness_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_single_lit_true_holds"
+        function: "bash_fold_command_single_lit_true_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_multi_lit_echo_hi_holds"
+        function: "bash_fold_command_multi_lit_echo_hi_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_var_ref_x_holds"
+        function: "bash_fold_command_var_ref_x_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_arbitrary_grep_triple_holds"
+        function: "bash_fold_command_arbitrary_grep_triple_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_arbitrary_var_home_holds"
+        function: "bash_fold_command_arbitrary_var_home_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_command_arbitrary_lit_quote_escape_holds"
+        function: "bash_fold_command_arbitrary_lit_quote_escape_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_direct_serialize_single_lit_true_holds"
+        function: "bash_fold_direct_serialize_single_lit_true_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_direct_serialize_multi_lit_echo_hi_holds"
+        function: "bash_fold_direct_serialize_multi_lit_echo_hi_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_direct_serialize_var_ref_x_holds"
+        function: "bash_fold_direct_serialize_var_ref_x_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_emitted_tree_differs_on_wrong_fixture_holds"
+        function: "bash_fold_emitted_tree_differs_on_wrong_fixture_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_exit_code_42_holds"
+        function: "bash_fold_exit_code_42_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_exit_code_0_holds"
+        function: "bash_fold_exit_code_0_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_exit_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_exit_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_assign_lit_foo_bar_holds"
+        function: "bash_fold_assign_lit_foo_bar_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_assign_var_x_home_holds"
+        function: "bash_fold_assign_var_x_home_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_assign_lit_quote_escape_holds"
+        function: "bash_fold_assign_lit_quote_escape_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_assign_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_assign_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_and_then_true_false_holds"
+        function: "bash_fold_and_then_true_false_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_or_else_true_false_holds"
+        function: "bash_fold_or_else_true_false_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_pipe_echo_hi_wc_holds"
+        function: "bash_fold_pipe_echo_hi_wc_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_and_then_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_and_then_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_pipe_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_pipe_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_pipe_and_then_left_holds"
+        function: "bash_fold_pipe_and_then_left_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_pipe_three_stage_holds"
+        function: "bash_fold_pipe_three_stage_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_subshell_true_holds"
+        function: "bash_fold_subshell_true_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_subshell_multi_stmt_holds"
+        function: "bash_fold_subshell_multi_stmt_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_subshell_nested_and_then_holds"
+        function: "bash_fold_subshell_nested_and_then_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_if_true_then_echo_holds"
+        function: "bash_fold_if_true_then_echo_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_if_multi_then_holds"
+        function: "bash_fold_if_multi_then_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_if_then_pipe_soundness_holds"
+        function: "bash_fold_if_then_pipe_soundness_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_subshell_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_subshell_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_if_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_if_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_stderr_null_holds"
+        function: "bash_fold_with_redir_stderr_null_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_stdout_and_stderr_null_holds"
+        function: "bash_fold_with_redir_stdout_and_stderr_null_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_stdout_to_stderr_holds"
+        function: "bash_fold_with_redir_stdout_to_stderr_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_redir_to_file_var_holds"
+        function: "bash_fold_with_redir_redir_to_file_var_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_heredoc_holds"
+        function: "bash_fold_heredoc_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_wrong_spellings_rejects_oracle_holds"
+        function: "bash_fold_with_redir_wrong_spellings_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_heredoc_wrong_spellings_rejects_oracle_holds"
+        function: "bash_fold_heredoc_wrong_spellings_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_with_redir_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_heredoc_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_heredoc_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_with_redir_pipe_soundness_holds"
+        function: "bash_fold_with_redir_pipe_soundness_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_orch_emit_holds"
+        function: "bash_fold_raw_line_orch_emit_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_x_eq_holds"
+        function: "bash_fold_raw_line_x_eq_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_cmdsubst_holds"
+        function: "bash_fold_raw_line_cmdsubst_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_paren_holds"
+        function: "bash_fold_raw_line_paren_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_quoted_holds"
+        function: "bash_fold_raw_line_quoted_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_mktemp_holds"
+        function: "bash_fold_raw_line_mktemp_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_trailing_nl_holds"
+        function: "bash_fold_raw_line_trailing_nl_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_wrong_spellings_rejects_oracle_holds"
+        function: "bash_fold_raw_line_wrong_spellings_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_raw_line_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_raw_line_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_negation_subshell_false_holds"
+        function: "bash_fold_negation_subshell_false_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_negation_subshell_rawline_holds"
+        function: "bash_fold_negation_subshell_rawline_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_negation_wrong_spellings_rejects_oracle_holds"
+        function: "bash_fold_negation_wrong_spellings_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_negation_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_negation_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_env_prefixed_lit_t_holds"
+        function: "bash_fold_env_prefixed_lit_t_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds"
+        function: "bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_env_prefixed_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_env_prefixed_wrong_production_rejects_oracle_holds",
+        profile: runnable_resource_profile_negligible()
       }
     ]
   ]

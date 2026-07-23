@@ -22,6 +22,7 @@ import extdeps.languages.json.emit {
   json_kv,
   json_string,
 }
+import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 
 type SiteArtifactKind
   = RoadmapMarkdown
@@ -67,8 +68,6 @@ data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data roadmap_site_readback_shell_dissolution_trigger: String = "🟡 dissolve-on: roadmap_site_readback_shell — readback script (set -euo pipefail, curl, grep, node -e digest checks) built with concat/string shell (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — independent artifact digest read-back modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash concat emit and medium_structure_exception_roster entry for dag/gunbc/roadmap_static_site.dag"
 
 fn site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)
@@ -216,7 +215,8 @@ fn roadmap_site_fnv1a_digest_script() -> String {
 
 fn roadmap_site_readback_curl_digest_check(url: String, expected: ContentHash) -> String {
   let curl_part = concat(
-    concat("ACTUAL=$(curl -sf ", sh_single_quote(s: url)),
+    concat("ACTUAL=$(", curl_localhost_bounded_get_argv_prefix()),
+    concat(" ", sh_single_quote(s: url)),
     concat(" | node -e ", sh_single_quote(s: roadmap_site_fnv1a_digest_script()))
   )
   let curl_fail = concat(
@@ -256,6 +256,28 @@ fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
   )
 }
 
+fn roadmap_site_digest_readback_script(port: Int) -> String {
+  let base = concat("http://127.0.0.1:", to_string(port))
+  let roadmap = roadmap_site_roadmap_md_artifact()
+  let dispatch = roadmap_site_dispatch_json_artifact()
+  concat(
+    concat(
+      concat("set -euo pipefail\n", "# roadmap static-site digest read-back host=srv1 (healthz excluded — live_deploy readiness poll on reconcile spine)\n"),
+      concat(roadmap_site_readback_curl_digest_check(url: concat(base, roadmap.url_path), expected: roadmap.digest), "\n")
+    ),
+    concat(
+      concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
+      concat(
+        concat(
+          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
+        ),
+        concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")
+      )
+    )
+  )
+}
+
 fn roadmap_site_readback_script(port: Int) -> String {
   let base = concat("http://127.0.0.1:", to_string(port))
   let health_url = concat(base, roadmap_site_health_path)
@@ -266,7 +288,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(
         concat("set -euo pipefail\n", "# roadmap static-site read-back host=srv1\n"),
         concat(
-          concat("curl -sf ", sh_single_quote(s: health_url)),
+          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: health_url)),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: healthz json parse failed >&2; exit 1; \}\n"
         )
       ),
@@ -276,7 +298,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
       concat(
         concat(
-          concat("curl -sf ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
         ),
         concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")

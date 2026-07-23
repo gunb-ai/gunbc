@@ -1,12 +1,7 @@
 module test.claim.github_mergeable_state_witness
 
-import extdeps.github.mergeable_state {
-  MergeableState,
-  Mergeable,
-  Conflicting,
-  parse_mergeable_state,
-  mergeable_state_wire_label,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
   match parse_mergeable_state(raw: "MERGEABLE") {

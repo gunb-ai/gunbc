@@ -1,0 +1,80 @@
+module v2.test.long.gap4_parse_tokens_remain
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gap4_cached_lm: LanguageModel = dag_language_model()
+
+fn parses(src: String) -> Bool {
+  let lm = gap4_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rejects_parse_g0_tokens_remain(src: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn gap4_match_arm_let_stmt_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => let stamped = inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+test fn gap4_match_arm_chained_lets_tail_record_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  match inner {\n    ParseExprRejected { diagnostics: diags, table: _ } => ParseExprRejected { diagnostics: diags, table: table }\n    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>\n      let merged_prov = inner_prov\n      let stamped = captured\n      ParseExprAccepted {\n        remaining: remaining,\n        captured: stamped,\n        diagnostics: diags,\n        prov: merged_prov,\n        table: table\n      }\n  }\n}\n"
+  )
+}
+
+test fn gap4_multi_arm_let_then_next_arm_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => let stamped = inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+test fn gap4_match_arm_expr_tail_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+test fn gap4_malformed_match_arm_missing_arrow_rejects_holds() -> Bool {
+  match parses(
+    src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } let x = inner\n  }\n}\n"
+  ) {
+    true => false
+    false => true
+  }
+}
+
+test fn gap4_unrecognized_char_rejects_not_tokens_remain_holds() -> Bool {
+  match parses(src: "module m.t\nfn f() -> Int { `x }\n") {
+    true => false
+    false =>
+      match rejects_parse_g0_tokens_remain(src: "module m.t\nfn f() -> Int { `x }\n") {
+        true => false
+        false => true
+      }
+  }
+}
+
+test fn gap5_string_escape_quote_in_literal_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\ndata main_rs_trampoline_authority: String = \"include!(\\\"v2_main_generated.rs\\\");\"\n"
+  )
+}

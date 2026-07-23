@@ -1,46 +1,7 @@
 module test.claim.resource_namespace_upsert
 
-import std.types { Bool, NonEmptyStr, Int }
-import std.upsert_decision {
-  UpsertClassification,
-  Converged,
-  Drifted,
-  Absent,
-  Conflict,
-  Noop,
-  Apply,
-  Refuse,
-}
-import gunbc.file_access {
-  FileTreeScope,
-  FileAccessObservation,
-  PathOutsideNamespace,
-  ReadOnlyWithinNamespace,
-  WritableWithinNamespace,
-  ChmodOwnerWriteWithinTempTree,
-  CreateParent,
-  classify_file_access_upsert,
-  path_within_file_tree_scope,
-}
-import gunbc.session_lease {
-  ProcessPortScope,
-  ProcessPortObservation,
-  PortObserved,
-  PortObservedStaleExpected,
-  DrainMatchingStaleThenStart,
-  classify_process_port_upsert,
-}
-import gunbc.install_media {
-  SeededInstallMediaObservation,
-  MediaAbsent,
-  MediaConverged,
-  MediaDrifted,
-  SeededInstallMediaPlan,
-  Remaster,
-  ReplaceAtomically,
-  classify_seeded_install_media,
-  classify_seeded_install_media_upsert,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data srv3_nbd_proxy_port: Int = 10809
 

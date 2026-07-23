@@ -23,20 +23,20 @@ import v2.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
-  ts_mvp1_binding_spellings,
-  ts_mvp1_source_text,
-  ts_mvp1_target_model,
-  ts_mvp1_target_model_node,
+  ts_binding_spellings,
+  ts_source_text,
+  ts_target_model,
+  ts_target_model_node,
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
-  ts_wave1_lex
+  ts_fn_add_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -80,6 +80,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data typescript_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 data typescript_add_number_inhabitant: Node = ts_inhabitant_number_node()
 
@@ -99,12 +102,12 @@ data typescript_add_arithmetic_semantics_node: Node = ts_number_arithmetic_seman
 
 data typescript_add_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
 
-data typescript_add_target_model: TargetModel = ts_mvp1_target_model()
+data typescript_add_target_model: TargetModel = ts_target_model()
 
 data typescript_add_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: ts_mvp1_target_model_node(),
-  lex: ts_wave1_lex(),
-  binding_spellings: ts_mvp1_binding_spellings(),
+  bundle: ts_target_model_node(),
+  lex: ts_fn_add_lex(),
+  binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: typescript_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
@@ -118,7 +121,7 @@ data typescript_add_empty_translation_rules_bundle: Node = Node {
 
 data typescript_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: typescript_add_empty_translation_rules_bundle,
-  lex: ts_wave1_lex(),
+  lex: ts_fn_add_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -309,7 +312,7 @@ data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_ad
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == ts_mvp1_source_text) && (d == None)
+      (source.carried == ts_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -319,7 +322,7 @@ data typescript_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_ty
 fn typescript_add_emit_claim_outcome() -> Outcome<Node> {
   match typescript_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == ts_mvp1_source_text) && (d == None) {
+      if (source.carried == ts_source_text) && (d == None) {
         Accepted { value: typescript_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -341,7 +344,7 @@ fn typescript_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == ts_mvp1_source_text) && (d == None) {
+          if (source.carried == ts_source_text) && (d == None) {
             Accepted { value: typescript_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
@@ -370,7 +373,7 @@ fn typescript_add_compile_inferred_claim_outcome() -> Outcome<Node> {
 }
 
 data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_typescript_add_emit_accepts with canonical ts_mvp1 add-fn source",
+  label: "manual/rust_add_emit: anchor_typescript_add_emit_accepts with canonical ts_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_add_emitted_root,
   expected_value: typescript_add_emitted_root,
@@ -378,7 +381,7 @@ data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_typescript_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/typescript_add G1: compile_inferred emits canonical ts_mvp1 add-fn source through grammar inverse production ts_production_mvp1_fn_add",
+  label: "manual/typescript_add G1: compile_inferred emits canonical ts_add add-fn source through grammar inverse production ts_production_fn_add",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_add_emitted_root,
   expected_value: typescript_add_emitted_root,
@@ -391,7 +394,7 @@ data subject_typescript_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = Te
   tree: typescript_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: typescript_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -410,7 +413,7 @@ data subject_typescript_add_compile_inferred_add_fn_accepts: TestClaimEvalSubjec
   tree: typescript_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: typescript_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -443,7 +446,7 @@ data subject_typescript_add_serialize_rejects_missing_translation_rules: TestCla
   tree: typescript_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: typescript_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 

@@ -1,0 +1,11 @@
+module test.claim.dag_compile_clean_perturb_receipts
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn dag_compile_clean_perturb_receipts_holds() -> Bool {
+  run_perturb_optional_skew_red_receipt()
+    && run_perturb_unresolved_import_red_receipt()
+    && run_cross_tree_import_green_receipt()
+    && run_dag_shell_primary_precedence_receipt()
+}

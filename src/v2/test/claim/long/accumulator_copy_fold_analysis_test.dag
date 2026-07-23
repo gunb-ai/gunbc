@@ -1,0 +1,302 @@
+module v2.test.long.accumulator_copy_fold_analysis
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+
+data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
+
+data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: grown, right: x)\n  })\n}\n"
+
+data nested_call_snippet: String = "module nested\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: reverse(acc), right: x) })\n}\n"
+
+data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
+
+data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: List<Int>) -> Int {\n  list_append(left: xs, right: ys)\n}\n"
+
+data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
+data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: grown, right: x)\n  })\n}\n"
+
+data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: seed, right: x)\n  })\n}\n"
+
+data let_transitive_alias_snippet: String = "module transalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let g = acc\n    let h = g\n    list_append(left: h, right: x)\n  })\n}\n"
+
+data carrier_in_computed_arg_snippet: String = "module hiddencarrier\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery(box: Wrapped { inner: acc })\n  })\n}\n"
+
+data item_in_computed_arg_snippet: String = "module hiddenitem\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery(box: Wrapped { inner: x })\n  })\n}\n"
+
+data computed_let_mention_snippet: String = "module hiddenlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let boxed = Wrapped { inner: acc }\n    mystery(box: boxed)\n  })\n}\n"
+
+data projection_call_residue_note: String = "DISSOLVED (Stage B cross-decl): projection-headed calls lower to canonical Transform nodes in v2.compiler.normalize.normalize; lowered_substrate_call_note arms classify them inside lowered Loop bodies. Witness: projection_call_carrier_is_classified."
+
+data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    helper.step(a: acc, b: x)\n  })\n}\n"
+
+data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
+
+fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+  let lm = v2.extdeps.languages.dag.dag_language_model()
+  match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn findings_of(source_text: String, file: Symbol) -> Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
+  match ingest(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: tree } => Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree) }
+  }
+}
+
+fn is_empty_findings(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  match fs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+test fn quadratic_fold_has_suspect() -> Bool {
+  match findings_of(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+test fn real_branch_body_quadratic_is_caught() -> Bool {
+  match findings_of(source_text: real_branch_body_snippet, file: ^rs_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
+  match findings_of(source_text: noncarrier_name_snippet, file: ^lin_file) {
+    Absent => false
+    Present { value: fs } =>
+      if v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
+  }
+}
+
+test fn let_alias_is_proven_suspect() -> Bool {
+  match findings_of(source_text: let_alias_snippet, file: ^alias_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+      && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_transitive_alias_is_proven_suspect() -> Bool {
+  match findings_of(source_text: let_transitive_alias_snippet, file: ^transalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+      && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_fresh_binding_is_provably_clean() -> Bool {
+  match findings_of(source_text: let_fresh_snippet, file: ^freshlet_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
+  match findings_of(source_text: let_unknown_alias_snippet, file: ^unknownalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      if v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
+  }
+}
+
+test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
+  match findings_of(source_text: nested_call_snippet, file: ^nested_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
+  }
+}
+
+test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
+  match findings_of(source_text: unregistered_combiner_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn carrier_inside_computed_argument_to_unregistered_combiner_refuses() -> Bool {
+  match findings_of(source_text: carrier_in_computed_arg_snippet, file: ^hiddencarrier_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn item_inside_computed_argument_stays_clean() -> Bool {
+  match findings_of(source_text: item_in_computed_arg_snippet, file: ^hiddenitem_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
+  match findings_of(source_text: computed_let_mention_snippet, file: ^hiddenlet_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
+  Cons { head: item, tail: xs }
+}
+
+fn no_edges() -> List<Edge> {
+  Empty
+}
+
+fn opaque_head_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn edge_target_is_mystery(e: Edge) -> Bool {
+  match v2.std.grammar.node_atom_identity_optional(node: e.target) {
+    Present { value: id } => id == ^mystery_op
+    Absent => false
+  }
+}
+
+fn edge_is_seq_left(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^grammar_sequence_left_node_projection
+    Positional => false
+  }
+}
+
+fn rebuilt_edge(e: Edge) -> Edge {
+  if edge_is_seq_left(e: e) {
+    if edge_target_is_mystery(e: e) {
+      Edge { label: e.label, target: opaque_head_node() }
+    } else {
+      Edge { label: e.label, target: break_mystery_head(n: e.target) }
+    }
+  } else {
+    Edge { label: e.label, target: break_mystery_head(n: e.target) }
+  }
+}
+
+fn break_mystery_head(n: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
+      edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)
+    })),
+    occurrence_id: n.occurrence_id
+  }
+}
+
+test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
+  match ingest(source_text: unregistered_combiner_snippet, file: ^brokenhead_file) {
+    Absent => false
+    Present { value: tree } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(
+        fs: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: break_mystery_head(n: tree)),
+        cause: ^call_head_unreadable
+      )
+  }
+}
+
+test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+  match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^fold_accumulator_unread)
+  }
+}
+
+test fn multiline_unregistered_combiner_refuses() -> Bool {
+  match findings_of(source_text: multiline_unregistered_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn projection_call_carrier_is_classified() -> Bool {
+  match findings_of(source_text: projection_call_carrier_snippet, file: ^projcar_file) {
+    Absent => false
+    Present { value: fs } =>
+      if is_empty_findings(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+      }
+  }
+}
+
+test fn quadratic_ingest_has_lowered_loop() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
+  }
+}
+
+test fn quadratic_ingest_has_no_surface_fold_call() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => !v2.lens.complexity_accumulator_copy.analyze.tree_contains_surface_fold_call(root: tree)
+  }
+}
+
+test fn identity_fold_has_no_finding() -> Bool {
+  match findings_of(source_text: identity_snippet, file: ^ident_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn out_of_iteration_append_is_out_of_domain() -> Bool {
+  match findings_of(source_text: out_of_iteration_snippet, file: ^once_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn report_counters_state_the_domain() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 1) && (r.carriers_bound == 1)
+  }
+    && match ingest(source_text: named_step_snippet, file: ^namedstep_file) {
+      Absent => false
+      Present { value: tree } =>
+        let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+        (r.folds_seen == 1) && (r.carriers_bound == 0)
+    }
+}

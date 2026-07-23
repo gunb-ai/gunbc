@@ -1,69 +1,16 @@
 module gunbc.accelerator_demo_plan
 
-import std.types { Bool, String, Int, NonEmptyStr }
-import std.measure { Nano }
-import std.effects { ReadEffect }
-import std.realization {
-  Placement,
-  LocalAccelerator,
-  LocalInProcess,
-  LocalFilesystem,
-  RemoteNetwork,
-  RealizedStep,
-  Materialization,
-  Recompute,
-}
-import std.realization_schedule {
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableKernelWorkload,
-  Schedule,
-  CostAccount,
-  cost_account_predicted_zero,
-}
-import std.numerical_contract {
-  NumericalContract,
-  IntegerExact,
-  FloatApproximate,
-  integer_exact_contract,
-  float_contract,
-  FmaContractionRefused,
-  FmaContractionPermitted,
-}
-import std.approximate_field { ToNearestEven }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
-import extdeps.communication.numerical_fidelity {
-  LoweringAccepted,
-  LoweringRefused,
-  LoweringRefusalReason,
-  FmaContractionRefusedByContract,
-  UnsupportedNumericalDomain,
-  lowering_fidelity_verdict_for_contract,
-}
-import extdeps.gpu.types { AcceleratorFacts }
-import extdeps.vendor.nvidia { nvidia }
-import extdeps.languages.simd.kernel {
-  simd_kernel_target_medium_name,
-  witness_relu_mul_add_kernel_surface_shape,
-}
-
-data accelerator_demo_plan_doc_provenance: String = "bind: docs/plans/accelerator-demo-roundtrip.md"
 
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }
   | EffectfulSubgraph
   | DataDependentGather
 
-data elementwise_fold_class_modeling_lane_scaffold_note: String = "modeling-lane scaffold: ElementwiseFoldClass tag dispatch tests outcome-mapping into RealizationPlan shape only; execution lane uses gunbc.accelerator_demo_program + recognize_accelerator_program for structural recognition"
-
 type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects
   | FmaContractionViolatesContract
   | AcceleratorUnsupportedNumericalDomain
-
-data accelerator_refusal_reason_mirror_dissolution_trigger: String = "dissolve-on: execution lane lands; fold AcceleratorRefusalReason lowering-aligned variants (FmaContractionViolatesContract, AcceleratorUnsupportedNumericalDomain) into extdeps.communication.numerical_fidelity.LoweringRefusalReason as single authority and retire accelerator_refusal_from_lowering (DESIGN §3 parallel-representation bridge — modeling lane only)."
 
 type AcceleratorRecognitionOutcome
   = Recognized {
@@ -79,12 +26,10 @@ data demo_target_label: String = "accelerator-demo-relu-mul-add-v1"
 
 data relu_mul_add_fused_op_count: Int = 3
 
-data demo_accelerator_device: AcceleratorFacts = AcceleratorFacts {
-  vendor: nvidia
+data demo_accelerator_device: extdeps.gpu.types.AcceleratorFacts = extdeps.gpu.types.AcceleratorFacts {
+  vendor: extdeps.vendor.nvidia.nvidia
   model: "A100"
 }
-
-data accelerator_demo_modeling_lane_dissolution_trigger: String = "dissolve-on: execution lane lands recognizer pass + CPU-SIMD fused-kernel handler consuming this plan value; GPU epilogue swaps extdeps.languages.simd row for extdeps.languages.cuda row"
 
 fn demo_accelerator_placement() -> Placement {
   LocalAccelerator
@@ -98,16 +43,16 @@ fn demo_kernel_step(placement: Placement) -> RealizedStep<Nano> {
   RealizedStep {
     shape: ReadEffect
     placement: placement
-    materialization: Recompute
+    materialization: std.realization.Recompute
     cost: demo_plan_total()
   }
 }
 
-fn relu_mul_add_schedule() -> Schedule {
+fn relu_mul_add_schedule() -> std.realization_schedule.Schedule {
   [[RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
 }
 
-fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
+fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<Nano> {
   RealizationPlan {
     target: demo_target_label
     objective: RealizationObjective { goals: [] }
@@ -116,7 +61,7 @@ fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
   }
 }
 
-fn accelerator_refusal_from_lowering(reason: LoweringRefusalReason) -> AcceleratorRefusalReason {
+fn accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.LoweringRefusalReason) -> AcceleratorRefusalReason {
   match reason {
     FmaContractionRefusedByContract => FmaContractionViolatesContract
     UnsupportedNumericalDomain => AcceleratorUnsupportedNumericalDomain
@@ -132,7 +77,7 @@ fn recognized_outcome(
     kernel_step: demo_kernel_step(placement: demo_accelerator_placement())
     contract: contract
     fidelity: fidelity
-    target_medium: simd_kernel_target_medium_name
+    target_medium: extdeps.languages.simd.kernel.simd_kernel_target_medium_name
   }
 }
 
@@ -140,7 +85,7 @@ fn recognize_with_contract(
   contract: NumericalContract,
   insist_on_fma_fused_kernel: Bool
 ) -> AcceleratorRecognitionOutcome {
-  match lowering_fidelity_verdict_for_contract(contract: contract) {
+  match extdeps.communication.numerical_fidelity.lowering_fidelity_verdict_for_contract(contract: contract) {
     LoweringRefused { reason: reason } =>
       Refused { reason: accelerator_refusal_from_lowering(reason: reason) }
     LoweringAccepted { fidelity: fidelity } =>
@@ -173,14 +118,14 @@ fn recognize_elementwise_fold(class: ElementwiseFoldClass) -> AcceleratorRecogni
 
 fn recognize_float_relu_mul_add_no_contraction() -> AcceleratorRecognitionOutcome {
   recognize_with_contract(
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused),
+    contract: float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused),
     insist_on_fma_fused_kernel: false
   )
 }
 
 fn recognize_float_fma_fused_kernel_when_contraction_refused() -> AcceleratorRecognitionOutcome {
   recognize_with_contract(
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused),
+    contract: float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused),
     insist_on_fma_fused_kernel: true
   )
 }
@@ -192,7 +137,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
     Present { value: runnable } => match runnable {
       RunnableKernelWorkload { fused_op_count: count } => count
       RunnableSingleClaim { entry: _, function: _, profile: _ } => 0
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => 0
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => 0
     }
   }
 }
@@ -228,7 +173,7 @@ fn witness_integer_demo_plan_has_local_accelerator_placement() -> Bool {
 
 fn witness_demo_device_identity_grounds_on_accelerator_facts() -> Bool {
   demo_accelerator_device.model == "A100"
-    && demo_accelerator_device.vendor == nvidia
+    && demo_accelerator_device.vendor == extdeps.vendor.nvidia.nvidia
 }
 
 fn witness_effectful_subgraph_refused() -> Bool {
@@ -287,7 +232,7 @@ fn witness_simd_target_medium_is_inspectable() -> Bool {
 }
 
 fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
-  match accelerator_refusal_from_lowering(reason: FmaContractionRefusedByContract) {
+  match accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.FmaContractionRefusedByContract) {
     FmaContractionViolatesContract => true
     NotElementwisePure => false
     CarriesEffects => false
@@ -296,7 +241,7 @@ fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
 }
 
 fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
-  match accelerator_refusal_from_lowering(reason: UnsupportedNumericalDomain) {
+  match accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.UnsupportedNumericalDomain) {
     AcceleratorUnsupportedNumericalDomain => true
     NotElementwisePure => false
     CarriesEffects => false

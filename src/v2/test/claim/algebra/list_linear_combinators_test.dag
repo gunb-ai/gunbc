@@ -1,0 +1,67 @@
+module v2.test.claim.algebra.list_linear_combinators
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sample() -> FreeMonoid<Int> {
+  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
+}
+
+fn list_eq(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>) -> Bool {
+  match xs {
+    Empty =>
+      match ys {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: xh, tail: xt } =>
+      match ys {
+        Empty => false
+        Cons { head: yh, tail: yt } =>
+          (xh == yh) && list_eq(xs: xt, ys: yt)
+      }
+  }
+}
+
+test fn map_preserves_order_and_applies() -> Bool {
+  list_eq(
+    xs: list_map(xs: sample(), f: fn(x) { x * 10 }),
+    ys: [10, 20, 30]
+  )
+}
+
+test fn map_of_empty_is_empty() -> Bool {
+  list_eq(xs: list_map(xs: Empty, f: fn(x) { x * 10 }), ys: Empty)
+}
+
+test fn filter_keeps_order_of_survivors() -> Bool {
+  list_eq(
+    xs: filter(xs: sample(), predicate: fn(x) { x != 2 }),
+    ys: [1, 3]
+  )
+}
+
+test fn filter_none_survive_is_empty() -> Bool {
+  list_eq(xs: filter(xs: sample(), predicate: fn(x) { x > 9 }), ys: Empty)
+}
+
+test fn flat_map_concatenates_groups_in_order() -> Bool {
+  list_eq(
+    xs: list_flat_map(xs: sample(), f: fn(x) { [x, x * 10] }),
+    ys: [1, 10, 2, 20, 3, 30]
+  )
+}
+
+test fn flat_map_drops_empty_groups() -> Bool {
+  list_eq(
+    xs: list_flat_map(xs: sample(), f: fn(x) {
+      if x == 2 { Empty } else { Cons { head: x, tail: Empty } }
+    }),
+    ys: [1, 3]
+  )
+}
+
+test fn reverse_reverses() -> Bool {
+  list_eq(xs: list_reverse(xs: sample()), ys: [3, 2, 1])
+    && list_eq(xs: list_reverse(xs: Empty), ys: Empty)
+}

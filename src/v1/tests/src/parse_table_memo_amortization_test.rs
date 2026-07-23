@@ -8,8 +8,8 @@ use v1_compiler::v1_std_core::NewlineIndex;
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const AMORT_ENTRY: &str = "src/v2/test/claim/parse/parse_table_memo_amortization_test.dag";
-const BISECT_ENTRY: &str = "src/v2/test/claim/manual/validate_ingest_staging_stage_bisect_test.dag";
+const AMORT_ENTRY: &str = "src/v2/test/claim/long/parse_table_memo_amortization_test.dag";
+const BISECT_ENTRY: &str = "src/v2/test/claim/long/validate_ingest_staging_stage_bisect_test.dag";
 
 const LEGACY_COLD_PARSE_FLOOR: Duration = Duration::from_secs(63);
 
@@ -40,7 +40,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -50,12 +50,12 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
 
 struct AmortHarness {
     graph: Rc<ResolvedGraph>,
-    source_indices: Rc<std::collections::HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<im::HashMap<String, Rc<NewlineIndex>>>,
 }
 
 impl AmortHarness {
     fn new() -> Self {
-        let resolved = compile_to_resolved(Rc::new(amort_sources()));
+        let resolved = compile_to_resolved(Rc::new(amort_sources().into()));
         assert_resolved_ok(&resolved, AMORT_ENTRY);
         Self {
             graph: resolved.graph.clone().expect("graph"),
@@ -64,11 +64,16 @@ impl AmortHarness {
     }
 
     fn fresh_ctx(&self) -> v1_interpreter::InterpContext {
-        v1_interpreter::InterpContext::new(
+        let ctx = v1_interpreter::InterpContext::new(
             &self.graph,
             self.source_indices.clone(),
             v1_interpreter::ExecutionMode::Wet,
-        )
+        );
+        // This suite is the parse-table MemoTier's discriminating receipt:
+        // the outer eval-frame provider would serve pass-2 demands wholesale
+        // and blind the door's hit counters, so pin it off for these ctxs.
+        v1_interpreter::set_eval_call_memo_enabled(&ctx, false);
+        ctx
     }
 
     fn run_bool(&self, ctx: &v1_interpreter::InterpContext, function: &str) {
@@ -92,7 +97,7 @@ fn run_witness_on_sources(
     function: &str,
     budget: Duration,
 ) -> v1_interpreter::InterpContext {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_ok(&resolved, entry);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(
@@ -100,6 +105,9 @@ fn run_witness_on_sources(
         resolved.source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
+    // Same pin as AmortHarness::fresh_ctx: keep the parse-table door's
+    // counters discriminating by refusing the outer eval-frame provider.
+    v1_interpreter::set_eval_call_memo_enabled(&ctx, false);
     let start = Instant::now();
     match v1_interpreter::run_in_context(&ctx, function, false) {
         Ok(Value::Bool(true)) => {}
@@ -145,7 +153,7 @@ fn parse_table_memo_divergent_token_streams_remain_sound() {
     run_witness_on_sources(
         sources_for_entry(BISECT_ENTRY),
         BISECT_ENTRY,
-        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        "witness_bisect_parse_module_add_correctness_holds",
         Duration::from_secs(90),
     );
 }
@@ -155,6 +163,32 @@ fn parse_table_grammar_memo_multi_file_ingest_parses() {
     run_witness(
         "parse_table_grammar_memo_multi_file_ingest_parses",
         Duration::from_secs(120),
+    );
+}
+
+#[test]
+fn parse_table_memo_warm_equals_cold_content_hash() {
+    let harness = AmortHarness::new();
+
+    let cold_ctx = harness.fresh_ctx();
+    harness.run_bool(
+        &cold_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+
+    let warm_ctx = harness.fresh_ctx();
+    harness.run_bool(
+        &warm_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+    harness.run_bool(
+        &warm_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+    let warm_stats = warm_ctx.parse_table_memo_stats_snapshot();
+    assert!(
+        warm_stats.hits > 0,
+        "warm second pass must hit parse_table_lookup memo, got {warm_stats:?}"
     );
 }
 

@@ -1,0 +1,85 @@
+module extdeps.color.solarized
+
+import std.types { Int, String, Bool }
+import extdeps.color.srgb { Srgb8, CitedColorRow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ethanschoonover.com/solarized/"
+  }
+}
+
+fn solarized_authority() -> ExternalAuthority {
+  extdeps_external_authority_anchor
+}
+
+data solarized_note: String = "Cited upstream: Ethan Schoonover Solarized v1.0.0beta2 (ethanschoonover.com/solarized/, retrieved 2026-07-21). Designed in CIELAB; sRGB hex values filed as Srgb8. Structure rows: base luminance ladder (base03 darkest .. base3 lightest) and dark/light BASE mode reassignment involution (base03<->base3, base02<->base2, base01<->base1, base00<->base0 — the pairing Schoonover documents for syntax/background roles). Canonical L*a*b rows land with the OKLCH reground lane."
+
+data solarized_version: String = "1.0.0beta2"
+
+type SolarizedLadderStep {
+  name: String
+  color: Srgb8
+}
+
+type SolarizedBaseModePair {
+  dark_role: String
+  light_role: String
+}
+
+data solarized_base03: Srgb8 = Srgb8 { r: 0, g: 43, b: 54 }
+data solarized_base02: Srgb8 = Srgb8 { r: 7, g: 54, b: 66 }
+data solarized_base01: Srgb8 = Srgb8 { r: 88, g: 110, b: 117 }
+data solarized_base00: Srgb8 = Srgb8 { r: 101, g: 123, b: 131 }
+data solarized_base0: Srgb8 = Srgb8 { r: 131, g: 148, b: 150 }
+data solarized_base1: Srgb8 = Srgb8 { r: 147, g: 161, b: 161 }
+data solarized_base2: Srgb8 = Srgb8 { r: 238, g: 232, b: 213 }
+data solarized_base3: Srgb8 = Srgb8 { r: 253, g: 246, b: 227 }
+data solarized_yellow: Srgb8 = Srgb8 { r: 181, g: 137, b: 0 }
+data solarized_orange: Srgb8 = Srgb8 { r: 203, g: 75, b: 22 }
+data solarized_red: Srgb8 = Srgb8 { r: 220, g: 50, b: 47 }
+data solarized_magenta: Srgb8 = Srgb8 { r: 211, g: 54, b: 130 }
+data solarized_violet: Srgb8 = Srgb8 { r: 108, g: 113, b: 196 }
+data solarized_blue: Srgb8 = Srgb8 { r: 38, g: 139, b: 210 }
+data solarized_cyan: Srgb8 = Srgb8 { r: 42, g: 161, b: 152 }
+data solarized_green: Srgb8 = Srgb8 { r: 133, g: 153, b: 0 }
+
+data solarized_base_ladder: List<SolarizedLadderStep> = [
+  SolarizedLadderStep { name: "base03", color: solarized_base03 },
+  SolarizedLadderStep { name: "base02", color: solarized_base02 },
+  SolarizedLadderStep { name: "base01", color: solarized_base01 },
+  SolarizedLadderStep { name: "base00", color: solarized_base00 },
+  SolarizedLadderStep { name: "base0", color: solarized_base0 },
+  SolarizedLadderStep { name: "base1", color: solarized_base1 },
+  SolarizedLadderStep { name: "base2", color: solarized_base2 },
+  SolarizedLadderStep { name: "base3", color: solarized_base3 },
+]
+
+data solarized_base_mode_pairs: List<SolarizedBaseModePair> = [
+  SolarizedBaseModePair { dark_role: "base03", light_role: "base3" },
+  SolarizedBaseModePair { dark_role: "base02", light_role: "base2" },
+  SolarizedBaseModePair { dark_role: "base01", light_role: "base1" },
+  SolarizedBaseModePair { dark_role: "base00", light_role: "base0" },
+]
+
+data solarized_swatches: List<CitedColorRow> = [
+  CitedColorRow { name: "base03", color: solarized_base03 },
+  CitedColorRow { name: "base02", color: solarized_base02 },
+  CitedColorRow { name: "base01", color: solarized_base01 },
+  CitedColorRow { name: "base00", color: solarized_base00 },
+  CitedColorRow { name: "base0", color: solarized_base0 },
+  CitedColorRow { name: "base1", color: solarized_base1 },
+  CitedColorRow { name: "base2", color: solarized_base2 },
+  CitedColorRow { name: "base3", color: solarized_base3 },
+  CitedColorRow { name: "yellow", color: solarized_yellow },
+  CitedColorRow { name: "orange", color: solarized_orange },
+  CitedColorRow { name: "red", color: solarized_red },
+  CitedColorRow { name: "magenta", color: solarized_magenta },
+  CitedColorRow { name: "violet", color: solarized_violet },
+  CitedColorRow { name: "blue", color: solarized_blue },
+  CitedColorRow { name: "cyan", color: solarized_cyan },
+  CitedColorRow { name: "green", color: solarized_green },
+]

@@ -2,35 +2,76 @@ module v2.test.manual.match_infer_fail_open_audit
 
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
-  dag_mvp1_match_arm_node,
-  dag_mvp1_match_body_from_arms,
-  dag_mvp1_match_if_body_fixture,
-  dag_mvp1_type_atom_node
+  dag_arrow_with_body_node,
+  dag_complement_arrow_with_body_fixture,
+  dag_complement_body_fixture,
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_match_if_body_fixture,
+  dag_type_atom_node
 }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostics,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Some
+}
 import v2.std.logic { Bool }
 import v2.std.node {
+  Atom,
+  Conj,
   ComputationNode,
   Edge,
   Match,
+  Named,
   Node,
   Positional,
-  SyntheticOccurrence
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
 }
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn diagnostics_contain_reason(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: nes } => non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
+  }
+}
+
+fn non_empty_diagnostics_contain_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if nes.head.reason == reason {
+    true
+  } else {
+    fold_list(
+      xs: nes.tail,
+      empty: false,
+      cons: fn(acc, diag) {
+        acc || diag.reason == reason
+      }
+    )
+  }
+}
 
 fn match_infer_fail_open_audit_body() -> Node {
-  dag_mvp1_match_body_from_arms(
-    scrutinee: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
-    true_arm: dag_mvp1_match_arm_node(
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
       pattern_lit: ^dag_token_kw_true,
-      body_lit: ^dag_mvp1_pick_lit_one
+      body_lit: ^dag_pick_lit_one
     ),
-    false_arm: dag_mvp1_match_arm_node(
+    false_arm: dag_match_arm_node(
       pattern_lit: ^dag_token_kw_false,
       body_lit: ^dag_token_ident
     )
@@ -50,13 +91,13 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       }
     ],
@@ -77,27 +118,27 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_false,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_two
+          body_lit: ^dag_pick_lit_two
         )
       }
     ],
@@ -113,8 +154,96 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
 }
 
 fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
-  match infer(tree: dag_mvp1_match_if_body_fixture) {
+  match infer(tree: dag_match_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
 }
+
+fn classical_not_int_match_arrow_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: ^dag_binding_param_x },
+          target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_match_body_from_arms(
+      scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+      true_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_true,
+        body_lit: ^dag_token_kw_false
+      ),
+      false_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_false,
+        body_lit: ^dag_token_kw_true
+      )
+    )
+  )
+}
+
+test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+  match infer(tree: dag_complement_body_fixture) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
+  match infer(tree: classical_not_int_match_arrow_fixture()) {
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_contain_reason(
+        d: d,
+        reason: ^infer_match_int_scrutinee_bool_literal_scaffold
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn classical_not_int_match_non_octet_arm_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: ^dag_binding_param_x },
+          target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_match_body_from_arms(
+      scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+      true_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_true,
+        body_lit: ^dag_pick_lit_one
+      ),
+      false_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_false,
+        body_lit: ^dag_token_ident
+      )
+    )
+  )
+}
+
+test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
+  match infer(tree: classical_not_int_match_non_octet_arm_fixture()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+  match infer(tree: dag_complement_arrow_with_body_fixture) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+data complement_arrow_post_exit_wave1_breadth_note: String = "complement infer refuses because match patterns use dag_complement_lit_* (unsupported by infer_bool_literal_pattern_classify — only dag_token_kw_true/false). Refuse is fail-closed-correct for that unsupported shape. Counted deficit: ground complement_lit on the bool-literal authority (post-exit breadth); target witness is then complement_arrow_real_infer_holds."

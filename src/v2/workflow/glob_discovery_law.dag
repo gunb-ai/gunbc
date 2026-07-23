@@ -1,6 +1,7 @@
 module v2.test.workflow.glob_discovery_law
 
-import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { filter, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.compiler.discovery_enumeration {
@@ -55,17 +56,7 @@ fn is_unified_test_claim_arm(r: OwnedDataDeclRecord) -> Bool {
 }
 
 fn filter_unified_test_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedDataDeclRecord> {
-  fold_list(
-    xs: xs,
-    empty: Empty,
-    cons: fn(acc, r) {
-      if is_unified_test_claim_arm(r: r) {
-        list_append(left: acc, right: Cons { head: r, tail: Empty })
-      } else {
-        acc
-      }
-    }
-  )
+  filter(xs: xs, predicate: fn(r) { is_unified_test_claim_arm(r: r) })
 }
 
 fn discovery_filtered_decl_count(xs: List<OwnedDataDeclRecord>) -> Int {
@@ -86,17 +77,7 @@ fn discovery_smoke_set_is_nonempty(xs: List<OwnedDataDeclRecord>) -> Bool {
 }
 
 fn filter_bool_witness_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedDataDeclRecord> {
-  fold_list(
-    xs: xs,
-    empty: Empty,
-    cons: fn(acc, r) {
-      if owned_decl_is_bool_witness_claim_arm(r: r) {
-        list_append(left: acc, right: Cons { head: r, tail: Empty })
-      } else {
-        acc
-      }
-    }
-  )
+  filter(xs: xs, predicate: fn(r) { owned_decl_is_bool_witness_claim_arm(r: r) })
 }
 
 fn discovered_bool_witness_claim_count(xs: List<OwnedDataDeclRecord>) -> Int {
@@ -106,18 +87,10 @@ fn discovered_bool_witness_claim_count(xs: List<OwnedDataDeclRecord>) -> Int {
 fn filter_bool_witness_claim_arms_with_complete_transport(
   xs: List<OwnedDataDeclRecord>
 ) -> List<OwnedDataDeclRecord> {
-  fold_list(
-    xs: xs,
-    empty: Empty,
-    cons: fn(acc, r) {
-      if owned_decl_is_bool_witness_claim_arm(r: r)
-          && bool_witness_claim_record_has_complete_transport(r: r) {
-        list_append(left: acc, right: Cons { head: r, tail: Empty })
-      } else {
-        acc
-      }
-    }
-  )
+  filter(xs: xs, predicate: fn(r) {
+    owned_decl_is_bool_witness_claim_arm(r: r)
+      && bool_witness_claim_record_has_complete_transport(r: r)
+  })
 }
 
 fn discovered_contains_bool_witness_decl_by_name(

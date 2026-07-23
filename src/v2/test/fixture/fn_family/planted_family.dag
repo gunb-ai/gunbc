@@ -1,0 +1,8 @@
+module synthetic.fn_family.planted_family
+
+
+fn planted_alpha(x: Nat) -> Nat { x }
+
+fn planted_beta(y: Nat) -> Nat { y }
+
+fn planted_gamma(z: Nat) -> Nat { z }

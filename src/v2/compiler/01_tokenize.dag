@@ -1,9 +1,10 @@
 module v2.compiler.tokenize
 
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
-import v2.std.algebra { Cons, Empty, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
 import v2.std.nat { Nat, nat_lte, nat_gte }
 import v2.std.logic { Bool }
@@ -145,7 +146,7 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
             true =>
               match string_tail(s: source) {
                 TailFound { tail: rest } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: Empty } }
+                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: std.algebra.Empty } }
                 TailAbsent => LexMatchRejected
               }
             false => LexMatchRejected
@@ -154,40 +155,83 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
   }
 }
 
-fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
-  fold_list(
-    xs: init.remaining,
-    empty: init,
-    cons: fn(state, _) {
-      match state.done {
-        true => state
-        false =>
-          match elem_r.apply(state.remaining) {
-            LexMatchRejected =>
+fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
+  match state.done {
+    true => state
+    false =>
+      match elem_r.apply(state.remaining) {
+        LexMatchRejected =>
+          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+        LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+          match string_is_empty(s: consumed) {
+            true =>
               RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-            LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-              match string_is_empty(s: consumed) {
+            false =>
+              lex_repeat_step(
+                elem_r: elem_r,
+                state: RepeatState {
+                  remaining: rest,
+                  lexeme: list_append(left: state.lexeme, right: consumed),
+                  done: false
+                }
+              )
+          }
+      }
+  }
+}
+
+fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
+  lex_repeat_step(elem_r: elem_r, state: init)
+}
+
+fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: DelimitedState) -> DelimitedState {
+  match state.done {
+    true => state
+    false =>
+      match close_r.apply(state.remaining) {
+        LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
+          DelimitedState {
+            remaining: after_close,
+            lexeme: list_append(left: state.lexeme, right: close_lex),
+            done: true,
+            failed: false
+          }
+        LexMatchRejected =>
+          match body_r.apply(state.remaining) {
+            LexMatchRejected =>
+              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
+            LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
+              match string_is_empty(s: body_lex) {
                 true =>
-                  RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
                 false =>
-                  RepeatState {
-                    remaining: rest,
-                    lexeme: list_append(left: state.lexeme, right: consumed),
-                    done: false
-                  }
+                  lex_delimited_step(
+                    close_r: close_r,
+                    body_r: body_r,
+                    state: DelimitedState {
+                      remaining: after_body,
+                      lexeme: list_append(left: state.lexeme, right: body_lex),
+                      done: false,
+                      failed: false
+                    }
+                  )
               }
           }
       }
-    }
-  )
+  }
 }
 
-fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
-  let thunk = fold_lex_pattern(
+type CompiledLexRule {
+  rule: LexRule
+  thunk: LexMatchThunk
+}
+
+fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
+  fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
     algebra: LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
-        LexMatchAccepted { remaining: s, lexeme: Empty }
+        LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
       } },
       literal: fn(text) {
         LexMatchThunk { apply: fn(s) {
@@ -249,14 +293,14 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
             LexMatchAccepted { remaining: rest, lexeme: lex } =>
               LexMatchAccepted { remaining: rest, lexeme: lex }
             LexMatchRejected =>
-              LexMatchAccepted { remaining: s, lexeme: Empty }
+              LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
           }
         } }
       },
       repeat: fn(elem_r) {
 
         LexMatchThunk { apply: fn(s) {
-          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: Empty, done: false })
+          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: std.algebra.Empty, done: false })
           LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
         } }
       },
@@ -278,42 +322,7 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
               let init = DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false }
-              let result = fold_list(
-                xs: after_open,
-                empty: init,
-                cons: fn(state, _) {
-                  match state.done {
-                    true => state
-                    false =>
-                      match close_r.apply(state.remaining) {
-                        LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
-                          DelimitedState {
-                            remaining: after_close,
-                            lexeme: list_append(left: state.lexeme, right: close_lex),
-                            done: true,
-                            failed: false
-                          }
-                        LexMatchRejected =>
-                          match body_r.apply(state.remaining) {
-                            LexMatchRejected =>
-                              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
-                            LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
-                              match string_is_empty(s: body_lex) {
-                                true =>
-                                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
-                                false =>
-                                  DelimitedState {
-                                    remaining: after_body,
-                                    lexeme: list_append(left: state.lexeme, right: body_lex),
-                                    done: false,
-                                    failed: false
-                                  }
-                              }
-                          }
-                      }
-                  }
-                }
-              )
+              let result = lex_delimited_step(close_r: close_r, body_r: body_r, state: init)
               match result.done {
                 false => LexMatchRejected
                 true =>
@@ -327,16 +336,37 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
       }
     }
   )
-  match thunk.apply(source) {
+}
+
+fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
+  match compiled.thunk.apply(source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
-      match rule {
+      match compiled.rule {
         TokenRule { token_class: class, pattern: _ } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         TriviaRule { pattern: _ } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
       }
   }
+}
+
+fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
+  let reversed = fold_list(
+    xs: rules,
+    empty: std.algebra.Empty,
+    cons: fn(acc, rule) {
+      Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
+    }
+  )
+  reversed.reverse()
+}
+
+fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
+  lex_try_compiled(
+    compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
+    source: source
+  )
 }
 
 fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
@@ -363,14 +393,14 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
   }
 }
 
-fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
+fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
-    cons: fn(acc, rule) {
+    cons: fn(acc, compiled) {
       lex_try_rules_prefer_longer(
         acc: acc,
-        candidate: lex_try_rule(rule: rule, source: source)
+        candidate: lex_try_compiled(compiled: compiled, source: source)
       )
     }
   )
@@ -383,18 +413,18 @@ type LexWalkAcc {
   done: Bool
   error: Bool
   file: Symbol
-  rules: LexRuleSet
+  rules: List<CompiledLexRule>
 }
 
 fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: src,
-    tokens: Empty,
+    tokens: std.algebra.Empty,
     pos: 0,
     done: false,
     error: false,
     file: file,
-    rules: rules
+    rules: lex_compile_rules(rules: rules.rules)
   }
 }
 
@@ -415,7 +445,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
         rules: acc.rules
       }
     false =>
-      match lex_try_rules(rules: acc.rules.rules, source: acc.remaining) {
+      match lex_try_rules(rules: acc.rules, source: acc.remaining) {
         LexRuleNoMatch =>
           LexWalkAcc {
             remaining: acc.remaining,
@@ -464,16 +494,16 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             false =>
               LexWalkAcc {
                 remaining: remaining,
-                tokens: list_snoc_item(
-                  xs: acc.tokens,
-                  item: Token {
+                tokens: Cons {
+                  head: Token {
                     class: class,
                     lexeme: lexeme,
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + length(xs: lexeme)
-                  }
-                ),
+                  },
+                  tail: acc.tokens
+                },
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -500,9 +530,9 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   )
   let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
   if result.error {
-    Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    Accepted { value: token_stream_new(all: result.tokens), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: v2.std.diagnostic.None }
   }
 }
 
@@ -514,11 +544,13 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   match rules {
     VoidLexRules =>
       if is_empty(xs: text) {
-        Accepted { value: token_stream_empty(), diagnostics: None }
+        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
       lex_walk(source: text, file: file, rules: rule_set)
   }
 }
+
+data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via ModeledLexRules/LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."

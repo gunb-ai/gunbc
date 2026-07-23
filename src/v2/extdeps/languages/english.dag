@@ -3,7 +3,8 @@ import v2.std.language_model { LanguageModel, language_model_empty_canonical_sym
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.extdeps.languages.fidelity { FidelityDisposition }
-import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -129,7 +130,7 @@ fn english_word_pattern() -> LexPattern {
   }
 }
 
-fn english_wave1_lex() -> LexRules {
+fn english_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -202,7 +203,7 @@ fn english_copula_sentence_expr() -> GrammarExpr {
   )
 }
 
-fn english_wave1_productions() -> List<GrammarProduction> {
+fn english_productions() -> List<GrammarProduction> {
   let article = GrammarProduction {
     name: ^english_production_article,
     expression: english_article_expr(),
@@ -229,17 +230,17 @@ fn english_wave1_productions() -> List<GrammarProduction> {
   [sentence, article, svo, copula]
 }
 
-fn english_wave1_grammar() -> ParseGrammar {
+fn english_grammar() -> ParseGrammar {
   ModeledGrammar {
     root: GrammarRoot {
       start: ^english_production_sentence,
-      productions: english_wave1_productions(),
+      productions: english_productions(),
       sync_tokens: grammar_empty_sync_tokens()
     }
   }
 }
 
-fn english_model_core_wave1() -> ModelCore {
+fn english_model_core() -> ModelCore {
   ModelCore {
     primitives: [],
     inhabitance: [],
@@ -249,32 +250,32 @@ fn english_model_core_wave1() -> ModelCore {
   }
 }
 
-fn english_language_model_wave1() -> LanguageModel {
+fn english_language_model() -> LanguageModel {
   LanguageModel {
     canonical_symbols: language_model_empty_canonical_symbols(),
     language_identity: ^english_language_identity,
-    core: english_model_core_wave1(),
-    lex: english_wave1_lex(),
-    grammar: english_wave1_grammar()
+    core: english_model_core(),
+    lex: english_lex(),
+    grammar: english_grammar()
   }
 }
 
-fn english_lex_rules_wave1() -> EnglishLexRules {
+fn english_lex_rules_wrapper() -> EnglishLexRules {
   EnglishLexRules {
-    rules: english_wave1_lex()
+    rules: english_lex()
   }
 }
 
-fn english_grammar_wave1() -> EnglishGrammar {
+fn english_grammar_wrapper() -> EnglishGrammar {
   EnglishGrammar {
-    grammar: english_wave1_grammar()
+    grammar: english_grammar()
   }
 }
 
 fn english_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: english_wave1_lex(),
-    grammar: english_wave1_grammar()
+    lex: english_lex(),
+    grammar: english_grammar()
   }
 }
 
@@ -648,7 +649,7 @@ fn english_add_fn_target_model_node() -> Node {
 fn english_add_fn_target_model() -> TargetModel {
   TargetModel {
     bundle: english_add_fn_target_model_node(),
-    lex: english_wave1_lex(),
+    lex: english_lex(),
     binding_spellings: english_add_fn_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: english_add_fn_source_text,
@@ -693,7 +694,7 @@ fn english_add_fn_paragraph_grammar() -> ParseGrammar {
       start: ^english_production_add_fn_paragraph,
       productions: list_append(
         left: [english_add_fn_paragraph_production()],
-        right: english_wave1_productions()
+        right: english_productions()
       ),
       sync_tokens: grammar_empty_sync_tokens()
     }

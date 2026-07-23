@@ -1,25 +1,7 @@
 module v2.test.claim.affected_set_witness_a_prove
 
-import v2.lens.edit_locus { GitDiffNameOnly, RepoPath }
-import v2.std.algebra { count_equal, length }
-import v2.std.collection { List }
-import v2.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.witness { Holds, Violates }
-import v2.test.lens_affected_set.node_precision { affected_set_mid }
-import v2.test.lens_affected_set.provenance_producer {
-  provenance_producer_node_precision_provenance,
-  provenance_producer_path_mid,
-  provenance_producer_reading_from_provenance
-}
-import v2.workflow.affected_set_floor_runner {
-  FloorDiffLineTouch,
-  floor_rust_run_implies_dag_run,
-  floor_test_fn_declaration_edited
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_a_fixture_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
   path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",

@@ -1,0 +1,23 @@
+module v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness
+
+import v2.test.execution.bind_eval_by_execution {
+  bind_census_ingested_executes_holds,
+  bind_census_ingested_wrong_value_red_holds
+}
+import v2.test.execution.loop_eval_by_execution {
+  loop_census_ingested_executes_holds,
+  loop_census_ingested_wrong_value_red_holds
+}
+import v2.std.logic { Bool }
+
+data wave1_gate1_d_ingested_bind_loop_eval_note: String = "Wave 1 Gate 1 Stage D long lane: census-ingest bind/loop execute through eval with wrong-value RED controls (ingested_fixture_arrows path)."
+
+test fn wave1_gate1_d_ingested_bind_executes_witness_holds() -> Bool {
+  bind_census_ingested_executes_holds()
+    && bind_census_ingested_wrong_value_red_holds()
+}
+
+test fn wave1_gate1_d_ingested_loop_executes_witness_holds() -> Bool {
+  loop_census_ingested_executes_holds()
+    && loop_census_ingested_wrong_value_red_holds()
+}

@@ -39,6 +39,9 @@ import v2.test.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn lens_testgen_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },

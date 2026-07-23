@@ -1,0 +1,34 @@
+module synthetic.parse_mechanism.nest_d4
+
+
+type Bit = B0 | B1
+
+fn nest_leaf(_: Bit) -> Nat { 0 }
+
+fn nest_l1(x: Bit) -> Nat {
+  match x {
+    B0 => nest_l2(B0)
+    B1 => nest_l2(B1)
+  }
+}
+
+fn nest_l2(x: Bit) -> Nat {
+  match x {
+    B0 => nest_l3(B0)
+    B1 => nest_l3(B1)
+  }
+}
+
+fn nest_l3(x: Bit) -> Nat {
+  match x {
+    B0 => nest_leaf(B0)
+    B1 => nest_leaf(B1)
+  }
+}
+
+fn nested_depth(x: Bit) -> Nat {
+  match x {
+    B0 => nest_l1(B0)
+    B1 => nest_l1(B1)
+  }
+}

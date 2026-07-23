@@ -1,17 +1,7 @@
 module test.claim.uri_path_parse_witness
 
-import extdeps.uri_path {
-  parse_path_template,
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-}
-import std.http_path {
-  PathTemplate,
-  has_path_params,
-  last_path_param,
-  PathParamBinding,
-  render_path_template,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn param_path(prefix: String, param_name: String) -> String {
   concat(prefix, "/", "{", param_name, "}")

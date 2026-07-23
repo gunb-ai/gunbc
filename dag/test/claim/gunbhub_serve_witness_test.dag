@@ -1,34 +1,7 @@
 module test.claim.gunbhub_serve_witness
 
-import gunbc.gunbhub_serve {
-  GunbhubServeRequest,
-  GunbhubPageSource,
-  ReactPage,
-  ComposedOk,
-  ComposeRejected,
-  Served,
-  RenderRejectedBeforeServe,
-  RouteNotFound,
-  MethodNotAllowed,
-  gunbhub_browse_page,
-  gunbhub_readme_page,
-  gunbhub_hostile_page,
-  gunbhub_browse_route,
-  gunbhub_repo_path_route,
-  gunbhub_browse_path_template,
-  gunbhub_repo_path_template,
-  gunbhub_html_content_type,
-  gunbhub_node_route_bindings,
-  gunbhub_served_static_route_table,
-  gunbhub_compose_body,
-  path_matches_template,
-  serve_gunbhub_request,
-  serve_gunbhub_page_source,
-}
-import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
-import extdeps.http.server { http_content_type_wire_label }
-import std.markup { MarkupNode }
-import std.types { GET, POST }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_compose_ok_html(node: MarkupNode) -> String {
   match gunbhub_compose_body(node: node) {

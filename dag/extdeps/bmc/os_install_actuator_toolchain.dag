@@ -1,5 +1,6 @@
 module extdeps.bmc.os_install_actuator_toolchain
 
+<<<<<<< HEAD
 import std.types { NonEmptyStr, List, Bool }
 import extdeps.tools { CliTool }
 import extdeps.tools.curl { curl_cli_tool }
@@ -9,6 +10,8 @@ import extdeps.tools.socat { socat_cli_tool }
 import extdeps.tools.gcloud { gcloud_cli_tool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+=======
+>>>>>>> origin/main
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -31,6 +34,8 @@ data os_install_actuator_toolchain_requirement: ActuatorToolchainRequirement = A
 }
 
 data srv3_os_install_actuator_host_label: NonEmptyStr = "install-actuator-host"
+
+data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
 
 data srv3_os_install_actuator_toolchain_grant: ActuatorToolchainRequirement = os_install_actuator_toolchain_requirement
 

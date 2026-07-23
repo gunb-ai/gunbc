@@ -21,6 +21,9 @@ import gunbc.fleet_intent {
 }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
@@ -69,7 +72,8 @@ fn witness_space_rolls_up_across_receipts() -> Bool {
     space: sample_space_b,
   )
   let total = cost_account_from_performance_receipts(receipts: [r1, r2])
-  byte_size_count(total.space) == byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
+  byte_size_count(total.space) == byte_size_count(sample_space_b)
+    && byte_size_count(total.space) != byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {

@@ -1,6 +1,6 @@
 module v2.test.std_grounding.runtime_value_node_projection
 
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -31,6 +31,9 @@ import v2.std.runtime {
   RuntimeValueNodeUnrepresentable,
   runtime_value_node_projection
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rvnp_test_type_node(sym: Symbol) -> Node {
   Node {

@@ -1,0 +1,117 @@
+module gunbc.githooks_pre_push_plan
+
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  project_local_tidy_checks,
+  LocalTidyCheck,
+  LocalTidyWitnessCheck,
+  LocalTidyCargoFmtCheck,
+}
+import gunbc.local_tidy_spec {
+  local_tidy_trigger_globs,
+  local_tidy_path_matches_glob,
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.rust_stage0_gates { path_is_rust_monolith }
+import extdeps.git.hooks { pre_push_zero_sha }
+
+type PrePushGateKind
+  = DocWitnessRun { entry: String, function: String }
+  | CargoFmtCheck { fail_recipe: String }
+  | WitnessCorpusRun { fail_recipe: String }
+
+type PrePushGateBinding {
+  kind: PrePushGateKind
+  trigger_globs: List<String>
+}
+
+data pre_push_fmt_fail_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
+
+data pre_push_check_only_note: String = "Pre-push gates refuse with a fix recipe on drift (no auto-commit / auto-stage). Aligns with commit-hook check-only policy: failure arms refuse instead of mutating the tree silently."
+
+data pre_push_witness_fail_recipe: String = "affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates)."
+
+data pre_push_witness_corpus_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
+
+data pre_push_witness_corpus_plan_fn: String = "gunbc_ci_witness_corpus_only_batches"
+
+fn pre_push_source_roots() -> List<String> {
+  witness_layer_roots
+}
+
+fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
+  any(globs, g => local_tidy_path_matches_glob(path: path, glob: g))
+}
+
+fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool {
+  match binding.kind {
+    CargoFmtCheck { fail_recipe: _ } => path_is_rust_monolith(path: path)
+    _ => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
+  }
+}
+
+fn pre_push_witness_trigger_globs() -> List<String> {
+  map(witness_layer_roots, r => concat(r, "/"))
+}
+
+fn pre_push_witness_binding() -> PrePushGateBinding {
+  PrePushGateBinding {
+    kind: WitnessCorpusRun { fail_recipe: pre_push_witness_fail_recipe },
+    trigger_globs: pre_push_witness_trigger_globs()
+  }
+}
+
+fn pre_push_all_bindings() -> List<PrePushGateBinding> {
+  concat(pre_push_bindings(), [pre_push_witness_binding()])
+}
+
+fn pre_push_bindings() -> List<PrePushGateBinding> {
+  fold(project_local_tidy_checks(roster: commit_gate_roster), init: [], f: fn(acc, check) {
+    match check {
+      LocalTidyWitnessCheck { entry, check_fns } =>
+        fold(check_fns, init: acc, f: fn(inner, fn_name) {
+          concat(inner, [PrePushGateBinding {
+            kind: DocWitnessRun { entry: entry, function: fn_name },
+            trigger_globs: local_tidy_trigger_globs(check: check)
+          }])
+        })
+      LocalTidyCargoFmtCheck =>
+        concat(acc, [PrePushGateBinding {
+          kind: CargoFmtCheck { fail_recipe: pre_push_fmt_fail_recipe },
+          trigger_globs: local_tidy_trigger_globs(check: check)
+        }])
+    }
+  })
+}
+
+fn pre_push_binding_active(
+  binding: PrePushGateBinding,
+  changed_paths: List<String>
+) -> Bool {
+  any(
+    changed_paths,
+    p => pre_push_path_hits_binding(path: p, binding: binding)
+  )
+}
+
+fn pre_push_active_kinds(changed_paths: List<String>) -> List<PrePushGateKind> {
+  fold(pre_push_all_bindings(), init: [], f: fn(acc, b) {
+    if pre_push_binding_active(binding: b, changed_paths: changed_paths) {
+      concat(acc, [b.kind])
+    } else {
+      acc
+    }
+  })
+}
+
+fn pre_push_zero_sha_authority() -> String {
+  pre_push_zero_sha
+}
+
+fn pre_push_witness_corpus_plan_entry_authority() -> String {
+  pre_push_witness_corpus_plan_entry
+}
+
+fn pre_push_witness_corpus_plan_fn_authority() -> String {
+  pre_push_witness_corpus_plan_fn
+}

@@ -1,5 +1,6 @@
 module test.claim.srv3_os_install_reconcile
 
+<<<<<<< HEAD
 import std.logic { Bool }
 import std.types { NonEmptyStr, Timestamp }
 import std.temporal_effect {
@@ -50,15 +51,26 @@ import gunbc.network_identity_subsumption { srv3_pre_install_lease_table }
 import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, BootOverrideOnce, BootTargetCd, On }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import std.measure { byte_size }
+=======
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+>>>>>>> origin/main
 
 data witness_uefi_stuck_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: ServeObserved {
     process: ServeProcessesPresent,
     port: ServePortListening {
+<<<<<<< HEAD
       port: srv3_nbd_proxy_local_port,
       owner_matches_expected: true,
     },
     session: TokenPresent,
+=======
+      port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
+      owner_matches_expected: true,
+    },
+    session: gunbc.srv3_os_install_diagnostic.TokenPresent,
+>>>>>>> origin/main
     iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
   },
   bmc_websocket: WebsocketUpgradeAccepted,

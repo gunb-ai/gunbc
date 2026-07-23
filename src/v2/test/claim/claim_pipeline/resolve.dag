@@ -3,7 +3,7 @@ module v2.test.claim_pipeline.resolve
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag {
-  dag_language_model_wave1_void
+  dag_language_model_void
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -18,6 +18,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data spine_resolve_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_resolve_module } },
   children: [],
@@ -45,7 +46,7 @@ fn spine_resolve_service_parse_tree() -> Node {
 fn spine_resolve_accepts_normalized_tree() -> Bool {
   match normalize(parse_tree: spine_resolve_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>
-      match resolve(tree: normalized, lm: dag_language_model_wave1_void()) {
+      match resolve(tree: normalized, lm: dag_language_model_void()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -79,7 +80,7 @@ data claim_pipeline_resolve_module_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_pipeline_resolve_accepts_normalize_chain: TestClaim = EqualsClaim {
-  label: "claim_pipeline/resolve: resolve accepts normalize output on wave1 void language model",
+  label: "claim_pipeline/resolve: resolve accepts normalize output on the void language model",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_resolve_bool_atom(b: spine_resolve_accepts_normalized_tree()),
   rhs: spine_resolve_bool_atom(b: true),

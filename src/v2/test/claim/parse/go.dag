@@ -1,0 +1,41 @@
+module v2.test.parse.go
+
+fn go_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^go_parse_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^go_parse_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn go_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn go_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: go_source_text,
+    file: ^go_parse_file,
+    rules: go_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: go_grammar())
+  }
+}
+
+data claim_go_add_function_parses: TestClaim = EqualsClaim {
+  label: "Go corpus symmetry accepts the current add-function source through the Go lex/grammar",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: go_parse_bool_atom(
+    b: go_parse_accepted(out: go_tokenize_and_parse())
+  ),
+  rhs: go_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

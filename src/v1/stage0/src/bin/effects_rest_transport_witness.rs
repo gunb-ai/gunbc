@@ -1,14 +1,13 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::{HashMap, HashSet};
+use im::HashMap;
+use std::collections::HashSet;
 use std::process::ExitCode;
 use std::rc::Rc;
 
 use v1_compiler::cli_run::workspace_root;
+use v1_compiler::cli_run::{collect_rest_transport_operations, DeclaredRestTransportOp};
 use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
-use v1_compiler::rest_transport_facts::{
-    collect_rest_transport_operations, DeclaredRestTransportOp,
-};
 use v1_compiler::std_effects::{
     derive_op_effect, generate_idempotency_obligations, is_idempotent_effect, DeriveOpEffectResult,
     EffectShape, HttpMethod,
@@ -200,7 +199,7 @@ fn main() -> ExitCode {
         .iter()
         .filter(|d| is_idempotent_effect(d.shape.clone()))
         .count();
-    let obligations = generate_idempotency_obligations(Rc::new(derived.clone()));
+    let obligations = generate_idempotency_obligations(Rc::new(derived.clone().into()));
     if obligations.len() != idempotent_count {
         return fail(format!(
             "obligation count {} != idempotent op count {idempotent_count}",

@@ -1,31 +1,7 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
-import v2.compiler.eval { eval_diagnostic }
-import v2.compiler.compile {
-  Eval,
-  EvalResult,
-  compile,
-  compile_inferred
-}
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.runtimes.v2_evaluator {
-  v2_eval_wave1_bool_literal_pin,
-  v2_eval_wave1_bool_true_primitive,
-  v2_eval_wave1_unit_literal_pin
-}
-import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.runtime {
-  RuntimeValueNodeProjected,
-  RuntimeValueNodeUnrepresentable,
-  runtime_value_node_projection
-}
-import v2.std.witness { Holds, Violates, Witness }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn compile_eval_thesis_termination_proof() -> TerminationProof {
   TerminationProof {
@@ -35,19 +11,19 @@ fn compile_eval_thesis_termination_proof() -> TerminationProof {
 }
 
 fn compile_eval_thesis_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  if key == v2_eval_wave1_bool_literal_pin {
+  if key == v2_eval_bool_literal_pin {
     Holds {
       value: claim_inferred_facts_from_nodes(
-        resolved: v2_eval_wave1_bool_literal_pin,
-        algebra: v2_eval_wave1_bool_literal_pin,
+        resolved: v2_eval_bool_literal_pin,
+        algebra: v2_eval_bool_literal_pin,
         descent: Holds { value: compile_eval_thesis_termination_proof() }
       )
     }
-  } else if key == v2_eval_wave1_unit_literal_pin {
+  } else if key == v2_eval_unit_literal_pin {
     Holds {
       value: claim_inferred_facts_from_nodes(
-        resolved: v2_eval_wave1_unit_literal_pin,
-        algebra: v2_eval_wave1_unit_literal_pin,
+        resolved: v2_eval_unit_literal_pin,
+        algebra: v2_eval_unit_literal_pin,
         descent: Holds { value: compile_eval_thesis_termination_proof() }
       )
     }
@@ -68,9 +44,9 @@ fn compile_eval_thesis_inferred(root: Node) -> InferredTree {
 }
 
 fn compile_eval_thesis_expected_bool_node() -> Node {
-  match runtime_value_node_projection(value: v2_eval_wave1_bool_true_primitive()) {
+  match runtime_value_node_projection(value: v2_eval_bool_true_primitive()) {
     RuntimeValueNodeProjected { node: n } => n
-    RuntimeValueNodeUnrepresentable => v2_eval_wave1_bool_literal_pin
+    RuntimeValueNodeUnrepresentable => v2_eval_bool_literal_pin
   }
 }
 
@@ -83,8 +59,8 @@ fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
 
 fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   match compile_inferred(
-    inferred: compile_eval_thesis_inferred(root: v2_eval_wave1_bool_literal_pin),
-    mode: Eval { runtime: v2_eval_wave1_bool_literal_pin }
+    inferred: compile_eval_thesis_inferred(root: v2_eval_bool_literal_pin),
+    mode: Eval { runtime: v2_eval_bool_literal_pin }
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
       compile_eval_thesis_medium_matches_expected(medium: actual)
@@ -94,8 +70,8 @@ fn compile_eval_bool_reaches_node_value_holds() -> Bool {
 
 fn compile_eval_bool_via_compile_entry_holds() -> Bool {
   match compile(
-    source: v2_eval_wave1_bool_literal_pin,
-    mode: Eval { runtime: v2_eval_wave1_bool_literal_pin }
+    source: v2_eval_bool_literal_pin,
+    mode: Eval { runtime: v2_eval_bool_literal_pin }
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
       compile_eval_thesis_medium_matches_expected(medium: actual)
@@ -105,8 +81,8 @@ fn compile_eval_bool_via_compile_entry_holds() -> Bool {
 
 fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
   match compile_inferred(
-    inferred: compile_eval_thesis_inferred(root: v2_eval_wave1_unit_literal_pin),
-    mode: Eval { runtime: v2_eval_wave1_unit_literal_pin }
+    inferred: compile_eval_thesis_inferred(root: v2_eval_unit_literal_pin),
+    mode: Eval { runtime: v2_eval_unit_literal_pin }
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable

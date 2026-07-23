@@ -3,29 +3,21 @@ module gunbc.local_tidy_spec
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
-import gunbc.ci_gate { GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
+  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyCargoFmtCheck,
   commit_gate_roster,
   project_local_tidy_checks,
   doc_reachability_witness_entry
 }
-import tools.rust_stage0_gates { rust_monolith_suffixes }
+import tools.rust_stage0_gates { rust_monolith_suffixes, path_is_rust_monolith }
 
 data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
-
-data generated_artifact_drift_gate_entry: String = "dag/tools/generated_artifact_gate.dag"
-
-data generated_artifact_drift_gate_check_fn: String = "run_generated_artifact_drift_gate_body"
-
-data generated_artifact_drift_gate_wet_fn: String = "main_wet"
 
 data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
+    module_path: "gunbc.githooks_pre_push_emit",
+    decl_name: "expected_githooks_pre_push_sh",
     field: WholeDeclaration
   }
 }
@@ -49,13 +41,6 @@ fn doc_reachability_trigger_globs() -> List<String> {
   )
 }
 
-fn generated_artifact_trigger_globs() -> List<String> {
-  concat(
-    map(committed_generated_artifacts(), a => artifact_path(a: a)),
-    layer_root_glob_prefixes()
-  )
-}
-
 fn cargo_fmt_trigger_globs() -> List<String> {
   map(rust_monolith_suffixes(), s => suffix_to_glob_pattern(suffix: s))
 }
@@ -63,15 +48,29 @@ fn cargo_fmt_trigger_globs() -> List<String> {
 fn local_tidy_trigger_globs(check: LocalTidyCheck) -> List<String> {
   match check {
     LocalTidyWitnessCheck { entry: _, check_fns: _ } => doc_reachability_trigger_globs()
-    LocalTidyGateCheck { gate: _ } => generated_artifact_trigger_globs()
     LocalTidyCargoFmtCheck => cargo_fmt_trigger_globs()
   }
 }
 
-fn local_tidy_gate_entry() -> String {
-  generated_artifact_drift_gate_entry
+fn local_tidy_path_matches_glob(path: String, glob: String) -> Bool {
+  if ends_with(s: glob, suffix: "/*") {
+    let prefix = substring(s: glob, start: 0, end: length(glob) - 1)
+    starts_with(s: path, prefix: prefix)
+  } else if starts_with(s: glob, prefix: "*") {
+    let suffix = substring(s: glob, start: 1, end: length(glob))
+    ends_with(s: path, suffix: suffix)
+  } else {
+    starts_with(s: path, prefix: glob)
+  }
 }
 
-fn local_tidy_gate_wet_fn() -> String {
-  generated_artifact_drift_gate_wet_fn
+fn local_tidy_path_matches_trigger(path: String, check: LocalTidyCheck) -> Bool {
+  match check {
+    LocalTidyCargoFmtCheck => path_is_rust_monolith(path: path)
+    _ => any(
+      local_tidy_trigger_globs(check: check),
+      g => local_tidy_path_matches_glob(path: path, glob: g)
+    )
+  }
 }
+

@@ -1,0 +1,166 @@
+module std.machine_shape
+
+import std.types { NonEmptyStr, Bool, List, Map, list_length }
+import std.measure {
+  ByteSize,
+  Bandwidth,
+  Nanosecond,
+  HardwareThreadCount,
+}
+
+type DomainId = NonEmptyStr where brand("DomainId")
+type LevelId = NonEmptyStr where brand("LevelId")
+
+type MemoryLevel {
+  id: LevelId
+  capacity: ByteSize
+  transfer_grain: ByteSize?
+  bandwidth: Bandwidth?
+  latency: Nanosecond?
+}
+
+type MemoryShape = List<MemoryLevel>
+
+type LaneGrouping
+  = IndependentLanes
+  | Lockstep { group_width: HardwareThreadCount }
+
+type ExecutionShape {
+  lane_count: HardwareThreadCount
+  grouping: LaneGrouping
+}
+
+type ExecutionDomain {
+  id: DomainId
+  execution: ExecutionShape
+  memory: MemoryShape
+}
+
+type InterconnectLink {
+  bandwidth: Bandwidth
+  latency: Nanosecond?
+}
+
+type InterconnectEdge
+  = LinkEdge { from: DomainId, to: DomainId, link: InterconnectLink }
+  | SharedLevelEdge { owner: DomainId, sharer: DomainId, level: LevelId }
+
+type MachineShape {
+  domains: List<ExecutionDomain>
+  edges: List<InterconnectEdge>
+}
+
+type MachineShapeRefusalCause
+  = UnknownDomain { id: DomainId }
+  | UnknownLevel { owner: DomainId, level: LevelId }
+
+type MachineShapeConstruction
+  = MachineShapeOk { shape: MachineShape }
+  | MachineShapeRefused { cause: MachineShapeRefusalCause }
+
+type MachineShapeValidationIndex {
+  domain_ids: Map<DomainId, Bool>
+  owner_levels: Map<DomainId, Map<LevelId, Bool>>
+}
+
+fn execution_shape_independent_lanes(lane_count: HardwareThreadCount) -> ExecutionShape {
+  ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
+}
+
+fn memory_level_id_index(levels: List<MemoryLevel>) -> Map<LevelId, Bool> {
+  fold(levels, init: empty_map(), f: (acc, level) => map_insert(acc, level.id, true))
+}
+
+fn machine_shape_build_validation_index(domains: List<ExecutionDomain>) -> MachineShapeValidationIndex {
+  fold(domains, init: MachineShapeValidationIndex { domain_ids: empty_map(), owner_levels: empty_map() }, f: (acc, domain) =>
+    MachineShapeValidationIndex {
+      domain_ids: map_insert(acc.domain_ids, domain.id, true)
+      owner_levels: map_insert(acc.owner_levels, domain.id, memory_level_id_index(levels: domain.memory))
+    })
+}
+
+fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: InterconnectEdge) -> MachineShapeConstruction? {
+  match edge {
+    LinkEdge { from: from_id, to: to_id, link: _ } =>
+      if !map_contains_key(index.domain_ids, from_id) {
+        Present { value: MachineShapeRefused { cause: UnknownDomain { id: from_id } } }
+      } else if !map_contains_key(index.domain_ids, to_id) {
+        Present { value: MachineShapeRefused { cause: UnknownDomain { id: to_id } } }
+      } else {
+        none
+      }
+    SharedLevelEdge { owner: owner_id, sharer: sharer_id, level: level_id } =>
+      if !map_contains_key(index.domain_ids, owner_id) {
+        Present { value: MachineShapeRefused { cause: UnknownDomain { id: owner_id } } }
+      } else if !map_contains_key(index.domain_ids, sharer_id) {
+        Present { value: MachineShapeRefused { cause: UnknownDomain { id: sharer_id } } }
+      } else {
+        match map_get(index.owner_levels, owner_id) {
+          Present { value: owner_level_index } =>
+            if !map_contains_key(owner_level_index, level_id) {
+              Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
+            } else {
+              none
+            }
+          Absent =>
+            Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
+        }
+      }
+  }
+}
+
+fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
+  let index = machine_shape_build_validation_index(domains: shape.domains)
+  match fold(shape.edges, init: none, f: (refused, edge) =>
+    match refused {
+      Present { value: _ } => refused
+      Absent => machine_shape_validate_edge(index: index, edge: edge)
+    }) {
+    Present { value: refused } => refused
+    Absent => MachineShapeOk { shape: shape }
+  }
+}
+
+fn machine_shape_is_single_domain(shape: MachineShape) -> Bool {
+  list_length(items: shape.domains) == 1
+}
+
+fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? {
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent => Present { value: d.execution.lane_count }
+    })
+}
+
+fn first_memory_level_capacity(levels: List<MemoryLevel>) -> ByteSize? {
+  fold(levels, init: Absent, f: (lvl_found, m) =>
+    match lvl_found {
+      Present { value: _ } => lvl_found
+      Absent => Present { value: m.capacity }
+    })
+}
+
+fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> Bandwidth? {
+  fold(levels, init: Absent, f: (lvl_found, m) =>
+    match lvl_found {
+      Present { value: _ } => lvl_found
+      Absent => m.bandwidth
+    })
+}
+
+fn machine_shape_device_level_capacity(shape: MachineShape) -> ByteSize? {
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent => first_memory_level_capacity(levels: d.memory)
+    })
+}
+
+fn machine_shape_device_level_bandwidth(shape: MachineShape) -> Bandwidth? {
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent => first_memory_level_bandwidth(levels: d.memory)
+    })
+}

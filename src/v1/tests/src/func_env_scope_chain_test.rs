@@ -1,12 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use im::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_with_index, whole_tree_resolved_ctx, WholeTreeCtx,
-    FLOOR_DISCOVERY_EXCLUDES,
+    build_multi_entry_index, resolve_entry_with_index, whole_tree_resolve_exclusion_substrings,
+    whole_tree_resolved_ctx, WholeTreeCtx,
 };
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
@@ -48,11 +49,13 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-func-env-{label}-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc-func-env-{label}-{}-{}",
+            std::process::id(),
+            nanos
+        ));
     fs::create_dir_all(&dir).expect("temp dir");
     dir
 }
@@ -72,16 +75,18 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
     let def_sig = lookup_resolved_sig(def_mod.func_env.clone(), "shared_fn".to_string())
         .expect("definer local shared_fn");
-    let use_sig = lookup_func_sig(use_mod.func_env.clone(), "shared_fn".to_string())
-        .expect("consumer lookup shared_fn");
+    let use_sig = lookup_func_sig(
+        use_mod.func_env.clone(),
+        use_mod.type_env.clone(),
+        "shared_fn".to_string(),
+    )
+    .expect("consumer lookup shared_fn");
     assert!(
         Rc::ptr_eq(&def_sig, &use_sig),
         "import chain must reach the defining module's Rc, not a fresh clone"
@@ -97,7 +102,7 @@ fn collect_func_sig_ptrs(env: &ResolvedFuncEnv, out: &mut HashSet<*const Resolve
     }
 }
 
-fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn unique_func_sig_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_func_sig_ptrs(&m.func_env, &mut ptrs);
@@ -105,7 +110,7 @@ fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
     ptrs.len()
 }
 
-fn sum_local_func_sig_defs_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn sum_local_func_sig_defs_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
     modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
@@ -120,7 +125,7 @@ fn assert_resolved_no_hard_errors(
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -132,16 +137,14 @@ fn assert_resolved_no_hard_errors(
 fn compile_modules(
     sources: Vec<Rc<SourceFile>>,
 ) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a [Rc<TypedModule>],
-    source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    modules: &'a im::Vector<Rc<TypedModule>>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
 ) -> &'a Rc<TypedModule> {
     modules
@@ -252,18 +255,9 @@ fn func_env_unique_sig_ptr_count_matches_defined_functions() {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-tree resolve over dag+src/v1 — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor (run-everything had pushed both CI jobs to the 90-min timeout: max cost, zero signal). Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored func_env_whole_tree_unique_ptr_count_equals_local_definitions. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn func_env_whole_tree_unique_ptr_count_equals_local_definitions() {
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
+    let exclude_subpaths = whole_tree_resolve_exclusion_substrings();
     let roots = vec![
         workspace_root().join("dag").to_string_lossy().into_owned(),
         workspace_root()
@@ -296,16 +290,36 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         "test.func_env_rc_consumer",
     );
     assert!(
-        lookup_func_sig(consumer.func_env.clone(), "shared_fn".to_string()).is_some(),
+        lookup_func_sig(
+            consumer.func_env.clone(),
+            consumer.type_env.clone(),
+            "shared_fn".to_string()
+        )
+        .is_some(),
         "sanity: imported shared_fn must resolve with intact parent chain"
     );
 
     let stripped = Rc::new(ResolvedFuncEnv {
+        name: consumer.func_env.name.clone(),
         local: consumer.func_env.local.clone(),
-        parents: Rc::new(vec![]),
+        parents: Rc::new(im::vector![]),
+    });
+    // The global-bare census fallback (namespace wave-1) would rescue a stripped
+    // chain through type_env; withhold it so the perturbation isolates the chain-walk.
+    let census_stripped_env = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: Rc::new(HashMap::new()),
+        str_bindings: Rc::new(HashMap::new()),
+        ancestry_str_bindings: Rc::new(HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        ..(*consumer.type_env).clone()
     });
     assert!(
-        lookup_func_sig(stripped.clone(), "shared_fn".to_string()).is_none(),
+        lookup_func_sig(
+            stripped.clone(),
+            census_stripped_env.clone(),
+            "shared_fn".to_string()
+        )
+        .is_none(),
         "perturbation: stripping parents from a real import consumer must break \
          imported name lookup (chain-walk is load-bearing, not decorative)"
     );
@@ -319,9 +333,10 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         .expect("call_shared item in rc_identity consumer fixture");
     let body = call_shared.body.clone().expect("call_shared body expr");
     let stripped_scope = Rc::new(InferScope {
-        type_env: consumer.type_env.clone(),
+        type_env: census_stripped_env,
         func_env: stripped,
         locals: Rc::new(HashMap::new()),
+        body_locals: Rc::new(HashMap::new()),
         match_bound_names: Rc::new(HashMap::new()),
         module_name: "test.func_env_rc_consumer".to_string(),
         service_registry: Rc::new(HashMap::new()),

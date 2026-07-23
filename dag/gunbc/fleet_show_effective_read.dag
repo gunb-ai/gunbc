@@ -1,0 +1,495 @@
+module gunbc.fleet_show_effective_read
+
+
+type RunnerSliceCapLiveReadRow {
+  slice_unit: NonEmptyStr
+  memory_max_raw: String
+  probed_at: NonEmptyStr
+}
+
+type RunnerSliceCapLiveRead {
+  slice_unit: NonEmptyStr
+  memory_max: SystemdCgroupMemoryLimit
+  probed_at: NonEmptyStr
+}
+
+type RunnerWidthLiveReadRow {
+  instance_glob: NonEmptyStr
+  active_count_raw: String
+  probed_at: NonEmptyStr
+}
+
+type RunnerWidthLiveRead {
+  instance_glob: NonEmptyStr
+  active_count: Int
+  probed_at: NonEmptyStr
+}
+
+type OomPressureLimitLiveReadRow {
+  slice_unit: NonEmptyStr
+  pressure_limit_raw: String
+  probed_at: NonEmptyStr
+}
+
+type OomPressureLimitLiveRead {
+  slice_unit: NonEmptyStr
+  pressure_limit: Percent
+  probed_at: NonEmptyStr
+}
+
+type FleetRunnerUnitsLiveRead {
+  host: HostIdentity
+  units: List<RunnerUnitMemoryLiveRead>
+}
+
+type FleetHostEffectiveReadReceipt {
+  host: HostIdentity
+  runner_slice_cap: RunnerSliceCapLiveRead
+  runner_units: FleetRunnerUnitsLiveRead
+  runner_width: RunnerWidthLiveRead
+}
+
+type FleetHostEffectiveReadGroundedReceipt {
+  host: HostIdentity
+  effective: FleetHostEffectiveReadReceipt
+  runner_slice_cap_read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+  runner_units_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead>
+  runner_width_read: ShowEffectiveRead<RunnerWidthLiveRead>
+  probed_at: NonEmptyStr
+}
+
+data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.os.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
+}
+
+data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+fn fleet_runner_unit_memory_live_read(
+  host: HostIdentity,
+  unit: NonEmptyStr,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitMemoryLiveRead? {
+  match fleet_host_ssh_transport(host: host) {
+    Present { value: transport } =>
+      match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryMax) {
+        Present { value: memory_max_raw } =>
+          match systemctl_show_property_read(transport: transport, unit: unit, property: MemorySwapMax) {
+            Present { value: memory_swap_max_raw } =>
+              match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryHigh) {
+                Present { value: memory_high_raw } =>
+                  Present {
+                    value: runner_unit_live_read_typed(
+                      row: RunnerUnitLiveReadRow {
+                        unit: unit,
+                        memory_max_raw: memory_max_raw,
+                        memory_swap_max_raw: memory_swap_max_raw,
+                        memory_high_raw: memory_high_raw,
+                        memory_current_raw: "",
+                        probed_at: probed_at,
+                      }
+                    )
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn fleet_runner_slice_cap_memory_max_raw(
+  host: HostIdentity,
+  slice_unit: NonEmptyStr,
+) -> String? {
+  match fleet_host_ssh_transport(host: host) {
+    Present { value: transport } =>
+      systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax)
+    Absent => none
+  }
+}
+
+fn runner_unit_live_read_row_from_stdout(
+  unit: NonEmptyStr,
+  stdout: String,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitLiveReadRow? {
+  let parts = split(s: stdout, delimiter: "\n")
+  if length(parts) >= 3 {
+    Present {
+      value: RunnerUnitLiveReadRow {
+        unit: unit,
+        memory_max_raw: trim(parts.first()),
+        memory_swap_max_raw: trim(parts.skip(n: 1).first()),
+        memory_high_raw: trim(parts.skip(n: 2).first()),
+        memory_current_raw: "",
+        probed_at: probed_at,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn runner_unit_memory_live_read_from_stdout(
+  unit: NonEmptyStr,
+  stdout: String,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitMemoryLiveRead? {
+  match runner_unit_live_read_row_from_stdout(unit: unit, stdout: stdout, probed_at: probed_at) {
+    Present { value: row } => Present { value: runner_unit_live_read_typed(row: row) }
+    Absent => none
+  }
+}
+
+fn show_effective_read_from_unit_row(
+  host: HostIdentity,
+  row: RunnerUnitLiveReadRow,
+) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+  show_effective_read_from_runner_units(host: host, rows: [row])
+}
+
+fn per_slot_memory_cap_verdict_from_unit_read(
+  read: RunnerUnitMemoryLiveRead,
+  target: ConvergeTarget,
+) -> ConvergeVerdict? {
+  converge_target_live_verdict(read: read, target: target)
+}
+
+fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl list-units --type=service --state=active --no-legend \"", instance_glob),
+    "\" 2>/dev/null | wc -l | tr -d ' '"
+  )
+}
+
+fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl show -p MemoryMax -p MemorySwapMax -p MemoryHigh --value \"", unit),
+    "\" 2>/dev/null"
+  )
+}
+
+data gunbc_srv1_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
+  slice_unit: "system-actions-runner.slice",
+  memory_max_raw: "infinity",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
+  slice_unit: "system-actions-runner.slice",
+  memory_max_raw: "85899345920",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv1_runner_width_fixture_row: RunnerWidthLiveReadRow = RunnerWidthLiveReadRow {
+  instance_glob: "actions-runner@srv1-*.service",
+  active_count_raw: "10",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_width_fixture_row: RunnerWidthLiveReadRow = RunnerWidthLiveReadRow {
+  instance_glob: "actions-runner@srv2-*.service",
+  active_count_raw: "8",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv1_oom_pressure_limit_fixture_row: OomPressureLimitLiveReadRow = OomPressureLimitLiveReadRow {
+  slice_unit: "sessions.slice",
+  pressure_limit_raw: "2576980377",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv1_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv1-02.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  memory_current_raw: "",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_unit_live_read_fixture_01: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv2-01.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  memory_current_raw: "",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv2-02.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  memory_current_raw: "",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
+  reason: "no live systemctl show -p MemoryMax on system-actions-runner.slice has run on the fleet yet; typed parse + transport live in gunbc.fleet_show_effective_read — bind ReadObserved at the apply increment"
+}
+
+data gunbc_fleet_runner_units_show_effective_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead> = ReadAbsent {
+  reason: "no live per-instance systemctl show loop has run on the fleet runner units yet; typed rows + transport live in gunbc.fleet_show_effective_read"
+}
+
+data gunbc_fleet_runner_width_show_effective_read: ShowEffectiveRead<RunnerWidthLiveRead> = ReadAbsent {
+  reason: "no live systemctl list-units active-count read has run on the fleet runner glob yet; typed parse + transport live in gunbc.fleet_show_effective_read"
+}
+
+data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<FleetHostEffectiveReadReceipt> = ReadAbsent {
+  reason: "no full-host effective read receipt has been collected on srv1/srv2 yet; compose the three v0-blocking knob reads here"
+}
+
+fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
+  if host == operator_host_srv1 {
+    Present { value: HostOs { node: srv1_host } }
+  } else { if host == operator_host_srv2 {
+    Present { value: HostOs { node: srv2_host } }
+  } else { none } }
+}
+
+fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
+  if host == operator_host_srv1 {
+    Present { value: srv1_host_identity_ssh_transport() }
+  } else { if host == operator_host_srv2 {
+    Present { value: srv2_host_identity_ssh_transport() }
+  } else { none } }
+}
+
+fn runner_slice_cap_live_read_typed(row: RunnerSliceCapLiveReadRow) -> RunnerSliceCapLiveRead {
+  RunnerSliceCapLiveRead {
+    slice_unit: row.slice_unit,
+    memory_max: parse_systemd_memory_limit_show(raw: row.memory_max_raw),
+    probed_at: row.probed_at,
+  }
+}
+
+fn oom_pressure_limit_live_read_typed(row: OomPressureLimitLiveReadRow) -> OomPressureLimitLiveRead? {
+  match parse_managed_oom_pressure_limit_show(raw: row.pressure_limit_raw) {
+    Present { value: pct } =>
+      Present {
+        value: OomPressureLimitLiveRead {
+          slice_unit: row.slice_unit,
+          pressure_limit: pct,
+          probed_at: row.probed_at,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSliceCapEffectiveness? {
+  memory_limit_to_cap_effectiveness(lim: read.memory_max)
+}
+
+fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  let read = runner_slice_cap_live_read_typed(row: row)
+  match read.memory_max {
+    MemoryLimitAbsent =>
+      ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
+    _ =>
+      match runner_slice_cap_to_effectiveness(read: read) {
+        Present { value: eff } => ReadObserved { value: eff }
+        Absent =>
+          ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
+      }
+  }
+}
+
+fn show_effective_read_from_runner_units(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+  if rows.length() == 0 {
+    ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
+  } else {
+    ReadObserved {
+      value: FleetRunnerUnitsLiveRead {
+        host: host,
+        units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
+      }
+    }
+  }
+}
+
+fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> ShowEffectiveRead<RunnerWidthLiveRead> {
+  match runner_width_live_read_typed(row: row) {
+    Present { value: width } => ReadObserved { value: width }
+    Absent => ReadAbsent { reason: "runner width list-units count parse failed (empty or non-numeric); fail-closed" }
+  }
+}
+
+fn slice_property_memory_max_verdict(
+  read: RunnerSliceCapLiveRead,
+  property: String,
+  expected: ByteSize,
+) -> ConvergeVerdict? {
+  if property != systemd_memory_max_property {
+    none
+  } else {
+    Present {
+      value: memory_limit_converge_verdict(observed: read.memory_max, desired: expected)
+    }
+  }
+}
+
+fn oom_pressure_limit_converge_verdict(read: OomPressureLimitLiveRead, desired: Percent) -> ConvergeVerdict {
+  if percent_count(p: read.pressure_limit) == percent_count(p: desired) {
+    VerdictConverged
+  } else {
+    Drifted
+  }
+}
+
+fn parse_runner_width_active_count(raw: String) -> Int? {
+  let trimmed = trim(raw)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 { Present { value: n } } else { none }
+      Absent => none
+    }
+  }
+}
+
+fn runner_width_live_read_typed(row: RunnerWidthLiveReadRow) -> RunnerWidthLiveRead? {
+  match parse_runner_width_active_count(raw: row.active_count_raw) {
+    Present { value: count } =>
+      Present {
+        value: RunnerWidthLiveRead {
+          instance_glob: row.instance_glob,
+          active_count: count,
+          probed_at: row.probed_at,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn runner_width_converge_verdict(observed: Int, desired: Int) -> ConvergeVerdict {
+  if observed == desired { VerdictConverged } else { Drifted }
+}
+
+fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
+  match read {
+    ReadAbsent { reason: _ } => true
+    ReadObserved { value: CapUnbounded } => true
+    ReadObserved { value: CapEffective { bytes: _ } } => false
+  }
+}
+
+fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> FleetRunnerUnitsLiveRead {
+  FleetRunnerUnitsLiveRead {
+    host: host,
+    units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
+  }
+}
+
+fn fleet_host_effective_read_receipt(
+  host: HostIdentity,
+  slice_row: RunnerSliceCapLiveReadRow,
+  unit_rows: List<RunnerUnitLiveReadRow>,
+  width_row: RunnerWidthLiveReadRow,
+) -> FleetHostEffectiveReadReceipt? {
+  match runner_width_live_read_typed(row: width_row) {
+    Present { value: width } =>
+      Present {
+        value: FleetHostEffectiveReadReceipt {
+          host: host,
+          runner_slice_cap: runner_slice_cap_live_read_typed(row: slice_row),
+          runner_units: fleet_runner_units_from_rows(host: host, rows: unit_rows),
+          runner_width: width,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn fleet_host_effective_read_grounded_from_fixture(
+  host: HostIdentity,
+  slice_row: RunnerSliceCapLiveReadRow,
+  unit_rows: List<RunnerUnitLiveReadRow>,
+  width_row: RunnerWidthLiveReadRow,
+  probed_at: NonEmptyStr,
+) -> FleetHostEffectiveReadGroundedReceipt? {
+  match fleet_host_effective_read_receipt(
+    host: host,
+    slice_row: slice_row,
+    unit_rows: unit_rows,
+    width_row: width_row,
+  ) {
+    Present { value: effective } =>
+      Present {
+        value: FleetHostEffectiveReadGroundedReceipt {
+          host: host,
+          effective: effective,
+          runner_slice_cap_read: show_effective_read_from_slice_cap_row(row: slice_row),
+          runner_units_read: show_effective_read_from_runner_units(host: host, rows: unit_rows),
+          runner_width_read: show_effective_read_from_width_row(row: width_row),
+          probed_at: probed_at,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn fixture_srv1_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+  [gunbc_srv1_runner_unit_live_read_fixture, gunbc_srv1_runner_unit_live_read_fixture_02]
+}
+
+fn fixture_srv2_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+  [gunbc_srv2_runner_unit_live_read_fixture_01, gunbc_srv2_runner_unit_live_read_fixture_02]
+}
+
+fn fixture_srv1_host_effective_read_grounded_receipt() -> FleetHostEffectiveReadGroundedReceipt? {
+  fleet_host_effective_read_grounded_from_fixture(
+    host: operator_host_srv1,
+    slice_row: gunbc_srv1_runner_slice_cap_fixture_row,
+    unit_rows: fixture_srv1_runner_units_rows(),
+    width_row: gunbc_srv1_runner_width_fixture_row,
+    probed_at: gunbc_srv1_runner_slice_cap_fixture_row.probed_at,
+  )
+}
+
+fn fixture_srv2_host_effective_read_grounded_receipt() -> FleetHostEffectiveReadGroundedReceipt? {
+  fleet_host_effective_read_grounded_from_fixture(
+    host: operator_host_srv2,
+    slice_row: gunbc_srv2_runner_slice_cap_fixture_row,
+    unit_rows: fixture_srv2_runner_units_rows(),
+    width_row: gunbc_srv2_runner_width_fixture_row,
+    probed_at: gunbc_srv2_runner_slice_cap_fixture_row.probed_at,
+  )
+}
+
+fn fleet_receipt_unit_count(receipt: FleetHostEffectiveReadReceipt) -> Int {
+  receipt.runner_units.units.length()
+}
+
+fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: NonEmptyStr) -> Bool {
+  any(receipt.runner_units.units, u => u.unit == unit)
+}
+
+fn grounded_receipt_has_observed_v0_knobs(r: FleetHostEffectiveReadGroundedReceipt) -> Bool {
+  match r.runner_slice_cap_read {
+    ReadObserved { value: _ } => true
+    ReadAbsent { reason: _ } => false
+  }
+    && match r.runner_units_read {
+      ReadObserved { value: units } => units.units.length() > 0
+      ReadAbsent { reason: _ } => false
+    }
+    && match r.runner_width_read {
+      ReadObserved { value: _ } => true
+      ReadAbsent { reason: _ } => false
+    }
+}

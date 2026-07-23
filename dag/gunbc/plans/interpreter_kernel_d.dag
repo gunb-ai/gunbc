@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
 fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **This slice:** lands `gunbc.interpreter_kernel_model` + pure `.dag` floor witness only — no `v1_interpreter.rs` emit flip, no `HAND_MAINTAINED` registry edit, no `regen --verify` flip. Mirrors #5894 / `compile_source_model` sequencing."),
+    p(text: "**Status:** model-and-witness + seam classification landed (#6229 / session deep-crab-542). Parent seed burn-down **HAND kernel D**. **Original slice:** `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (landed #6217):** `rest_transport_facts` · `wire_value_serialize` dissolved as pure fact-projection into `cli_run.rs` — pinned roster now 2 host-physics files."),
     h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
     p(text: "`v1_interpreter.rs` (~6.3k LOC, `HAND_MAINTAINED_STAGE0_FILES`) is a **hybrid**: pure expression evaluation + host-effect dispatch (shell / REST / file / fixture replay / caches). Total dissolution is not one file delete — the seam splits on **decidability**: pure-eval grounds into `v2.compiler.eval` + `emit_host`; host-physics (transports / fixtures / cache backends) is the **terminal irreducible kernel** (seed-shrink-census §6)."),
     TableBlock {
@@ -14,7 +14,7 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
         row(cells: [cell(text: "pure-eval"), cell(text: "`05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag`"), cell(text: "`gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses`"), cell(text: "wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core")]),
-        row(cells: [cell(text: "pinned host-physics"), cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs` · `rest_transport_facts.rs` · `wire_value_serialize.rs`"), cell(text: "roster + dissolution triggers in model"), cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
+        row(cells: [cell(text: "pinned host-physics"), cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs`"), cell(text: "roster + dissolution triggers in model"), cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
         row(cells: [cell(text: "hybrid remainder"), cell(text: "`v1_interpreter.rs` host-effect + CLI render dispatch"), cell(text: "explicitly NOT pinned as a whole file"), cell(text: "split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers")]),
       ],
     },
@@ -22,23 +22,21 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
     p(text: "**Symptom:** `v2.compiler.emit_host.run_host_process` is fail-closed (`emit_host_transport_not_wired`) — the modeled `HostTransportDescriptor` rows in `extdeps/languages/*` are not yet consumed by the v1 interpreter tap. **Authority:** `run_test_claim_emit_vs_eval` already compares `emit(tree)` against `eval(tree)` for `EqualsClaim` / `CompilesClaim`; the host run is the residue."),
     p(text: "**Construction direction (this slice):** name the authority modules and phase gate (`ModelAndWitnessOnly` → `PureEvalEmitWired`). **Follow-on:** wire transport realization in the seed interpreter (or thin host handler) from `HostTransportDescriptor` rows — same class as #5075 `TargetModel.runtime_row`."),
     h2(text: "2. Pinned host-physics (transports / fixtures / cache)"),
-    p(text: "**Verdict:** these four `HAND_MAINTAINED` stage0 files are honestly **physics-bound** — OS/shell/network/fixture-store/cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`."),
+    p(text: "**Verdict:** `recorded_fixture.rs` and `resolved_graph_cache.rs` are honestly **physics-bound** — fixture-store and cross-run cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`. `rest_transport_facts.rs` + `wire_value_serialize.rs` were misclassified as host-physics — verified zero fs/net/process calls; folded into `cli_run.rs` as pure Node-tree / wire-policy fact projection."),
     ul(items: [
       li(text: "`recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target)."),
       li(text: "`resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`)."),
-      li(text: "`rest_transport_facts.rs` + `wire_value_serialize.rs` — REST + wire JSON host seam."),
     ]),
-    h2(text: "3. Explicit non-goals (this slice)"),
+    h2(text: "3. Explicit non-goals (remaining)"),
     ul(items: [
       li(text: "No `v1_interpreter.rs` refactor or LOC deletion."),
-      li(text: "No `regen_stage0.rs` `HAND_MAINTAINED_STAGE0_FILES` edit."),
-      li(text: "No `05_emit_rust.dag` emitter edit."),
       li(text: "No `emit_host.dag` `run_host_process` wiring (transport realization PR)."),
+      li(text: "No `regen --verify` flip or bulk HAND→GENERATED cutover (per-module dissolution only)."),
     ]),
     h2(text: "4. Discriminating witness (follow-on PRs)"),
     ul(items: [
       li(text: "**Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic."),
-      li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the four pinned host-physics files — drift-gated when invert-hand-maintained derives the registry."),
+      li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the two pinned host-physics files — drift-gated when invert-hand-maintained derives the registry."),
     ]),
   ]
 }

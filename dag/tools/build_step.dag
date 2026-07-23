@@ -1,62 +1,101 @@
 module tools.build_step
 
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
-  Command, If, Exit, WithRedir,
-  Lit, Concat, StdoutToStderr,
-  lit, command, serialize_bash
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if,
+  bash_build_stmt_list_from_nodes,
+  bash_build_test_bracket,
+  bash_build_with_redir,
+  bash_build_word_concat_parts,
+  bash_build_word_lit,
+  bash_build_word_var
 }
+import v2.std.node { Node }
+
+data build_step_serialize_dissolution_note: String = "Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only."
 
 type BuildArtifact {
-  path: ShellWord
-
+  path: Node
   name: String
 }
 
-fn build_verify_echo(msg: ShellWord) -> ShellStmt {
-  WithRedir {
-    stmt: command(words: [lit(text: "echo"), msg]),
-    redir: StdoutToStderr
-  }
+fn build_verify_echo(msg: Node) -> Node {
+  bash_build_with_redir(
+    inner: bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "echo"),
+        msg
+      ]
+    ),
+    redir: ^bash_production_fold_redir_stdout_to_stderr
+  )
 }
 
-fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
-  If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), art.path, lit(text: "]")]),
-    then: [
-      build_verify_echo(msg: Concat { parts: [
-        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: "))),
-        art.path
-      ] }),
-      Exit { code: 1 }
+fn build_test_not_executable(path: Node) -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_lit(text: "!"),
+      bash_build_word_lit(text: "-x"),
+      path
     ]
-  }
+  )
 }
 
-fn verify_artifact_nonempty(art: BuildArtifact) -> ShellStmt {
-  If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), art.path, lit(text: "]")]),
-    then: [
-      build_verify_echo(msg: Concat { parts: [
-        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
-        art.path
-      ] }),
-      Exit { code: 1 }
+fn build_test_empty(path: Node) -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_lit(text: "!"),
+      bash_build_word_lit(text: "-s"),
+      path
     ]
-  }
+  )
 }
 
-fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
+fn verify_artifact_exists(art: BuildArtifact) -> Node {
+  bash_build_if(
+    cond: build_test_not_executable(path: art.path),
+    body: bash_build_stmt_list_from_nodes(stmts: [
+      build_verify_echo(
+        msg: bash_build_word_concat_parts(parts: [
+          bash_build_word_lit(
+            text: concat(
+              "::error::build verification: declared artifact '",
+              concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: ")
+            )
+          ),
+          art.path
+        ])
+      ),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
+  bash_build_if(
+    cond: build_test_empty(path: art.path),
+    body: bash_build_stmt_list_from_nodes(stmts: [
+      build_verify_echo(
+        msg: bash_build_word_concat_parts(parts: [
+          bash_build_word_lit(
+            text: concat(
+              "::error::build verification: declared artifact '",
+              concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: ")
+            )
+          ),
+          art.path
+        ])
+      ),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+fn verify_artifact(art: BuildArtifact) -> List<Node> {
   [verify_artifact_exists(art: art), verify_artifact_nonempty(art: art)]
 }
 
-fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
+fn emit_verifications(produces: List<BuildArtifact>) -> List<Node> {
   fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
-}
-
-fn verifications_script(produces: List<BuildArtifact>) -> String {
-  serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: emit_verifications(produces: produces)
-  })
 }

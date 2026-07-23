@@ -1,0 +1,164 @@
+module v2.test.emit.type_alias_emit
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data type_alias_core_node_golden: String = "type CoreNode = Node;"
+data type_alias_generator_id_golden: String = "type GeneratorId = Symbol;"
+
+fn type_alias_interned_symbol(spelling: String) -> Symbol {
+  spelling
+}
+
+fn type_alias_atom(spelling: String) -> Node {
+  rust_inhabitant_atom(id: type_alias_interned_symbol(spelling: spelling))
+}
+
+fn type_alias_qualified_name_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: type_alias_atom(spelling: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_type_expr_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_decl_emitted(name: String, type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: type_alias_atom(spelling: name) },
+      Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_core_node_emitted() -> Node {
+  type_alias_decl_emitted(name: "CoreNode", type_name: "Node")
+}
+
+fn type_alias_generator_id_emitted() -> Node {
+  type_alias_decl_emitted(name: "GeneratorId", type_name: "Symbol")
+}
+
+fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: type_alias_atom(spelling: head) },
+      Edge { label: Positional, target: type_alias_atom(spelling: arg) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_generic_type_expr_emitted(head: String, arg: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_generic_rhs_decl_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: type_alias_atom(spelling: "NodeList") },
+      Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node") }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn type_alias_target() -> TargetModel {
+  rust_type_alias_decl_structural_target_model()
+}
+
+fn type_alias_emit_source_text(emitted: Node) -> Outcome<String> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(
+      rules: rust_type_alias_decl_productions_only_translation_rules(),
+      emitted: emitted
+    ),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: type_alias_target(), tokens: tokens),
+                f: fn(medium) { outcome_accepted(value: medium.carried) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn type_alias_emit_matches_golden(emitted: Node, golden: String) -> Bool {
+  match type_alias_emit_source_text(emitted: emitted) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_alias_construct_refused(emitted: Node) -> Bool {
+  match type_alias_emit_source_text(emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+type TypeAliasEmitConstructRow {
+  construct: Symbol
+  covered: Bool
+}
+
+data type_alias_emit_construct_rows: List<TypeAliasEmitConstructRow> = [
+  TypeAliasEmitConstructRow { construct: ^type_alias_core_node_to_node, covered: true },
+  TypeAliasEmitConstructRow { construct: ^type_alias_generator_id_to_symbol, covered: true },
+  TypeAliasEmitConstructRow { construct: ^type_alias_rhs_generic_instantiation, covered: false }
+]
+
+fn type_alias_covered_count() -> Int {
+  fold_list(xs: type_alias_emit_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc + 1 } else { acc } })
+}
+
+fn type_alias_refused_count() -> Int {
+  fold_list(xs: type_alias_emit_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } })
+}
+
+fn type_alias_covered_holds() -> Bool {
+  type_alias_emit_matches_golden(emitted: type_alias_core_node_emitted(), golden: type_alias_core_node_golden)
+    && type_alias_emit_matches_golden(emitted: type_alias_generator_id_emitted(), golden: type_alias_generator_id_golden)
+}
+
+fn type_alias_golden_discriminates_holds() -> Bool {
+  !type_alias_emit_matches_golden(emitted: type_alias_core_node_emitted(), golden: "type CoreNode = node;")
+    && !type_alias_emit_matches_golden(emitted: type_alias_core_node_emitted(), golden: type_alias_generator_id_golden)
+}
+
+fn type_alias_gaps_refused_holds() -> Bool {
+  type_alias_construct_refused(emitted: type_alias_generic_rhs_decl_emitted())
+    && (type_alias_refused_count() == 1)
+    && (type_alias_covered_count() == 2)
+}
+
+test fn type_alias_emit_holds() -> Bool {
+  type_alias_covered_holds()
+    && type_alias_golden_discriminates_holds()
+    && type_alias_gaps_refused_holds()
+}

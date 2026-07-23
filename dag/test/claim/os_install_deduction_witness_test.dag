@@ -1,48 +1,7 @@
 module test.claim.os_install_deduction
 
-import std.types { Bool, NonEmptyStr }
-import extdeps.os.ubuntu_autoinstall {
-  UbuntuAutoinstallPayload,
-  AutoinstallIdentity,
-  NoCloudLocal,
-  NoCloudNet,
-  StoragePolicyAbsent,
-  StoragePolicyDirectLayout,
-}
-import extdeps.uri { Uri, Https }
-import gunbc.os_install {
-  srv3_ubuntu_autoinstall_on_iso,
-  srv3_autoinstall_identity,
-}
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.os_install_deduction {
-  TargetDiskState,
-  EmptyDisk,
-  ForeignOsPresent,
-  UnknownDiskState,
-  OsInstallPreflightVerdict,
-  CompleteForUnattended,
-  RequiresStoragePolicy,
-  RequiresDiskObservation,
-  AutoinstallIncompleteNotBootable,
-  NotUnattendedByPolicy,
-  IncompleteSeedDelivery,
-  fold_nbd_proxy_os_install_preflight_verdict,
-  plan_for_os_install_preflight_verdict,
-  RemasterWithStoragePolicy,
-  RefuseUntilStoragePolicyDeclared,
-  RefuseNeedsDiskObservation,
-  KvmOperatorAttestation,
-  KvmObservedScreen,
-  SubiquityStorageScreen,
-  FirmwareSetup,
-  InstallerAwaitingStorage,
-  KvmFirmwareIdleObserved,
-  KvmSuggestsOsBooted,
-  OsInstalled,
-  runtime_verdict_from_kvm_attestation,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
   autoinstall_version: 1,
@@ -239,7 +198,7 @@ test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
     preflight: CompleteForUnattended,
   ) {
     KvmSuggestsOsBooted => true
-    OsInstalled => false
+    RuntimeOsInstalled => false
     _ => false
   }
 }

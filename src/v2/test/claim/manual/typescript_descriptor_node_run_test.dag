@@ -8,7 +8,7 @@ import v2.compiler.emit_host {
   runtime_value_signed_i32_le_as_int
 }
 import v2.compiler.eval { Inputs }
-import v2.extdeps.languages.typescript { ts_mvp1_target_model }
+import v2.extdeps.languages.typescript { ts_target_model }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -28,6 +28,9 @@ import v2.test.manual.add_body_emit_typescript {
 }
 import v2.test.manual.connective_anchors { stub_empty_conj }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn typescript_descriptor_node_emit_host_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
@@ -61,9 +64,9 @@ fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<S
 }
 
 fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
-  match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+  match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: None } =>
-      match typescript_descriptor_node_host_run_i32(target: ts_mvp1_target_model(), source: source) {
+      match typescript_descriptor_node_host_run_i32(target: ts_target_model(), source: source) {
         Accepted { value: n, diagnostics: None } => n == 5
         _ => false
       }

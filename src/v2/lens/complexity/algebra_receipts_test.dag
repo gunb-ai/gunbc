@@ -1,37 +1,7 @@
 module v2.test.lens_complexity.algebra_receipts
 
-import v2.lens.complexity {
-  ComplexityBound,
-  complexity_bound_dominates,
-  complexity_bound_from_cost,
-  linear_complexity,
-  multidimensional_polynomial_complexity,
-  single_complexity_variable,
-  composite_complexity_variables
-}
-import v2.lens.cost {
-  PolynomialCost,
-  PolynomialDegree,
-  ProductCost,
-  SizeVariable,
-  SymbolicCost
-}
-import v2.std.cardinality { NonZeroNat }
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
-import v2.std.nat { Succ, Zero }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type ComplexityProjectionClaim {
   input_cost: SymbolicCost
   expected_complexity: ComplexityBound

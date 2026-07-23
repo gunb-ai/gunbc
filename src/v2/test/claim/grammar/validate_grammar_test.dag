@@ -1,19 +1,7 @@
 module v2.test.claim.grammar.validate_grammar
 
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { Set }
-import v2.std.grammar {
-  FormalGrammar,
-  FormalTerminal,
-  grammar_alphabet_enumeration_deferred_4766,
-  grammar_formal_nonterminal,
-  grammar_formal_production,
-  grammar_formal_terminal,
-  validate_grammar
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start
 data validate_grammar_fixture_terminal_a: Symbol = ^validate_grammar_fixture_terminal_a

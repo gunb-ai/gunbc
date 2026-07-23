@@ -1,0 +1,150 @@
+module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_row_03_body_producer,
+  compiler_frontier_row_06_translate,
+  compiler_frontier_row_07_target_carriers,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_row_discovery_enumeration,
+  compiler_frontier_row_use_site_verdict,
+  compiler_frontier_self_emitted_baseline,
+  SelfEmitted,
+  FrontierProbeReceipt,
+  SelfEmitReady,
+  ProbeStageEmit,
+  CompilerModuleFrontierRow
+}
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_entries,
+  falsifier_self_host_wet_template_entries,
+  falsifier_self_host_wet_frontier_enrolled_entries,
+  frontier_row_wet_entries_if_enrolled,
+  find_wet_receipt_binding
+}
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
+  compiler_frontier_row_06_translate
+}
+
+fn sample_self_emitted_row() -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: "src/v2/compiler/06_translate.dag",
+    disposition: SelfEmitted,
+    measured_probe: FrontierProbeReceipt {
+      module_path: "src/v2/compiler/06_translate.dag",
+      blocker_class: SelfEmitReady,
+      located_stage: ProbeStageEmit,
+      located_reason: ^measured_probe_self_emit_ready
+    },
+    tractability_rank: 0
+  }
+}
+
+fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_seed_retained_row())) == 0
+}
+
+fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
+}
+
+fn witness_parse_engine_hooks_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_parse_engine_hooks)) == 1
+}
+
+fn witness_use_site_verdict_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 1
+}
+
+fn witness_discovery_enumeration_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_discovery_enumeration)) == 1
+}
+
+fn witness_target_carriers_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 1
+}
+
+fn witness_body_producer_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 1
+}
+
+data wet_template_entry_count_note: String = "Ten template rows: the Gate-4 std/logic per-module self-host receipt, the Gate-1 emit-class import-closure receipt (namespace_import_closure_witness_test), the seven emit-on-demand family aggregates (kernel, field_access, complement, match_loop_fold, meet_join, variant_construct, classical_not_ingested — the 2026-07-21 nightly Wet enrollment; complement + meet_join are pure-receipt residues after the family-grain migration), and the family-crate aggregate (emit_on_demand_family_crate_witness_test — the executing consumer for the migrated complement/meet_join native legs, enrolled so the migration cannot orphan them). The non-Gate-4 rows are module-agnostic — no frontier row flips to gate them; they enroll as template rows rather than SelfHostWetReceiptBinding rows. See falsifier_self_host_wet_emit_class_note."
+
+fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
+  (length(xs: falsifier_self_host_wet_template_entries) == 10)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
+    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 10)
+}
+
+fn witness_parse_engine_hooks_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/parse_engine_hooks.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag"
+        && b.function == "self_host_parse_engine_hooks_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_use_site_verdict_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/use_site_verdict.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag"
+        && b.function == "self_host_use_site_verdict_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_discovery_enumeration_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/discovery_enumeration.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag"
+        && b.function == "self_host_discovery_enumeration_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_target_carriers_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/07_target_carriers.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag"
+        && b.function == "self_host_target_carriers_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_body_producer_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/03_body_producer.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag"
+        && b.function == "self_host_body_producer_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_unbound_module_path_has_no_binding() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/06_translate.dag") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn wet_receipt_enrollment_witnesses() -> Bool {
+  witness_seed_retained_row_enrolls_no_wet_entry()
+    && witness_self_emitted_without_binding_enrolls_no_wet_entry()
+    && witness_parse_engine_hooks_self_emitted_enrolls_wet_entry()
+    && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
+    && witness_discovery_enumeration_self_emitted_enrolls_wet_entry()
+    && witness_target_carriers_self_emitted_enrolls_wet_entry()
+    && witness_body_producer_self_emitted_enrolls_wet_entry()
+    && witness_nightly_enrollment_includes_template_plus_self_emitted_modules()
+    && witness_parse_engine_hooks_binding_present()
+    && witness_use_site_verdict_binding_present()
+    && witness_discovery_enumeration_binding_present()
+    && witness_target_carriers_binding_present()
+    && witness_body_producer_binding_present()
+    && witness_unbound_module_path_has_no_binding()
+}

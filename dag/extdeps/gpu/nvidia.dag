@@ -1,9 +1,11 @@
 module extdeps.gpu.nvidia
 
-import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, Cuda }
+import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda, cuda_compute_capabilities_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { PcieLink, PcieGeneration }
+import extdeps.cpu.types { CacheGeometryCitation }
 import extdeps.vendor.nvidia { nvidia }
-import std.measure { hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -15,7 +17,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data nvidia_rtx_5090_catalog_grounding_note: String = "NVIDIA GeForce RTX 5090 (Blackwell), figures from NVIDIA's published spec page: 21760 CUDA cores; 32 GB GDDR7 (modeled as MemoryKind.Dram — GDDR is a graphics DRAM); 1792 GB/s memory bandwidth (base unit bytes/second, matching extdeps.storage per-lane convention); 575 W total graphics power; 2.41 GHz boost clock. Compute capability sm_120 = major 12 minor 0 (docs.nvidia.com compute-capabilities). Runtimes: Cuda (the GpuRuntime enum has no Vulkan/DirectX variant, so only Cuda is asserted)."
+data rtx_5090_interconnect: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
+
+data rtx_5090_sm_shared_memory: ByteSize = byte_size(count: 102400)
+data rtx_5090_sm_register_file: ByteSize = byte_size(count: 262144)
+
+data rtx_5090_sm_cache_geometry: GpuSmCacheGeometry = GpuSmCacheGeometry {
+  shared_memory_per_sm: rtx_5090_sm_shared_memory,
+  register_file_per_sm: rtx_5090_sm_register_file,
+}
+
+data rtx_5090_sm_cache_citations: List<CacheGeometryCitation> = [
+  {
+    field: "shared_memory_per_sm"
+    authority: cuda_compute_capabilities_authority
+  },
+  {
+    field: "register_file_per_sm"
+    authority: cuda_compute_capabilities_authority
+  },
+]
 
 data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   vendor: nvidia,
@@ -37,4 +58,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     }
   },
   supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_5090_interconnect },
+  sm_cache: Present { value: rtx_5090_sm_cache_geometry },
+  sm_cache_citations: rtx_5090_sm_cache_citations,
 }

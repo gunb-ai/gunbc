@@ -1,10 +1,6 @@
 module v2.std.nat
-import v2.std.algebra {
-  Magma,
-  Semigroup,
-  Monoid,
+import std.algebra {
   CommutativeMonoid,
-  Semiring,
   CommutativeSemiring,
   Ordering,
   Less,
@@ -31,14 +27,13 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
 }
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
-  match a {
-    Zero => match b {
-      Zero => Equal
-      Succ { prev: _ } => Less
-    }
-    Succ { prev: ap } => match b {
-      Zero => Greater
-      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+  if a == b {
+    Equal
+  } else {
+    if a < b {
+      Less
+    } else {
+      Greater
     }
   }
 }
@@ -66,19 +61,14 @@ fn nat_gte(a: Nat, b: Nat) -> Bool {
   }
 }
 data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
-  monoid: Monoid {
-    semigroup: Semigroup { magma: Magma { op: nat_add } },
-    identity: Zero
-  }
+  op: nat_add,
+  identity: Zero
 }
 data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
-  semiring: Semiring {
-    add: nat_additive_commutative_monoid,
-    mul: Monoid {
-      semigroup: Semigroup { magma: Magma { op: nat_mul } },
-      identity: Succ { prev: Zero }
-    }
-  }
+  add: nat_add,
+  zero: Zero,
+  mul: nat_mul,
+  one: Succ { prev: Zero }
 }
 
 type NatAlgebraLawObligation {

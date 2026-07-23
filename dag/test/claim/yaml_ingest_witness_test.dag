@@ -1,11 +1,7 @@
 module test.claim.yaml_ingest_witness
 
-import extdeps.languages.yaml.types {
-  YamlValue, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv
-}
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.ingest { ingest_yaml_source, yaml_source_parses, IngestedYaml, YamlIngestRejected }
-import gunbc.ci_yaml_emit { expected_ci_yml }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn round_trips(v: YamlValue) -> Bool {
   let original = serialize_yaml(v: v)

@@ -1,0 +1,120 @@
+module v2.test.lens_identity_captured_navigation
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data discoverable_witness_note: String = "Discovery-enrolled sibling to v2.lens.identity_captured_navigation.roster_gate_test (which is OFFLINE per identity_captured_navigation_roster_gate_exclusion_note in gunbc.ci_layer_roots - its file_gate fns read real corpus files via filesystem_read at runtime, invisible to resolve-closure attribution) and to the S6 fast-lane budget that REDs a genuine snippet-parse witness (dag_language_model()+tokenize+parse_module costs >5s even on a five-line snippet - measured directly: run 29305270533, EvalBudgetExceeded at ~5001ms on every source_findings-based witness previously placed here). Rather than parsing real source text, these witnesses hand-construct the exact synthetic Node shape identity_navigation_findings_at/classify_identity_match read - the same technique v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond range while still exercising the real detection function end-to-end (identity_captured_navigation_findings), not a mocked stand-in."
+
+fn synth_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn synth_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn synth_positional_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn synth_conj(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data production_wrapper_note: String = "synth_production mirrors the real grammar's TypeNode\{Conj\} wrapper (v2.extdeps.languages.dag emit_grammar_relation_row / parse_production_emitted_identity_optional+parse_production_captured_child_optional): a Conj node with exactly one ^grammar_production_identity_node_projection-named edge to an Atom carrying the emitted symbol, and exactly one ^grammar_production_captured_node_projection-named edge to the real captured value subtree - the two-edge shape this whole lens exists to police the navigation of."
+
+fn synth_production(emitted: Symbol, captured: Node) -> Node {
+  synth_conj([
+    synth_named_edge(name: ^grammar_production_identity_node_projection, target: synth_atom(id: emitted)),
+    synth_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
+  ])
+}
+
+fn synth_sequence(left: Node, right: Node) -> Node {
+  synth_conj([
+    synth_named_edge(name: ^grammar_sequence_left_node_projection, target: left),
+    synth_named_edge(name: ^grammar_sequence_right_node_projection, target: right)
+  ])
+}
+
+fn synth_mentions(mentions: List<Symbol>) -> Node {
+  synth_conj(list_map(xs: mentions, f: fn(sym) { synth_positional_edge(target: synth_atom(id: sym)) }))
+}
+
+data call_shape_note: String = "synth_identity_navigation_call builds the scrutinee shape scrutinee_identity_navigation_call reads: a primary_expr production whose captured value_expr has ^find_named_child on the sequence-left slot (the call head) and two direct ^dag_surface_arg children, the second (index 1, the `name:` argument) itself wrapping a primary_expr whose sequence-left slot IS name_sym directly (bypassing the real grammar's caret-literal indirection - value_expr_symbol_from_left returns left_id verbatim whenever it is not literally ^dag_token_caret, so a fixture may supply the referenced symbol straight, no span/source_text round-trip needed)."
+
+fn synth_arg(value_expr: Node) -> Node {
+  synth_production(emitted: ^dag_surface_arg, captured: synth_production(emitted: ^dag_surface_primary_expr, captured: value_expr))
+}
+
+fn synth_name_value_expr(name_sym: Symbol) -> Node {
+  synth_conj([synth_named_edge(name: ^grammar_sequence_left_node_projection, target: synth_atom(id: name_sym))])
+}
+
+fn synth_identity_navigation_call(name_sym: Symbol) -> Node {
+  let root_arg = synth_arg(value_expr: synth_name_value_expr(name_sym: ^dag_surface_root))
+  let name_arg = synth_arg(value_expr: synth_name_value_expr(name_sym: name_sym))
+  let call_value_expr = synth_conj([
+    synth_named_edge(name: ^grammar_sequence_left_node_projection, target: synth_atom(id: ^find_named_child)),
+    synth_positional_edge(target: root_arg),
+    synth_positional_edge(target: name_arg)
+  ])
+  synth_production(emitted: ^dag_surface_primary_expr, captured: call_value_expr)
+}
+
+data match_shape_note: String = "synth_match_expr builds the outer match_expr production shape match_scrutinee_node/match_arms_region_node read: captured = scrutinee sequence-left-of(after_kw), arms sequence-left-of(arms_seq) which is sequence-right-of(sequence-right-of(after_kw))."
+
+fn synth_match_expr(scrutinee: Node, arms: Node) -> Node {
+  let arms_seq = synth_sequence(left: arms, right: synth_atom(id: ^dag_token_placeholder))
+  let after_scrutinee = synth_sequence(left: synth_atom(id: ^dag_token_placeholder), right: arms_seq)
+  let after_kw = synth_sequence(left: scrutinee, right: after_scrutinee)
+  let captured = synth_sequence(left: synth_atom(id: ^dag_token_placeholder), right: after_kw)
+  synth_production(emitted: ^dag_surface_match_expr, captured: captured)
+}
+
+fn findings_for(scrutinee_name_sym: Symbol, mentions: List<Symbol>) -> List<Finding> {
+  let scrutinee = synth_identity_navigation_call(name_sym: scrutinee_name_sym)
+  let arms = synth_mentions(mentions: mentions)
+  let root = synth_match_expr(scrutinee: scrutinee, arms: arms)
+  identity_captured_navigation_findings(root: root, span_index: span_index_empty(), source_text: "")
+}
+
+fn finding_list_length(fs: List<Finding>) -> Int {
+  fold(fs, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn any_suspect(fs: List<Finding>) -> Bool {
+  fold(fs, init: false, f: fn(acc, f) { acc || finding_is_suspect(f: f) })
+}
+
+test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {
+  let fs = findings_for(
+    scrutinee_name_sym: ^grammar_production_identity_node_projection,
+    mentions: [^probe_leaked_identity_mention]
+  )
+  finding_list_length(fs: fs) == 1 && any_suspect(fs: fs)
+}
+
+test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
+  let fs = findings_for(
+    scrutinee_name_sym: ^grammar_production_identity_node_projection,
+    mentions: [^node_atom_identity_optional, ^probe_present_binder_mention]
+  )
+  finding_list_length(fs: fs) == 0
+}
+
+test fn unrelated_scrutinee_name_not_flagged() -> Bool {
+  let fs = findings_for(
+    scrutinee_name_sym: ^grammar_production_captured_node_projection,
+    mentions: [^probe_leaked_identity_mention]
+  )
+  finding_list_length(fs: fs) == 0
+}

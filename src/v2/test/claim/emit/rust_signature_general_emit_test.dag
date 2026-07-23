@@ -1,0 +1,58 @@
+module v2.test.emit.rust_signature_general_emit
+
+import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.extdeps.languages.rust {
+  rust_target_model_staging,
+  rust_signature_with_open_from_decl
+}
+import v2.std.compilers.target_model { TargetModel }
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
+
+data rust_signature_add_wrong_golden: String = "fn add(y: i32, x: i32) -> i32 { "
+
+fn rust_signature_add_decl() -> Outcome<Node> {
+  table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add)
+}
+
+fn rust_signature_add_text() -> Outcome<String> {
+  bind_outcome(
+    o: rust_signature_add_decl(),
+    f: fn(decl) {
+      bind_outcome(
+        o: rust_signature_with_open_from_decl(decl: decl),
+        f: fn(toks) {
+          bind_outcome(
+            o: serialize_concrete_syntax_tokens_to_source(
+              target: rust_target_model_staging(),
+              tokens: toks
+            ),
+            f: fn(medium) {
+              outcome_accepted(value: medium.carried)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rust_signature_add_matches(golden: String) -> Bool {
+  match rust_signature_add_text() {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_signature_general_reproduces_add_holds() -> Bool {
+  rust_signature_add_matches(golden: rust_signature_add_golden)
+    && !rust_signature_add_matches(golden: rust_signature_add_wrong_golden)
+}

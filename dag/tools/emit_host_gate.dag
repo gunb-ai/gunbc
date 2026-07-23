@@ -1,26 +1,70 @@
 module tools.emit_host_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.shell.exec { transport_script_from_body }
+import gunbc.shell_bash_runner { shell_printf_line }
 import tools.emit_host_transport {
-  run_rust_mvp2_smoke,
-  run_python_mvp2_smoke,
-  run_go_mvp2_smoke,
-  run_ts_mvp1_smoke,
-  run_node_http_serve_smoke
+  run_rust_smoke,
+  run_python_smoke,
+  run_go_smoke,
+  run_ts_smoke,
+  run_node_http_serve_smoke,
+  run_c_smoke
+}
+
+data per_smoke_verdict_note: String = "The gate previously folded five smoke Bools into one refusal whose reason named no smoke — and the claim wrapper (emit_host_gate_passes = exit_ok(run_spec_gate)) discards the reason entirely, so a floor failure surfaced as bare Bool(false) and locating the failing language took log archaeology (receipt: the 2026-07-13 srv3 reprovisioning reds — five runs of forensics to name the ts/go/node toolchain gap, operator-signed fix same day). The failure arm now narrates the per-smoke verdict line through shell_printf_line (the sanctioned printf-with-escaping builder in gunbc.shell_bash_runner — never naive echo concat), visible in the claim executor's shell narration adjacent to the FAIL row, AND carries it as the refusal reason for the ProcessExit path. Narration is failure-arm-only (the floor log stays quiet on green, matching the typecheck-attribution threshold precedent); a refused narration is disclosed inside the reason, never silently dropped. The narration op itself is a marked scaffold — see emit_host_verdict_narration_dissolution_trigger."
+
+data emit_host_verdict_narration_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.emit_host_gate",
+    decl_name: "emit_host_verdict_narration_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data emit_host_verdict_narration_dissolution_trigger: String = "🟡 dissolve-on: gate_failure_exit narration — the per-smoke verdict line is shelled out (shell.Exec.Run of shell_printf_line) ONLY because the claim wrapper emit_host_gate_passes = exit_ok(run_spec_gate) discards ProcessExit.reason, so the floor's claim path would otherwise surface bare Bool(false) again (the 2026-07-13 srv3 forensics receipt this fix dissolves). DISSOLVES WHEN the claim path carries typed refusal reasons to the executor surface (ExitFailure.reason printed for gate-class claim rows, or witness refusals typed end-to-end) — then delete the narration op here and the reason field is the single carrier."
+
+fn smoke_verdict(name: String, ok: Bool) -> String {
+  concat(name, if ok { "=pass" } else { "=FAIL" })
+}
+
+fn join_space(parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, p) => match acc { "" => p _ => concat(acc, concat(" ", p)) })
+}
+
+fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> String {
+  concat("emit-host smoke verdicts: ", join_space(parts: [
+    smoke_verdict(name: "rust", ok: rust),
+    smoke_verdict(name: "python", ok: python),
+    smoke_verdict(name: "go", ok: go),
+    smoke_verdict(name: "ts", ok: ts),
+    smoke_verdict(name: "node_http", ok: node_http),
+    smoke_verdict(name: "c", ok: c)
+  ]))
+}
+
+fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> ProcessExit {
+  let verdicts = smoke_verdict_line(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
+  let narrated = shell.Exec.Run(script: transport_script_from_body(body: shell_printf_line(line: verdicts)))
+  exit_failure(
+    reason: if narrated.success { verdicts } else { concat(verdicts, " (verdict narration refused)") }
+  )
 }
 
 func run_emit_host_gate_body() -> ProcessExit {
-  rust = run_rust_mvp2_smoke()
-  python = run_python_mvp2_smoke()
-  go = run_go_mvp2_smoke()
-  ts = run_ts_mvp1_smoke()
+  rust = run_rust_smoke()
+  python = run_python_smoke()
+  go = run_go_smoke()
+  ts = run_ts_smoke()
   node_http = run_node_http_serve_smoke()
-  return if rust && python && go && ts && node_http {
+  c = run_c_smoke()
+  return if rust && python && go && ts && node_http && c {
     ExitSuccess
   } else {
-    exit_failure(
-      reason: "emit host gate failed: one or more of rust/python/go/typescript/node-http MVP smoke rows"
-    )
+    gate_failure_exit(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
   }
 }
 

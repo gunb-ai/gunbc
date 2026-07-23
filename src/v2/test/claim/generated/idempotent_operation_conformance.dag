@@ -48,9 +48,11 @@ import v2.std.runtime {
   LoopInterpreter,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
-import v2.std.verdict { Pass, Deferred, Fail }
+import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
   TestClaim,
   TestClassification,
@@ -140,7 +142,10 @@ fn idempotent_operation_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: idempotent_operation_bind_value
-      }
+      },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()
   )
@@ -202,7 +207,9 @@ fn idempotent_operation_run_non_pass(row: Outcome<TestClaimRun<Node, RuntimeValu
     Accepted { value: run, diagnostics: None } =>
       match run.verdict {
         Pass => false
-        Fail { actual: _, falsification: _ } => true
+        SemanticMismatch { actual: _, falsification: _ } => true
+        BuildFailed { actual: _, diagnostic: _ } => true
+        RunFailed { actual: _, diagnostic: _ } => true
         Deferred { actual: _, diagnostic: _ } => true
       }
     Rejected { diagnostics: _ } => true

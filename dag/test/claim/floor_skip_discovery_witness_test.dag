@@ -1,0 +1,8 @@
+module test.claim.floor_skip_discovery_witness_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn floor_skip_discovery_keystone_holds() -> Bool {
+  run_floor_skip_discovery_witness()
+}

@@ -16,37 +16,47 @@ pub use crate::std_types::{HttpMethod, List};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum EffectShape {
+pub enum EffectShape<K> {
     ReadEffect,
-    UpsertEffect { key_source: Rc<KeySource> },
-    DeleteEffect { key_source: Rc<KeySource> },
-    CreateEffect { cause: Rc<CreateCause> },
+    UpsertEffect { key_source: K },
+    DeleteEffect { key_source: K },
+    CreateEffect { cause: Rc<CreateCause<K>> },
     AppendEffect,
+    ExecuteEffect,
+}
+
+pub fn execute_effect_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none (landed authority).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum CreateCause {
+pub enum CreateCause<K> {
     PostAlways,
-    CreateIfAbsent { key_source: Rc<KeySource> },
+    CreateIfAbsent { key_source: K },
+    KeylessFallback { method: HttpMethod },
 }
-impl CreateCause {
-    pub fn key_source(&self) -> Rc<KeySource> {
-        match self {
-            CreateCause::PostAlways => panic!("no key_source on unit variant"),
-            CreateCause::CreateIfAbsent {
-                key_source: __val, ..
-            } => __val.clone(),
-        }
+
+pub fn keyless_fallback_cause_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -61,16 +71,16 @@ pub enum KeySource {
 #[serde(tag = "_variant")]
 pub enum IdempotencyEvidence {
     LatticeEffect {
-        shape: Rc<EffectShape>,
+        shape: Rc<EffectShape<Rc<KeySource>>>,
     },
     IdentityEffect,
     NonIdempotent {
-        shape: Rc<EffectShape>,
+        shape: Rc<EffectShape<Rc<KeySource>>>,
         reason: String,
     },
 }
 impl IdempotencyEvidence {
-    pub fn shape(&self) -> Rc<EffectShape> {
+    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
         match self {
             IdempotencyEvidence::LatticeEffect { shape: __val, .. } => __val.clone(),
             IdempotencyEvidence::IdentityEffect => panic!("no shape on unit variant"),
@@ -79,8 +89,17 @@ impl IdempotencyEvidence {
     }
 }
 
-pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
-    match (*shape).clone() {
+pub fn generic_predicate_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
+    match (*shape.clone()).clone() {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
         EffectShape::DeleteEffect { .. } => true,
@@ -90,65 +109,103 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
                 ..
             } => true,
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
         EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
 pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
-    match (*left).clone() {
-        KeySource::PathParam { param: pa, .. } => match (*right).clone() {
+    match (*left.clone()).clone() {
+        KeySource::PathParam { param: pa, .. } => match (*right.clone()).clone() {
             KeySource::PathParam { param: pb, .. } => (pa.clone() == pb.clone()),
             _ => false,
         },
-        KeySource::InputField { field: fa, .. } => match (*right).clone() {
+        KeySource::InputField { field: fa, .. } => match (*right.clone()).clone() {
             KeySource::InputField { field: fb, .. } => (fa.clone() == fb.clone()),
             _ => false,
         },
-        KeySource::CompositeKey { fields: fa, .. } => match (*right).clone() {
+        KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
             KeySource::CompositeKey { fields: fb, .. } => string_list_eq(fa.clone(), fb.clone()),
             _ => false,
         },
     }
 }
 
-pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
-    match (*shape).clone() {
+pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
+    match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
                 key_source: key_source,
                 ..
             } => true,
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
-        _ => false,
+        EffectShape::ReadEffect => false,
+        EffectShape::UpsertEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::DeleteEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
-pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) -> bool {
-    match (*a).clone() {
+pub fn create_double_init_collapsible(
+    a: Rc<EffectShape<Rc<KeySource>>>,
+    b: Rc<EffectShape<Rc<KeySource>>>,
+) -> bool {
+    match (*a.clone()).clone() {
         EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
-            CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b).clone() {
+            CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b.clone()).clone() {
                 EffectShape::CreateEffect { cause: cause_b, .. } => {
                     match (*cause_b.clone()).clone() {
                         CreateCause::CreateIfAbsent { key_source: kb, .. } => {
                             key_source_eq(ka.clone(), kb.clone())
                         }
                         CreateCause::PostAlways => false,
+                        CreateCause::KeylessFallback { method: method, .. } => false,
                     }
                 }
-                _ => false,
+                EffectShape::ReadEffect => false,
+                EffectShape::UpsertEffect {
+                    key_source: key_source,
+                    ..
+                } => false,
+                EffectShape::DeleteEffect {
+                    key_source: key_source,
+                    ..
+                } => false,
+                EffectShape::AppendEffect => false,
+                EffectShape::ExecuteEffect => false,
             },
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
-        _ => false,
+        EffectShape::ReadEffect => false,
+        EffectShape::UpsertEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::DeleteEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
-    pub shape: Rc<EffectShape>,
+    pub shape: Rc<EffectShape<Rc<KeySource>>>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
 
@@ -171,26 +228,28 @@ impl CompositionVerdict {
 }
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
-    {
-        let non_idempotent = Rc::new({
-            let mut __result = Vec::new();
-            for e in effects.iter().cloned() {
-                if match (*e.evidence.clone()).clone() {
-                    IdempotencyEvidence::NonIdempotent { .. } => true,
-                    _ => false,
-                } {
-                    __result.push(e);
+    effects.clone().iter().cloned().fold(
+        Rc::new(CompositionVerdict::IdempotentComposition),
+        |acc: Rc<CompositionVerdict>, e: _| match (*acc.clone()).clone() {
+            CompositionVerdict::BrokenBy {
+                first_breaker: breaker,
+                ..
+            } => acc.clone(),
+            CompositionVerdict::IdempotentComposition => match (*e.evidence.clone()).clone() {
+                IdempotencyEvidence::NonIdempotent { shape, reason, .. } => {
+                    Rc::new(CompositionVerdict::BrokenBy {
+                        first_breaker: e.clone(),
+                    })
                 }
-            }
-            __result
-        });
-        match non_idempotent.first().cloned() {
-            Some(op) => Rc::new(CompositionVerdict::BrokenBy {
-                first_breaker: op.clone(),
-            }),
-            None => Rc::new(CompositionVerdict::IdempotentComposition),
-        }
-    }
+                IdempotencyEvidence::LatticeEffect { shape: shape, .. } => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+                IdempotencyEvidence::IdentityEffect => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+            },
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -198,7 +257,7 @@ pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
     pub path_template: Rc<PathTemplate>,
-    pub shape: Rc<EffectShape>,
+    pub shape: Rc<EffectShape<Rc<KeySource>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -216,36 +275,45 @@ pub enum DeriveOpEffectResult {
     },
 }
 
-pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<EffectShape> {
-    match method {
+pub fn derive_effect_shape(
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
+) -> Rc<EffectShape<Rc<KeySource>>> {
+    match method.clone() {
         HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
         HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
         HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
         HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
             cause: Rc::new(CreateCause::PostAlways),
         }),
-        HttpMethod::DELETE => match last_path_param(path) {
+        HttpMethod::DELETE => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::DELETE,
+                }),
             }),
         },
-        HttpMethod::PUT => match last_path_param(path) {
+        HttpMethod::PUT => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::PUT,
+                }),
             }),
         },
-        HttpMethod::PATCH => match last_path_param(path) {
+        HttpMethod::PATCH => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::PATCH,
+                }),
             }),
         },
     }
@@ -260,10 +328,10 @@ pub fn derive_op_effect(
         let shape = derive_effect_shape(method.clone(), path.clone());
         Rc::new(DeriveOpEffectResult::DerivedEffect {
             effect: Rc::new(DerivedOpEffect {
-                operation_name: operation_name,
+                operation_name: operation_name.clone(),
                 method: method.clone(),
                 path_template: path.clone(),
-                shape: shape,
+                shape: shape.clone(),
             }),
         })
     }
@@ -291,7 +359,7 @@ pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
-    pub derived_shape: Rc<EffectShape>,
+    pub derived_shape: Rc<EffectShape<Rc<KeySource>>>,
     pub agreement: Rc<ModifierAgreement>,
 }
 
@@ -307,36 +375,49 @@ pub fn check_modifier_vs_derivation(
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
-                    EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::PostAlways = cause.as_ref() else {
-                            unreachable!()
-                        };
-                        Rc::new(ModifierAgreement::DerivationUnknown {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+    CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
-})
-                    }
-                    _ => Rc::new(ModifierAgreement::Disagrees {
-                        reason: "derivation says non-idempotent but modifier declares idempotent"
-                            .to_string(),
-                    }),
-                }
+}),
+    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::DerivationUnknown {
+    reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived".to_string(),
+}),
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+},
+    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+}
             } else {
                 if (!declared_idempotent.clone() && derived_idempotent.clone()) {
                     match (*op.shape.clone()).clone() {
-                        EffectShape::CreateEffect { ref cause, .. } => {
-                            let CreateCause::CreateIfAbsent {
-                                key_source: key_source,
-                                ..
-                            } = cause.as_ref()
-                            else {
-                                unreachable!()
-                            };
-                            Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
     reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
-})
-                        }
-                        _ => Rc::new(ModifierAgreement::Agrees),
-                    }
+}),
+    CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
+    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::Agrees),
+},
+    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Agrees),
+}
                 } else {
                     if (!declared_idempotent.clone() && declared_readonly.clone()) {
                         match op.method.clone() {
@@ -359,7 +440,7 @@ pub fn check_modifier_vs_derivation(
             declared_idempotent: declared_idempotent.clone(),
             declared_readonly: declared_readonly.clone(),
             derived_shape: op.shape.clone(),
-            agreement: agreement,
+            agreement: agreement.clone(),
         })
     }
 }
@@ -367,7 +448,7 @@ pub fn check_modifier_vs_derivation(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
-    pub effect_shape: Rc<EffectShape>,
+    pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
     pub claim: String,
     pub witness_required: bool,
 }
@@ -379,7 +460,7 @@ pub fn generate_idempotency_obligations(
         let mut __result = Vec::new();
         for o in Rc::new({
             let mut __result = Vec::new();
-            for o in ops.iter().cloned() {
+            for o in ops.clone().iter().cloned() {
                 if is_idempotent_effect(o.shape.clone()) {
                     __result.push(o);
                 }

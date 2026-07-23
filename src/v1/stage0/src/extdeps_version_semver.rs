@@ -10,15 +10,14 @@ pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
-pub use crate::std_types::List;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -56,31 +55,33 @@ pub struct SemVerVersion {
 }
 
 pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
-    nat_compare(a, b)
+    nat_compare(a.clone(), b.clone())
 }
 
 pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier>) -> Ordering {
-    match (*a).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b).clone() {
+    match (*a.clone()).clone() {
+        SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b.clone()).clone() {
             SemVerIdentifier::SemVerNumericIdentifier { value: bv, .. } => {
                 semver_compare_non_negative_int(av.clone(), bv.clone())
             }
             SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
         },
-        SemVerIdentifier::SemVerAlphanumericIdentifier { label: al, .. } => match (*b).clone() {
-            SemVerIdentifier::SemVerNumericIdentifier { value: _, .. } => Ordering::Greater,
-            SemVerIdentifier::SemVerAlphanumericIdentifier { label: bl, .. } => {
-                if (al.clone() < bl.clone()) {
-                    Ordering::Less
-                } else {
-                    if (al.clone() > bl.clone()) {
-                        Ordering::Greater
+        SemVerIdentifier::SemVerAlphanumericIdentifier { label: al, .. } => {
+            match (*b.clone()).clone() {
+                SemVerIdentifier::SemVerNumericIdentifier { value: _, .. } => Ordering::Greater,
+                SemVerIdentifier::SemVerAlphanumericIdentifier { label: bl, .. } => {
+                    if (al.clone() < bl.clone()) {
+                        Ordering::Less
                     } else {
-                        Ordering::Equal
+                        if (al.clone() > bl.clone()) {
+                            Ordering::Greater
+                        } else {
+                            Ordering::Equal
+                        }
                     }
                 }
             }
-        },
+        }
     }
 }
 
@@ -153,7 +154,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 }
 
 pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
-    match (*id).clone() {
+    match (*id.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
@@ -162,7 +163,7 @@ pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
 pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for id in ids.iter().cloned() {
+        for id in ids.clone().iter().cloned() {
             __result.push(semver_identifier_label(id.clone()));
         }
         __result
@@ -183,10 +184,10 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
             ),
         );
         let with_pre = if ((v.pre_release.clone().len() as i64) == 0) {
-            core
+            core.clone()
         } else {
             v1_rt::concat(
-                core,
+                core.clone(),
                 v1_rt::concat(
                     "-".to_string(),
                     semver_identifiers_label(v.pre_release.clone()),
@@ -205,7 +206,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
 }
 
 pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
-    semver_version_label(v)
+    semver_version_label(v.clone())
 }
 
 pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {

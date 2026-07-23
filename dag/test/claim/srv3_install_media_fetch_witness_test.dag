@@ -1,32 +1,9 @@
 module test.claim.srv3_install_media_fetch
 
-import std.logic { Bool }
-import std.effects { CreateEffect, CreateIfAbsent, InputField }
-import gunbc.srv3_install_media_fetch {
-  srv3_ubuntu_install_media_artifact,
-  srv3_ubuntu_install_media_install_path,
-  install_media_fetch_effect_shape,
-  classify_install_media_fetch,
-  install_media_fetch_verdict_is_idempotent_skip,
-  install_media_fetch_first_mirror_url,
-  srv3_install_media_fetch_install_path_is_versioned,
-  srv3_install_media_fetch_actuator_host_is_srv1,
-  srv3_install_media_fetch_shell_runner_dissolution_trigger,
-  Absent,
-  Present,
-  AlreadyPresent,
-  FetchRequired,
-  HashMismatchRefusal,
-}
-import extdeps.os.ubuntu_install_media {
-  CdimageUbuntuCom,
-  ReleasesUbuntuCom,
-  ubuntu_install_media_mirror_rows,
-}
-import extdeps.os.ubuntu_install_media_fetch {
-  install_media_fetch_script,
-  install_media_fetch_bash_emit_dissolution_trigger,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_split_doc: String = "The three shell.Mktemp.Dir/Filesystem.Write real-execution witnesses formerly here moved to srv3_install_media_fetch_real_execution_witness_test.dag (no mock_response on those shell ops - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus and are re-enrolled there as declared Wet entries)."
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
   match install_media_fetch_effect_shape {
@@ -37,7 +14,7 @@ test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bo
 
 test fn install_media_fetch_already_present_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     AlreadyPresent { install_path: p, content_sha256: h } =>
@@ -52,7 +29,7 @@ test fn install_media_fetch_already_present_fixture() -> Bool {
 
 test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o } =>
@@ -80,18 +57,6 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
   }
 }
 
-test fn install_media_fetch_script_is_emittable() -> Bool {
-  let script = install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact)
-  string_contains(s: script, pattern: "sha256sum -c")
-    && string_contains(s: script, pattern: "curl -fL")
-    && string_contains(s: script, pattern: "ubuntu-24.04.3-live-server-arm64.iso")
-    && string_contains(s: script, pattern: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555")
-    && string_contains(s: script, pattern: "releases.ubuntu.com")
-    && string_contains(s: script, pattern: "cdimage.ubuntu.com")
-    && string_contains(s: script, pattern: "old-releases.ubuntu.com")
-    && string_contains(s: script, pattern: ".part")
-}
-
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
   let url = install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact)
   string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
@@ -100,6 +65,12 @@ test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
 test fn srv3_install_media_fetch_scope_facts() -> Bool {
   srv3_install_media_fetch_install_path_is_versioned()
     && srv3_install_media_fetch_actuator_host_is_srv1()
-    && string_contains(s: srv3_install_media_fetch_shell_runner_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: install_media_fetch_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
+    && match srv3_install_media_fetch_shell_runner_scaffold {
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
+    }
+    && match install_media_fetch_bash_emit_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
+    }
 }

@@ -18,4 +18,13 @@ fn no_bug_no_profile_sentinel_in_tracked_sources() {
         !infer_semantics_oracle.contains(SENTINEL),
         "infer_semantics_witness.rs must not contain fabrication fallback"
     );
+    // Host-physics oracle (7 tests); not the thin floor .dag wrapper.
+    let auth_declared_but_unwired_oracle = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../stage0/src/bin/auth_declared_but_unwired_witness.rs"
+    ));
+    assert!(
+        !auth_declared_but_unwired_oracle.contains(SENTINEL),
+        "auth_declared_but_unwired_witness.rs must not contain fabrication fallback"
+    );
 }

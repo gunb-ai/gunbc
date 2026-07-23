@@ -1,0 +1,55 @@
+module v2.test.claim.compiler_materialization_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the governed carrier door (Memoize verdict consumed; non-Memoize refuses store). Ladder + catalog projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal when Recompute; bypass insert on non-Memoize carrier. reconcile-as-lookup-path is the next increment."
+
+test fn compiler_materialization_ladder_holds() -> Bool {
+  v2_compiler_materialization_ladder_holds()
+}
+
+test fn compiler_catalog_projection_has_no_refusals() -> Bool {
+  v2_compiler_catalog_projection_refusals() == 0
+}
+
+test fn parse_table_memo_provider_projects_from_catalog() -> Bool {
+  parse_table_memo_projection_ok()
+    && (parse_table_memo_provider_id() == parse_table_memo_id)
+}
+
+test fn compile_stage_memo_provider_projects_from_catalog() -> Bool {
+  compile_stage_memo_projection_ok()
+    && (compile_stage_memo_provider_id() == compile_stage_memo_id)
+}
+
+test fn parse_table_carrier_inhabits_realization() -> Bool {
+  let step = parse_table_realized_step()
+  (step.materialization == Memoize)
+    && (step.placement == LocalInProcess)
+    && (parse_table_memo_materialization() == Memoize)
+}
+
+test fn compile_stage_carrier_inhabits_realization() -> Bool {
+  let step = compile_stage_realized_step()
+  (step.materialization == Memoize)
+    && (step.placement == LocalInProcess)
+    && (compile_stage_memo_materialization() == Memoize)
+    && (cached_stage_realization().provider_id == compile_stage_memo_id)
+}
+
+test fn parse_table_empty_uses_catalog_identity() -> Bool {
+  parse_table_carrier_grounded_on_catalog()
+}
+
+test fn single_site_demands_are_accepted_single_recompute() -> Bool {
+  parse_table_memo_verdict_is_single_recompute()
+    && compile_stage_memo_verdict_is_single_recompute()
+}
+
+test fn parse_table_memo_plural_reds_without_provider() -> Bool {
+  !parse_table_memo_plural_holds_with_provider()
+    && (parse_table_memo_plural_scope_too_narrow_count() == 1)
+    && !parse_table_memo_plural_holds_without_provider()
+    && (parse_table_memo_plural_refused_without_provider_count() == 1)
+}

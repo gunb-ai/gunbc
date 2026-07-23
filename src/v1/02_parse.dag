@@ -14,7 +14,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_field_at, expr_call_func_at,
+  expr_var_name_at, field_access_field_at, field_access_spine, FieldAccessSpine, expr_call_func_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
@@ -27,6 +27,7 @@ import v1.std.core {
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
+  transport_auth_basic_key, transport_tls_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -40,15 +41,16 @@ import v1.std.core {
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
   SourceSpan, make_span,
-  ErrorNode, make_error_node, ParseError,
+  ErrorNode, make_error_node, ParseError, InternalError,
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
-  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
+  field_access_base
 }
 
-import v1.compiler.languages {
+import std.syntax {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
@@ -76,7 +78,7 @@ fn token_stream_position(stream: TokenStream) -> Int {
 }
 
 fn token_stream_first(stream: TokenStream) -> Token? {
-  skip(xs: stream.all, n: stream.pos) |> first
+  get(xs: stream.all, index: stream.pos)
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
@@ -84,7 +86,7 @@ fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
 }
 
 fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
-  skip(xs: stream.all, n: stream.pos + offset) |> first
+  get(xs: stream.all, index: stream.pos + offset)
 }
 
 type ParseContext {
@@ -1252,7 +1254,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: rest.ctx, err: none }
   EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
-    let r = expect_ident(tokens: tokens)
+    let r = parse_dotted_ident(tokens: tokens)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let first_name = r.name
     let first_name_span = r.span
@@ -1519,8 +1521,16 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       }
     }
     Present { value: ShIdent } => {
-      let n = tok.value.text
-      finish_type_expr_from_name(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, type_name: n, start_span: span)
+      let r = parse_dotted_ident(tokens: tokens)
+      if has_err(err: r.err) {
+        return TypeResult {
+          type_expr: leaf_type_node(name: "", span: span),
+          tokens: r.tokens,
+          ctx: ctx,
+          err: r.err
+        }
+      }
+      finish_type_expr_from_name(tokens: r.tokens, ctx: ctx, type_name: r.name, start_span: r.span)
     }
     _ => TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected type expression", span: span) } }
   }
@@ -2241,6 +2251,9 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
+    } else if fname == transport_auth_basic_key || fname == transport_tls_key {
+      let field = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     }
@@ -2290,10 +2303,10 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
 }
 
 fn parse_file_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportResult {
-  parse_file_fields(tokens: tokens, ctx: ctx, base_path: none)
+  parse_file_fields(tokens: tokens, ctx: ctx, base_path: none, verb: none)
 }
 
-fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -> TransportResult {
+fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, verb: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(span: span)
@@ -2302,7 +2315,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -
       Present { value: e } => e
       Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
-    TransportResult { transport: file_transport_node(base_path: bp, span: span), tokens: tokens, ctx: ctx, err: none }
+    TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2314,9 +2327,11 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
     let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
     if fname == "path" || fname == transport_path_key {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Present { value: r3.expr })
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Present { value: r3.expr }, verb: verb)
+    } else if fname == "verb" {
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: Present { value: r3.expr })
     } else {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path)
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: verb)
     }
   }
 }
@@ -3543,6 +3558,14 @@ fn is_uppercase_start(name: String) -> Bool {
   ch >= "A" && ch <= "Z"
 }
 
+fn is_variant_pattern_start(name: String) -> Bool {
+  if contains(name, ".") {
+    true
+  } else {
+    is_uppercase_start(name: name)
+  }
+}
+
 fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> PostfixResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -3597,6 +3620,25 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
               let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span)
               if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
               PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+            } else {
+              PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+            }
+          }
+        }
+        ExprFieldAccess { summary: _ } => {
+          let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
+          if is_uppercase_start(name: last_seg) && 14 <= min_bp {
+            PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+          } else {
+            if is_uppercase_start(name: last_seg) {
+              match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
+                Present { value: spine } => {
+                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted))
+                  if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+                }
+                Absent => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+              }
             } else {
               PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
             }
@@ -4018,15 +4060,17 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShIdent } => {
-      let n = tok.value.text
+      let r = parse_dotted_ident(tokens: tokens)
+      if has_err(err: r.err) {
+        return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: r.err }
+      }
+      let n = r.name
       if n == "_" {
-        PatternResult { pattern: Wildcard, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
+        PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: none }
+      } else if is_variant_pattern_start(name: n) {
+        parse_variant_pattern(tokens: r.tokens, ctx: ctx, name: n)
       } else {
-        if is_uppercase_start(name: n) {
-          parse_variant_pattern(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, name: n)
-        } else {
-          PatternResult { pattern: Bind { name: n }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
-        }
+        PatternResult { pattern: Bind { name: n }, tokens: r.tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShKeyword } => {
@@ -4149,13 +4193,29 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let name = r.name
   let name_span = r.span
 
-  let r = expect(tokens: r.tokens, expected: ExpectEq)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-
-  let r = parse_expr(tokens: r.tokens, ctx: ctx)
-  if has_err(err: r.err) { return r }
-
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r.expr], inferred: none, span: span, name_span: name_span), tokens: r.tokens, ctx: r.ctx, err: none }
+  match eat(tokens: r.tokens, expected: ExpectColon) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tr = parse_type_expr(tokens: __ec, ctx: ctx)
+    if has_err(err: tr.err) { return ExprResult { expr: dummy_expr, tokens: tr.tokens, ctx: tr.ctx, err: tr.err } }
+    let r2 = expect(tokens: tr.tokens, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: tr.ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: tr.ctx)
+    if has_err(err: r3.err) { return r3 }
+    let node = Node {
+      name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
+      connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: Present { value: tr.type_expr },
+      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLet
+    }
+    ExprResult { expr: node, tokens: r3.tokens, ctx: r3.ctx, err: none }
+  EatUnchanged { tokens: __eu } =>
+    let r2 = expect(tokens: __eu, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    if has_err(err: r3.err) { return r3 }
+    ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span), tokens: r3.tokens, ctx: r3.ctx, err: none }
+  }
 }
 
 fn parse_return(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
@@ -4195,7 +4255,21 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   ExprResult { expr: for_expr, tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
+fn field_access_chain_span(texpr: Node) -> SourceSpan {
+  match texpr.expr_data {
+    ExprFieldAccess { summary: _ } =>
+      let base_span = field_access_chain_span(texpr: field_access_base(texpr: texpr))
+      let chain_end = match texpr.ident_span { Present { value: is } => is.end  Absent => texpr.span.end }
+      SourceSpan { file: base_span.file, start: base_span.start, end: chain_end }
+    _ => texpr.span
+  }
+}
+
 fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
+  parse_record_literal_named(tokens: tokens, ctx: ctx, name: name, span: span, name_span: span)
+}
+
+fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, name_span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4208,7 +4282,7 @@ fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, sp
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
+  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span), tokens: r2.tokens, ctx: r.ctx, err: none }
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {

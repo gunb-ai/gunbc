@@ -1,20 +1,5 @@
 module gunbc.file_access
 
-import std.types { String, NonEmptyStr, Bool }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Inaccessible,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-}
-
-data file_access_doc: String = "File-tree scope observation→verdict→plan for temp-work-tree chmod/create paths. Lexical path_within_file_tree_scope is a fixture helper only — not canonical-path or TOCTOU authority (realize via owned TempWorkTree + canonical root in host_effect_apply)."
 
 type FileTreeScope {
   root_path: NonEmptyStr
@@ -72,7 +57,7 @@ fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAc
 fn classify_file_access_upsert(
   scope: FileTreeScope,
   obs: FileAccessObservation,
-) -> UpsertClassification<FileAccessPlan> {
+) -> std.upsert_decision.UpsertClassification<FileAccessPlan> {
   UpsertClassification {
     verdict: classify_file_access(obs: obs),
     decision: decision_for_file_access(obs: obs),

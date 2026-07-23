@@ -1,6 +1,7 @@
 module extdeps.os.systemctl
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import extdeps.os.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -12,6 +13,31 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn systemctl_daemon_reload_argv() -> List<String> {
+  ["systemctl", "daemon-reload"]
+}
+
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "enable", unit as String]
+}
+
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "restart", unit as String]
+}
+
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
+}
+
+fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
 
 type UnitFileState
   = UnitEnabled
@@ -37,6 +63,34 @@ service systemd.Systemctl {
     exit {
       0 => Unit
       nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Restart {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "restart", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed"
+    }
+  }
+
+  operation DisableNow {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl disable --now failed"
     }
   }
 
@@ -96,13 +150,19 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: NonEmptyStr, property: NonEmptyStr }
-    output { value: String from "stdout" }
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
     readonly
     transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
     exit {
       0 => Unit
       nonzero => String "systemctl show failed"
+    }
+    mock_response {
+      0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
     }
   }
 }

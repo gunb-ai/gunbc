@@ -1,45 +1,7 @@
 module test.claim.grounded_principal_witness
 
-import std.types { NonEmptyStr, Bool }
-import gunbc.fleet_posix_accounts {
-  FleetAccountCiRunner,
-  FleetAccountOperator,
-  FleetAccountRoot,
-  GroundedPosixPrincipal,
-  PosixAccountDeclaredProbe,
-  fleet_posix_principal,
-  grounded_posix_principal_name,
-  fleet_posix_account_from_name,
-  fleet_posix_account_exists,
-  posix_declared_probe_names_principal,
-  fleet_operator_email,
-  fleet_operator_gcp_iam_member,
-}
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  ci_deploy_srv1_operator_access,
-  deploy_preflight_shell_header,
-  deploy_access_apt_get_binary_path,
-  deploy_access_apt_get_privileged_command,
-  grounded_principal_privileged_commands,
-  srv1_live_deploy_privileged_commands,
-  deploy_access_preflight_script,
-  deploy_access_privileged_fixture_actor,
-  deploy_mutation_gate,
-  Permit,
-  Deny,
-}
-import gunbc.ci_deploy_target_host {
-  DeployTargetHostObservation,
-  deploy_target_host_fixture_observation,
-}
-import gunbc.host_identity_access { host_identity_operator_principal_name }
-import gunbc.tailscale_acl_phase2_credential {
-  tailscale_acl_operator_email,
-  operator_principal_member,
-  operator_tailscale_acl_secret_bindings,
-}
-import extdeps.github.expressions { context_name, Runner }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_runner_fiction_not_in_roster() -> Bool {
   !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
@@ -75,6 +37,7 @@ fn witness_declared_probe_names_principal() -> Bool {
   posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountCiRunner))
     && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountOperator))
     && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountRoot))
+    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountSrv3Host))
 }
 
 fn witness_declared_probe_mismatch_red() -> Bool {
@@ -95,10 +58,11 @@ fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   let principal = fleet_posix_principal(key: FleetAccountCiRunner)
   let grounded = grounded_principal_privileged_commands(p: principal)
   let composed = srv1_live_deploy_privileged_commands()
-  length(grounded) == 5
-    && length(composed) == 5
+  length(grounded) == 6
+    && length(composed) == 6
     && composed == grounded
-    && grounded.skip(1).first().path == deploy_access_apt_get_binary_path
+    && grounded.first().path == deploy_access_apt_get_binary_path
+    && !any(grounded, c => c.path == "/usr/bin/bash")
 }
 
 fn witness_preflight_shell_is_dash_safe() -> Bool {
@@ -149,10 +113,130 @@ fn witness_operator_grounded_access_gate_permits() -> Bool {
   }
 }
 
-fn witness_deploy_preflight_script_is_dash_safe() -> Bool {
-  let script = deploy_access_preflight_script(access: ci_deploy_srv1_access)
-  !string_contains(s: script, pattern: "pipefail")
-    && string_contains(s: script, pattern: deploy_preflight_shell_header)
+fn witness_deploy_authorization_query_grounds_expected_principal() -> Bool {
+  let query = deploy_access_authorization_query(access: ci_deploy_srv1_access)
+  query.expected_principal == "ghrunner"
+    && query.envelope.grants.count() == 6
+}
+
+fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Bool {
+  let plan = deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  plan.steps.count() == 7
+}
+
+fn witness_deploy_preflight_plan_uses_typed_probes() -> Bool {
+  deploy_access_preflight_plan_uses_typed_probes(
+    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  )
+}
+
+fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
+  match deploy_access_preflight_plan_first_effect(
+    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  ) {
+    Present { value: effect } =>
+      match effect {
+        ReadEffectivePosixPrincipal { read: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_deploy_preflight_plan_shell_command_red() -> Bool {
+  let poisoned = EffectPlan {
+    steps: [Do { effect: ShellCommand { script: "whoami" } }],
+    on_failure: FailFast,
+  }
+  !deploy_access_preflight_plan_uses_typed_probes(plan: poisoned)
+}
+
+fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: deploy_access_apt_get_privileged_command()
+  ) {
+    Admitted { via_root: _ } => true
+    EffectOutsideGrant { verb: _, target: _, frame: _ } => false
+  }
+}
+
+fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: PrivilegedCommand { path: "/usr/bin/bash" as NonEmptyStr, check: "--version" as NonEmptyStr }
+  ) {
+    Admitted { via_root: _ } => false
+    EffectOutsideGrant { verb: _, target: _, frame: _ } => true
+  }
+}
+
+fn witness_srv1_job_principal_resolves_from_runner() -> Bool {
+  match fleet_deploy_job_principal(runner: srv1_ci_deploy_runner_principal) {
+    Present { value: p } => grounded_posix_principal_name(p: p) == "ghrunner"
+    Absent => false
+  }
+}
+
+fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> Bool {
+  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  match fleet_deploy_job_principal(runner: poisoned) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_unknown_job_user_does_not_silent_map_ci_runner() -> Bool {
+  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  match deploy_access_or_refusal_for_runner(
+    runner: poisoned,
+    host: srv1_host,
+    transport: LocalShell,
+  ) {
+    DeployAccessJobPrincipalRefused { refusal: r } => r.job_user == "runner"
+    DeployAccessReady { access: _ } => false
+  }
+}
+
+fn witness_two_phase_principal_derives_job_user() -> Bool {
+  witness_srv1_job_principal_resolves_from_runner()
+    && srv1_ci_deploy_runner_principal.unit_user == "root"
+    && srv1_ci_deploy_runner_principal.job_user == "ghrunner"
+    && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1_ci_deploy_runner_principal.job_user
+}
+
+fn witness_srv3_host_roster_row_exists() -> Bool {
+  fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
+    && grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountSrv3Host)) == "ubuntu"
+}
+
+fn witness_deploy_sudo_grants_refuse_generic_movers() -> Bool {
+  deploy_access_sudo_grants_lint_ok(access: ci_deploy_srv1_access)
+}
+
+fn witness_blessed_helper_grant_absent_from_roster() -> Bool {
+  !any(
+    fleet_posix_ci_runner_sudo_grants(),
+    g => g.command_path == gunbc_deploy_privileged_helper_path
+  )
+}
+
+fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
+  !posix_sudo_grant_generic_mover_lint_ok(
+    g: PosixSudoGrant { command_path: "/usr/bin/bash" as NonEmptyStr, check_argv: "--version" }
+  )
+}
+
+fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
+  let projected = posix_sudo_grant_to_effect_grant(
+    g: PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" }
+  )
+  let expected = filesystem_position(path: ["usr", "bin", "apt-get"])
+  let root = grant_root(g: projected)
+  verb_eq(a: grant_verb(g: projected), b: verb_of_effect_shape(shape: ExecuteEffect))
+    && verb_eq(a: grant_verb(g: projected), b: Execute)
+    && position_under(target: expected, root: root)
+    && position_under(target: root, root: expected)
 }
 
 test fn grounded_principal_witnesses() -> Bool {
@@ -168,5 +252,19 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_operator_secret_binding_uses_fleet_gcp_member()
     && witness_ci_runner_grounded_access_gate_permits()
     && witness_operator_grounded_access_gate_permits()
-    && witness_deploy_preflight_script_is_dash_safe()
+    && witness_deploy_authorization_query_grounds_expected_principal()
+    && witness_deploy_preflight_plan_has_whoami_plus_privileged_probes()
+    && witness_deploy_preflight_plan_uses_typed_probes()
+    && witness_deploy_preflight_plan_first_step_reads_principal()
+    && witness_deploy_preflight_plan_shell_command_red()
+    && witness_deploy_grant_admits_apt_get_probe()
+    && witness_deploy_grant_refuses_outside_envelope()
+    && witness_two_phase_principal_derives_job_user()
+    && witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner()
+    && witness_unknown_job_user_does_not_silent_map_ci_runner()
+    && witness_srv3_host_roster_row_exists()
+    && witness_deploy_sudo_grants_refuse_generic_movers()
+    && witness_blessed_helper_grant_absent_from_roster()
+    && witness_unknown_sudo_grant_command_lint_red()
+    && witness_posix_sudo_grant_materializes_execute_grant()
 }

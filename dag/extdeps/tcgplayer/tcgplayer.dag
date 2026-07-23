@@ -1,0 +1,81 @@
+module extdeps.tcgplayer.tcgplayer
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.tcgplayer.com/docs/getting-started"
+  }
+}
+
+data production_api_base: NonEmptyStr = "https://api.tcgplayer.com"
+
+data api_contract_version: NonEmptyStr = "v1.39.0"
+
+data structural_coverage_gap_versioned_paths: List<String> = [
+  "upstream resource paths accept an optional /[VERSION]/ prefix (current v1.39.0); the modeled",
+  "transports use the unversioned form the reference documents as the base examples",
+  "pin the prefix per-operation when a consumer needs version-locked behavior"
+]
+
+type TcgplayerTokenResponse {
+  access_token: Secret
+  token_type: String
+  expires_in: Int
+  userName: String?
+}
+
+data structural_coverage_gap_token_response_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "TcgplayerTokenResponse" },
+      JsonPending { field: ".issued" },
+      JsonPending { field: ".expires" }
+    ],
+    trigger: "token cache consumer needs the upstream dotted timestamp fields"
+  }
+]
+
+type TcgplayerErrorEnvelope {
+  success: Bool
+  errors: List<String>
+}
+
+data client_credentials_grant_type: NonEmptyStr = "client_credentials"
+
+service tcgplayer.Auth {
+  config {
+    endpoint: production_api_base
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation MintBearerToken {
+    input {
+      client_id: String
+      client_secret: Secret
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+      token_type: String from "token_type"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/token",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: { grant_type: client_credentials_grant_type, client_id: client_id, client_secret: client_secret }
+    }
+    response {
+      200 => TcgplayerTokenResponse
+      400 => TcgplayerErrorEnvelope
+      401 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+}

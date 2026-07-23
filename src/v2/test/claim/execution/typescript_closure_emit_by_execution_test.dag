@@ -1,34 +1,7 @@
 module v2.test.execution.typescript_closure_emit_by_execution
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.node { Node, Symbol }
-import v2.std.compilers.target_model {
-  BlockEvaluationMode,
-  InfixToken,
-  PrefixToken,
-  TargetModel,
-  TargetValueExpression,
-  ValueProducing,
-  canonical_operation_op_add,
-  target_model_emit_transforms_empty,
-  target_operator_realization_node,
-  target_operator_realizations_catalog_node,
-  target_value_expression_binding_ref,
-  target_value_expression_closure,
-  target_value_expression_primitive_apply,
-  target_value_expression_to_concrete_tokens
-}
-import extdeps.communication.medium { Medium }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
-import v2.extdeps.languages.typescript {
-  ts_mvp1_target_model_node,
-  ts_value_expression_projection,
-  ts_value_expression_projection_with_block_evaluation_mode,
-  ts_wave2a_lex
-}
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_closure_emit_canonical_source_text: String = "function (acc, h) { acc + h }"
 
@@ -42,8 +15,8 @@ fn ts_closure_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_closure_target_model() -> TargetModel {
   TargetModel {
-    bundle: ts_mvp1_target_model_node(),
-    lex: ts_wave2a_lex(),
+    bundle: ts_target_model_node(),
+    lex: ts_lex(),
     binding_spellings: ts_closure_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",

@@ -1,20 +1,7 @@
 module test.claim.cargo_version
 
-import extdeps.cargo {
-  CargoPackage,
-  CargoDependency,
-  RegistryDep,
-  Edition2021,
-  min_cargo_version,
-}
-import extdeps.cargo_version {
-  CargoVersionRequirement,
-  CargoToolVersionFloor,
-  default_stage0_package_version,
-  render_cargo_package_version_field,
-  render_cargo_package_header_prefix,
-  render_cargo_version_requirement_toml,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_stage0_default_package_version() -> Bool {
   default_stage0_package_version == "0.1.0"

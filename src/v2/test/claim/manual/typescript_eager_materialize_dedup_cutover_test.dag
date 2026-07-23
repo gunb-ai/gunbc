@@ -1,37 +1,12 @@
 module v2.test.manual.typescript_eager_materialize_dedup_cutover
 
-import v2.std.grammar {
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact
-}
-import v2.extdeps.languages.typescript {
-  ts_wave2a_task_formal_productions,
-  ts_eager_grammar_relation_row_witness,
-  ts_exemplar_emitted_for_lhs,
-  ts_inhabitant_atom,
-  ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_scaffold_relation_row_node,
-  ts_pr3_identity_relation_row_witness,
-  ts_wave2a_task_type_alias_relation_row_witness,
-  ts_wave2a_type_annotation_task_record_emitted
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  TypeNode,
-  content_hash
-}
-import v2.std.node_query { find_named_child }
-import v2.std.witness { Holds, Violates }
 
-fn ts_arc1_wave2a_eager_row_round_trip_holds() -> Bool {
-  match ts_wave2a_task_type_alias_relation_row_witness() {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ts_arc1_eager_row_round_trip_holds() -> Bool {
+  match ts_task_type_alias_relation_row_witness() {
     Holds { value: eager_row } =>
-      match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_wave2a_type_alias_decl) {
+      match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_type_alias_decl) {
         Holds { value: rederived } =>
           content_hash(n: eager_row) == content_hash(n: rederived)
         Violates { diagnostic: _ } => false
@@ -52,36 +27,36 @@ fn ts_arc1_pr3_eager_row_round_trip_holds() -> Bool {
   }
 }
 
-fn ts_arc1_wave1_exemplar_derive_violates_holds() -> Bool {
-  match ts_exemplar_emitted_for_lhs(lhs: ^ts_production_mvp1_fn_add) {
+fn ts_arc1_exemplar_derive_violates_holds() -> Bool {
+  match ts_exemplar_emitted_for_lhs(lhs: ^ts_production_fn_add) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
     Holds { value: _ } => false
   }
 }
 
-fn ts_arc1_wave2a_surplus_conj_emitted() -> Node {
+fn ts_arc1_surplus_conj_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
+      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
+fn ts_arc1_perturbed_row_derive_red_holds() -> Bool {
   match formal_production_for_lhs_exact(
-    productions: ts_wave2a_task_formal_productions(),
-    lhs: ^ts_production_wave2a_type_alias_decl,
-    child: ts_arc1_wave2a_surplus_conj_emitted()
+    productions: ts_task_formal_productions(),
+    lhs: ^ts_production_type_alias_decl,
+    child: ts_arc1_surplus_conj_emitted()
   ) {
     Holds { value: production } =>
       match derive_grammar_relation_row_node(
         production: production,
-        productions: ts_wave2a_task_formal_productions(),
-        emitted: ts_arc1_wave2a_surplus_conj_emitted()
+        productions: ts_task_formal_productions(),
+        emitted: ts_arc1_surplus_conj_emitted()
       ) {
         Holds { value: _ } => false
         Violates { diagnostic: _ } => true
@@ -90,29 +65,29 @@ fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
   }
 }
 
-fn ts_arc1_wave1_scaffold_row_present_holds() -> Bool {
+fn ts_arc1_scaffold_row_present_holds() -> Bool {
   match find_named_child(
-    root: ts_mvp1_fn_add_scaffold_relation_row_node(),
+    root: ts_fn_add_scaffold_relation_row_node(),
     name: ^grammar_relation_field_emitted
   ) {
     Accepted { value: emitted, diagnostics: _ } =>
-      emitted == ts_mvp1_emitted_add_fn_node()
+      emitted == ts_emitted_add_fn_node()
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ts_arc1_wave2a_eager_row_content_hash_round_trip_holds() -> Bool {
-  ts_arc1_wave2a_eager_row_round_trip_holds()
+test fn ts_arc1_eager_row_content_hash_round_trip_holds() -> Bool {
+  ts_arc1_eager_row_round_trip_holds()
 }
 
 test fn ts_arc1_pr3_eager_row_content_hash_round_trip_holds() -> Bool {
   ts_arc1_pr3_eager_row_round_trip_holds()
 }
 
-test fn ts_arc1_wave1_arrow_exemplar_keeps_scaffold_fallback_holds() -> Bool {
-  ts_arc1_wave1_exemplar_derive_violates_holds() && ts_arc1_wave1_scaffold_row_present_holds()
+test fn ts_arc1_arrow_exemplar_keeps_scaffold_fallback_holds() -> Bool {
+  ts_arc1_exemplar_derive_violates_holds() && ts_arc1_scaffold_row_present_holds()
 }
 
-test fn ts_arc1_wave2a_perturbed_eager_emitted_derive_red_holds() -> Bool {
-  ts_arc1_wave2a_perturbed_row_derive_red_holds()
+test fn ts_arc1_perturbed_eager_emitted_derive_red_holds() -> Bool {
+  ts_arc1_perturbed_row_derive_red_holds()
 }

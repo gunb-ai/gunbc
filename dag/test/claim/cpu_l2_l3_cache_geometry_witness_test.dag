@@ -1,0 +1,66 @@
+module test.claim.cpu_l2_l3_cache_geometry_witness
+
+import extdeps.cpu.ampere {
+  altra_max_m12830_catalog,
+  altra_q6430_catalog,
+  ampere_altra_classic_l3_cache_geometry,
+  ampere_altra_classic_rev_a1_datasheet_authority,
+  ampere_altra_l2_cache_citations,
+  ampere_altra_l2_cache_geometry,
+  ampere_altra_max_l3_cache_geometry,
+  ampere_altra_rev_a1_datasheet_authority,
+}
+import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { byte_size_count }
+import std.types { list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ampere_altra_l2_mebibytes_per_core: Nat = 1
+data ampere_altra_l2_line_bytes: Nat = 64
+data ampere_altra_max_l3_mebibytes: Nat = 16
+data ampere_altra_classic_l3_mebibytes: Nat = 32
+data ampere_altra_l3_line_bytes: Nat = 64
+
+fn w_ampere_l2_geometry_matches_datasheet() -> Bool {
+  let g = ampere_altra_l2_cache_geometry
+  byte_size_count(b: g.capacity_per_core) == ampere_altra_l2_mebibytes_per_core * 1024 * 1024
+    && byte_size_count(b: g.line_size) == ampere_altra_l2_line_bytes
+}
+
+fn w_ampere_catalog_rows_share_cited_l2_geometry() -> Bool {
+  altra_max_m12830_catalog.l2_cache == ampere_altra_l2_cache_geometry
+    && altra_q6430_catalog.l2_cache == ampere_altra_l2_cache_geometry
+}
+
+fn w_ampere_l2_citations_cover_all_fields() -> Bool {
+  let citations = ampere_altra_l2_cache_citations
+  list_length(items: citations) == 2
+    && citations.first().authority == ampere_altra_rev_a1_datasheet_authority
+}
+
+fn w_ampere_l3_geometry_diverges_by_sku() -> Bool {
+  byte_size_count(b: altra_max_m12830_catalog.l3_cache.capacity) == ampere_altra_max_l3_mebibytes * 1024 * 1024
+    && byte_size_count(b: altra_q6430_catalog.l3_cache.capacity) == ampere_altra_classic_l3_mebibytes * 1024 * 1024
+    && byte_size_count(b: altra_max_m12830_catalog.l3_cache.line_size) == ampere_altra_l3_line_bytes
+    && byte_size_count(b: altra_q6430_catalog.l3_cache.line_size) == ampere_altra_l3_line_bytes
+    && altra_max_m12830_catalog.l3_cache == ampere_altra_max_l3_cache_geometry
+    && altra_q6430_catalog.l3_cache == ampere_altra_classic_l3_cache_geometry
+}
+
+fn w_ampere_l3_citations_diverge_by_family_datasheet() -> Bool {
+  list_length(items: altra_max_m12830_catalog.l3_cache_citations) == 2
+    && list_length(items: altra_q6430_catalog.l3_cache_citations) == 2
+    && altra_max_m12830_catalog.l3_cache_citations.first().authority == ampere_altra_rev_a1_datasheet_authority
+    && altra_q6430_catalog.l3_cache_citations.first().authority == ampere_altra_classic_rev_a1_datasheet_authority
+}
+
+test fn cpu_l2_l3_cache_geometry_witnesses() -> Bool {
+  w_ampere_l2_geometry_matches_datasheet()
+    && w_ampere_catalog_rows_share_cited_l2_geometry()
+    && w_ampere_l2_citations_cover_all_fields()
+    && w_ampere_l3_geometry_diverges_by_sku()
+    && w_ampere_l3_citations_diverge_by_family_datasheet()
+}

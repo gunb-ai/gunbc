@@ -1,7 +1,7 @@
 module test.claim.roadmap_frontier_witness
 
-import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
   IntricacyHigh, VolumeMedium,
   PrsMerged,
@@ -17,8 +17,11 @@ import gunbc.roadmap_page {
 }
 import gunbc.roadmap_authority { authored_merged_prs }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn nid(s: String) -> ProcessNodeId { s }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nid(s: String) -> RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {

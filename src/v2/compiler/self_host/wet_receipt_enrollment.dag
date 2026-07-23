@@ -1,0 +1,210 @@
+module v2.compiler.self_host.wet_receipt_enrollment
+
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import v2.compiler.self_host.frontier {
+  CompilerModuleFrontierRow,
+  SelfEmitted,
+  SeedRetained,
+  compiler_frontier_roster
+}
+import v2.std.algebra { length }
+import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data falsifier_self_host_wet_enrollment_note: String = "Nightly falsifier Wet batch enrollment authority (Wave 2 CI substrate, 2026-07-15): falsifier_self_host_wet_entries = template rows (always enrolled when green) PLUS frontier-flipped module rows ONLY when compiler_frontier_roster disposition is SelfEmitted AND a declared SelfHostWetReceiptBinding exists for that module_path. SeedRetained modules stay off the nightly roster — a not-yet-migrated module is a declared frontier row, never an enrolled-but-red wet receipt (all-green nightly = healthy; any red = real regression). Each binding row is added at the moment its module self-emits and its wet receipt is green locally; the frontier flip and binding are the enrollment gate."
+
+type SelfHostWetReceiptBinding {
+  module_path: String
+  entry: String
+  function: String
+}
+
+fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+}
+
+data falsifier_self_host_wet_emit_class_note: String = "The second template row is NOT a per-module self-host receipt — it is the emit-CLASS receipt for the Gate-1 import-closure derivation (emit_import_closure_root). It enrolls as a template row rather than a SelfHostWetReceiptBinding because it is bound to no single module_path: it proves a property of the EMITTER (an import-free namespace module referencing a sibling cross-module emits cargo-compiling Rust) on a synthetic fixture, so no frontier row flips to gate it. It is required coverage, not redundancy: regen only exercises the seed corpus, which is import-based, so the self-host fixed point is unchanged by the pass and cannot witness this class."
+
+data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
+  self_host_wet_entry(
+    entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+    f: "self_host_logic_behavioral_receipt_holds"
+  ),
+  self_host_wet_entry(
+    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
+    f: "namespace_import_closure_receipt_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
+    f: "emit_on_demand_kernel_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
+    f: "emit_on_demand_field_access_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    f: "emit_on_demand_complement_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
+    f: "emit_on_demand_match_loop_fold_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    f: "emit_on_demand_meet_join_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    f: "emit_on_demand_variant_construct_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    f: "emit_on_demand_classical_not_ingested_family_witnesses"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    f: "emit_on_demand_family_crate_witnesses"
+  )
+]
+
+data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): the 9 standalone emit_host_<family>_equals_eval_test.dag agreement witnesses — emit->build->run->equals-oracle with no compile_skipped assertion, so every leg is COLD-VALID under the control. The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named."
+
+data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    f: "emit_host_add_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    f: "emit_host_field_access_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    f: "emit_host_complement_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    f: "emit_host_match_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    f: "emit_host_loop_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    f: "emit_host_fold_closure_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    f: "emit_host_meet_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    f: "emit_host_variant_construct_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    f: "emit_host_classical_not_ingested_equals_eval_holds"
+  )
+]
+
+fn falsifier_native_cache_cold_roster() -> List<ScheduleWitnessEntry> {
+  falsifier_native_cache_cold_entries
+}
+
+data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand family aggregates (9 witness families: add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) enroll on this nightly Wet cadence 2026-07-21: each emits real Rust, cargo-builds under the admitted build_workspace_grant envelope, runs the native binary, and compares against the interpreted oracle. Enrolled after the 2026-07-20 regression proved the class was invisible to CI (test/claim/execution/ excluded from hermetic discovery AND offline roster - the enrolled-but-never-run coverage-by-illusion class): the sorted_fields interner-order bug broke all 9 families' wet legs and nothing red-ed. This cadence is the rot-detector. Per-PR stays hermetic; the full CI-on-v2 cutover (P6) additionally needs the is_hermetic blanket refusal in emit_host_run_transport replaced by the Admitted verdict (effect-grants seam) plus the content-keyed result store so builds amortize."
+
+data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = [
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/parse_engine_hooks.dag",
+    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+    function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    function: "self_host_use_site_verdict_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/discovery_enumeration.dag",
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+    function: "self_host_discovery_enumeration_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/07_target_carriers.dag",
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+    function: "self_host_target_carriers_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/03_body_producer.dag",
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+    function: "self_host_body_producer_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/03_normalize.dag",
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    function: "self_host_03_normalize_behavioral_receipt_holds"
+  }
+]
+
+fn wet_receipt_binding_if_path_matches(
+  module_path: String,
+  b: SelfHostWetReceiptBinding
+) -> Optional<SelfHostWetReceiptBinding> {
+  if b.module_path == module_path {
+    optional_present(value: b)
+  } else {
+    optional_absent()
+  }
+}
+
+fn find_wet_receipt_binding(module_path: String) -> Optional<SelfHostWetReceiptBinding> {
+  fold(
+    falsifier_self_host_wet_module_bindings,
+    init: Absent,
+    f: fn(acc, b) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
+      }
+    }
+  )
+}
+
+fn schedule_entry_from_binding(b: SelfHostWetReceiptBinding) -> ScheduleWitnessEntry {
+  self_host_wet_entry(entry: b.entry, f: b.function)
+}
+
+fn frontier_row_wet_entries_if_enrolled(row: CompilerModuleFrontierRow) -> List<ScheduleWitnessEntry> {
+  match row.disposition {
+    SelfEmitted => match find_wet_receipt_binding(module_path: row.module_path) {
+      Present { value: b } => [schedule_entry_from_binding(b: b)]
+      Absent => []
+    }
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn falsifier_self_host_wet_frontier_enrolled_entries() -> List<ScheduleWitnessEntry> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, frontier_row_wet_entries_if_enrolled(row: row))
+    }
+  )
+}
+
+fn falsifier_self_host_wet_entries() -> List<ScheduleWitnessEntry> {
+  concat(
+    falsifier_self_host_wet_template_entries,
+    falsifier_self_host_wet_frontier_enrolled_entries()
+  )
+}
+
+fn falsifier_self_host_wet_template_only_holds() -> Bool {
+  length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0
+    && length(xs: falsifier_self_host_wet_entries()) == length(xs: falsifier_self_host_wet_template_entries)
+}

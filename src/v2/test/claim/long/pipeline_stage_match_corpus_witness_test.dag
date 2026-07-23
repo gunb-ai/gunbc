@@ -1,0 +1,22 @@
+module v2.test.long.pipeline_stage_match_corpus
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pipeline_match_corpus_long_note: String = "Match corpus (classical_not) full-pipeline relationship witnesses for normalize/resolve/infer/lower. Exceeds per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/pipeline_stage_match_corpus_witness_test.dag --function <name>."
+
+test fn pipeline_match_corpus_normalize_relationship_green() -> Bool {
+  pipeline_match_corpus_normalize_relationship_holds()
+}
+
+test fn pipeline_match_corpus_resolve_relationship_green() -> Bool {
+  pipeline_match_corpus_resolve_relationship_holds()
+}
+
+test fn pipeline_match_corpus_infer_relationship_green() -> Bool {
+  pipeline_match_corpus_infer_relationship_holds()
+}
+
+test fn pipeline_match_corpus_lower_relationship_green() -> Bool {
+  pipeline_match_corpus_lower_relationship_holds()
+}

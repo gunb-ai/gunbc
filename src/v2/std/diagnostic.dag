@@ -1,7 +1,8 @@
 module v2.std.diagnostic
 
-import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
-import v2.std.node { Node }
+import v2.std.algebra { bag_eq, list_append, list_snoc_item, fold_list, freemonoid_empty }
+import std.algebra { Monoid, Semigroup }
+import v2.std.node { Node, Symbol }
 
 type Extent
   = WholeFile
@@ -20,6 +21,7 @@ type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
+  | CorrectionNotModeled
 
 type Correction
   = Suggested { node: Node }
@@ -58,6 +60,31 @@ fn node_locus(node: Node) -> Locus {
 fn port_locus(port: Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }
 }
+
+fn textual_whole_file_locus(file: Symbol) -> Locus {
+  Textual { file: file, extent: WholeFile }
+}
+
+fn textual_whole_file_diagnostic(
+  reason: Symbol,
+  module_file: Symbol,
+  correction: Correction
+) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: textual_whole_file_locus(file: module_file),
+    correction: correction
+  }
+}
+
+fn module_unavailable_diagnostic(reason: Symbol, module_file: Symbol) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: reason,
+    module_file: module_file,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
 fn outcome_accepted<T>(value: T) -> Outcome<T> {
   Accepted { value: value, diagnostics: None }
 }
@@ -143,11 +170,11 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
   }
 }
 data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
-  semigroup: Semigroup { magma: Magma { op: diagnostics_merge } },
+  op: diagnostics_merge,
   identity: None
 }
 data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
-  magma: Magma { op: non_empty_diagnostics_append }
+  op: non_empty_diagnostics_append
 }
 fn rejected_with_pending(
   pending: Diagnostics,

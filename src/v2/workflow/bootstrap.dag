@@ -16,10 +16,10 @@ import v2.std.language_model {
 import v2.std.compilers.target_model {
   TargetModel,
 }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
-  v2_evaluator_runtime_wave1
+  v2_evaluator_runtime
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
@@ -509,8 +509,8 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
-    && (inputs.target_model == rust_mvp1_target_model())
-    && (inputs.runtime_model == v2_evaluator_runtime_wave1())
+    && (inputs.target_model == rust_target_model())
+    && (inputs.runtime_model == v2_evaluator_runtime())
 }
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
@@ -645,8 +645,8 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
     language_model: seed_capability_language_model(),
     content_hash: bootstrap_canonical_snapshot_content_hash()
   },
-  target_model: rust_mvp1_target_model(),
-  runtime_model: v2_evaluator_runtime_wave1()
+  target_model: rust_target_model(),
+  runtime_model: v2_evaluator_runtime()
 }
 
 type BootstrapEvaluatorCorpusHarnessEntry {
@@ -659,7 +659,7 @@ type BootstrapEvaluatorCorpusHarnessEntry {
 
 fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarnessEntry {
   BootstrapEvaluatorCorpusHarnessEntry {
-    runtime_model: v2_evaluator_runtime_wave1(),
+    runtime_model: v2_evaluator_runtime(),
     stage0_binary: ^v2_stage0_binary,
     source_root: ^v2_dag_source,
     entry_fn: ^run_manual_testclaim_corpus_eval,
@@ -668,7 +668,7 @@ fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarness
 }
 
 fn bootstrap_evaluator_corpus_harness_well_formed(entry: BootstrapEvaluatorCorpusHarnessEntry) -> Bool {
-  (entry.runtime_model == v2_evaluator_runtime_wave1())
+  (entry.runtime_model == v2_evaluator_runtime())
     && (entry.stage0_binary == ^v2_stage0_binary)
     && (entry.source_root == ^v2_dag_source)
     && (entry.entry_fn == ^run_manual_testclaim_corpus_eval)

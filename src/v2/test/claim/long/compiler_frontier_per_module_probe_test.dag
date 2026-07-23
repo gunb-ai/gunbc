@@ -1,0 +1,77 @@
+module v2.test.long.compiler_frontier_per_module_probe
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_module_count_expected,
+  compiler_frontier_roster,
+  compiler_frontier_roster_all_classified_holds,
+  compiler_frontier_roster_located_reason_not_class_projection_holds,
+  compiler_frontier_row_for_path_matches_probe,
+  compiler_frontier_roster_matches_survey_holds
+}
+import v2.compiler.self_host.frontier_probe_survey {
+  CommonRoot,
+  HeterogeneousGaps,
+  frontier_gap_clustering_from_receipts,
+  frontier_probe_survey_has_unclassified,
+  frontier_wave2_emit_surface_module_count,
+  frontier_wave2_name_resolution_module_count,
+  frontier_wave2_self_emit_ready_module_count
+}
+import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
+  NameResolutionGap,
+  SelfEmitReady
+}
+import v2.test.workflow.host_frontier_probe_survey_manifest {
+  host_frontier_probe_survey,
+  host_frontier_probe_survey_module_count
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data compiler_frontier_per_module_probe_note: String = "Fixture-FREE per-module emit-frontier probe over all 27 compiler modules via frontier_probe_survey bin (real ingest, no injected derisk fixtures). Validates roster blocker classes against execution-measured receipts; answers common-root (blocker-class clustering) vs heterogeneous located-reason gaps. Local recipe: frontier_probe_survey --source-root src/v2 --emit-survey-manifest target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag then claim_batch --source-root src/v2 --source-root dag --source-root target/frontier-probe-survey --entry src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag --function compiler_frontier_per_module_probe_survey_holds"
+
+data compiler_frontier_wave2_self_emit_ready_zero_note: String = "ready_count == 0 in wave2 sizing witnesses is green-by-construction on this probe slice: frontier_probe_emit_from_ingest never returns SelfEmitReady (emit-accept → UnknownProbeCause{^probe_emit_accept_self_host_bar_unbound}). Not a discriminating SelfEmitReady RED until the fixture-free emit→compile→run→equivalent bar is inhabited; honest deferral per ^probe_emit_accept_self_host_bar_unbound, not fabrication."
+
+test fn compiler_frontier_per_module_probe_survey_holds() -> Bool {
+  compiler_frontier_roster_matches_survey_holds(survey: host_frontier_probe_survey)
+    && (host_frontier_probe_survey_module_count == compiler_frontier_module_count_expected)
+    && (length(xs: host_frontier_probe_survey) == compiler_frontier_module_count_expected)
+    && !frontier_probe_survey_has_unclassified(xs: host_frontier_probe_survey)
+    && compiler_frontier_roster_all_classified_holds()
+    && compiler_frontier_roster_located_reason_not_class_projection_holds()
+}
+
+test fn compiler_frontier_gap_clustering_common_root_at_blocker_class_holds() -> Bool {
+  match frontier_gap_clustering_from_receipts(
+    xs: host_frontier_probe_survey,
+    module_count: host_frontier_probe_survey_module_count
+  ) {
+    CommonRoot {
+      dominant_located_reason: _,
+      dominant_module_count: _,
+      module_count: _
+    } => true
+    HeterogeneousGaps {
+      distinct_located_reason_count: _,
+      module_count: _
+    } => false
+  }
+}
+
+test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
+  let emit_count = frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey)
+  let name_count = frontier_wave2_name_resolution_module_count(receipts: host_frontier_probe_survey)
+  let ready_count = frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey)
+  (emit_count + name_count + ready_count) == host_frontier_probe_survey_module_count
+    && emit_count >= name_count
+    && ready_count == 0
+}
+
+test fn compiler_frontier_wave2_sizing_band_a_leaf_count_holds() -> Bool {
+  frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
+    && frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey) >= 20
+}

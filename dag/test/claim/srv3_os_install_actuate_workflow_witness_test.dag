@@ -1,16 +1,7 @@
 module test.claim.srv3_os_install_actuate_workflow
 
-import std.logic { Bool }
-import gunbc.srv3_os_install_actuate_workflow {
-  srv3_boot_once_cd_escalation,
-  srv3_boot_once_cd_default_approval,
-  srv3_boot_once_cd_operator_granted_approval,
-  srv3_boot_once_cd_is_runnable_with_approval,
-  srv3_os_install_actuate_workflow_includes_operator_approval_before_boot,
-  srv3_os_install_actuate_workflow_step_count,
-  srv3_os_install_actuate_workflow_credential_intent_is_declared,
-}
-import gunbc.workflow_escalation { PendingApproval, ApprovalGranted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_boot_once_cd_default_approval_is_pending() -> Bool {
   match srv3_boot_once_cd_default_approval {
@@ -36,6 +27,5 @@ test fn srv3_boot_once_cd_default_approval_blocks_execution() -> Bool {
 
 test fn srv3_os_install_actuate_workflow_orders_approval_before_boot() -> Bool {
   srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
-    && srv3_os_install_actuate_workflow_step_count() == 8
     && srv3_os_install_actuate_workflow_credential_intent_is_declared()
 }

@@ -23,22 +23,11 @@ import v2.test.lens_affected_set.closure_superset_safe {
   closure_superset_safe_claim_holds
 }
 import v2.test.lens_affected_set.provenance_producer {
-  provenance_producer_coverage_receipt_holds,
-  provenance_producer_git_diff_wire_holds,
-  provenance_producer_parse_coverage_known_diff_fail_closed_holds,
-  provenance_producer_rejects_beyond_mvp1_surface_ingest_holds,
-  provenance_producer_rejects_malformed_ingest_holds,
   provenance_producer_selectivity_superset_discriminates_holds,
-  provenance_producer_selectivity_superset_holds,
-  provenance_producer_single_read_emits_row_holds,
-  provenance_producer_unknown_diff_fail_closed_holds
+  provenance_producer_selectivity_superset_holds
 }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {
   irt1_boundary_prune_receipt_claim_holds()
 }
@@ -75,33 +64,7 @@ test fn lens_affected_set_changed_edit_yields_changed_subgraph_holds() -> Bool {
   irt1_public_affected_set_changed_edit_yields_changed_subgraph()
 }
 
-test fn lens_affected_set_provenance_producer_single_read_emits_row_holds() -> Bool {
-  provenance_producer_single_read_emits_row_holds()
-}
-
-test fn lens_affected_set_provenance_producer_rejects_malformed_ingest_holds() -> Bool {
-  provenance_producer_rejects_malformed_ingest_holds()
-}
-
-test fn lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
-  provenance_producer_rejects_beyond_mvp1_surface_ingest_holds()
-}
-
-test fn lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
-  provenance_producer_parse_coverage_known_diff_fail_closed_holds()
-}
-
-test fn lens_affected_set_provenance_producer_coverage_receipt_holds() -> Bool {
-  provenance_producer_coverage_receipt_holds()
-}
-
-test fn lens_affected_set_provenance_producer_git_diff_wire_holds() -> Bool {
-  provenance_producer_git_diff_wire_holds()
-}
-
-test fn lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds() -> Bool {
-  provenance_producer_unknown_diff_fail_closed_holds()
-}
+data sg_claims_fast_lane_note: String = "Source-root provenance producer ingest witnesses (single-read, malformed, coverage, git-diff wire) live in long/affected_set_provenance_producer_witness_test.dag — exceed 5s fast-lane budget."
 
 test fn lens_affected_set_provenance_producer_selectivity_superset_holds() -> Bool {
   provenance_producer_selectivity_superset_holds()

@@ -1,30 +1,7 @@
 module v2.test.manual.typescript_record_construct_emit
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.node { Symbol }
-import v2.std.compilers.target_model {
-  ConcreteSyntaxToken,
-  RecordLiteralTypeNaming,
-  Omit,
-  Prepend,
-  TargetModel,
-  TargetValueExpression,
-  TargetValueExprFieldInitSlot,
-  target_value_expression_binding_ref,
-  target_value_expression_record_construct,
-  target_value_expression_to_concrete_tokens,
-  target_model_emit_transforms_empty
-}
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
-import v2.extdeps.languages.typescript {
-  ts_mvp1_target_model_node,
-  ts_operator_realizations_catalog_node,
-  ts_value_expression_projection_with_record_literal_naming,
-  ts_wave1_lex
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn record_construct_binding_spellings() -> Map<Symbol, String> {
   map_insert(
@@ -48,8 +25,8 @@ fn record_construct_binding_spellings() -> Map<Symbol, String> {
 
 fn record_construct_target_model() -> TargetModel {
   TargetModel {
-    bundle: ts_mvp1_target_model_node(),
-    lex: ts_wave1_lex(),
+    bundle: ts_target_model_node(),
+    lex: ts_fn_add_lex(),
     binding_spellings: record_construct_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",

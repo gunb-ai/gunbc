@@ -1,26 +1,8 @@
 module v2.test.branch_dispatch.rung_3_4
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  RoundTripClaim,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  EqualsClaim,
-  manual_claim_anchor
-}
-import v2.test.computation_shapes.branch_dispatch { branch_dispatch_subject }
-import v2.test.rung_3_4_common {
-  rung34_emit_vs_eval_run,
-  rung34_roundtrip_run
-}
 
 data claim_phase4_branch_dispatch_module_roundtrip: TestClaim = RoundTripClaim {
-  label: "fixture=phase4/branch_dispatch rung=3 target=dag predicate=R3-dag-roundtrip-wave1-ready",
+  label: "fixture=phase4/branch_dispatch rung=3 target=dag predicate=R3-dag-roundtrip-authorities-ready",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: branch_dispatch_subject,
   classification: TestClassification { tier: Tier3, layer: Integration }

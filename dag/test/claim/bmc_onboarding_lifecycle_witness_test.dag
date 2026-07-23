@@ -1,5 +1,6 @@
 module test.claim.bmc_onboarding_lifecycle
 
+<<<<<<< HEAD
 import std.logic { Bool }
 import std.types { Int }
 import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
@@ -40,6 +41,10 @@ import gunbc.bmc_onboarding {
 import extdeps.bmc.types { BootTargetCd, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
 import extdeps.communication.medium { Lossless, Lossy }
+=======
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+>>>>>>> origin/main
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {

@@ -23,7 +23,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { combine_hash, byte_limb_hash_peano_digest, Hash, Node, Symbol, symbol_identity_digest }
+import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness {
   Holds,
@@ -94,13 +94,7 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
 }
 
 fn source_text_code_unit_digest(text: String) -> Hash {
-  fold_list(
-    xs: text,
-    empty: symbol_identity_digest(sym: ^source_text_code_unit_digest_nil),
-    cons: fn(acc, ch) {
-      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
-    }
-  )
+  atom_identity_hash(s: text)
 }
 
 fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {

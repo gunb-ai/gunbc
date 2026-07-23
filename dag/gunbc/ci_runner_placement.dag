@@ -10,6 +10,7 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget,
@@ -45,8 +46,6 @@ type WorkloadClass
   = BatchLatencyTolerant
   | InteractiveLatencySensitive
 
-data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
-
 data gunbc_ci_cpu_weight_unit_modeling_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -68,6 +67,8 @@ type RunnerHostDeployment {
   runner_count: Int
   runner_slice_cap: ByteSize
   per_runner_memory_cap: ByteSize
+  per_runner_memory_swap_cap: ByteSize
+  per_runner_memory_high_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -158,6 +159,8 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     runner_count: declared_runner_count(),
     runner_slice_cap: gunbc_runner_pool_budget,
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
+    per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
+    per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,

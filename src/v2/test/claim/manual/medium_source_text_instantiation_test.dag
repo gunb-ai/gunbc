@@ -1,12 +1,7 @@
 module v2.test.manual.medium_source_text_instantiation
 
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
-import v2.compiler.target_carriers { lossless_source }
-import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.logic { Bool }
-import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data medium_source_fixture_text: String = "module medium.source\nfn add(x:Int, y:Int) -> Int { x + y }"
 

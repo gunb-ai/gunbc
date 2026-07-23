@@ -1,0 +1,37 @@
+module test.claim.ci_render_slowest_hot_style
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sample_body() -> List<String> {
+  [
+    slowest_witness_row(rank: 1, function: "slow_a", entry: "e1", eval_ns: 41000000, resolve_ns: 5000000, total_ns: 46000000),
+    slowest_witness_row(rank: 2, function: "med_b", entry: "e2", eval_ns: 10000000, resolve_ns: 1000000, total_ns: 11000000)
+  ]
+}
+
+fn hot_box() -> String {
+  render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: true)
+}
+
+fn cold_box() -> String {
+  render_slowest_witnesses_box(body: sample_body(), hot_count: 0, width: 90, color: true)
+}
+
+fn nocolor_box() -> String {
+  render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: false)
+}
+
+fn default_box() -> String {
+  render_slowest_witnesses_box_default(body: sample_body(), width: 90, color: true)
+}
+
+test fn ci_render_slowest_hot_style_holds() -> Bool {
+  string_contains(s: hot_box(), pattern: "🔥")
+    && string_contains(s: hot_box(), pattern: "38;5;196")
+    && (string_contains(s: cold_box(), pattern: "🔥") == false)
+    && (string_contains(s: cold_box(), pattern: "38;5;196") == false)
+    && (string_contains(s: nocolor_box(), pattern: "38;5;196") == false)
+    && string_contains(s: default_box(), pattern: "🔥")
+    && string_contains(s: default_box(), pattern: "38;5;196")
+}

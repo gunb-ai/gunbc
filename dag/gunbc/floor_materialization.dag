@@ -1,0 +1,141 @@
+module gunbc.floor_materialization
+
+data floor_materialization_note: String = "P1 — the in-process INDEX-BUILD share, declared. Every floor consumer (spec gates + witness entries + the floor-runner/entry-selection prelude) resolves against ONE shared MultiEntryIndex — union-resolve S1 (#6234) materializes the parse + typecheck index once per (thread, source_roots) via process_shared_index (cli_run.rs:1737); each consumer then assembles its own view over that shared index. N consumers demanding one index-build with no Share is the ladder's rule-1 AuthoredDuplication at a SharedStateFrame (one claim_executor process); S1 already did the rule-1 REWIRE (the index is readonly, so the plural reads are legal at the VALUE tier). This module DECLARES that correct-but-undeclared share as a ReferenceTier provider row so it is ladder-visible and a regression (a consumer that builds a private index instead of reading the share) is countable, not re-discovered per lens/gate."
+
+data floor_three_quantities_note: String = "GRAIN (merry-moth-539, 2026-07-09) — three DISTINCT quantities, kept apart so the share is not mislabeled a lie: (1) index-build(dag,src/v2) = 1 materialization, K readers = THIS module's P1 (identity union-INDEX-build, deliberately NOT 'union-resolve' so it cannot collide with the entry-resolve grain); (2) per-entry CLOSURE resolves = K today = gunbc.ci_materialization's resolves_total receipt (resolve_entry_graph still fires once per distinct entry — S1 shares the INDEX, not the per-entry closures; memo_deduplicates_resolve_count proves once-PER-ENTRY), the ratchet target that the graph-major node-store rewire collapses K->~1; (3) readers of the share = K = this module's reader_count. Case study: S1 already bought index=1 (declared here); the remaining duplication is the K closure resolves (counted there); the graph-major node-store rewire kills those. Declaring the share moves nothing at runtime, so this lane does NOT touch ci_floor_declared_resolve_count."
+
+data floor_index_build_share_provider_id: String = "process_shared_index"
+
+data floor_index_build_identity: String = "union-index-build(dag,src/v2)"
+
+fn floor_executor_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "claim_executor-process", kind: SharedStateFrame }
+}
+
+data floor_index_build_share_provider: CacheProvider = provider_row(
+  id: floor_index_build_share_provider_id,
+  scope: [floor_executor_process_frame()],
+  coverage: CoversIdentities { identities: [floor_index_build_identity] },
+  tier: ReferenceTier,
+  eviction: scope_exit_eviction()
+)
+
+data floor_index_build_share_providers: List<CacheProvider> = [floor_index_build_share_provider]
+
+data floor_index_build_share_tier_note: String = "ReferenceTier declared DIRECTLY via provider_row, deliberately NOT provider_from_catalog: the catalog door births STORE tiers from cited upstream facts (that is P2 = extdeps.realization.resolved_graph.resolved_graph_cache, the cross-process content-keyed store graph-major S2b adopts). ReferenceTier is keyless by shape (the dependency edge IS the address) and enters only via provider_row; forcing an in-process name-keyed share through the catalog would project ExistenceKeyed and be refused/mislabeled (#6352). The share's legitimacy is the value tier — the product of the rule-1 rewire S1 already did — not obligation discharge."
+
+fn gate_consumer_site(g: Gate) -> String {
+  match g {
+    EmitHostGate => "gate:EmitHostGate"
+    LayeringImportsGate => "gate:LayeringImportsGate"
+    ExtdepsExternalAuthorityGate => "gate:ExtdepsExternalAuthorityGate"
+    DagCompileCleanGate => "gate:DagCompileCleanGate"
+    GeneratedArtifactDriftGate => "gate:GeneratedArtifactDriftGate"
+    SourceRootIngestGate => "gate:SourceRootIngestGate"
+    RegenVerifyGate => "gate:RegenVerifyGate"
+    SelfHostReadsRealBytesGate => "gate:SelfHostReadsRealBytesGate"
+    SelfHostStalenessGate => "gate:SelfHostStalenessGate"
+  }
+}
+
+data floor_prelude_consumer_sites_note: String = "The two fixed prelude entries every floor process resolves against the shared index (mirrors the Rust FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants in cli_run.rs). Not a fixture roster copy — a genuinely fixed pair, per merry-moth's 'plus your two prelude entries'. 🟡 dissolve-on: floor_prelude_entries_single_authority — this List<String> is a §3 parallel representation of the host's FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants (cli_run.rs:5351-5352), consumed here as authoritative by reader_count and the enrolled witness; it already DRIFTED once (entry #2 was v2.workflow.affected_set_selection, not the host's v2.lens.affected_set.entry_selection; corrected in #6432 review, 2026-07-10). DISSOLVES WHEN the floor prelude entries are declared once in .dag and consumed by BOTH the host (via resolve) and this row, making the hand-copy — and its drift — unwritable (§3 single authority)."
+
+data floor_prelude_consumer_sites: List<String> = [
+  "src/v2/workflow/affected_set_floor_runner.dag",
+  "src/v2/lens/affected_set/entry_selection.dag"
+]
+
+fn floor_index_build_consumer_sites(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> List<String> {
+  concat(
+    floor_prelude_consumer_sites,
+    concat(
+      gates |> map(g => gate_consumer_site(g: g)),
+      witnesses |> map(w => w.entry)
+    )
+  )
+}
+
+fn floor_index_build_value_usage(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueUsage {
+  ValueUsage {
+    identity: floor_index_build_identity,
+    consumers: floor_index_build_consumer_sites(gates: gates, witnesses: witnesses)
+      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
+  }
+}
+
+fn floor_index_build_reader_count(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> Int {
+  floor_index_build_consumer_sites(gates: gates, witnesses: witnesses) |> count
+}
+
+fn floor_index_build_materialization(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueMaterialization {
+  value_materialization(
+    usage: floor_index_build_value_usage(gates: gates, witnesses: witnesses),
+    providers: floor_index_build_share_providers
+  )
+}
+
+data floor_index_build_no_providers: List<CacheProvider> = []
+
+fn floor_index_build_materialization_without_provider(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueMaterialization {
+  value_materialization(
+    usage: floor_index_build_value_usage(gates: gates, witnesses: witnesses),
+    providers: floor_index_build_no_providers
+  )
+}
+
+data floor_index_build_p1_p2_convergence_note: String = "P1 (this module's in-process ReferenceTier share = process_shared_index) and P2 (extdeps.realization.resolved_graph.resolved_graph_cache, PerHostFilesystem/ContentAddressed/SizeBounded 10GiB, projecting through provider_from_catalog to a content-keyed ArtifactTier) are two providers of ONE computation identity (the resolved graph), never two unrelated stores (the fnv1a64 dual-surface discipline). P1 discharges same-process index-build plurality (rule-1 rewire, value tier); P2 discharges the cross-process/cross-run isolation-LCA obligation (compile subprocess vs claim_executor frontier), which a reference cannot cross. DISSOLVE-ON: when graph-major S2b is default-on, the cross-run (UnboundedSiblingsFrame) frame enrolls and P2's provider row goes live beside this one; the per-shard W-x same-process residual (Rc<ResolvedGraph> !Send) collapses to whole-run once under the Rc->Arc migration (graph-major S3)."
+
+data floor_materialization_status_note: String = "LIVE — std.materialization_ladder landed on main (#6375). The enrolled witness dag/test/claim/floor_materialization_witness_test.dag IS the authority (green-by-execution on the CI floor, GithubActionsCiJob surface of gunbc.commit_workflow.commit_gate_roster): floor_index_build_materialization -> ValueSharedByReference (provider_id process_shared_index, reader_count == live consumer count) and the RED control floor_index_build_materialization_without_provider -> ValueRefusedNoCarrierProvider (providers empty), so the share is green because DECLARED and covering, not because nothing looked. reader_count folds the live roster (project_ci_floor_gates + project_ci_floor_witness_entries + the 2 prelude entries), so enrolling this very witness grows the consumer set it counts — self-consistent, never circular. CI-MEASURED (run 29066096492): enrolling this witness left the floor's resolves_total UNCHANGED at 3 — the witness POOLS warm against the shared index (its import closure is already materialized by the batch-1 compile-clean whole-tree pass, so its per-entry resolve is a walk_memo hit, resolve_nanos=0, excluded from the count), so the declaration adds ZERO cold-resolve debt and this lane does NOT touch ci_floor_declared_resolve_count. An earlier predicted 3->4 bump was retracted after measurement: the third-std.materialization_ladder-importer-pays hypothesis was wrong — enrollment does not always pay (merry-moth-539's caution, confirmed by the fail-closed gate that redded the mispredicted 4)."
+
+data floor_typecheck_store_section_note: String = "S2a increment C (cross-worker-typecheck-share-design.md §4.5) — process-scoped typecheck store share, declared alongside P1 index-build share."
+
+data floor_typecheck_store_share_note: String = "C2 — the in-process TYPECHECK-STORE share, declared. Adaptive floor workers arm ONE process-scoped typed_module_cache via SharedTypecheckCaches when the memory governor's target_width > 1 (cli_run.rs cross_worker_store + shared_typecheck_store.rs serde byte transport); at width=1 workers stay on private per-index Rc (serde retention without cross-worker benefit breaks CI budget — design §7). The pump thread keeps process_shared_index (private Rc). Identity union-typecheck-store(dag,src/v2) is deliberately distinct from P1's union-index-build. 🟡 dissolve-on: serde byte transport retires when store-path Rc→Arc lands (design §4.2)."
+
+data floor_typecheck_store_share_provider_id: String = "process_shared_typecheck_store"
+
+data floor_typecheck_store_identity: String = "union-typecheck-store(dag,src/v2)"
+
+data floor_typecheck_store_share_provider: CacheProvider = provider_row(
+  id: floor_typecheck_store_share_provider_id,
+  scope: [floor_executor_process_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ReferenceTier,
+  eviction: scope_exit_eviction()
+)
+
+data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]
+
+data floor_typecheck_store_consumer_sites_note: String = "The two minimum co-readers of the adaptive worker pool at W>=2 (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory governor; the ladder counts declared readonly sites, not live W. The pump thread uses private process_shared_index (P1); only admitted worker shards clone Arc<RwLock<SharedTypecheckCaches>> and read the shared typed store."
+
+data floor_typecheck_store_consumer_sites: List<String> = [
+  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard",
+  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard:co-reader"
+]
+
+fn floor_typecheck_store_value_usage() -> ValueUsage {
+  ValueUsage {
+    identity: floor_typecheck_store_identity,
+    consumers: floor_typecheck_store_consumer_sites
+      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
+  }
+}
+
+fn floor_typecheck_store_reader_count() -> Int {
+  floor_typecheck_store_consumer_sites |> count
+}
+
+fn floor_typecheck_store_materialization() -> ValueMaterialization {
+  value_materialization(
+    usage: floor_typecheck_store_value_usage(),
+    providers: floor_typecheck_store_share_providers
+  )
+}
+
+data floor_typecheck_store_no_providers: List<CacheProvider> = []
+
+fn floor_typecheck_store_materialization_without_provider() -> ValueMaterialization {
+  value_materialization(
+    usage: floor_typecheck_store_value_usage(),
+    providers: floor_typecheck_store_no_providers
+  )
+}

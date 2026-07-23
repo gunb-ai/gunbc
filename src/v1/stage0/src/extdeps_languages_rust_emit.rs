@@ -8,10 +8,10 @@ pub use crate::std_emit_model::SimpleMethodSpec;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -50,7 +50,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
-            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
@@ -75,7 +75,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -95,7 +95,7 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, bool>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
@@ -454,7 +454,7 @@ pub struct RuntimeFunction {
 pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
-            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "map_is_empty", "bridge_name": "map_is_empty", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "record_source_chars_index_lookup", "bridge_name": "record_source_chars_index_lookup", "passes_by_ref": false, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "starts_with", "bridge_name": "starts_with", "passes_by_ref": false, "wraps_result": false}, {"name": "ends_with", "bridge_name": "ends_with", "passes_by_ref": false, "wraps_result": false}, {"name": "trim", "bridge_name": "trim", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_ptr_eq", "bridge_name": "rc_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_vec_ptr_eq", "bridge_name": "rc_vec_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_start", "bridge_name": "is_xid_start", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_continue", "bridge_name": "is_xid_continue", "passes_by_ref": false, "wraps_result": false}, {"name": "is_emoji_ident", "bridge_name": "is_emoji_ident", "passes_by_ref": false, "wraps_result": false}]))
+            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "sorted_map_keys", "bridge_name": "sorted_map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "map_is_empty", "bridge_name": "map_is_empty", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "record_source_chars_index_lookup", "bridge_name": "record_source_chars_index_lookup", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_is_enabled", "bridge_name": "resolution_silent_pick_is_enabled", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_global_bare_lcp_pick", "bridge_name": "resolution_silent_pick_record_global_bare_lcp_pick", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_global_bare_lcp_tie", "bridge_name": "resolution_silent_pick_record_global_bare_lcp_tie", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_fn_parent_first_hit", "bridge_name": "resolution_silent_pick_record_fn_parent_first_hit", "passes_by_ref": false, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "starts_with", "bridge_name": "starts_with", "passes_by_ref": false, "wraps_result": false}, {"name": "ends_with", "bridge_name": "ends_with", "passes_by_ref": false, "wraps_result": false}, {"name": "trim", "bridge_name": "trim", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}, {"name": "trace_mark", "bridge_name": "trace_mark", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_ptr_eq", "bridge_name": "rc_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_vec_ptr_eq", "bridge_name": "rc_vec_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_start", "bridge_name": "is_xid_start", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_continue", "bridge_name": "is_xid_continue", "passes_by_ref": false, "wraps_result": false}, {"name": "is_emoji_ident", "bridge_name": "is_emoji_ident", "passes_by_ref": false, "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
@@ -531,7 +531,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
 }
 
 pub fn is_rt_function(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_functions(), name)
+    v1_rt::map_contains_key(&rt_functions(), name.clone())
 }
 
 pub fn rt_bridge_name(name: String) -> String {
@@ -542,7 +542,7 @@ pub fn rt_bridge_name(name: String) -> String {
 }
 
 pub fn rt_passes_by_ref(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_ref_map_functions(), name)
+    v1_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -561,4 +561,22 @@ pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
+}
+
+pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+    Rc::new(
+        qualified_module
+            .clone()
+            .split(&".".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .join(&"_".to_string())
+}
+
+pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+    v1_rt::concat(
+        rust_qualified_module_mod_basename(qualified_module.clone()),
+        ".rs".to_string(),
+    )
 }

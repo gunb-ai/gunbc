@@ -2,49 +2,65 @@ module gunbc.live_deploy.apply
 
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentEnsuredStep,
+  DeploymentDependencyStep,
   deployment_spec_srv1,
-}
-import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for,
-  live_deploy_retract_script_for,
-  deployment_ensure_dependency_script,
+  deployment_plan_listen_port,
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
   DeployAccess,
   DeployAccessActor,
-  deploy_mutation_gate,
-  deploy_access_check_observed,
   deploy_access_preflight_pass_message,
   deploy_access_decision_reason,
   deploy_target_proof_from_access,
-  deploy_target_host_preflight_script,
+}
+import gunbc.ci_deploy_access_observe {
+  deploy_mutation_gate,
 }
 import gunbc.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_ssh_proof_structurally_valid,
 }
-import std.types { String }
+import v2.std.collection { Present, Absent }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.host_effect {
-  ShellCommand,
+  HostEffect,
   HostOs,
   NodeControlPlane,
-  OneShotIdempotent,
+  host_effect_identity_evidence,
   HostEffectTransport,
   HostEffectIntent,
   HostEffectEvidence,
   ShellEffectApplied,
+  LiveDeployApply,
+  LiveDeployRetract,
+  LiveDeployEnsureDependency,
+  LiveDeployDigestReadback,
+  DeployAccessPreflight,
 }
-import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
+import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.live_deploy.readiness {
+  live_deploy_poll_until_service_ready_for_deploy,
+  ServiceReadyApplyEffect,
+  ServiceReadyEvidence,
+}
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
+fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: access.host },
+    effect: DeployAccessPreflight {},
+    evidence: host_effect_identity_evidence,
+    transport: access.transport,
+    privilege_denial: none,
+  }
+}
+
 fn live_deploy_mutation_denied(
   target: NodeControlPlane,
-  script: String,
+  effect: HostEffect,
   transport: HostEffectTransport,
   gate: AccessDecision
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -52,8 +68,8 @@ fn live_deploy_mutation_denied(
     reason: deploy_access_decision_reason(d: gate),
     applied: HostEffectIntent {
       target: target,
-      effect: ShellCommand { script: script },
-      policy: OneShotIdempotent,
+      effect: effect,
+      evidence: host_effect_identity_evidence,
       transport: transport,
       privilege_denial: Present { value: gate },
     },
@@ -62,7 +78,7 @@ fn live_deploy_mutation_denied(
 
 fn live_deploy_fold(
   spec: DeploymentSpec,
-  script: String,
+  effect: HostEffect,
   transport: HostEffectTransport,
   access: DeployAccess,
   fixture_actor: DeployAccessActor?,
@@ -78,7 +94,7 @@ fn live_deploy_fold(
     Deny { reason: _ } =>
       live_deploy_mutation_denied(
         target: target,
-        script: script,
+        effect: effect,
         transport: transport,
         gate: gate
       )
@@ -86,8 +102,8 @@ fn live_deploy_fold(
       host_effect_apply_gated(
         access: access,
         target: target,
-        effect: ShellCommand { script: script },
-        policy: OneShotIdempotent,
+        effect: effect,
+        evidence: host_effect_identity_evidence,
         transport: transport,
         fixture_actor: fixture_actor
       )
@@ -96,13 +112,83 @@ fn live_deploy_fold(
 
 fn live_deploy_ensure_dependency(
   spec: DeploymentSpec,
-  dep: DeploymentEnsuredStep,
+  dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    script: deployment_ensure_dependency_script(dep: dep),
+    effect: LiveDeployEnsureDependency { dep: dep },
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+}
+
+fn live_deploy_apply_mutation_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
+    spec: spec,
+    effect: LiveDeployApply { spec: spec },
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+}
+
+fn live_deploy_apply_readiness_gate(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_readiness_gate_with_readiness(
+    mutation: mutation,
+    readiness: live_deploy_poll_until_service_ready_for_deploy(
+      spec: spec,
+      transport: transport,
+      access: access,
+    ),
+  )
+}
+
+fn live_deploy_apply_readiness_gate_with_readiness(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if !reconciliation_converged(r: mutation) {
+    mutation
+  } else {
+    if reconciliation_converged(r: readiness) {
+      mutation
+    } else {
+      match readiness {
+        NotConverged { reason: why, applied: _ } =>
+          match mutation {
+            Converged { evidence: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+            NotConverged { reason: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+          }
+        Converged { evidence: _, applied: _ } => mutation
+      }
+    }
+  }
+}
+
+fn live_deploy_apply_digest_readback_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
+    spec: spec,
+    effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -115,14 +201,40 @@ fn live_deploy_apply_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_fold(
+  let mutation = live_deploy_apply_mutation_via_transport(
     spec: spec,
-    script: live_deploy_apply_script_for(spec: spec),
     transport: transport,
     access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
   )
+  let gated = live_deploy_apply_readiness_gate(
+    spec: spec,
+    transport: transport,
+    access: access,
+    mutation: mutation,
+  )
+  if !reconciliation_converged(r: gated) {
+    gated
+  } else {
+    let digest = live_deploy_apply_digest_readback_via_transport(
+      spec: spec,
+      transport: transport,
+      access: access,
+    )
+    if reconciliation_converged(r: digest) {
+      gated
+    } else {
+      match digest {
+        NotConverged { reason: why, applied: _ } =>
+          match gated {
+            Converged { evidence: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+            NotConverged { reason: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+          }
+        Converged { evidence: _, applied: _ } => gated
+      }
+    }
+  }
 }
 
 fn live_deploy_retract_via_transport(
@@ -132,7 +244,7 @@ fn live_deploy_retract_via_transport(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    script: live_deploy_retract_script_for(spec: spec),
+    effect: LiveDeployRetract { spec: spec },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -142,56 +254,38 @@ fn live_deploy_retract_via_transport(
 
 fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let proof = deploy_target_proof_from_access(access: access)
+  let intent = live_deploy_preflight_intent(access: access)
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
     NotConverged {
       reason: "live_deploy: deploy target-host proof structurally invalid; fail-closed",
-      applied: HostEffectIntent {
-        target: HostOs { node: access.host },
-        effect: ShellCommand { script: "" },
-        policy: OneShotIdempotent,
-        transport: access.transport,
-        privilege_denial: none,
-      },
+      applied: intent,
     }
   } else {
-    let target_host = host_effect_apply(
-      target: HostOs { node: access.host },
-      effect: ShellCommand { script: deploy_target_host_preflight_script(access: access) },
-      policy: OneShotIdempotent,
-      transport: access.transport
+    let gate = deploy_mutation_gate(
+      access: access,
+      fixture_actor: Absent,
+      fixture_host: Absent
     )
-    if !reconciliation_converged(r: target_host) {
-      target_host
-    } else {
-      let intent = HostEffectIntent {
-        target: HostOs { node: access.host },
-        effect: ShellCommand { script: "" },
-        policy: OneShotIdempotent,
-        transport: access.transport,
-        privilege_denial: none,
-      }
-      let privilege_verdict = deploy_access_check_observed(access: access)
-      match privilege_verdict {
-        Permit =>
-          Converged {
-            evidence: ShellEffectApplied {
-              exit_code: 0,
-              stdout: deploy_access_preflight_pass_message(access: access),
-            },
-            applied: intent,
-          }
-        Deny { reason: _ } =>
-          NotConverged {
-            reason: deploy_access_decision_reason(d: privilege_verdict),
-            applied: HostEffectIntent {
-              target: HostOs { node: access.host },
-              effect: ShellCommand { script: "" },
-              policy: OneShotIdempotent,
-              transport: access.transport,
-              privilege_denial: Present { value: privilege_verdict },
-            },
-          }
-      }
+    match gate {
+      Permit =>
+        Converged {
+          evidence: ShellEffectApplied {
+            exit_code: 0,
+            stdout: deploy_access_preflight_pass_message(access: access),
+          },
+          applied: intent,
+        }
+      Deny { reason: _ } =>
+        NotConverged {
+          reason: deploy_access_decision_reason(d: gate),
+          applied: HostEffectIntent {
+            target: intent.target,
+            effect: intent.effect,
+            evidence: intent.evidence,
+            transport: intent.transport,
+            privilege_denial: Present { value: gate },
+          },
+        }
     }
   }
 }

@@ -1,0 +1,110 @@
+module v2.workflow.enforcement_live
+
+import gunbc.commit_workflow {
+  CommitCheckEnrollment, CommitWorkflowSurface, GithubActionsCiJob, GitPrePushHook,
+  commit_gate_roster, enrollment_has_surface,
+  witness_entries_from_enrollments, project_ci_floor_witness_entries
+}
+import v2.std.algebra { filter, list_append }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.decl_index { DeclFact, decl_facts, logical_qualified_name_from_module }
+import v2.lens.registry { LensModulePathV0, Bound, Unbound }
+import v2.lens.enforcement.contract { LensContract, CoverageReceipt, lens_contract_registry }
+import v2.lens.enforcement.receipts {
+  derive_receipt, cost_red_control_probe,
+  fn_item_count_of, body_unavailable_count_of, body_judged_count_of
+}
+import v2.lens.enforcement.gate {
+  IntentVerdict, intent_family_verdict, enforcement_consistency_holds
+}
+import v2.lens.enforcement.standing_intent {
+  whole_corpus_scope, standing_intent_complexity_repo_wide
+}
+import v2.lens.enforcement.gate { lens_closure_question_zero_holds }
+import std.realization_schedule { ScheduleWitnessEntry }
+
+fn enforcement_ci_witness_entries() -> List<ScheduleWitnessEntry> {
+  project_ci_floor_witness_entries(roster: commit_gate_roster)
+}
+
+fn enforcement_prepush_witness_entries() -> List<ScheduleWitnessEntry> {
+  witness_entries_from_enrollments(
+    rows: filter(xs: commit_gate_roster, predicate: fn(e) {
+      enrollment_has_surface(e: e, surface: GitPrePushHook)
+    })
+  )
+}
+
+fn self_module_prefix_for(module_path: LensModulePathV0) -> String {
+  match module_path {
+    Bound { path } => logical_qualified_name_from_module(module_name: path, name: "")
+    Unbound => "unbound-lens-module-path:"
+  }
+}
+
+fn enforcement_corpus_facts() -> List<DeclFact> {
+  decl_facts(pool_roots: whole_corpus_scope.roots)
+}
+
+fn live_receipt_for_contract(
+  c: LensContract,
+  facts: List<DeclFact>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> CoverageReceipt {
+  derive_receipt(
+    contract: c,
+    desired_scope: whole_corpus_scope,
+    self_module_prefix: self_module_prefix_for(module_path: c.entry.module_path),
+    facts: facts,
+    ci_entries: ci_entries,
+    prepush_entries: prepush_entries,
+    red_probe: cost_red_control_probe
+  )
+}
+
+fn coverage_receipts_from(facts: List<DeclFact>) -> List<CoverageReceipt> {
+  let ci_entries = enforcement_ci_witness_entries()
+  let prepush_entries = enforcement_prepush_witness_entries()
+  fold(lens_contract_registry, init: [], f: fn(acc, c) {
+    list_append(
+      left: [live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries)],
+      right: acc
+    )
+  })
+}
+
+fn coverage_receipts_live() -> List<CoverageReceipt> {
+  coverage_receipts_from(facts: enforcement_corpus_facts())
+}
+
+fn complexity_repo_wide_verdict_live() -> IntentVerdict {
+  intent_family_verdict(
+    intent: standing_intent_complexity_repo_wide,
+    contracts: lens_contract_registry,
+    receipts: coverage_receipts_live()
+  )
+}
+
+fn enforcement_consistency_live() -> Bool {
+  enforcement_consistency_holds(contracts: lens_contract_registry, receipts: coverage_receipts_live())
+}
+
+fn lens_closure_question_zero_holds_live() -> Bool {
+  lens_closure_question_zero_holds()
+}
+
+fn fn_item_count_live() -> Int {
+  fn_item_count_of(facts: enforcement_corpus_facts())
+}
+
+fn body_unavailable_count_live() -> Int {
+  body_unavailable_count_of(facts: enforcement_corpus_facts())
+}
+
+fn body_judged_count_live() -> Int {
+  body_judged_count_of(facts: enforcement_corpus_facts())
+}

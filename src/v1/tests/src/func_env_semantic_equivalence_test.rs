@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
-use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
+use v1_compiler::cli_run::{
+    whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings,
+};
 
 use crate::helpers::workspace_root;
 
@@ -35,18 +37,7 @@ struct SemanticBaseline {
 }
 
 fn whole_tree_probe_excludes() -> Vec<String> {
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
-    exclude_subpaths
+    whole_tree_resolve_exclusion_substrings()
 }
 
 fn git_toplevel() -> PathBuf {
@@ -145,6 +136,7 @@ fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-corpus strict resolve + semantic-oracle snapshot over dag+src/v1 — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor (run-everything had pushed both CI jobs to the 90-min timeout: max cost, zero signal). Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     let fixture_path = workspace_root().join(BASELINE_FIXTURE);
     let raw = fs::read_to_string(&fixture_path)

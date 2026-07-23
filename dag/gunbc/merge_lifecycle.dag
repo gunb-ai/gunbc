@@ -1,0 +1,181 @@
+module gunbc.merge_lifecycle
+
+import std.types { ContentHash, CommitSha, String, List, Bool, Int }
+import std.content_hash { content_hash_atom, content_hash_tagged }
+import extdeps.github.checks { Success }
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  AdmissionPolicy,
+  policy_admits,
+  mint_merge_admission_receipt,
+}
+
+data merge_lifecycle_authority_note: String = "Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS receipt admissible against THIS target tree and roster); this module owns the temporal one (does a merge PROCESS whose merge step consults policy_admits ever advance main to a tree the process never verified). Squash semantics per gunbc.plans.branch_merge_admission_model section 1: the landed tree is the PR applied to CURRENT main at merge time (squash_result_tree), never the base the receipt recorded — which is exactly why staleness is expressible at all. Trees and rosters are symbolic fixture identities (content_hash_atom roots advanced by content_hash_tagged, injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness already uses for its b0/b1/r0/r1 hashes."
+
+data merge_lifecycle_incident_note: String = "Grounding incident (2026-07-16, the #6663 x #6686 main-red): PR #6663 went green on run 29459154549 against a pre-#6686 base; #6686 landed during that window; the squash union — never tested — reddened every main push at floor resolve with 28 missing-field errors (first red: run 29461044828) until the root fix #6701. In this module's vocabulary: RunPrCi(#6663) minted a receipt at tip0; MergePr(#6686) advanced the tip; MergePr(#6663) then landed squash_result_tree(#6663, tip1) with only a tip0 receipt — admitted under PerPrGateOnly (the live policy: GitHub strict_required_status_checks false, no merge queue), refused under KeyedReceipt as MergeDeniedStaleBase. The incident trace is the permanent RED fixture in test.claim.merge_lifecycle_interleaving_witness."
+
+data merge_lifecycle_window_note: String = "The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no sampling, no silent cap — the witness asserts the full 625 count so truncation cannot read as coverage, DESIGN 5). The violation flag LATCHES in LifecycleState, so every shorter lifecycle is covered as a prefix of some length-4 sequence. 4 suffices for the grounded incident (4 events) and for the roster axis (3 events: RunPrCi, RosterBump, MergePr); widening the window or alphabet is a cheap follow-on, priced only when a concrete interleaving class needs it (DESIGN 6)."
+
+type PrIdentity {
+  number: Int
+  head_sha: CommitSha
+  squash_tag: String
+}
+
+type LifecycleEvent
+  = RunPrCi { pr: PrIdentity }
+  | MergePr { pr: PrIdentity }
+  | RosterBump
+
+type VerifiedRun {
+  tree: ContentHash
+  roster: ContentHash
+}
+
+type LifecycleState {
+  main_tip: ContentHash
+  current_roster: ContentHash
+  verified: List<VerifiedRun>
+  receipts: List<MergeAdmissionReceipt>
+  unverified_tip_seen: Bool
+}
+
+fn squash_result_tree(pr: PrIdentity, base: ContentHash) -> ContentHash {
+  content_hash_tagged(tag: pr.squash_tag, payload: base)
+}
+
+fn initial_lifecycle_state() -> LifecycleState {
+  let tip0 = content_hash_atom(value: "merge-lifecycle-main-tip-0")
+  let roster0 = content_hash_atom(value: "merge-lifecycle-roster-0")
+  LifecycleState {
+    main_tip: tip0,
+    current_roster: roster0,
+    verified: [VerifiedRun { tree: tip0, roster: roster0 }],
+    receipts: [],
+    unverified_tip_seen: false,
+  }
+}
+
+fn receipt_is_for_pr(r: MergeAdmissionReceipt, pr_number: Int) -> Bool {
+  match r.pr_number {
+    Present { value } => value == pr_number
+    Absent => false
+  }
+}
+
+fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr_number: Int) -> List<MergeAdmissionReceipt> {
+  fold(receipts, init: [], f: fn(acc, r) {
+    if receipt_is_for_pr(r: r, pr_number: pr_number) { [r] } else { acc }
+  })
+}
+
+data latest_receipt_semantics_note: String = "latest_receipt_for keeps the LAST minted receipt for the PR — faithful to GitHub required checks, which consult the most recent run of the required context on the head, not any historical green."
+
+fn merge_enabled(
+  policy: AdmissionPolicy,
+  receipts: List<MergeAdmissionReceipt>,
+  pr_number: Int,
+  tip: ContentHash,
+  roster: ContentHash,
+) -> Bool {
+  fold(latest_receipt_for(receipts: receipts, pr_number: pr_number), init: false, f: fn(acc, r) {
+    acc || policy_admits(
+      policy: policy,
+      receipt: r,
+      merge_target_tree_hash: tip,
+      current_roster_hash: roster,
+    )
+  })
+}
+
+fn verified_contains(xs: List<VerifiedRun>, probe: VerifiedRun) -> Bool {
+  fold(xs, init: false, f: fn(acc, v) {
+    acc || (v.tree == probe.tree && v.roster == probe.roster)
+  })
+}
+
+fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: LifecycleEvent) -> LifecycleState {
+  match ev {
+    RunPrCi { pr } =>
+      let tested = squash_result_tree(pr: pr, base: state.main_tip)
+      let receipt = mint_merge_admission_receipt(
+        pr_number: Present { value: pr.number },
+        head_sha: pr.head_sha,
+        base_tree_hash: state.main_tip,
+        gate_roster_hash: state.current_roster,
+        conclusion: Success,
+      )
+      LifecycleState {
+        main_tip: state.main_tip,
+        current_roster: state.current_roster,
+        verified: concat(state.verified, [VerifiedRun { tree: tested, roster: state.current_roster }]),
+        receipts: concat(state.receipts, [receipt]),
+        unverified_tip_seen: state.unverified_tip_seen,
+      }
+    MergePr { pr } =>
+      if merge_enabled(policy: policy, receipts: state.receipts, pr_number: pr.number, tip: state.main_tip, roster: state.current_roster) {
+        let landed = squash_result_tree(pr: pr, base: state.main_tip)
+        LifecycleState {
+          main_tip: landed,
+          current_roster: state.current_roster,
+          verified: state.verified,
+          receipts: state.receipts,
+          unverified_tip_seen: state.unverified_tip_seen
+            || !verified_contains(xs: state.verified, probe: VerifiedRun { tree: landed, roster: state.current_roster }),
+        }
+      } else {
+        state
+      }
+    RosterBump =>
+      LifecycleState {
+        main_tip: state.main_tip,
+        current_roster: content_hash_tagged(tag: "merge-lifecycle-roster-bump", payload: state.current_roster),
+        verified: state.verified,
+        receipts: state.receipts,
+        unverified_tip_seen: state.unverified_tip_seen,
+      }
+  }
+}
+
+data invariant_check_locus_note: String = "The unverified_tip_seen latch is checked ONLY where main ADVANCES (an admitted MergePr): the quantified property is that the merge step never lands a tree unverified under the roster current at landing. A RosterBump alone does not latch — criteria drift over a standing tip is the stale-ROSTER admission question the static gunbc.merge_admission witnesses already discriminate, not a merge-step fault; a disabled merge is a refusal, and a refusal is never a violation."
+
+fn simulate_lifecycle(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> LifecycleState {
+  fold(events, init: initial_lifecycle_state(), f: fn(acc, ev) {
+    apply_lifecycle_event(policy: policy, state: acc, ev: ev)
+  })
+}
+
+fn lifecycle_admits_unverified_tip(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> Bool {
+  simulate_lifecycle(policy: policy, events: events).unverified_tip_seen
+}
+
+fn singleton_sequences(alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  fold(alphabet, init: [], f: fn(acc, ev) { concat(acc, [[ev]]) })
+}
+
+fn extend_event_sequences(seqs: List<List<LifecycleEvent>>, alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  fold(seqs, init: [], f: fn(acc, seq) {
+    concat(acc, fold(alphabet, init: [], f: fn(acc2, ev) {
+      concat(acc2, [concat(seq, [ev])])
+    }))
+  })
+}
+
+fn event_sequences_of_length_4(alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  extend_event_sequences(
+    seqs: extend_event_sequences(
+      seqs: extend_event_sequences(
+        seqs: singleton_sequences(alphabet: alphabet),
+        alphabet: alphabet,
+      ),
+      alphabet: alphabet,
+    ),
+    alphabet: alphabet,
+  )
+}
+
+fn count_unverified_admitting_sequences(policy: AdmissionPolicy, seqs: List<List<LifecycleEvent>>) -> Int {
+  fold(seqs, init: 0, f: fn(acc, seq) {
+    if lifecycle_admits_unverified_tip(policy: policy, events: seq) { acc + 1 } else { acc }
+  })
+}

@@ -2,16 +2,19 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
-pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::empty_type_env_cache;
+pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -24,8 +27,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -54,10 +56,28 @@ pub struct ItemInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleInterface {
+    pub summary: Rc<InterfaceSummary>,
+    pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
+}
+
+pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
+    pub type_env_cache: Rc<TypeEnvCache>,
+    pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }
@@ -90,10 +110,10 @@ pub fn inferred_to_outputs(
             InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
-                if has_structure {
+                if has_structure.clone() {
                     {
                         let is_product = (rt.connective.clone() == Connective::Conj);
-                        if is_product {
+                        if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
                                 Rc::new({
                                     let mut __result = Vec::new();
@@ -192,38 +212,6 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
         };
         kind
     }
-}
-
-pub fn variant_locals_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    init: Rc<HashMap<String, Rc<TypeBinding>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.iter().cloned().fold(
-        init,
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
-            let is_coproduct = (item.connective.clone() == Connective::Disj);
-            if is_coproduct.clone() {
-                item.children.clone().iter().cloned().fold(
-                    acc.clone(),
-                    |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), child.clone());
-                        v1_rt::rc_map_insert(
-                            vacc,
-                            child_name.clone(),
-                            Rc::new(TypeBinding {
-                                name: child_name.clone(),
-                                resolved: item.clone(),
-                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            }),
-                        )
-                    },
-                )
-            } else {
-                acc.clone()
-            }
-        },
-    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

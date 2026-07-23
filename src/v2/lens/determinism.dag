@@ -1,0 +1,141 @@
+module v2.lens.determinism
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
+import std.algebra { Cons, Empty }
+import v2.std.determinism { DeterminismFact }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node_query { node_is_call, node_positional_child_targets }
+import v2.std.witness { Holds, Violates, Witness }
+
+type DeterminismRoot {
+  signature: Symbol,
+  source: DeclarationRef,
+  citation: String
+}
+
+fn map_keys_leak_source() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1.runtime_rust",
+    decl_name: "map_keys",
+    field: WholeDeclaration
+  }
+}
+
+data determinism_root_map_keys: DeterminismRoot = DeterminismRoot {
+  signature: ^map_keys,
+  source: map_keys_leak_source(),
+  citation: "map_keys iterates hash-ordered keys (src/v1/runtime_rust.dag:176), a host-nondeterministic root; sorted_map_keys is its deterministic sibling. Grounds the single std.determinism.NonDeterministic leaf; unregistered callees contribute std.determinism.Deterministic at the within-function boundary (map_keys is always a readable atom, never missed). Extend with clock/entropy roots when Phase B grounds kind:Observation."
+}
+
+data determinism_root_registry: List<DeterminismRoot> = [
+  determinism_root_map_keys
+]
+
+fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Optional<DeterminismRoot> {
+  fold(registry, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if row.signature == s { optional_present(value: row) } else { optional_absent() }
+    }
+  })
+}
+
+fn node_callee_symbol(n: Node) -> Optional<Symbol> {
+  if node_is_call(node: n) {
+    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+      Present { value: callee } => match callee.kind {
+        TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
+        _ => optional_absent()
+      }
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
+  match node_callee_symbol(n: n) {
+    Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
+      Present { value: root } => std.determinism.NonDeterministic { source: root.source }
+      Absent => std.determinism.Deterministic
+    }
+    Absent => std.determinism.Deterministic
+  }
+}
+
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
+  std.determinism.determinism_compose(outer: acc, inner: child)
+}
+
+fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { local_determinism_axis(n: n0) },
+      step: fn(acc, e, child) { determinism_axis_fold_step(acc: acc, e: e, child: child) }
+    }
+  )
+}
+
+fn determinism_fact_for_node(signature: Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
+  v2.std.determinism.DeterminismFact {
+    signature: signature,
+    classification: determinism_axis_for_node(n: n)
+  }
+}
+
+fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^determinism_nondeterministic_root_reach,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
+  let fact = determinism_fact_for_node(signature: signature, n: n)
+  match fact.classification {
+    std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    std.determinism.Deterministic => Holds { value: fact }
+  }
+}
+
+data compile_gate_law: String = "The determinism lens as a compile citizen (mirrors accumulator_copy_compile_gate, #6527): a nondeterministic-root reach into the compiled tree FAILS COMPILATION, inheriting compile's affected-set scoping — the reach_witness lane is the red control, never the enforcement. This is the construction replacement for the x2 sampling emit gate (tools.emit_determinism_gate): the sampling gate proved 'two runs coincided' post-hoc over the corpus (~12m, corpus-denominated); this gate makes a bare map_keys reach into output UNWRITABLE by construction over the floor compile scope (dag + src/v2). Grain: root — this is a single rooted whole-tree findings walk (fold_node collecting one located diagnostic per nondeterministic-root call node); running it per subtree node would re-walk each subtree O(n^2). It enrolls in always_required_root_lenses, not the per-node roster. Scope is the floor compile scope by construction, not a narrowed roster; v1 05_emit_rust.dag is out of scope (the floor does not compile src/v1) and is deterministic by construction (map_keys-free, #6576) — operator ruling 2026-07-14 (b): a dying §7 seed carries no active guard. Every leak a typed, located diagnostic (determinism_nondeterministic_root_reach), batched, never absorbed."
+
+fn local_determinism_findings(n: Node) -> List<Diagnostic> {
+  match local_determinism_axis(n: n) {
+    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    std.determinism.Deterministic => []
+  }
+}
+
+fn determinism_findings(root: Node) -> List<Diagnostic> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { local_determinism_findings(n: n0) },
+      step: fn(acc, _edge, child) { concat(acc, child) }
+    }
+  )
+}
+
+fn determinism_compile_gate(node: Node) -> Outcome<Witness<Node>> {
+  match determinism_findings(root: node) {
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+      }
+    Empty => outcome_accepted(value: Holds { value: node })
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

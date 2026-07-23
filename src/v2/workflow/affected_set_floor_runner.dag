@@ -1,12 +1,13 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import v2.std.algebra { any, Empty, fold_list, length, list_append }
+import v2.std.algebra { any, length, list_flat_map }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import v2.std.verification {
   TestClaim,
   test_claim_evaluation_node_touches_frontier,
@@ -22,14 +23,20 @@ type FloorRerunFrontier
   = FrontierProduced { nodes: List<Node> }
   | FrontierFailClosed { reason: String }
 
+type WitnessRefusalCause
+  = DiffObservationRefusal { reason: String }
+  | FrontierQueryRefusal { reason: String }
+
 type WitnessRunDisposition
   = RunWitness { reason: String }
   | SkipAssumedGreen
+  | Refused { cause: WitnessRefusalCause }
 
 type FloorWitnessRow {
   label: String
   entry: String
   function: String
+  reads_live_tree: LiveTreeDisposition
 }
 
 type FloorDiffLineTouch {
@@ -112,29 +119,28 @@ fn floor_witness_run_disposition(
   frontier: FloorRerunFrontier,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> WitnessRunDisposition {
   match diff {
     DiffObservationFailClosed { reason: reason } =>
-      RunWitness { reason: reason }
-    DiffPathsProduced { changed_paths: paths } =>
-      if length(xs: paths) == 0 {
-        RunWitness { reason: "empty diff — run full corpus (fail-closed)" }
-      } else {
-        match frontier {
-          FrontierFailClosed { reason: reason } =>
-            RunWitness { reason: reason }
-          FrontierProduced { nodes: _ } =>
-            if touches_frontier {
-              RunWitness { reason: "witness node-closure intersects rerun frontier" }
-            } else if function_edited {
-              RunWitness { reason: "witness test fn declaration directly edited" }
-            } else if entry_file_touched {
-              RunWitness { reason: "witness entry import-closure has non-data fn edit in diff" }
-            } else {
-              SkipAssumedGreen
-            }
-        }
+      Refused { cause: DiffObservationRefusal { reason: reason } }
+    DiffPathsProduced { changed_paths: _ } =>
+      match frontier {
+        FrontierFailClosed { reason: reason } =>
+          Refused { cause: FrontierQueryRefusal { reason: reason } }
+        FrontierProduced { nodes: _ } =>
+          if touches_frontier {
+            RunWitness { reason: "witness node-closure intersects rerun frontier" }
+          } else if function_edited {
+            RunWitness { reason: "witness test fn declaration directly edited" }
+          } else if entry_file_touched {
+            RunWitness { reason: "witness entry import-closure has non-data fn edit in diff" }
+          } else if runtime_data_dependency_touched {
+            RunWitness { reason: "witness entry's proven runtime-read closure intersects a touched path" }
+          } else {
+            SkipAssumedGreen
+          }
       }
   }
 }
@@ -144,55 +150,63 @@ fn floor_kernel_would_skip(
   frontier_nodes: List<Node>,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> Bool {
   match floor_witness_run_disposition(
     diff: DiffPathsProduced { changed_paths: changed_paths },
     frontier: FrontierProduced { nodes: frontier_nodes },
     touches_frontier: touches_frontier,
     function_edited: function_edited,
-    entry_file_touched: entry_file_touched
+    entry_file_touched: entry_file_touched,
+    runtime_data_dependency_touched: runtime_data_dependency_touched
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
-fn floor_host_scaffold_would_skip(
+fn floor_row_would_skip(
+  reads_live_tree: LiveTreeDisposition,
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> Bool {
-  floor_kernel_would_skip(
-    changed_paths: changed_paths,
-    frontier_nodes: frontier_nodes,
-    touches_frontier: touches_frontier,
-    function_edited: function_edited,
-    entry_file_touched: entry_file_touched
-  )
+  match reads_live_tree {
+    ReadsLiveTree => false
+    SubstrateInputsOnly =>
+      floor_kernel_would_skip(
+        changed_paths: changed_paths,
+        frontier_nodes: frontier_nodes,
+        touches_frontier: touches_frontier,
+        function_edited: function_edited,
+        entry_file_touched: entry_file_touched,
+        runtime_data_dependency_touched: runtime_data_dependency_touched
+      )
+  }
 }
 
 fn floor_precompute_would_skip(
   diff: FloorDiffObservation,
   frontier: FloorRerunFrontier,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
   match diff {
     DiffObservationFailClosed { reason: _ } => false
-    DiffPathsProduced { changed_paths: paths } =>
-      if length(xs: paths) == 0 {
-        false
-      } else {
-        match frontier {
-          FrontierFailClosed { reason: _ } => false
-          FrontierProduced { nodes: nodes } =>
-            (length(xs: nodes) == 0)
-              && (edited_test_fn_count == 0)
-              && (touched_entry_file_count == 0)
-        }
+    DiffPathsProduced { changed_paths: _ } =>
+      match frontier {
+        FrontierFailClosed { reason: _ } => false
+        FrontierProduced { nodes: nodes } =>
+          (length(xs: nodes) == 0)
+            && (edited_test_fn_count == 0)
+            && (touched_entry_file_count == 0)
+            && (touched_runtime_dependency_entry_count == 0)
       }
   }
 }
@@ -201,7 +215,8 @@ fn floor_kernel_precompute_would_skip(
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
   if frontier_node_count > 0 {
     false
@@ -210,31 +225,35 @@ fn floor_kernel_precompute_would_skip(
       diff: DiffPathsProduced { changed_paths: changed_paths },
       frontier: FrontierProduced { nodes: [] },
       edited_test_fn_count: edited_test_fn_count,
-      touched_entry_file_count: touched_entry_file_count
+      touched_entry_file_count: touched_entry_file_count,
+      touched_runtime_dependency_entry_count: touched_runtime_dependency_entry_count
     )
   }
 }
 
-fn floor_host_scaffold_precompute_would_skip(
+data floor_live_tree_row_policy_note: String = "A witness row whose entry declares (or fail-closed defaults to) ReadsLiveTree has inputs outside the diff-derived affected set, so no diff can prove it unaffected: it never skips and, corpus-wide, its presence pins the whole-tree precompute. The declaration authority is the entry file's `data live_tree_disposition: LiveTreeDisposition` row (see v2.std.live_tree); the executor passes each row's declared disposition here rather than classifying text (the witness_test_fn_uses_live_host_scan scaffold and the floor:host_scaffold marker are deleted)."
+
+fn floor_row_precompute_would_skip(
+  live_row_count: Int,
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
-  floor_kernel_precompute_would_skip(
-    changed_paths: changed_paths,
-    frontier_node_count: frontier_node_count,
-    edited_test_fn_count: edited_test_fn_count,
-    touched_entry_file_count: touched_entry_file_count
-  )
+  if live_row_count > 0 {
+    false
+  } else {
+    floor_kernel_precompute_would_skip(
+      changed_paths: changed_paths,
+      frontier_node_count: frontier_node_count,
+      edited_test_fn_count: edited_test_fn_count,
+      touched_entry_file_count: touched_entry_file_count,
+      touched_runtime_dependency_entry_count: touched_runtime_dependency_entry_count
+    )
+  }
 }
 
 fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {
-  fold_list(
-    xs: claims,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      list_append(left: acc, right: test_claim_evaluation_nodes(c: claim))
-    }
-  )
+  list_flat_map(xs: claims, f: fn(claim) { test_claim_evaluation_nodes(c: claim) })
 }

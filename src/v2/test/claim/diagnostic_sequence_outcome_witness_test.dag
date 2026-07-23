@@ -16,6 +16,9 @@ import v2.std.diagnostic {
   Unavailable,
 }
 import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data short_circuit_policy: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: ShortCircuit }
 data accumulate_policy: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: Accumulate }

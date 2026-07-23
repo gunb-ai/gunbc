@@ -1,0 +1,192 @@
+module gunbc.host_build_cache_provision
+
+import std.types { String, NonEmptyStr, Bool }
+import std.cache_identity { CacheInterfaceId }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, exit_failure }
+import std.resources { Network }
+import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
+import gunbc.host_build_cache_catalog_gate {
+  provision_build_cache_catalog_gate_verdict,
+  ProvisionBuildCacheCatalogRealizable,
+  ProvisionBuildCacheCatalogRefused,
+}
+import gunbc.host_effect { HostEffect, ProvisionBuildCache }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
+import product.placement_supply { HostIdentity }
+
+data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
+
+data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
+
+data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "realize_provision_build_cache",
+    field: WholeDeclaration,
+  }
+}
+
+data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_materialization",
+    decl_name: "ci_sccache_provider_shell_injection",
+    field: WholeDeclaration,
+  }
+}
+
+data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_retry_escalation_level2",
+    field: WholeDeclaration,
+  }
+}
+
+type BuildCacheDaemonObservation
+  = DaemonStatsOk { stats_line: String }
+  | DaemonAbsent
+  | DaemonUnresponsive { detail: NonEmptyStr }
+  | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
+
+type BuildCacheProvisionRefusal
+  = RefusalDaemonAbsent
+  | RefusalDaemonUnresponsive
+  | RefusalDaemonMisconfigured
+  | RefusalPrivilegeDenied
+  | RefusalCatalogUnknown
+
+type BuildCacheProvisionVerdict
+  = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
+  | ProvisionRefused { cause: BuildCacheProvisionRefusal, reason: NonEmptyStr }
+
+fn provision_build_cache_absorbing_fallback_widen_sketch(
+  catalog_id: CacheInterfaceId,
+  observed: BuildCacheDaemonObservation,
+) -> BuildCacheProvisionVerdict {
+  match observed {
+    DaemonAbsent =>
+      ProvisionConverged {
+        catalog_id: catalog_id,
+        stats_line: "local-build-without-rustc-wrapper-widen-sketch",
+      }
+    DaemonStatsOk { stats_line: line } =>
+      ProvisionConverged { catalog_id: catalog_id, stats_line: line }
+    DaemonUnresponsive { detail: d } =>
+      ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
+    DaemonMisconfigured { matched_fragment: frag, detail: d } =>
+      ProvisionRefused {
+        cause: RefusalDaemonMisconfigured,
+        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+      }
+  }
+}
+
+fn build_cache_provision_gate_accepts(
+  verdict: BuildCacheProvisionVerdict,
+  observed: BuildCacheDaemonObservation,
+) -> Bool {
+  match observed {
+    DaemonAbsent =>
+      match verdict {
+        ProvisionRefused { cause: _, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+      }
+    DaemonStatsOk { stats_line: _ } =>
+      match verdict {
+        ProvisionConverged { catalog_id: _, stats_line: _ } => true
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
+    DaemonUnresponsive { detail: _ } =>
+      match verdict {
+        ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
+    DaemonMisconfigured { matched_fragment: _, detail: _ } =>
+      match verdict {
+        ProvisionRefused { cause: RefusalDaemonMisconfigured, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
+  }
+}
+
+fn provision_build_cache_verdict(
+  catalog_id: CacheInterfaceId,
+  observed: BuildCacheDaemonObservation,
+) -> BuildCacheProvisionVerdict {
+  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } =>
+      ProvisionRefused {
+        cause: RefusalCatalogUnknown,
+        reason: reason,
+      }
+    ProvisionBuildCacheCatalogRealizable =>
+      match observed {
+        DaemonStatsOk { stats_line: line } =>
+          ProvisionConverged { catalog_id: catalog_id, stats_line: line }
+        DaemonAbsent =>
+          ProvisionRefused {
+            cause: RefusalDaemonAbsent,
+            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
+          }
+        DaemonUnresponsive { detail: d } =>
+          ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
+        DaemonMisconfigured { matched_fragment: frag, detail: d } =>
+          ProvisionRefused {
+            cause: RefusalDaemonMisconfigured,
+            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+          }
+      }
+  }
+}
+
+fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> HostEffect {
+  ProvisionBuildCache { catalog_id: catalog_id }
+}
+
+fn provision_build_cache_default_effect() -> HostEffect {
+  provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
+}
+
+fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
+  match host_build_cache_provision_realize_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
+    Terminal { reason: _ } => false
+  }
+}
+
+fn daemon_absent_refuses_fail_closed() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonAbsent,
+  ) {
+    ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn misconfigured_matches_cited_fragment() -> Bool {
+  string_contains(
+    s: sccache_fatal_error_log_fragment,
+    pattern: "fatal error",
+  )
+}
+
+func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
+  uses net: Network
+{
+  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } => exit_failure(reason: reason as String)
+    ProvisionBuildCacheCatalogRealizable => host_toolchain_ensure(host: host, kind: BuildCache)
+  }
+}

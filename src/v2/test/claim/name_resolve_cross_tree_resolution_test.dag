@@ -5,23 +5,30 @@ import v2.compiler.name_resolve {
   Import,
   ImportVisible,
   ResolutionSubject,
-  resolve_with_admission_grounded
+  resolve_with_admission_policy
 }
-import v2.compiler.program_assembly { assemble_program_from_module_roots }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.cross_tree.import_model { DagTree, SourceRootSet, V2Tree }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
   source_root_index_empty,
   source_root_index_insert
 }
-import v2.std.diagnostic { Accepted, Rejected, locus_eq, port_locus }
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  locus_eq,
+  port_locus
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.std.node {
   Atom,
   Conj,
@@ -33,6 +40,16 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ct_graft_module_root(root: Node) -> Node {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: grafted, diagnostics: _ } => grafted
+    Rejected { diagnostics: _ } => root
+  }
+}
 
 fn ct_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -138,16 +155,20 @@ fn ct_both_trees() -> SourceRootSet {
 
 fn ct_dag_same_tree_roots() -> FreeMonoid<Node> {
   Cons {
-    head: ct_subject_with_import_use(
-      qn_spine: ct_qn_node(seg: ^ct_dag_subject_seg),
-      import_use_sym: ^ct_dag_import_use_sym,
-      imported_decl: ^ct_dag_imported_decl
+    head: ct_graft_module_root(
+      root: ct_subject_with_import_use(
+        qn_spine: ct_qn_node(seg: ^ct_dag_subject_seg),
+        import_use_sym: ^ct_dag_import_use_sym,
+        imported_decl: ^ct_dag_imported_decl
+      )
     ),
     tail: Cons {
-      head: ct_module_root(
-        qn_spine: ct_qn_node(seg: ^ct_dag_peer_seg),
-        export_sym: ^ct_dag_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: ct_graft_module_root(
+        root: ct_module_root(
+          qn_spine: ct_qn_node(seg: ^ct_dag_peer_seg),
+          export_sym: ^ct_dag_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -169,20 +190,24 @@ fn ct_dag_same_tree_admission() -> Admission {
 
 fn ct_v2_same_tree_roots() -> FreeMonoid<Node> {
   Cons {
-    head: ct_subject_with_import_use(
-      qn_spine: ct_qn_spine(
-        segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_subject_seg, tail: Empty } }
-      ),
-      import_use_sym: ^ct_v2_import_use_sym,
-      imported_decl: ^ct_v2_imported_decl
+    head: ct_graft_module_root(
+      root: ct_subject_with_import_use(
+        qn_spine: ct_qn_spine(
+          segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_subject_seg, tail: Empty } }
+        ),
+        import_use_sym: ^ct_v2_import_use_sym,
+        imported_decl: ^ct_v2_imported_decl
+      )
     ),
     tail: Cons {
-      head: ct_module_root(
-        qn_spine: ct_qn_spine(
-          segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_peer_seg, tail: Empty } }
-        ),
-        export_sym: ^ct_v2_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: ct_graft_module_root(
+        root: ct_module_root(
+          qn_spine: ct_qn_spine(
+            segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_peer_seg, tail: Empty } }
+          ),
+          export_sym: ^ct_v2_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -204,18 +229,22 @@ fn ct_v2_same_tree_admission() -> Admission {
 
 fn ct_cross_tree_roots() -> FreeMonoid<Node> {
   Cons {
-    head: ct_subject_with_import_use(
-      qn_spine: ct_qn_spine(
-        segments: Cons { head: ^v2, tail: Cons { head: ^ct_cross_v2_subject_seg, tail: Empty } }
-      ),
-      import_use_sym: ^ct_cross_import_use_sym,
-      imported_decl: ^ct_cross_dag_export_sym
+    head: ct_graft_module_root(
+      root: ct_subject_with_import_use(
+        qn_spine: ct_qn_spine(
+          segments: Cons { head: ^v2, tail: Cons { head: ^ct_cross_v2_subject_seg, tail: Empty } }
+        ),
+        import_use_sym: ^ct_cross_import_use_sym,
+        imported_decl: ^ct_cross_dag_export_sym
+      )
     ),
     tail: Cons {
-      head: ct_module_root(
-        qn_spine: ct_qn_node(seg: ^ct_cross_dag_target_seg),
-        export_sym: ^ct_cross_dag_export_sym,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: ct_graft_module_root(
+        root: ct_module_root(
+          qn_spine: ct_qn_node(seg: ^ct_cross_dag_target_seg),
+          export_sym: ^ct_cross_dag_export_sym,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -251,18 +280,22 @@ fn ct_v2_to_dag_index() -> SourceRootIndex {
 
 fn ct_dag_to_v2_roots() -> FreeMonoid<Node> {
   Cons {
-    head: ct_subject_with_import_use(
-      qn_spine: ct_qn_node(seg: ^ct_inv_dag_subject_seg),
-      import_use_sym: ^ct_inv_import_use_sym,
-      imported_decl: ^ct_inv_v2_export_sym
+    head: ct_graft_module_root(
+      root: ct_subject_with_import_use(
+        qn_spine: ct_qn_node(seg: ^ct_inv_dag_subject_seg),
+        import_use_sym: ^ct_inv_import_use_sym,
+        imported_decl: ^ct_inv_v2_export_sym
+      )
     ),
     tail: Cons {
-      head: ct_module_root(
-        qn_spine: ct_qn_spine(
-          segments: Cons { head: ^v2, tail: Cons { head: ^std, tail: Empty } }
-        ),
-        export_sym: ^ct_inv_v2_export_sym,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: ct_graft_module_root(
+        root: ct_module_root(
+          qn_spine: ct_qn_spine(
+            segments: Cons { head: ^v2, tail: Cons { head: ^std, tail: Empty } }
+          ),
+          export_sym: ^ct_inv_v2_export_sym,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
@@ -297,10 +330,13 @@ fn ct_dag_to_v2_index() -> SourceRootIndex {
 }
 
 fn witness_dag_same_tree_import_resolves_holds() -> Bool {
-  match assemble_program_from_module_roots(
+  match resolve_with_admission_policy(
+    lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_same_tree_roots(),
     admission: ct_dag_same_tree_admission(),
-    lm: dag_language_model_surface_empty_prelude()
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -308,10 +344,13 @@ fn witness_dag_same_tree_import_resolves_holds() -> Bool {
 }
 
 fn witness_v2_same_tree_import_resolves_holds() -> Bool {
-  match assemble_program_from_module_roots(
+  match resolve_with_admission_policy(
+    lm: dag_language_model_surface_empty_prelude(),
     roots: ct_v2_same_tree_roots(),
     admission: ct_v2_same_tree_admission(),
-    lm: dag_language_model_surface_empty_prelude()
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -319,12 +358,13 @@ fn witness_v2_same_tree_import_resolves_holds() -> Bool {
 }
 
 fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
-  match resolve_with_admission_grounded(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_cross_tree_roots(),
     admission: ct_cross_tree_admission(),
     index: ct_v2_to_dag_index(),
-    active_roots: ct_both_trees()
+    active_roots: ct_both_trees(),
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -332,12 +372,13 @@ fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
 }
 
 fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
-  match resolve_with_admission_grounded(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_to_v2_roots(),
     admission: ct_dag_to_v2_admission(),
     index: ct_dag_to_v2_index(),
-    active_roots: ct_both_trees()
+    active_roots: ct_both_trees(),
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>

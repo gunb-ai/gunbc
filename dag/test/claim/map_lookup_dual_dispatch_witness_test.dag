@@ -1,9 +1,7 @@
 module test.claim.map_lookup_dual_dispatch_witness_test
 
-import std.graph { CallGraph, GraphEdge, build_adjacency_views }
-import std.logic { Bool }
 
-data map_lookup_dispatch_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/map_lookup_dual_dispatch_test.rs (5-test-migration lane): the three map-lookup surfaces (method get, index sugar, lookup builtin) that must route through the raw_map_lookup dual-dispatch chokepoint, plus the std.graph adjacency-view smoke that consumes map_get end to end."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("a", 10)
@@ -17,8 +15,13 @@ test fn map_index_routes_through_dual_dispatch_chokepoint() -> Bool {
 
 test fn lookup_builtin_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("k", 7)
-  lookup(m, "k") == 7
+  match lookup(m, "k") {
+    Holds { value: v } => v == 7
+    _ => false
+  }
 }
+
+data lookup_witness_contract_note: String = "lookup routes through the dual-dispatch chokepoint, which wraps the hit in the Witness coproduct (Holds { value } | Violates) — proven by execution 2026-07-12. The earlier bare `lookup(m, k) == 7` compared the Holds wrapper against a native Int, which the cross-representation equality guard refuses by design (DESIGN §5); matching Holds is the discriminating form — a raw 7 here would mean the bare builtin BYPASSED the chokepoint."
 
 test fn std_graph_build_adjacency_views_evaluates() -> Bool {
   let names = ["a", "b"]

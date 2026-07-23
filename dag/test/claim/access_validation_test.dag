@@ -1,9 +1,7 @@
 module test.claim.access_validation
 
-import std.types { NonEmptyStr, Bool, Int }
-import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
-import extdeps.access.posix { FilePermissions, PermissionBits }
-import extdeps.access.rbac { RbacPolicy, Permission }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn decision_is_permit(d: AccessDecision) -> Bool {
   match d { Permit => true  Deny { reason: _ } => false }
@@ -47,7 +45,7 @@ fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermission
   if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
     Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 
@@ -112,7 +110,7 @@ fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyS
   if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
     Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 

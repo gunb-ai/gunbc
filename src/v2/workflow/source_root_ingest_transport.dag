@@ -1,60 +1,86 @@
 module v2.workflow.source_root_ingest_transport
 
 import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Lit, VarRef,
-  lit, var_ref, command, serialize_bash
+import tools.host_prelude {
+  ClaimRun,
+  WitnessBinReady,
+  WitnessBinRefused,
+  run_gunbc_claims,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
 }
-import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
 
 data ingest_source_root: String = "src/v2"
 data ingest_scan_dir: String = "src/v2/test/fixture/program_assembly"
-data ingest_manifest_path: String = "target/v2-source-root-ingest-manifest.dag"
-data ingest_manifest_dir: String = "target"
+data ingest_manifest_class_note: String = "This gate used to emit its manifest to a fixed target/v2-source-root-ingest-manifest.dag and then add BARE target/ as a claim source root to read it back. That admitted the ENTIRE build-output tree as source, purely to make one generated file visible — build output as source, an unexcluded default rather than a deliberate design (nothing declares target/ as an ingest root; this was the only bare-target source root in the corpus).
+
+It is the CLASS behind a concrete break: any tool writing a .dag under target/ collides with a committed module of the same name and panics the indexer ('module-path collision ... one module, one authority'). The module-binding supply gate hit exactly that. Fixing only that gate's overlay would have left the class open for the next writer.
+
+So the manifest now lands in a per-run mktemp directory that is scanned and then removed, and no gate scans bare target/ any more. The emitted FILENAME is unchanged deliberately: the host-side stub-supersession table keys on the manifest BASENAME (cli_run.rs MANIFEST_STUB_OVERLAYS), so relocating the file cannot silently break stub supersession. Same shape as compiler_closure_ingest_transport, which already did this correctly."
+
+data ingest_manifest_name: String = "/v2-source-root-ingest-manifest.dag"
+data ingest_manifest_template: String = "/target/source-root-ingest-XXXXXX"
 data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest_test.dag"
 data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_module_roots_parse_holds"
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
-fn sri_source_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+fn sri_claim_source_roots(manifest_dir: String) -> List<String> {
+  concat(witness_layer_roots, [manifest_dir])
 }
 
-fn emit_manifest_stmt() -> ShellStmt {
-  command(words: [
-    var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
-    lit(text: "--source-root"), lit(text: ingest_source_root),
-    lit(text: "--scan-dir"), lit(text: ingest_scan_dir),
-    lit(text: "--emit-dag-manifest"), lit(text: ingest_manifest_path)
-  ])
+fn emit_manifest_args(manifest_dir: String) -> List<String> {
+  [
+    "--source-root", ingest_source_root,
+    "--scan-dir", ingest_scan_dir,
+    "--emit-dag-manifest", concat(manifest_dir, ingest_manifest_name)
+  ]
 }
 
-fn gunbc_claim_run(function: String) -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], sri_source_root_flags()),
-    [
-      lit(text: "--source-root"), lit(text: ingest_manifest_dir),
-      lit(text: "--entry"), lit(text: ingest_entry),
-      lit(text: "--function"), lit(text: function),
-      lit(text: "--claim-run")
-    ]
-  ))
+func run_real_ingest_gate_ready(root: String) -> Bool {
+  let target_ready = shell.Mkdir.Parents(path: concat(root, "/target"))
+  if target_ready.success {
+    let manifest_dir = shell.Mktemp.DirWithTemplate(
+      template: concat(root, ingest_manifest_template)
+    )
+    if manifest_dir.success {
+      let manifest = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+        args: emit_manifest_args(manifest_dir: manifest_dir.path)
+      )
+      let ran = if manifest.success {
+        run_gunbc_claims(
+          source_roots: sri_claim_source_roots(manifest_dir: manifest_dir.path),
+          claims: [
+            ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
+            ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
+            ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
+          ]
+        )
+      } else {
+        false
+      }
+      let cleaned = shell.Remove.RecursiveForce(path: manifest_dir.path)
+      ran && cleaned.success
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }
 
 func run_real_ingest_gate() -> Bool {
-  let prog = ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
-      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-      emit_manifest_stmt(),
-      gunbc_claim_run(function: ingest_witness_module_roots_parse),
-      gunbc_claim_run(function: ingest_witness_host_manifest_receipt),
-      gunbc_claim_run(function: ingest_witness_validate_red)
-    ])
+  let root = git.Core.Toplevel()
+  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } => run_real_ingest_gate_ready(root: root.path)
   }
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
 }

@@ -1,0 +1,180 @@
+module v2.test.lens_complexity_accumulator_copy
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn dummy_site() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^accumulator_copy_dummy } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bare(s: Symbol) -> PortReading {
+  PortBareName { name: s }
+}
+
+fn classify(combiner: Symbol, ports: List<PortReading>, carriers: List<Symbol>) -> Optional<Finding> {
+  classify_call(at: dummy_site(), combiner: combiner, ports: ports, carriers: carriers)
+}
+
+fn is_suspect(o: Optional<Finding>) -> Bool {
+  match o {
+    Present { value: f } =>
+      match f {
+        Poly2Suspect { at: _, cost: _ } => true
+        Unclassifiable { at: _, cause: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn refuses_with(o: Optional<Finding>, cause: Symbol) -> Bool {
+  match o {
+    Present { value: f } =>
+      match f {
+        Poly2Suspect { at: _, cost: _ } => false
+        Unclassifiable { at: _, cause: c } => c == cause
+      }
+    Absent => false
+  }
+}
+
+fn is_absent(o: Optional<Finding>) -> Bool {
+  match o {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn red_list_append_left_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
+      combiner: ^list_append,
+      ports: [bare(s: ^acc), bare(s: ^item)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn red_list_snoc_left_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
+      combiner: ^list_snoc_item,
+      ports: [bare(s: ^acc), bare(s: ^item)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn red_map_merge_overlay_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
+      combiner: ^map_merge,
+      ports: [bare(s: ^base), bare(s: ^acc)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn noncarrier_name_in_copied_port_refuses_may_alias() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^list_append,
+      ports: [bare(s: ^item), bare(s: ^acc)],
+      carriers: [^acc]
+    ),
+    cause: ^copied_port_name_may_alias
+  )
+}
+
+test fn map_merge_noncarrier_overlay_refuses_may_alias() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^map_merge,
+      ports: [bare(s: ^acc), bare(s: ^other)],
+      carriers: [^acc]
+    ),
+    cause: ^copied_port_name_may_alias
+  )
+}
+
+test fn pure_literal_in_copied_port_is_provably_fresh() -> Bool {
+  is_absent(
+    o: classify(
+      combiner: ^list_append,
+      ports: [PortPureLiteral, bare(s: ^acc)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn computed_copied_port_refuses() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^list_append,
+      ports: [PortComputedExpression { mentions: [] }, bare(s: ^item)],
+      carriers: [^acc]
+    ),
+    cause: ^copied_port_computed_argument
+  )
+}
+
+test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^mystery,
+      ports: [PortComputedExpression { mentions: [^wrapped, ^acc] }],
+      carriers: [^acc]
+    ),
+    cause: ^combiner_unregistered_carrier_reaches
+  )
+}
+
+test fn computed_without_carrier_mention_at_unregistered_combiner_is_clean() -> Bool {
+  match classify(
+    combiner: ^mystery,
+    ports: [PortComputedExpression { mentions: [^wrapped, ^item] }],
+    carriers: [^acc]
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn missing_copied_port_refuses() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^list_append,
+      ports: [PortMissing, bare(s: ^item)],
+      carriers: [^acc]
+    ),
+    cause: ^copied_port_argument_missing
+  )
+    && refuses_with(
+      o: classify(combiner: ^list_append, ports: [], carriers: [^acc]),
+      cause: ^copied_port_argument_missing
+    )
+}
+
+test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^mystery_op,
+      ports: [bare(s: ^item), bare(s: ^acc)],
+      carriers: [^acc]
+    ),
+    cause: ^combiner_unregistered_carrier_reaches
+  )
+}
+
+test fn unregistered_combiner_without_carrier_is_out_of_scope() -> Bool {
+  is_absent(
+    o: classify(
+      combiner: ^mystery_op,
+      ports: [bare(s: ^item), bare(s: ^other)],
+      carriers: [^acc]
+    )
+  )
+}

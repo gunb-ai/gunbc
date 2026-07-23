@@ -20,6 +20,58 @@ import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import std.types { NonEmptyStr }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data bmc_token_smoke_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ bmc token-smoke run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell\n"
+
+data gcp_token_smoke_print_token_command: String = "gcloud auth print-access-token >/dev/null"
+
+data gcp_token_smoke_echo_acquired_command: String = "echo \"keyless access token acquired\""
+
+fn gcp_token_smoke_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn gcp_token_smoke_do(command: String) -> PipelineStep {
+  Do { run: gcp_token_smoke_run(command: command) }
+}
+
+fn gcp_token_smoke_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      gcp_token_smoke_do(command: gcp_token_smoke_print_token_command),
+      gcp_token_smoke_do(command: gcp_token_smoke_echo_acquired_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn gcp_token_smoke_script() -> String {
+  match orch_emit_pipeline(p: gcp_token_smoke_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+  }
+}
 
 data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"
 
@@ -135,10 +187,7 @@ fn gcp_token_smoke_step() -> Step {
   RunStep {
     name: Present { value: "Verify gcloud access token resolves (keyless)" },
     id: none,
-    run: concat(
-      "gcloud auth print-access-token >/dev/null\n",
-      "echo \"keyless access token acquired\""
-    ),
+    run: gcp_token_smoke_script(),
     shell: none,
     env: none,
     working_directory: none,

@@ -1,0 +1,146 @@
+module gunbc.process_algebra
+
+import std.algebra { FreeMonoid }
+import std.effects { OperationEffect }
+import std.types { Map, NonEmptyStr, Timestamp }
+
+type ProcessNodeId = NonEmptyStr where brand("ProcessNodeId")
+type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
+type ProcessRuleName = NonEmptyStr where brand("ProcessRuleName")
+type ProcessEventPosition = Int where range(min: 0), brand("ProcessEventPosition")
+
+type DeclaredProcessNodeMode
+  = Leaf
+  | Composite
+  | Bucket
+
+type AttestationEvidence
+  = StructuralLensReceipt { lens_name: NonEmptyStr }
+  | IntegrationTestReceipt { test_name: NonEmptyStr, passed: Bool }
+  | ProseReceipt { text: NonEmptyStr }
+
+type Attestation {
+  author: ProcessSessionId
+  text: NonEmptyStr
+  evidence: List<AttestationEvidence>
+}
+
+type NonEmptyProcessNodeIds {
+  first: ProcessNodeId
+  rest: List<ProcessNodeId>
+}
+
+type ProcessClosureDecision
+  = CanClose
+  | CloseRefused(ProcessClosureRefusal)
+
+type ProcessClosureRefusal
+  = ProcessNodeNotFound
+  | ProcessAlreadyClosed
+  | ProcessModeNotDeclared
+  | ProcessBucketNotDrained
+  | ProcessCompositeHasOpenChildren { open_children: NonEmptyProcessNodeIds }
+
+type ClosureEligibilityEffect
+  = ClosureImproves
+  | ClosureRetracts
+  | ClosureNeutral
+  | ClosureOverride
+
+type ProcessOperationEffect {
+  closure_effect: ClosureEligibilityEffect
+  external_effect: OperationEffect
+}
+
+type ReopenAttestation {
+  reason: NonEmptyStr
+  attestation: Attestation
+}
+
+type RegressionAttestation {
+  reason: NonEmptyStr
+  retracted_subtree_signature: NonEmptyStr
+  attestation: Attestation
+}
+
+type ProcessOperation
+  = DeclareProcessNode {
+      node: ProcessNodeId
+      mode: DeclaredProcessNodeMode
+      attestation: Attestation
+    }
+  | DecomposeProcessNode {
+      parent: ProcessNodeId
+      children: NonEmptyProcessNodeIds
+      attestation: Attestation
+    }
+  | DrainProcessBucket {
+      bucket: ProcessNodeId
+      attestation: Attestation
+    }
+  | CloseProcessNode {
+      node: ProcessNodeId
+      attestation: Attestation
+    }
+  | RefuseCloseProcessNode {
+      node: ProcessNodeId
+      refusal: ProcessClosureRefusal
+      attestation: Attestation
+    }
+  | ReplanProcessNode {
+      node: ProcessNodeId
+      reason: Attestation
+    }
+  | EscalateProcessDebt {
+      from: ProcessNodeId
+      to_parent: ProcessNodeId
+      debt: Attestation
+    }
+  | PauseProcessNode {
+      node: ProcessNodeId
+      reason: Attestation
+    }
+  | ReopenProcessNode {
+      node: ProcessNodeId
+      reopen: ReopenAttestation
+    }
+  | RegressProcessSubtree {
+      node: ProcessNodeId
+      retracted_child_ids: NonEmptyProcessNodeIds
+      regression: RegressionAttestation
+    }
+  | AttestedClosureOverride {
+      rule: ProcessRuleName
+      attestation: Attestation
+    }
+
+type ProcessEvent {
+  position: ProcessEventPosition
+  timestamp: Timestamp
+  operation: ProcessOperation
+}
+
+type ProcessEventLog = FreeMonoid<ProcessEvent>
+
+type BucketDrainState
+  = BucketNotDrained
+  | BucketDrained { drained_at: Timestamp }
+
+type ProcessCloseState
+  = ProcessOpen
+  | ProcessClosed { closed_at: Timestamp }
+
+type ProcessNodeDeclarationState
+  = ProcessModeMissing
+  | ProcessLeafDeclared
+  | ProcessCompositeDeclared { open_children: List<ProcessNodeId> }
+  | ProcessBucketDeclared { drain: BucketDrainState }
+
+type ProcessNodeFacts {
+  declaration: ProcessNodeDeclarationState
+  close: ProcessCloseState
+}
+
+type ProcessGraph {
+  nodes: Map<ProcessNodeId, ProcessNodeFacts>
+}

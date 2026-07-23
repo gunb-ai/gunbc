@@ -1,50 +1,8 @@
 module v2.test.parse.parse_table_claims
 
-import v2.std.logic { Bool }
-import v2.std.collection { List, Set }
-import v2.std.algebra { Cons, Empty, length }
-import v2.std.compilers.lexing { Token }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode
-}
-import v2.std.grammar {
-  StampClass,
-  Choice,
-  GrammarExpr,
-  GrammarProduction,
-  GrammarRoot,
-  ModeledGrammar,
-  Nonterminal,
-  Optional,
-  ParseGrammar,
-  Repeat,
-  Sequence,
-  Terminal,
-  grammar_atom,
-  grammar_carries_symbol,
-  grammar_empty_sync_tokens
-}
-import v2.compiler.parse {
-  expr_direct_left_corner_list,
-  expr_has_undefined_nonterminal,
-  expr_is_nullable_given_set,
-  parse_expr,
-  parse_prov_initial,
-  parse_table_empty,
-  ParseExprAccepted,
-  ParseExprRejected,
-  token_position_indices
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn parse_table_token(class: Symbol) -> Token {
   Token { class: class, lexeme: Empty, file: class, start: 0, end: 0 }
 }
@@ -253,24 +211,26 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   }
   let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
   let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
+  let tok_c = parse_table_token(class: ^pt_parse_expr_tok_c)
   let toks_a = Cons { head: tok_a, tail: Empty }
   let toks_b = Cons { head: tok_b, tail: Empty }
+  let toks_c = Cons { head: tok_c, tail: Empty }
   let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
   let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
   let r1 = match parse_expr(
     expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
     tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 0
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r2 = match parse_expr(
     expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
-    ParseExprRejected { diagnostics: _ } => true
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => true
   }
   let r3 = match parse_expr(
     expr: Sequence {
@@ -279,9 +239,9 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     },
     tokens: toks_ab, all_tokens: toks_ab, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 0
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r4 = match parse_expr(
     expr: Choice {
@@ -290,40 +250,51 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 0
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r5 = match parse_expr(
     expr: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 1
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r6 = match parse_expr(
     expr: Repeat { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
     tokens: toks_aab, all_tokens: toks_aab, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 1
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r7 = match parse_expr(
     expr: Repeat { element: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } } },
     tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
       length(xs: rest) == 1
-    ParseExprRejected { diagnostics: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => false
   }
   let r8 = match parse_expr(
     expr: Nonterminal { production: ^pt_parse_expr_undefined_prod },
     tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
   ) {
-    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
-    ParseExprRejected { diagnostics: _ } => true
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } => false
+    ParseExprRejected { diagnostics: _, table: _ } => true
   }
-  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
+  let r9 = match parse_expr(
+    expr: Choice {
+      left: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, stamp: StampClass }
+    },
+    tokens: toks_c, all_tokens: toks_c, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _, table: _ } => false
+  }
+  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8 && r9
 }

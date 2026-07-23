@@ -1,18 +1,5 @@
 module gunbc.install_media
 
-import std.types { String, NonEmptyStr }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-}
-
-data install_media_doc: String = "Seeded install-media observation→verdict→plan (gunbc workflow policy). Not std — ISO remaster/fetch/replace semantics live here, not in universal resource namespace."
 
 type SeededInstallMediaObservation
   = MediaAbsent
@@ -46,7 +33,7 @@ fn decision_for_seeded_install_media_obs(
 
 fn classify_seeded_install_media_upsert(
   obs: SeededInstallMediaObservation,
-) -> UpsertClassification<SeededInstallMediaPlan> {
+) -> std.upsert_decision.UpsertClassification<SeededInstallMediaPlan> {
   let verdict = classify_seeded_install_media(obs: obs)
   UpsertClassification {
     verdict: verdict,

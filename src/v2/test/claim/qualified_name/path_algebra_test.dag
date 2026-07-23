@@ -1,0 +1,58 @@
+module v2.test.claim.qualified_name.path_algebra_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn host_disposition_binds_bridge(
+  disposition: Disposition,
+  module_path: String,
+  decl_name: String
+) -> Bool {
+  match disposition {
+    Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+      bind.module_path == module_path
+        && bind.decl_name == decl_name
+        && bind.field == WholeDeclaration
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn qualified_name_to_dotted_string_roundtrip_holds() -> Bool {
+  let qn = qualified_name_from_dotted_string(dotted: "v2.std.text")
+  qualified_name_to_dotted_string(qn: qn) == "v2.std.text"
+}
+
+test fn qualified_name_snoc_appends_segment_holds() -> Bool {
+  let base = qualified_name_from_dotted_string(dotted: "v2.std")
+  let extended = qualified_name_snoc(qn: base, segment: ^text)
+  qualified_name_to_dotted_string(qn: extended) == "v2.std.text"
+}
+
+test fn qualified_name_init_drops_last_segment_holds() -> Bool {
+  let qn = qualified_name_from_dotted_string(dotted: "v2.std.text")
+  let parent = qualified_name_init(qn: qn)
+  qualified_name_to_dotted_string(qn: parent) == "v2.std"
+}
+
+test fn qualified_name_init_empty_on_singleton_holds() -> Bool {
+  let qn = qualified_name_from_dotted_string(dotted: "std")
+  let parent = qualified_name_init(qn: qn)
+  qualified_name_to_dotted_string(qn: parent) == ""
+}
+
+test fn qualified_name_from_dotted_string_host_scaffold_binds_bridge_holds() -> Bool {
+  host_disposition_binds_bridge(
+    disposition: qualified_name_from_dotted_string_host_disposition,
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_from_dotted_string"
+  )
+}
+
+test fn qualified_name_to_dotted_string_host_leaf_scaffold_binds_symbol_lexeme_holds() -> Bool {
+  host_disposition_binds_bridge(
+    disposition: symbol_lexeme_host_disposition,
+    module_path: "v2.std.compilers.lexing",
+    decl_name: "symbol_lexeme"
+  )
+}

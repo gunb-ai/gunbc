@@ -1,21 +1,8 @@
 module v2.lens.intent_linearity
-import v2.lens.common.construction_justification { ConstructionJustification, ConstructionClass, WallNow, WallAfterGrounding, RatchetForever }
-import std.disposition { SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.simulated_relationship { chain_is_simulated }
-import v2.lens.structural_similarity { type_decls_anti_unify }
-import v2.lens.complexity_lowering { cost_is_lowerable }
-import v2.lens.cost { symbolic_cost_of_node }
-import v2.lens.module_graph { import_closure_live }
-import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, any, for_all, contains }
-import v2.std.collection { List }
-import v2.std.text { String }
-import v2.std.logic { Bool }
 
 type CostAxis = ChangeTime | RunTime
 
-type Representation = TermChain | TypeForest | ImportGraph
+type Representation = TermChain | TypeForest | ImportGraph | DeclForest
 
 type LinearityRule {
   name: Symbol
@@ -55,96 +42,17 @@ fn dup_type_to_generic_rule() -> LinearityRule {
   }
 }
 
-fn linearity_registry() -> FreeMonoid<LinearityRule> {
-  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule() ]
-}
-
-type ParallelRepresentationRule {
-  name: Symbol
-  axis: CostAxis
-  representation: Representation
-  class: ConstructionClass
-  derive: fn(String, List<String>) -> FreeMonoid<String>
-}
-
-fn import_graph_rule() -> ParallelRepresentationRule {
-  ParallelRepresentationRule {
-    name: ^consumed_input_closure,
+fn sigma_fn_family_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^sigma_fn_family,
     axis: ChangeTime,
-    representation: ImportGraph,
-    class: WallNow { mechanism: SingleAuthority, authority: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration } },
-    derive: fn(entry, roots) { import_closure_live(entry_path: entry, pool_roots: roots) }
+    representation: DeclForest,
+    detect: fn(s) { length(xs: sigma_families_of_defs(defs: s)) > 0 }
   }
 }
 
-fn parallel_representation_registry() -> FreeMonoid<ParallelRepresentationRule> {
-  [ import_graph_rule() ]
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn list_is_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
-  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
-}
-
-fn closures_match(declared: FreeMonoid<String>, derived: FreeMonoid<String>) -> Bool {
-  list_is_subset(xs: declared, ys: derived) && list_is_subset(xs: derived, ys: declared)
-}
-
-fn closure_drift(declared: FreeMonoid<String>, derived: FreeMonoid<String>) -> Bool {
-  !closures_match(declared: declared, derived: derived)
-}
-
-fn closure_is_clean(
-  rule: ParallelRepresentationRule,
-  declared: FreeMonoid<String>,
-  derived: FreeMonoid<String>
-) -> Bool {
-  match rule.class {
-    WallNow { mechanism: _, authority: _ } => !closure_drift(declared: declared, derived: derived)
-    WallAfterGrounding { dissolves_to: _ } => true
-    RatchetForever => true
-  }
-}
-
-fn closure_is_clean_for_representation(
-  rep: Representation,
-  declared: FreeMonoid<String>,
-  derived: FreeMonoid<String>
-) -> Bool {
-  for_all(
-    xs: parallel_representation_registry(),
-    predicate: fn(rule) {
-      if representation_eq(a: rule.representation, b: rep) {
-        closure_is_clean(rule: rule, declared: declared, derived: derived)
-      } else {
-        true
-      }
-    }
-  )
-}
-
-fn import_closure_is_clean_live(
-  declared: FreeMonoid<String>,
-  entry_path: String,
-  pool_roots: List<String>
-) -> Bool {
-  for_all(
-    xs: parallel_representation_registry(),
-    predicate: fn(rule) {
-      if representation_eq(a: rule.representation, b: ImportGraph) {
-        closure_is_clean(
-          rule: rule,
-          declared: declared,
-          derived: rule.derive(entry_path, pool_roots)
-        )
-      } else {
-        true
-      }
-    }
-  )
+fn linearity_registry() -> FreeMonoid<LinearityRule> {
+  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule(), sigma_fn_family_rule() ]
 }
 
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
@@ -160,9 +68,10 @@ fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
 
 fn representation_eq(a: Representation, b: Representation) -> Bool {
   match a {
-    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false }
-    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false }
-    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true }
+    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false DeclForest => false }
+    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false DeclForest => false }
+    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true  DeclForest => false }
+    DeclForest => match b { TermChain => false TypeForest => false ImportGraph => false DeclForest => true }
   }
 }
 
@@ -187,6 +96,10 @@ fn forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
 
 fn chain_has_runtime_lowering_candidate(steps: FreeMonoid<Node>) -> Bool {
   input_fires(axis: RunTime, rep: TermChain, input: steps)
+}
+
+fn decl_forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: DeclForest, input: decls)
 }
 
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {

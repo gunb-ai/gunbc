@@ -1,6 +1,6 @@
 # TypeScript first-class gap census — discriminating construct audit (Lane C / Track T)
 
-**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to `v2-self-hosting.md` Track T. **`dag/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact).
+**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to [v2-self-hosting.md](v2-self-hosting.md) Wave 4 / END GOAL (post-Rust; Track T retired). **`dag/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact).
 
 **Method:** enumerate construct families `src/v2` actually uses (compiler substrate behaviors in `src/v2/compiler/*` + TargetModel emit surfaces in `src/v2/extdeps/languages/typescript.dag`). For each family report three independent bars: (a) grammar-inverse row enrolled on the committed TargetModel node, (b) VEP / pipeline emits the expected **TypeScript source string** (witness PASS), (c) **`tsc` / emit_host accepts the output** (consumer green-by-execution). Every FAIL names a witness or authority site — not a stub count.
 
@@ -42,9 +42,9 @@
 2. **#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`typescript.dag:606`).
 3. **#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`typescript.dag:609`).
 4. **#16 default operator catalog** — `ts_operator_realizations_catalog_node()` rows = `[ts_add_operator_realization_row()]` only (`typescript.dag:640–641`). Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`).
-5. **#17 grammar-inverse rows beyond add** — committed `ts_mvp1_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_mvp1_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`).
+5. **#17 grammar-inverse rows beyond add** — committed `ts_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`).
 6. **#18 branch dispatch** — compiler uses `Branch` (`04_infer` / `05_eval`); zero TS emit witnesses.
-7. **#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_mvp1_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add.
+7. **#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add.
 8. **#20 whole `src/v2` → TS** — no module; Route-A tsc analogue not started (terminal slice E).
 
 ## 3. Discriminating counts
@@ -53,7 +53,7 @@
 - **FAIL-CLOSED:** 2 (#11–#12)
 - **FAIL-OPEN compiler-scale gaps:** 8 (#13–#20)
 - **tsc-green (bar c):** 0/N wet — add fixture attempted, red in execution (#19)
-- **Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 wave2a productions defined
+- **Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 type-decl productions defined
 
 ## 4. Size call
 
@@ -63,7 +63,7 @@
 
 1. **A. Land this census** (this plan) — audit-first record, generated md.
 2. **A2. tsc-green oracle REAL on existing VEP-green slices (#19 pulled forward)** — per-construct `tsc` acceptance on #1–#9 before stacking breadth. Converts string-green families into compile-green. Highest-value foundation work.
-3. **B. Cheap row extensions (#17)** — enroll type_alias + pr3 rows into committed `ts_mvp1_translation_rules_node`; rows only, no new TargetModel surface.
+3. **B. Cheap row extensions (#17)** — enroll type_alias + pr3 rows into committed `ts_translation_rules_node`; rows only, no new TargetModel surface.
 4. **C. Operator catalog (#16)** — proceed **only** if genuinely row-derivation onto the default model; if it needs a new TargetModel surface → load-bearing → sign first.
 5. **D. HOLD for parent sign:** Match (#13) + loop/bind (#14–#15) + Branch (#18) — compiler-scale TargetModel surfaces.
 6. **E. Whole-tree Route-A tsc (#20)** — terminal.

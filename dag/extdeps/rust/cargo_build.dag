@@ -1,5 +1,6 @@
 module extdeps.cargo_build
 
+import std.types { FilePath }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -13,11 +14,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data cargo_compile_env: Map<String, String> = empty_map()
 
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
-  ["--jobs", "{count}"]
+  ["--jobs", to_string(count)]
 }
 
 fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
-  ["--build-jobs", "{count}"]
+  ["--build-jobs", to_string(count)]
 }
 
 service cargo.Build {
@@ -29,6 +30,34 @@ service cargo.Build {
       stderr: String from "stderr"
     }
     transport shell { argv: ["cargo", "build", build_jobs_args, extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation BuildInheritEnv {
+    input { workdir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "cargo", "build", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation BuildManifest {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "build", "--manifest-path", "{manifest_path}", extra_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"

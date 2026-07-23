@@ -1,41 +1,5 @@
 module v2.lens.unit_modeling
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  TypeNode,
-  ComputationNode,
-  Symbol,
-  node_subtree_nodes
-}
-import v2.std.node_query { edge_field_type_name }
-import v2.std.collection {
-  List,
-  Map,
-  Optional,
-  Present,
-  Absent,
-  optional_present,
-  optional_absent,
-  optional_prefer_first_present,
-  empty_map,
-  map_insert,
-  map_get
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Accepted,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  node_locus
-}
-import v2.std.witness { Holds, Witness }
 
 type UnitFieldRow {
   field: Symbol
@@ -87,7 +51,7 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
 }
 
 fn field_name_has_known_carrier(name: Symbol) -> Bool {
-  match map_get(m: unit_field_token_map(), key: name) {
+  match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -107,7 +71,7 @@ fn exemption_marker_set() -> Map<Symbol, Symbol> {
 }
 
 fn name_is_exempt(name: Symbol) -> Bool {
-  match map_get(m: exemption_marker_set(), key: name) {
+  match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -136,17 +100,11 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
 fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
-      fold(carrier.children, init: Absent, f: fn(acc, edge) {
+      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
         optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
       })
     ComputationNode { behavior: _ } => Absent
   }
-}
-
-fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
-  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
-    optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
-  })
 }
 
 fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
@@ -165,8 +123,10 @@ fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
   }
 }
 
+data unit_modeling_gate_cost_note: String = "Node-local predicate on the per-subtree-node roster (same grain as fact_density): carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)."
+
 fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
-  match subtree_first_unit_violation(node: node) {
+  match carrier_first_unit_violation(carrier: node) {
     Present { value: d } => outcome_rejected(d)
     Absent => outcome_accepted(value: Holds { value: node })
   }

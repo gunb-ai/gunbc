@@ -1,11 +1,5 @@
 module extdeps.cloud.gcp.sts
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
-import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
-import extdeps.github.errors { GitHubErrorShape }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -19,7 +13,7 @@ type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 type RequestedTokenType = RequestAccessToken | RequestIdToken
 
 type StsTokenResponse {
-  access_token: String
+  access_token: Secret
   issued_token_type: String
   token_type: String
   expires_in: Int

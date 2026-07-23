@@ -18,6 +18,9 @@ import v2.std.node {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn transform_leaf() -> Node {
   node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])

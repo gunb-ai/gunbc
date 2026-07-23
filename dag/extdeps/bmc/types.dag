@@ -1,18 +1,5 @@
 module extdeps.bmc.types
 
-import std.measure {
-  Watt,
-  ByteSize,
-  HardwareThreadCount,
-  Celsius,
-  RevolutionsPerMinute,
-  byte_size,
-  watt,
-}
-import std.types { NonEmptyStr, Int, List, Secret }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -102,6 +89,10 @@ type RedfishBootSourceOverrideEnabled =
   | BootOverrideOnce
   | BootOverrideContinuous
 
+type RedfishBootSourceOverrideMode =
+    BootOverrideModeLegacy
+  | BootOverrideModeUefi
+
 type RedfishResetType =
     ResetForceOff
   | ResetForceOn
@@ -139,6 +130,13 @@ fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> No
     BootOverrideDisabled => "Disabled"
     BootOverrideOnce => "Once"
     BootOverrideContinuous => "Continuous"
+  }
+}
+
+fn redfish_boot_override_mode_wire(m: RedfishBootSourceOverrideMode) -> NonEmptyStr {
+  match m {
+    BootOverrideModeLegacy => "Legacy"
+    BootOverrideModeUefi => "UEFI"
   }
 }
 

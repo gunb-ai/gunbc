@@ -1,0 +1,114 @@
+module v2.lens.identity_captured_navigation.roster_gate
+
+
+data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/identity_captured_navigation/roster_gate in gunbc.ci_layer_roots — same structural reason as complexity_accumulator_copy's roster gate: file_gate reads its roster targets via filesystem_read at runtime, a data dependency invisible to resolve-closure attribution). Local recipe, one test fn per invocation: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag --function <fn> --claim-run --wet."
+
+data source_findings_pre_normalize_note: String = "Reads the RAW parsed surface tree (parse_module, no normalize pass) rather than the normalized tree: this lens's target is a source-syntax defect (a find_named_child(name: ^grammar_production_identity_node_projection) call whose result escapes un-reduced) that must be located by the surface grammar's own ^dag_surface_match_expr production identity - the proven-working precedent (v2.test.claim.manual.body_lowering_match's body_lowering_find_match_expr) locates match_expr the same way, on the pre-normalize tree, because downstream body-lowering/normalize stages replace a match construct's surface identity with a ComputationNode\{behavior: Match\} - by the time a tree is normalized, ^dag_surface_match_expr is no longer a reliable anchor for this static-analysis walk."
+
+data parsed_source_span_index_note: String = "Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal."
+
+type ParsedSource {
+  tree: Node,
+  span_index: SpanIndex,
+  source_text: String
+}
+
+fn source_findings_tree(source_text: String) -> Optional<ParsedSource> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: source_text,
+    file: ^identity_captured_navigation_roster_subject,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          Present {
+            value: ParsedSource {
+              tree: artifact.tree,
+              span_index: artifact.span_index,
+              source_text: source_text
+            }
+          }
+      }
+  }
+}
+
+fn source_findings(source_text: String) -> Optional<List<Finding>> {
+  match source_findings_tree(source_text: source_text) {
+    Absent => Absent
+    Present { value: parsed } =>
+      Present {
+        value: identity_captured_navigation_findings(
+          root: parsed.tree,
+          span_index: parsed.span_index,
+          source_text: parsed.source_text
+        )
+      }
+  }
+}
+
+fn ingest_findings(path: String) -> Optional<List<Finding>> {
+  source_findings(source_text: filesystem_read(path: path).content)
+}
+
+fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
+  fold_list(xs: fs, empty: 0, cons: fn(acc, f) {
+    if pred(f) { acc + 1 } else { acc }
+  })
+}
+
+type RosterVerdict
+  = RosterClean
+  | RosterIngestRegressed
+  | RosterSuspectFound
+  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+
+fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
+  match ingest_findings(path: path) {
+    Absent => RosterIngestRegressed
+    Present { value: fs } =>
+      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+        RosterSuspectFound
+      } else {
+        let refusals = count_matching(fs: fs, pred: finding_is_refusal)
+        if refusals > refusal_ceiling {
+          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+        } else {
+          RosterClean
+        }
+      }
+  }
+}
+
+fn file_suspect_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect)
+  }
+}
+
+fn file_refusal_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_refusal)
+  }
+}
+
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
+    RosterClean => true
+    RosterIngestRegressed => false
+    RosterSuspectFound => false
+    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+fn source_has_suspect(source_text: String) -> Bool {
+  match source_findings(source_text: source_text) {
+    Absent => false
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect) > 0
+  }
+}

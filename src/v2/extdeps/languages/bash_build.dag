@@ -1,0 +1,455 @@
+module v2.extdeps.languages.bash_build
+
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import v2.std.collection { List, Present, list_at_optional }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: kind } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: value } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_word_lit(text: String) -> Node {
+  bash_build_word_kinded(kind: ^bash_fold_word_kind_lit, value: text)
+}
+
+fn bash_build_word_var(name: String) -> Node {
+  bash_build_word_kinded(kind: ^bash_fold_word_kind_var, value: name)
+}
+
+fn bash_build_word_compound(kind: Symbol, payload: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: kind } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge { label: Positional, target: payload }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_word_concat(parts: Node) -> Node {
+  bash_build_word_compound(kind: ^bash_fold_word_kind_concat, payload: parts)
+}
+
+fn bash_build_word_cmdsubst(body: Node) -> Node {
+  bash_build_word_compound(kind: ^bash_fold_word_kind_cmdsubst, payload: body)
+}
+
+fn bash_build_stmt_tag(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_command_words_single(word: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: word }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_command(words: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_command)
+      },
+      Edge { label: Positional, target: words }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_command_words_from_lits_suffix(
+  lits: List<String>,
+  accumulated: Node,
+  index: Int
+) -> Node {
+  match list_at_optional(xs: lits, index: index) {
+    Present { value: lit } =>
+      bash_build_command_words_from_lits_suffix(
+        lits: lits,
+        accumulated: bash_build_command_words_pair(
+          left: accumulated,
+          right: bash_build_word_lit(text: lit)
+        ),
+        index: index + 1
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_command_from_lits(lits: List<String>) -> Node {
+  match list_head(xs: lits) {
+    HeadFound { value: first } =>
+      bash_build_command(
+        words: bash_build_command_words_from_lits_suffix(
+          lits: lits,
+          accumulated: bash_build_command_words_single(word: bash_build_word_lit(text: first)),
+          index: 1
+        )
+      )
+    HeadAbsent =>
+      bash_build_command(
+        words: bash_build_command_words_single(word: bash_build_word_lit(text: ""))
+      )
+  }
+}
+
+fn bash_build_command_lit_var(lit: String, var_name: String) -> Node {
+  bash_build_command(
+    words: bash_build_command_words_pair(
+      left: bash_build_command_words_single(word: bash_build_word_lit(text: lit)),
+      right: bash_build_word_var(name: var_name)
+    )
+  )
+}
+
+fn bash_build_exit(code: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_exit)
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: code } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_assign(name: String, value: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: name } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge { label: Positional, target: value }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_assign_lit(name: String, text: String) -> Node {
+  bash_build_assign(name: name, value: bash_build_word_lit(text: text))
+}
+
+fn bash_build_assign_var(name: String, var_name: String) -> Node {
+  bash_build_assign(name: name, value: bash_build_word_var(name: var_name))
+}
+
+fn bash_build_binary_stmt(binding: Symbol, left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_and_then(left: Node, right: Node) -> Node {
+  bash_build_binary_stmt(
+    binding: ^bash_production_fold_and_then,
+    left: left,
+    right: right
+  )
+}
+
+fn bash_build_or_else(left: Node, right: Node) -> Node {
+  bash_build_binary_stmt(
+    binding: ^bash_production_fold_or_else,
+    left: left,
+    right: right
+  )
+}
+
+fn bash_build_pipe(left: Node, right: Node) -> Node {
+  bash_build_binary_stmt(
+    binding: ^bash_production_fold_pipe,
+    left: left,
+    right: right
+  )
+}
+
+fn bash_build_stmt_list_single(stmt: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: stmt }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_subshell(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_subshell)
+      },
+      Edge { label: Positional, target: body }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_if(cond: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_if)
+      },
+      Edge { label: Positional, target: cond },
+      Edge { label: Positional, target: body }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
+      },
+      Edge { label: Positional, target: inner },
+      Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
+      },
+      Edge { label: Positional, target: inner },
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_to_file)
+      },
+      Edge { label: Positional, target: path }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_negation(inner: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_build_stmt_negation)
+      },
+      Edge { label: Positional, target: inner }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_word_list_from_nodes_suffix(
+  words: List<Node>,
+  accumulated: Node,
+  index: Int
+) -> Node {
+  match list_at_optional(xs: words, index: index) {
+    Present { value: word } =>
+      bash_build_word_list_from_nodes_suffix(
+        words: words,
+        accumulated: bash_build_command_words_pair(left: accumulated, right: word),
+        index: index + 1
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_word_list_from_nodes(words: List<Node>) -> Node {
+  match list_head(xs: words) {
+    HeadFound { value: first } =>
+      bash_build_word_list_from_nodes_suffix(
+        words: words,
+        accumulated: bash_build_command_words_single(word: first),
+        index: 1
+      )
+    HeadAbsent =>
+      bash_build_command_words_single(
+        word: bash_build_word_kinded(kind: ^bash_build_refused_empty_word_list, value: "")
+      )
+  }
+}
+
+fn bash_build_word_concat_parts(parts: List<Node>) -> Node {
+  bash_build_word_concat(parts: bash_build_word_list_from_nodes(words: parts))
+}
+
+fn bash_build_command_words_from_nodes(words: List<Node>) -> Node {
+  bash_build_word_list_from_nodes(words: words)
+}
+
+fn bash_build_command_with_words(words: List<Node>) -> Node {
+  bash_build_command(words: bash_build_command_words_from_nodes(words: words))
+}
+
+fn bash_build_test_bracket(words: List<Node>) -> Node {
+  bash_build_command_with_words(
+    words: concat(
+      [bash_build_word_lit(text: "[")],
+      concat(words, [bash_build_word_lit(text: "]")])
+    )
+  )
+}
+
+fn bash_build_stmt_list_from_nodes_suffix(
+  stmts: List<Node>,
+  accumulated: Node,
+  index: Int
+) -> Node {
+  match list_at_optional(xs: stmts, index: index) {
+    Present { value: stmt } =>
+      bash_build_stmt_list_from_nodes_suffix(
+        stmts: stmts,
+        accumulated: bash_build_stmt_list_pair(left: accumulated, right: stmt),
+        index: index + 1
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
+  match list_head(xs: stmts) {
+    HeadFound { value: first } =>
+      bash_build_stmt_list_from_nodes_suffix(
+        stmts: stmts,
+        accumulated: bash_build_stmt_list_single(stmt: first),
+        index: 1
+      )
+    HeadAbsent =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: bash_build_stmt_tag(binding: ^bash_build_refused_empty_stmt_list)
+          }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn bash_build_command_from_word_nodes(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
+fn bash_build_if_from_stmts(cond: Node, then_stmts: List<Node>) -> Node {
+  bash_build_if(
+    cond: cond,
+    body: bash_build_stmt_list_from_nodes(stmts: then_stmts)
+  )
+}
+
+fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
+  bash_build_subshell(body: bash_build_stmt_list_from_nodes(stmts: stmts))
+}
+
+fn bash_build_word_concat_from_nodes(parts: List<Node>) -> Node {
+  bash_build_word_concat_parts(parts: parts)
+}

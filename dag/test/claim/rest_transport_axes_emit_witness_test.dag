@@ -1,0 +1,66 @@
+module test.claim.rest_transport_axes_emit_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_tls_insecure_emits_danger_accept() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_tls_a\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n  }\n  operation GetSystem {\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", tls: InsecureAcceptAnyCert }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "src/rax_tls_a.rs",
+    ["danger_accept_invalid_certs(true)"],
+    []
+  )
+}
+
+fn w_tls_verify_peer_omits_danger_accept() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_tls_b\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n  }\n  operation GetSystem {\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", tls: VerifyPeer }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "src/rax_tls_b.rs",
+    ["reqwest::Client::builder()"],
+    ["danger_accept_invalid_certs"]
+  )
+}
+
+fn w_tls_absent_omits_danger_accept() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_tls_c\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n  }\n  operation GetSystem {\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "src/rax_tls_c.rs",
+    ["reqwest::Client::builder()"],
+    ["danger_accept_invalid_certs"]
+  )
+}
+
+fn w_basic_auth_emits_basic_auth_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_basic_a\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n  }\n  operation GetSystem {\n    input { username: String, password: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", auth_basic: { username: username, password: password } }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "src/rax_basic_a.rs",
+    [".basic_auth(", "username", "password"],
+    []
+  )
+}
+
+fn w_dual_auth_refuses_at_emit() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_dual\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetSystem {\n    input { token: String, username: String, password: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", auth_basic: { username: username, password: password } }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "src/rax_dual.rs",
+    ["compile_error!"],
+    [".basic_auth("]
+  )
+}
+
+test fn rest_axes_emit_tls_insecure() -> Bool { w_tls_insecure_emits_danger_accept() }
+test fn rest_axes_emit_tls_verify_peer_control() -> Bool { w_tls_verify_peer_omits_danger_accept() }
+test fn rest_axes_emit_tls_absent_control() -> Bool { w_tls_absent_omits_danger_accept() }
+fn w_rest_crate_uses_rustls_tls() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rax_cargo\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    readonly\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n",
+    "Cargo.toml",
+    ["rustls-tls", "default-features = false"],
+    []
+  )
+}
+
+test fn rest_axes_emit_basic_auth() -> Bool { w_basic_auth_emits_basic_auth_call() }
+test fn rest_axes_emit_dual_auth_refuses() -> Bool { w_dual_auth_refuses_at_emit() }
+test fn rest_axes_emit_crate_uses_rustls_tls() -> Bool { w_rest_crate_uses_rustls_tls() }

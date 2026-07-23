@@ -1,14 +1,5 @@
 module v2.lens.identical_variant_payload
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import std.lens_verdict {
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Unrealized,
-}
-import v2.std.node { Node }
 
 type CarrierCloneTrigger
   = WholeCarrierClone
@@ -18,12 +9,10 @@ type CarrierCloneTrigger
 data identical_variant_payload_module: String = "v2.lens.identical_variant_payload"
 
 fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
-  Unrealized {
-    diagnostic: LensVerdictDiagnostic {
-      reason: "identical_variant_payload_producer_unavailable",
-      at: ModuleWholeFile { module_name: identical_variant_payload_module }
-    }
-  }
+  lens_verdict_module_unrealized(
+    reason: ^identical_variant_payload_producer_unavailable,
+    module_name: identical_variant_payload_module
+  )
 }
 
 type IdenticalVariantPayloadFact {

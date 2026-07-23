@@ -1,0 +1,122 @@
+module v2.test.claim.loop_infer_iteration
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data loop_infer_refinement_proxy_note: String = "FLAG C witness (body-lowering design, operator-signed): the refinement-shaped case stands in for a carrier that narrows across iterations — its second stage resolves to a different type than the first stage's carrier, exactly the class a Refined<τ>-narrowing loop lands in under atom-equality unification. It must be REFUSED with the located infer_loop_iteration_type_mismatch, never silently fabricated as τ → τ. Dissolves with the refinement-typed follow-on named in infer_loop_iteration_flag_c_note."
+
+fn loop_infer_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn loop_infer_int_binding_type_node() -> Node {
+  loop_infer_atom(s: ^dag_binding_type_int)
+}
+
+fn loop_infer_two_stage_loop_node(first: Node, second: Node, measure: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: first },
+      Edge { label: Positional, target: second },
+      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn loop_infer_one_stage_loop_node(stage: Node, measure: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: stage },
+      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn loop_infer_registered_measure() -> Node {
+  loop_infer_atom(s: ^dag_loop_measure_sym)
+}
+
+fn loop_infer_run(root: Node) -> Outcome<InferredTree> {
+  infer(tree: root)
+}
+
+fn loop_infer_loop_type_is_int(tree: InferredTree, body: Node) -> Bool {
+  match inferred_facts_witness_for_node(tree: tree, node: body) {
+    Holds { value: facts } =>
+      infer_branch_type_atoms_equal(
+        a: inferred_facts_resolved_type(facts: facts),
+        b: loop_infer_int_binding_type_node()
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn loop_infer_invariant_body_accepts_with_carrier_type() -> Bool {
+  let body = loop_infer_two_stage_loop_node(
+    first: dag_int_literal_fixture_one(),
+    second: dag_int_literal_fixture_two(),
+    measure: loop_infer_registered_measure()
+  )
+  match loop_infer_run(root: body) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      loop_infer_loop_type_is_int(tree: inferred, body: body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_infer_divergent_body_is_refused() -> Bool {
+  let body = loop_infer_two_stage_loop_node(
+    first: dag_int_literal_fixture_one(),
+    second: loop_infer_atom(s: ^dag_token_kw_true),
+    measure: loop_infer_registered_measure()
+  )
+  match loop_infer_run(root: body) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn loop_infer_refinement_shaped_body_is_refused() -> Bool {
+  let body = loop_infer_two_stage_loop_node(
+    first: dag_int_literal_fixture_one(),
+    second: loop_infer_atom(s: ^loop_infer_refined_int_carrier),
+    measure: loop_infer_registered_measure()
+  )
+  match loop_infer_run(root: body) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn loop_infer_unregistered_measure_is_refused() -> Bool {
+  let body = loop_infer_one_stage_loop_node(
+    stage: dag_int_literal_fixture_one(),
+    measure: loop_infer_atom(s: ^loop_infer_unregistered_measure)
+  )
+  match loop_infer_run(root: body) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn loop_infer_missing_measure_is_refused() -> Bool {
+  let body = Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+  match loop_infer_run(root: body) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

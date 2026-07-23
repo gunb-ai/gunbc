@@ -3,10 +3,9 @@ module extdeps.realization.hermetic_fixture
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  CasContentEncoding,
   ContentAddressLookup,
   ExactKeyOnly,
   WriteOnce,
@@ -43,7 +42,7 @@ data hermetic_fixture_in_process_id: CacheInterfaceId = "hermetic_fixture_in_pro
 data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_file_store_id
   backing_surface: "gunbc-recorded-fixture-on-disk"
-  transport_encoding: CasContentEncoding
+  transport_encoding: CatalogCasContentEncoding
   key_derivation: {
 
     key_inputs: ContentAddressed
@@ -88,7 +87,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
 data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_in_process_id
   backing_surface: "gunbc-effect-io-fixture-in-memory"
-  transport_encoding: CasContentEncoding
+  transport_encoding: CatalogCasContentEncoding
   key_derivation: {
 
     key_inputs: ContentAddressed

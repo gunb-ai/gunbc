@@ -1,0 +1,36 @@
+module v2.test.manual.parse_tree_content_hash_witness
+
+
+fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  let source_text = filesystem_read(path: path).content
+  match tokenize(text: source_text, file: ^parse_tree_content_hash_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: validated, diagnostics: _ } =>
+              match parse_production_tree(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree) }
+              }
+          }
+        VoidGrammar => Absent
+      }
+  }
+}
+
+fn witness_parse_tree_content_hash_tiny() -> Optional<Hash> {
+  parse_tree_content_hash_for_path(path: "src/v2/std/witness.dag")
+}
+
+fn witness_parse_tree_content_hash_small() -> Optional<Hash> {
+  parse_tree_content_hash_for_path(path: "dag/std/execution_mode.dag")
+}

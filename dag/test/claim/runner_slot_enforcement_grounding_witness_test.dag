@@ -1,36 +1,14 @@
 module test.claim.runner_slot_enforcement_grounding_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.measure { ByteSize, byte_size }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  reconciliation_converged,
-}
-import gunbc.ci_floor_measurement {
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
-}
-import gunbc.runner_slot_enforcement {
-  RunnerSlotEnforcement,
-  RunnerSlotEnforced,
-  RunnerSlotUnenforced,
-  RunnerSlotApplyEffect,
-  runner_slot_apply_effect,
-  reconcile_runner_slot,
-  runner_slot_evidence_from_reconciliation,
-  runner_slot_enforcement_evidence,
-  gunbc_runner_slot_enforcement_committed,
-  gunbc_runner_slot_show_effective_read,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_slot() -> NonEmptyStr {
   "actions-runner@srv1-01.service"
 }
 
 fn fixture_expected_cap() -> ByteSize {
-  byte_size(9126805504)
+  gunbc_runner_slot_enforcement_expected_cap()
 }
 
 fn fixture_drift_cap() -> ByteSize {
@@ -104,8 +82,31 @@ fn witness_committed_read_is_absent() -> Bool {
   !is_enforced(e: runner_slot_enforcement_evidence(
     slot_unit: fixture_slot(),
     expected_cap: fixture_expected_cap(),
-    read: gunbc_runner_slot_show_effective_read
+    read: gunbc_fleet_runner_slice_cap_show_effective_read
   ))
+}
+
+fn witness_uncapped_per_slot_unit_refuses_enforcement() -> Bool {
+  !is_enforced(e: runner_slot_enforcement_from_unit_read(
+    read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
+  ))
+}
+
+fn witness_per_slot_committed_uses_allocation_authority_cap() -> Bool {
+  byte_size_count(b: fixture_expected_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    && !is_enforced(e: gunbc_runner_per_slot_enforcement_committed())
+}
+
+fn witness_matching_per_slot_unit_read_grounds_enforced() -> Bool {
+  let row = RunnerUnitLiveReadRow {
+    unit: fixture_slot(),
+    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+    memory_swap_max_raw: "0",
+    memory_high_raw: "infinity",
+    memory_current_raw: "",
+    probed_at: "2026-07-14",
+  }
+  is_enforced(e: runner_slot_enforcement_from_unit_read(read: runner_unit_live_read_typed(row: row)))
 }
 
 test fn runner_slot_enforcement_grounding_holds() -> Bool {
@@ -117,4 +118,7 @@ test fn runner_slot_enforcement_grounding_holds() -> Bool {
     && witness_drift_read_does_not_converge()
     && witness_absent_read_is_fail_closed()
     && witness_committed_read_is_absent()
+    && witness_uncapped_per_slot_unit_refuses_enforcement()
+    && witness_per_slot_committed_uses_allocation_authority_cap()
+    && witness_matching_per_slot_unit_read_grounds_enforced()
 }

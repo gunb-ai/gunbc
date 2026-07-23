@@ -1,0 +1,597 @@
+module v2.test.execution.emit_host_classical_not_ingested_equals_eval
+
+import v2.compiler.emit { emit }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval,
+  eval_context_with_semantics,
+  eval_test_claim_subject,
+  inputs_root_only
+}
+import extdeps.communication.medium { Medium }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_language_model,
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node, rust_target_model_staging }
+import v2.extdeps.languages.rust_test {
+  rust_classical_not_ingested_target_model_staging,
+  rust_match_target_model_staging
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
+import v2.std.compilers.target_model { match_arm_body }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Match,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.node_query { find_arrow_body_child, find_named_child }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+
+data ingested_classical_not_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => false,\n    false => true\n  }\n}\n"
+
+data ingested_classical_not_swapped_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => true,\n    false => false\n  }\n}\n"
+
+fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^ingested_classical_not_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_resolved_module_from_source(source: source),
+    f: fn(resolved) {
+      match ingested_find_arrow_in_module(root: resolved) {
+        Present { value: arrow } => outcome_accepted(value: arrow)
+        Absent =>
+          outcome_rejected(
+            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved)
+          )
+      }
+    }
+  )
+}
+
+fn ingested_match_body_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      find_arrow_body_child(root: arrow)
+    }
+  )
+}
+fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  match inferred.facts.lookup(key: key) {
+                    Holds { value: _ } => inferred.facts.lookup(key: key)
+                    Violates { diagnostic: _ } =>
+                      ingested_classical_not_composed_facts(key: key)
+                  }
+                }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn ingested_classical_not_eval_subgraph_canonical() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_eval_subgraph_swapped() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_true
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_false
+    )
+  )
+}
+
+fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn ingested_resolves(source: String) -> Bool {
+  match ingested_resolved_module_from_source(source: source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingested_arrow_has_match_body(source: String) -> Bool {
+  match ingested_arrow_from_source(source: source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Match } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^ingested_classical_not_generic_descent }
+      }
+    }
+  )
+}
+
+fn ingested_classical_not_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds { value: ingested_classical_not_generic_facts(node: key) }
+}
+
+fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn ingested_classical_not_bool_true(value: RuntimeValue) -> Bool {
+  value == ingested_classical_not_octet_value(n: 1)
+}
+
+fn ingested_classical_not_bool_false(value: RuntimeValue) -> Bool {
+  value == ingested_classical_not_octet_value(n: 0)
+}
+
+fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_token_kw_true {
+        outcome_accepted(value: ingested_classical_not_octet_value(n: 1))
+      } else if id == ^dag_token_kw_false {
+        outcome_accepted(value: ingested_classical_not_octet_value(n: 0))
+      } else {
+        outcome_rejected(
+          d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_literal_miss, node: node)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_literal_miss, node: node)
+      )
+  }
+}
+
+fn ingested_classical_not_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_call_primitive_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_branch_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_step_loop(
+  node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_loop_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+fn ingested_classical_not_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm_wire } => outcome_accepted(value: arm_wire)
+      }
+    Absent =>
+      outcome_rejected(
+        d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arm_miss, node: node)
+      )
+  }
+}
+
+fn ingested_classical_not_arm_body_node(arm_wire: Node) -> Outcome<Node> {
+  match find_named_child(root: arm_wire, name: match_arm_body) {
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn ingested_classical_not_choose_arm(
+  node: Node,
+  scrutinee: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if ingested_classical_not_bool_true(value: scrutinee) {
+    match ingested_classical_not_nth_arm_wire(node: node, wanted: 1) {
+      Accepted { value: arm, diagnostics: _ } =>
+        ingested_classical_not_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else if ingested_classical_not_bool_false(value: scrutinee) {
+    match ingested_classical_not_nth_arm_wire(node: node, wanted: 2) {
+      Accepted { value: arm, diagnostics: _ } =>
+        ingested_classical_not_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else {
+    outcome_rejected(
+      d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arm_miss, node: node)
+    )
+  }
+}
+
+fn ingested_classical_not_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: ingested_classical_not_allocate_literal },
+    transform: TransformInterpreter { call_primitive: ingested_classical_not_call_primitive },
+    branch: BranchInterpreter { choose_branch: ingested_classical_not_choose_branch },
+    loop: LoopInterpreter { step_loop: ingested_classical_not_step_loop },
+    bind: BindInterpreter { bind_value: ingested_classical_not_bind_value },
+    match: MatchInterpreter { choose_arm: ingested_classical_not_choose_arm }
+  }
+}
+
+fn ingested_classical_not_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^ingested_classical_not_allocate_literal_sym,
+    call_primitive: ^ingested_classical_not_call_primitive_sym,
+    choose_branch: ^ingested_classical_not_choose_branch_sym,
+    step_loop: ^ingested_classical_not_step_loop_sym,
+    bind_value: ^ingested_classical_not_bind_value_sym,
+    choose_arm: ^ingested_classical_not_choose_arm_sym
+  }
+}
+
+fn ingested_classical_not_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^ingested_classical_not_interpretation_pin,
+    interpretation: ingested_classical_not_interpretation(),
+    structure_witness: ingested_classical_not_structure_witness()
+  )
+}
+
+fn ingested_classical_not_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "Wave1 exit: ingested classical_not emit-host == eval (true scrutinee → false)",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn ingested_classical_not_subject(tree: InferredTree, subgraph: Node) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: ingested_classical_not_claim(rhs_result_node: subgraph),
+    context: ingested_classical_not_context(),
+    tree: tree,
+    evaluator_pin: ^ingested_classical_not_evaluator_pin
+  )
+}
+
+fn ingested_classical_not_run(tree: InferredTree, subgraph: Node) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: ingested_classical_not_subject(tree: tree, subgraph: subgraph),
+    target: rust_classical_not_ingested_target_model_staging()
+  )
+}
+
+fn ingested_classical_not_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn ingested_classical_not_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: ingested_classical_not_interpretation(),
+        inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
+      ) {
+        Accepted { value: v, diagnostics: _ } =>
+          v == ingested_classical_not_octet_value(n: 0)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "pub fn classical_not(x")
+            || string_contains(s: source, pattern: "fn classical_not(x")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_resolves_holds() -> Bool {
+  ingested_resolves(source: ingested_classical_not_source)
+}
+
+test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
+  ingested_arrow_has_match_body(source: ingested_classical_not_source)
+}
+
+test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_classical_not_verdict_is_pass(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_swapped_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_classical_not_verdict_is_semantic_mismatch(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_accepts_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_real_infer_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match infer(tree: arrow) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingested_classical_not_match_only_param_body_fixture() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_arrow_empty_domain_fixture()
+  )
+}
+
+test fn emit_host_classical_not_ingested_all_holds() -> Bool {
+  ingested_classical_not_resolves_holds()
+    && ingested_classical_not_arrow_has_match_holds()
+    && emit_host_classical_not_ingested_equals_eval_holds()
+    && emit_host_classical_not_ingested_swapped_refuses_holds()
+}

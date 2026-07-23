@@ -1,0 +1,102 @@
+module v2.test.emit.rust_fold_call_closure_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust_test {
+  rust_fold_call_source_text,
+  rust_fold_call_swapped_source_text,
+  rust_fold_call_target_model_staging
+}
+import v2.test.emit.fold_call_closure_fixture {
+  fold_fixture_param_canonical_arrow,
+  fold_fixture_param_arrow_with_closure
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rust_fold_call_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_fold_call_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_fold_call_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_fold_call_emit_facts_miss }
+  }
+}
+
+fn rust_fold_call_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: Accepted {
+      value: rust_fold_call_emit_inferred_tree_for(root: root),
+      diagnostics: None
+    },
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_fold_call_emit_canonical_accepts() -> Bool {
+  match rust_fold_call_emit_from_root(
+    root: fold_fixture_param_canonical_arrow,
+    target: rust_fold_call_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_fold_call_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_fold_call_emit_swap_discriminates() -> Bool {
+  match rust_fold_call_emit_from_root(
+    root: fold_fixture_param_canonical_arrow,
+    target: rust_fold_call_target_model_staging()
+  ) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match rust_fold_call_emit_from_root(
+        root: fold_fixture_param_arrow_with_closure(
+          left_operand: ^dag_binding_mvp1_fold_h,
+          right_operand: ^dag_binding_mvp1_fold_acc
+        ),
+        target: rust_fold_call_target_model_staging()
+      ) {
+        Accepted { value: swapped, diagnostics: ds } =>
+          (swapped.carried == rust_fold_call_swapped_source_text) &&
+          (swapped.carried != canonical.carried) &&
+          (canonical.carried == rust_fold_call_source_text) &&
+          (dc == None) &&
+          (ds == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_fold_call_closure_emit_holds() -> Bool {
+  rust_fold_call_emit_canonical_accepts() && rust_fold_call_emit_swap_discriminates()
+}

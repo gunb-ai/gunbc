@@ -1,0 +1,19 @@
+# Flip-wave feeder 13-tail confirmation post-#6883 emit-retain (FreeMonoid-only expected)
+# main_head=628ebe126bec  probed_at=2026-07-19T15:02:50Z  CSSL_STD_SEED_LINK=1  shim=empty
+# gunbc_sha256_prefix=ec27b11877d479b4  cssl_assemble_sha256_prefix=214e954194db0f89
+# probe: scripts/curated_cargo_probe_one.sh (calm-boar invocation contract)
+# SUMMARY: 13/13 refuse FreeMonoid only; 0 HARNESS_ARTIFACT_std_dup; 0 ResolvedTree/InferredTree residue — post-#6883 emit-retain CONFIRMED
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict	probe_notes
+src/v2/compiler/01_tokenize.dag	628ebe126bec	1		22 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/04_infer.dag	628ebe126bec	1		49 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/program_partition.dag	628ebe126bec	1		64 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/05_emit.dag	628ebe126bec	1		58 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/05_emit_orchestration.dag	628ebe126bec	1		66 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/05_eval.dag	628ebe126bec	1		56 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/06_translate.dag	628ebe126bec	1		57 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/emit_host.dag	628ebe126bec	1		67 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/emit_module.dag	628ebe126bec	1		59 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/emit_produced.dag	628ebe126bec	1		68 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — Optional std_dup CLEARED by #6886
+src/v2/compiler/emit_semantic_decl.dag	628ebe126bec	1		59 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/fold_lowering.dag	628ebe126bec	1		41 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed
+src/v2/compiler/self_host.dag	628ebe126bec	1		34 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer confirmed

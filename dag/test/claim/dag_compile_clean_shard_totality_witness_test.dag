@@ -1,0 +1,36 @@
+module test.claim.dag_compile_clean_shard_totality_witness
+
+import tools.dag_compile_clean_shard_roster {
+  compile_clean_shard_roster_nonempty,
+  compile_clean_shard_roster_paths_duplicate_free,
+  witness_shard_roster_boundary_is_entry_root_only
+}
+import tools.dag_compile_clean_shard_totality {
+  witness_totality_holds_on_live_tree,
+  witness_totality_reds_on_synthetic_orphan,
+  witness_totality_reds_on_synthetic_double_claim,
+  witness_totality_reds_on_synthetic_surplus,
+  witness_totality_fails_closed_on_glob_failure,
+  witness_totality_green_when_glob_matches_roster
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn compile_clean_shard_roster_is_well_formed() -> Bool {
+  compile_clean_shard_roster_nonempty()
+    && compile_clean_shard_roster_paths_duplicate_free()
+    && witness_shard_roster_boundary_is_entry_root_only()
+}
+
+test fn compile_clean_shard_totality_algebra_holds() -> Bool {
+  witness_totality_reds_on_synthetic_orphan()
+    && witness_totality_reds_on_synthetic_double_claim()
+    && witness_totality_reds_on_synthetic_surplus()
+    && witness_totality_fails_closed_on_glob_failure()
+    && witness_totality_green_when_glob_matches_roster()
+}
+
+test fn compile_clean_shard_totality_holds_on_live_tree() -> Bool {
+  witness_totality_holds_on_live_tree()
+}

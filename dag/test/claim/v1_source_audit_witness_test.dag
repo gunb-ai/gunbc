@@ -10,10 +10,9 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.languages.python.emit { python_method_templates_flat }
 import extdeps.languages.go.emit { go_method_templates_flat }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data v1_source_audit_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/source_audit.rs (41-test v1 source_audit module, 1238 LOC). Grep-style source audits over the v1 pipeline .dag sources and their stage0 .rs mirror ported to filesystem_read + string_contains; the eight registry/spec derivation-parity tests ported to executable checks over the v2 extdeps.languages rust/python/go emit single-authority folds. Two teeth intentionally not carried, see notes below. Deletes the Rust source_audit module (mod removed from src/v1/tests/src/lib.rs)."
-
-data v1_source_audit_witness_notes: String = "Not carried: (1) emit_backends_do_not_consume_inductive_fields was #[ignore]d (failing, never run in CI) in the Rust module, so porting it green would fabricate a passing witness; it is dropped, matching its live status. (2) no_expr_data_before_catch_all_in_core asserted match-arm ORDERING within a function body (NoExprData arm before the catch-all so it is not shadowed); pure string_contains cannot express positional ordering, so the witness carries only the presence of the NoExprData arm. (3) emit_handles_for_loop additionally compiled a for-loop snippet and asserted the emitted Rust contained iter().cloned(); that is a behavioral emit-output assertion, not a source property, and is covered by the floor emit-host MVP smokes, so the witness carries only the emit_typed_for_each source presence. is_copy_checkpoint_parity is carried as a source-presence witness (checkpoint authority + is_copy definition) rather than an executing call, to avoid importing the v1 coercion module into the v2 witness (de-fork name-collision hazard)."
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data core_path: String = "src/v1/00_core.dag"
 data parse_path: String = "src/v1/02_parse.dag"
@@ -36,6 +35,7 @@ data ownership_path: String = "src/v1/ownership.dag"
 
 data std_graph_stage0_path: String = "src/v1/stage0/src/std_graph.rs"
 data compile_stage0_path: String = "src/v1/stage0/src/v1_compiler_compile.rs"
+data regen_stage0_path: String = "src/v1/stage0/src/bin/regen_stage0.rs"
 data complexity_stage0_path: String = "src/v1/stage0/src/v1_compiler_complexity.rs"
 data emit_stage0_path: String = "src/v1/stage0/src/v1_compiler_emit.rs"
 data infer_env_stage0_path: String = "src/v1/stage0/src/v1_compiler_infer_env.rs"
@@ -258,6 +258,13 @@ test fn compile_gate_keeps_infer_errors_blocking_in_stage0() -> Bool {
     && src_lacks(compile_path, "bootstrap_mode")
     && src_has(compile_stage0_path, "typed_diags")
     && src_lacks(compile_stage0_path, "BOOTSTRAP_MODE")
+    && src_has(compile_path, "fn stage0_self_compile_refusal_message")
+    && src_has(compile_stage0_path, "stage0_self_compile_refusal_message")
+}
+
+test fn regen_stage0_write_and_verify_share_compile_refusal() -> Bool {
+  src_has(regen_stage0_path, "stage0_self_compile_refusal_message")
+    && src_lacks(regen_stage0_path, "hard_errors: Vec")
 }
 
 test fn testgen_emits_valid_rust() -> Bool {

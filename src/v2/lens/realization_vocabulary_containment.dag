@@ -1,7 +1,8 @@
 module v2.lens.realization_vocabulary_containment
+
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-
 import v2.lens.layering_imports {
   LayerImportFact,
   layer_import_facts_live
@@ -17,47 +18,57 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
+
 data target_ast_vocab_modules: List<String> = [
-  "extdeps.languages.bash.program",
   "extdeps.languages.typescript.program"
+]
+
+data target_ast_vocab_module_prefixes: List<String> = [
+  "v2.extdeps.languages.bash",
+  "v2.workflow.bash"
 ]
 
 data realization_edge_path_prefixes: List<String> = [
   "dag/extdeps/languages/",
   "src/v2/extdeps/languages/",
+  "src/v2/extdeps/github/diagnostic_emit",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
   "src/v2/compiler/self_host/candidate_generation",
   "src/v2/workflow/shell_emit",
-  "src/v2/workflow/orchestration_emit",
-  "src/v2/workflow/orchestration_stmt_emit",
-  "src/v2/workflow/orchestration_word_emit"
+  "src/v2/workflow/bash_emit",
+  "src/v2/workflow/bash_command_fold_serialize",
+  "src/v2/workflow/build_step_emit",
+  "src/v2/workflow/ci_workflow_run_emit",
+  "src/v2/workflow/ci_release_build_emit",
+  "src/v2/workflow/ci_retry_emit",
+  "src/v2/workflow/ci_floor_peak_emit",
+  "src/v2/workflow/orchestration_",
+  "dag/gunbc/live_deploy/emit",
+  "dag/gunbc/fleet_converge_emit",
+  "dag/gunbc/assimilate/bmc_token_federation"
 ]
 
-data realization_vocab_exception_roster: List<String> = [
-  "dag/gunbc/node_http_server_emit.dag",
-  "dag/gunbc/ci_yaml_validate.dag",
-  "dag/tools/build_step.dag",
-  "dag/tools/build_step_transport.dag",
-  "dag/tools/dag_compile_clean_transport.dag",
-  "dag/tools/emit_determinism_transport.dag",
-  "dag/tools/emit_host_transport.dag",
-  "dag/tools/extdeps_external_authority_transport.dag",
-  "dag/tools/host_prelude.dag",
-  "dag/tools/layering_imports_transport.dag",
-  "dag/tools/regen_verify_transport.dag",
-  "dag/tools/self_host_realized_comparison_transport.dag",
-  "dag/tools/v1_dag_parse_transport.dag",
-  "src/v2/workflow/compiler_closure_ingest_transport.dag",
-  "src/v2/workflow/floor_diff_observe.dag",
-  "src/v2/workflow/self_host_realized_comparison_gate.dag",
-  "src/v2/workflow/source_root_ingest_transport.dag"
+data realization_vocab_exception_roster: List<FrontierRow> = [
+  frontier_row(
+    unit: "dag/gunbc/node_http_server_emit.dag",
+    reason: "srv1 dashboard static-server emitter consumes the typescript AST vocabulary outside the realization-edge prefixes (declared interim per the gunbc-served dashboard design, DESIGN open thread)",
+    dissolve_on: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; row deletes with it"
+  ),
+  frontier_row(
+    unit: "dag/tools/build_step.dag",
+    reason: "build-step tooling constructs bash via the bash-AST vocabulary outside the realization-edge prefixes (pre shell-to-intent phase-2 site)",
+    dissolve_on: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; row deletes"
+  )
 ]
+
+fn realization_vocab_exception_paths() -> List<String> {
+  frontier_units(rows: realization_vocab_exception_roster)
+}
 
 data realization_vocab_consumer_scan_roots: List<String> = [
   "dag/std",
   "dag/extdeps",
-  "dag/compiler",
   "dag/tools",
   "dag/gunbc",
   "src/v2/std",
@@ -96,6 +107,7 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
 
 fn module_is_target_ast_vocab(module: String) -> Bool {
   list_contains_str(xs: target_ast_vocab_modules, target: module)
+    || path_has_any_prefix(prefixes: target_ast_vocab_module_prefixes, path: module)
 }
 
 fn path_is_realization_edge(path: String) -> Bool {
@@ -146,11 +158,11 @@ fn realization_vocab_containment_holds(
 }
 
 fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
-  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_roster)
+  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_paths())
 }
 
 fn realization_vocab_containment_holds_canonical(facts: List<LayerImportFact>) -> Bool {
-  realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_roster)
+  realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_paths())
 }
 
 fn realization_vocab_leak_count_live(scan_roots: List<String>) -> Int {
@@ -167,9 +179,9 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
 
 data empty_realization_vocab_path_list: List<String> = []
 
-fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
   fold_list(
-    xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
+    xs: facts,
     empty: empty_realization_vocab_path_list,
     cons: fn(acc, fact) {
       if module_is_target_ast_vocab(module: fact.import_module)
@@ -179,6 +191,12 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
         acc
       }
     }
+  )
+}
+
+fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+  realization_vocab_leak_candidate_paths_from_facts(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 
@@ -215,14 +233,14 @@ fn realization_vocab_roster_sound(
 
 fn realization_vocab_roster_stale_count_live(scan_roots: List<String>) -> Int {
   realization_vocab_roster_stale_count(
-    roster: realization_vocab_exception_roster,
+    roster: realization_vocab_exception_paths(),
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }
 
 fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   realization_vocab_roster_sound(
-    roster: realization_vocab_exception_roster,
+    roster: realization_vocab_exception_paths(),
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }

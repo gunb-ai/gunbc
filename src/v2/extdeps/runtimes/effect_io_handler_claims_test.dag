@@ -2,7 +2,7 @@ module v2.test.runtimes.effect_io_handler_claims
 
 import v2.extdeps.runtimes.v2_effect_io_host {
   HostHttpContext,
-  effect_io_host_runtime_wave2
+  effect_io_host_runtime_hermetic
 }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoResourceBackend,
@@ -17,7 +17,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_read_write_roundtrip,
   effect_io_pure_unit_type_node
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -32,6 +32,9 @@ import v2.std.runtime {
   effect_handler_for_kind
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn effect_io_claim_resource_arg(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
@@ -128,7 +131,7 @@ test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
 }
 
 test fn effect_io_host_read_fail_closed_holds() -> Bool {
-  let runtime = effect_io_host_runtime_wave2(backend: FileResourceBackend)
+  let runtime = effect_io_host_runtime_hermetic(backend: FileResourceBackend)
   let read_args = Cons {
     head: effect_io_claim_resource_a(),
     tail: Empty
@@ -144,7 +147,7 @@ test fn effect_io_host_read_fail_closed_holds() -> Bool {
 }
 
 test fn effect_io_host_http_backend_routes_http_holds() -> Bool {
-  let runtime = effect_io_host_runtime_wave2(backend: HttpResourceBackend)
+  let runtime = effect_io_host_runtime_hermetic(backend: HttpResourceBackend)
   match runtime.declared_backend {
     HttpResourceBackend =>
       match runtime.backend_context {

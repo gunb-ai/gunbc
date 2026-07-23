@@ -1,0 +1,43 @@
+module v2.test.claim.complexity.accumulator_copy_roster_gate
+
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  file_gate,
+  source_has_suspect
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn roster_machine_code_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/machine_code.dag", refusal_ceiling: 0)
+}
+
+test fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/compiler/00_compile.dag", refusal_ceiling: 1)
+}
+
+test fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/workflow/glob_discovery_law.dag", refusal_ceiling: 0)
+}
+
+test fn roster_lens_traversal_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 4)
+}
+
+data roster_lens_traversal_ceiling_note: String = "Ceiling 3 -> 4 with the mentions closure: collect_value_identifiers_into threads its accumulator through a recursive call (the LINEAR walk - each symbol consed exactly once; the lens-clean alternative splices per level, O(n x depth), rejected per the bare-minimum-cost rule). The registry has no threads-linearly fact kind to vouch for it, so the lens honestly refuses ^combiner_unregistered_carrier_reaches at that call - a counted residue, dissolved when Stage B callee resolution (or Stage C per-op derivation) can prove the recursion linear."
+
+test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/lens/complexity_accumulator_copy.dag", refusal_ceiling: 0)
+}
+
+test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 3)
+}
+
+data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+test fn red_control_planted_copy_still_alarms() -> Bool {
+  source_has_suspect(source_text: planted_copy_snippet)
+}

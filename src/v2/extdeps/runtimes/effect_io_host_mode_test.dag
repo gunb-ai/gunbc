@@ -15,7 +15,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_unit_type_node,
   effect_io_pure_write_request
 }
-import v2.std.execution_mode { Hermetic, Wet }
+import std.execution_mode { Hermetic, Wet }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -28,6 +28,9 @@ import v2.std.runtime {
   effect_handler_for_kind
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mode_resource_arg(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
@@ -111,7 +114,7 @@ test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool {
     handler: handler,
     request: effect_io_pure_write_request(args: [mode_resource_b(), mode_payload()])
   ) {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
     Accepted { value: _, diagnostics: _ } => false
   }
 }

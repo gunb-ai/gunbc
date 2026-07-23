@@ -18,7 +18,7 @@ data rust_keywords: Map<String, String> = {
 }
 
 data rust_container_templates: Map<String, String> = {
-  "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
+  "list": "Vec<\{0\}>", "set": "BTreeSet<\{0\}>",
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"
@@ -147,6 +147,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "list_push",          bridge_name: "rc_list_push",     passes_by_ref: false, wraps_result: false },
   { name: "map_get",            bridge_name: "map_get",          passes_by_ref: true,  wraps_result: false },
   { name: "map_keys",           bridge_name: "map_keys",         passes_by_ref: true,  wraps_result: true },
+  { name: "sorted_map_keys",    bridge_name: "sorted_map_keys",  passes_by_ref: true,  wraps_result: true },
   { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true,  wraps_result: true },
   { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false, wraps_result: false },
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true,  wraps_result: false },
@@ -156,6 +157,10 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "replace",            bridge_name: "replace",          passes_by_ref: false, wraps_result: false },
   { name: "chars_to_string",    bridge_name: "chars_to_string",  passes_by_ref: true,  wraps_result: false },
   { name: "record_source_chars_index_lookup", bridge_name: "record_source_chars_index_lookup", passes_by_ref: false, wraps_result: false },
+  { name: "resolution_silent_pick_is_enabled", bridge_name: "resolution_silent_pick_is_enabled", passes_by_ref: false, wraps_result: false },
+  { name: "resolution_silent_pick_record_global_bare_lcp_pick", bridge_name: "resolution_silent_pick_record_global_bare_lcp_pick", passes_by_ref: false, wraps_result: false },
+  { name: "resolution_silent_pick_record_global_bare_lcp_tie", bridge_name: "resolution_silent_pick_record_global_bare_lcp_tie", passes_by_ref: false, wraps_result: false },
+  { name: "resolution_silent_pick_record_fn_parent_first_hit", bridge_name: "resolution_silent_pick_record_fn_parent_first_hit", passes_by_ref: false, wraps_result: false },
   { name: "append",             bridge_name: "append",           passes_by_ref: false, wraps_result: true },
   { name: "contains",           bridge_name: "contains",         passes_by_ref: false, wraps_result: false },
   { name: "starts_with",        bridge_name: "starts_with",      passes_by_ref: false, wraps_result: false },
@@ -165,6 +170,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
   { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
+  { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },
@@ -225,3 +231,11 @@ data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
   { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
 ]
+
+fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+  qualified_module |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+  concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
+}

@@ -79,17 +79,8 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  BooleanAlgebra,
-  boolean_algebra_node,
-  boolean_algebra_type_node,
-  commutative_semiring_node,
-  commutative_semiring_type_node,
-  fold_list,
-  fold_list_right,
-  list_append,
-  list_snoc_item
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node, fold_list, fold_list_right, list_append, list_snoc_item }
 import v2.std.text { String }
 
 type JavaIntKind
@@ -103,8 +94,8 @@ type JavaIntWidth
   | Bits64
 
 type JavaFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type JavaScalar
   = IntScalar { kind: JavaIntKind, width: JavaIntWidth }
@@ -128,7 +119,7 @@ type JavaFloatPrimitiveFacts {
 }
 
 type JavaNonIntegerScalar
-  = BoolScalar
+  = NonIntegerBoolScalar
   | JavaNonIntegerScalarReserved
 
 type JavaNonIntegerPrimitiveFacts {
@@ -158,7 +149,7 @@ type JavaModelCoreLawKey
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
 
-fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn java_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^java_token_kw_static },
     FixedToken { token_class: ^java_token_kw_int },
@@ -179,7 +170,7 @@ fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^java_token_rbrace }
   ]
 }
-data java_mvp1_source_text: String = "static int add(int x, int y) { return x + y; }"
+data java_source_text: String = "static int add(int x, int y) { return x + y; }"
 
 data java_facts_byte: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_byte,
@@ -215,21 +206,21 @@ data java_facts_long: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
 
 data java_facts_float: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_float,
-  width: Bits32,
+  width: FloatBits32,
   ieee754_binary: ^java_ieee754_binary32,
   std_projection: ^java_std_projection_float,
 }
 
 data java_facts_double: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_double,
-  width: Bits64,
+  width: FloatBits64,
   ieee754_binary: ^java_ieee754_binary64,
   std_projection: ^java_std_projection_double,
 }
 
 data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_boolean,
-  scalar: BoolScalar,
+  scalar: NonIntegerBoolScalar,
   std_projection: ^java_std_projection_boolean,
   representation: ^java_repr_boolean,
 }
@@ -292,8 +283,8 @@ fn java_int_width_node(width: JavaIntWidth) -> Node {
 
 fn java_float_width_node(width: JavaFloatWidth) -> Node {
   match width {
-    Bits32 => java_inhabitant_atom(id: ^java_tag_bits32)
-    Bits64 => java_inhabitant_atom(id: ^java_tag_bits64)
+    FloatBits32 => java_inhabitant_atom(id: ^java_tag_bits32)
+    FloatBits64 => java_inhabitant_atom(id: ^java_tag_bits64)
   }
 }
 
@@ -336,7 +327,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
 
 fn java_noninteger_scalar_as_java_scalar(scalar: JavaNonIntegerScalar) -> JavaScalar {
   match scalar {
-    BoolScalar => BoolScalar
+    NonIntegerBoolScalar => BoolScalar
     JavaNonIntegerScalarReserved => BoolScalar
   }
 }
@@ -522,11 +513,11 @@ fn java_declared_inhabitants_root() -> Node {
 }
 }
 
-fn java_mvp1_selection_policy_node() -> Node {
+fn java_selection_policy_node() -> Node {
   java_inhabitant_int_node()
 }
 
-fn java_mvp1_emitted_add_method_node() -> Node {
+fn java_emitted_add_method_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -538,8 +529,8 @@ fn java_mvp1_emitted_add_method_node() -> Node {
 }
 }
 
-fn java_mvp1_source_text_authority() -> String {
-  java_mvp1_source_text
+fn java_source_text_authority() -> String {
+  java_source_text
 }
 
 fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -547,30 +538,30 @@ fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn java_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+fn java_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
     head: java_named_edge(
       name: ^serialize_source_field_source_text,
-      target: java_inhabitant_atom(id: ^java_mvp1_source_literal)
+      target: java_inhabitant_atom(id: ^java_source_literal)
     ),
     tail: Cons {
       head: java_named_edge(
         name: ^serialize_source_field_source_grammar,
-        target: java_inhabitant_atom(id: ^java_production_mvp1_method_add)
+        target: java_inhabitant_atom(id: ^java_production_method_add)
       ),
       tail: Empty
     }
   }
 }
 
-fn java_mvp1_serialize_source_children() -> List<Edge> {
+fn java_serialize_source_children() -> List<Edge> {
   list_append(
-    left: java_mvp1_serialize_source_prefix_edges(),
+    left: java_serialize_source_prefix_edges(),
     right: [
       java_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: java_mvp1_concrete_tokens(),
+          tokens: java_concrete_tokens(),
           token_to_node: java_concrete_token_node
         )
       )
@@ -578,12 +569,12 @@ fn java_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn java_mvp1_serialize_source_node() -> Node {
+fn java_serialize_source_node() -> Node {
 
-  let _authority = java_mvp1_source_text_authority()
+  let _authority = java_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: java_mvp1_serialize_source_children(),
+    children: java_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
@@ -646,7 +637,7 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken)
 
 fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
   fold_list_right(
-    xs: java_mvp1_concrete_tokens(),
+    xs: java_concrete_tokens(),
     empty: java_grammar_terminal(token_class: ^java_token_kw_static),
     snoc: fn(acc, token) {
       java_grammar_sequence_fold_step(acc: acc, token: token)
@@ -654,11 +645,11 @@ fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
   )
 }
 
-fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
+fn java_grammar_relation_row() -> JavaGrammarRelationRow {
   JavaGrammarRelationRow {
-    production: java_grammar_production_mvp1_method_add(),
-    emitted: java_mvp1_emitted_add_method_node(),
-    tokens: java_mvp1_concrete_tokens()
+    production: java_grammar_production_method_add(),
+    emitted: java_emitted_add_method_node(),
+    tokens: java_concrete_tokens()
   }
 }
 
@@ -683,26 +674,26 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
 }
 }
 
-fn java_mvp1_translation_rules_node() -> Node {
+fn java_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
-        name: ^java_relation_rule_mvp1_method_add,
-        target: java_grammar_relation_row_node(row: java_mvp1_grammar_relation_row())
+        name: ^java_relation_rule_method_add,
+        target: java_grammar_relation_row_node(row: java_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn java_mvp1_target_model_node() -> Node {
+fn java_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: java_mvp1_selection_policy_node()
+        target: java_selection_policy_node()
       ),
       java_named_edge(
         name: ^target_model_edge_declared_inhabitants,
@@ -710,18 +701,18 @@ fn java_mvp1_target_model_node() -> Node {
       ),
       java_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: java_mvp1_translation_rules_node()
+        target: java_translation_rules_node()
       ),
       java_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: java_mvp1_serialize_source_node()
+        target: java_serialize_source_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn java_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn java_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^java_binding_param_y, "y"),
@@ -733,13 +724,13 @@ fn java_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn java_mvp1_target_model() -> TargetModel {
+fn java_target_model() -> TargetModel {
   TargetModel {
-    bundle: java_mvp1_target_model_node(),
-    lex: java_wave1_lex(),
-    binding_spellings: java_mvp1_binding_spellings(),
+    bundle: java_target_model_node(),
+    lex: java_method_add_lex(),
+    binding_spellings: java_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: java_mvp1_source_text_authority(),
+    authority_source_text: java_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -765,7 +756,7 @@ fn java_ident_lex_rule() -> LexRule {
   }
 }
 
-fn java_wave1_lex_rules() -> LexRuleSet {
+fn java_method_add_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       java_lex_rule(token_class: ^java_token_kw_static, text: "static "),
@@ -783,8 +774,8 @@ fn java_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn java_wave1_lex() -> LexRules {
-  ModeledLexRules { root: java_wave1_lex_rules() }
+fn java_method_add_lex() -> LexRules {
+  ModeledLexRules { root: java_method_add_lex_rules() }
 }
 
 fn java_grammar_atom(id: Symbol) -> Node {
@@ -804,31 +795,31 @@ fn java_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
   )
 }
 
-fn java_formal_production_mvp1_method_add() -> FormalProduction {
+fn java_formal_production_method_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^java_production_mvp1_method_add,
-    rhs: java_formal_rhs_from_tokens(tokens: java_mvp1_concrete_tokens())
+    lhs: ^java_production_method_add,
+    rhs: java_formal_rhs_from_tokens(tokens: java_concrete_tokens())
   )
 }
 
-fn java_grammar_production_mvp1_method_add() -> GrammarProduction {
+fn java_grammar_production_method_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^java_production_mvp1_method_add,
+    name: ^java_production_method_add,
     expression: java_grammar_sequence_from_token_classes(),
     emitted: java_grammar_atom(id: ^java_surface_method_item)
   }
 }
 
-fn java_wave1_grammar_root() -> GrammarRoot {
-  let start = java_grammar_production_mvp1_method_add()
-  GrammarRoot { start: ^java_production_mvp1_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+fn java_method_add_grammar_root() -> GrammarRoot {
+  let start = java_grammar_production_method_add()
+  GrammarRoot { start: ^java_production_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn java_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: java_wave1_grammar_root() }
+fn java_method_add_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_method_add_grammar_root() }
 }
 
-fn java_wave2_additional_lex_rules() -> List<LexRule> {
+fn java_extended_lex_rules() -> List<LexRule> {
   [
     java_lex_rule(token_class: ^java_token_kw_byte, text: "byte "),
     java_lex_rule(token_class: ^java_token_kw_short, text: "short "),
@@ -846,20 +837,20 @@ fn java_wave2_additional_lex_rules() -> List<LexRule> {
   ]
 }
 
-fn java_wave2_lex_rules() -> LexRuleSet {
+fn java_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: java_wave1_lex_rules().rules,
-      right: java_wave2_additional_lex_rules()
+      left: java_method_add_lex_rules().rules,
+      right: java_extended_lex_rules()
     )
   }
 }
 
-fn java_wave2_lex() -> LexRules {
-  ModeledLexRules { root: java_wave2_lex_rules() }
+fn java_lex() -> LexRules {
+  ModeledLexRules { root: java_lex_rules() }
 }
 
-fn java_wave2_formal_productions() -> List<FormalProduction> {
+fn java_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^java_production_compilation_unit, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_class_declaration)]),
     grammar_formal_production(
@@ -1110,7 +1101,7 @@ fn java_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^java_production_block_statement_suffix)
       ]
     ),
-    java_formal_production_mvp1_method_add()
+    java_formal_production_method_add()
   ]
 }
 
@@ -1330,7 +1321,7 @@ fn java_grammar_type_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_primitive_type)
 }
 
-fn java_wave2_grammar_root() -> GrammarRoot {
+fn java_grammar_root() -> GrammarRoot {
   let compilation_unit = java_grammar_production(
     name: ^java_production_compilation_unit,
     expression: java_grammar_compilation_unit_expr(),
@@ -1451,7 +1442,7 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     expression: java_grammar_primary_expression_expr(),
     emitted: ^java_surface_primary_expression
   )
-  let mvp1_method_add = java_grammar_production_mvp1_method_add()
+  let method_add = java_grammar_production_method_add()
   GrammarRoot {
     start: ^java_production_compilation_unit,
     productions: [
@@ -1479,37 +1470,37 @@ fn java_wave2_grammar_root() -> GrammarRoot {
       additive_expression,
       multiplicative_expression,
       primary_expression,
-      mvp1_method_add
+      method_add
     ],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
-fn java_wave2_grammar() -> ParseGrammar {
-  ModeledGrammar { root: java_wave2_grammar_root() }
+fn java_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_grammar_root() }
 }
 
-fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
+fn java_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
-        lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: sym) ||
-        grammar_carries_symbol(grammar: java_wave2_grammar(), sym: sym) ||
+        lex_rule_set_token_class_member(rules: java_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: java_grammar(), sym: sym) ||
         sym == ^java_surface_method_item ||
-        sym == ^java_production_mvp1_method_add ||
-        sym == ^java_mvp1_source_literal
+        sym == ^java_production_method_add ||
+        sym == ^java_source_literal
     }
   }
 }
 
-fn java_language_model_wave2() -> LanguageModel {
+fn java_language_model() -> LanguageModel {
   LanguageModel {
-    lex: java_wave2_lex(),
-    grammar: java_wave2_grammar(),
+    lex: java_lex(),
+    grammar: java_grammar(),
     language_identity: ^java_language_model_surface_id,
-    canonical_symbols: java_language_model_wave2_canonical_symbols(),
-    core: java_model_core_wave1()
+    canonical_symbols: java_canonical_symbols(),
+    core: java_model_core()
   }
 }
 
@@ -1573,7 +1564,7 @@ fn java_catalog_surface_symbol(sym: Symbol) -> Bool {
     java_noninteger_catalog_surface_symbol(sym: sym)
 }
 
-fn java_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn java_method_add_lex_token_symbol(sym: Symbol) -> Bool {
   sym == ^java_token_kw_static ||
     sym == ^java_token_ident ||
     sym == ^java_token_kw_int ||
@@ -1592,10 +1583,10 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
-        java_wave1_lex_token_symbol(sym: sym) ||
+        java_method_add_lex_token_symbol(sym: sym) ||
         sym == ^java_surface_method_item ||
-        sym == ^java_production_mvp1_method_add ||
-        sym == ^java_mvp1_source_literal
+        sym == ^java_production_method_add ||
+        sym == ^java_source_literal
     }
   }
 }
@@ -1716,7 +1707,7 @@ fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
   )
 }
 
-fn java_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn java_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: java_primitive_bundles_from_integer_catalog(),
@@ -1821,10 +1812,10 @@ fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      java_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      java_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      java_named_edge(name: ^model_core_law_field_subject, target: witness),
+      java_named_edge(name: ^model_core_law_field_algebra, target: algebra),
       java_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: ^model_core_law_field_kind,
         target: java_inhabitant_atom(id: discriminant(v: key))
       )
     ],
@@ -1945,7 +1936,7 @@ fn java_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   }
 }
 
-fn java_effect_semantics_wave2b() -> EffectSemanticsDecl {
+fn java_effect_semantics() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
       java_pure_operation(operation: ^java_op_integer_add),
@@ -1979,7 +1970,7 @@ fn java_fail_closed_partial_operation(
   }
 }
 
-fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+fn java_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       java_fail_closed_partial_operation(
@@ -1996,22 +1987,22 @@ fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
   }
 }
 
-fn java_model_core_wave1() -> ModelCore {
+fn java_model_core() -> ModelCore {
   ModelCore {
-    primitives: java_wave1_primitive_fact_bundles(),
+    primitives: java_primitive_fact_bundles(),
     inhabitance: java_model_core_inhabitance_decls(),
     laws: java_model_core_law_obligations(),
-    effects: java_effect_semantics_wave2b(),
-    partiality: java_partiality_semantics_wave2b()
+    effects: java_effect_semantics(),
+    partiality: java_partiality_semantics()
   }
 }
 
-fn java_language_model_wave1() -> LanguageModel {
+fn java_method_add_language_model() -> LanguageModel {
   LanguageModel {
-    lex: java_wave1_lex(),
-    grammar: java_wave1_grammar(),
+    lex: java_method_add_lex(),
+    grammar: java_method_add_grammar(),
     language_identity: ^java_language_model_surface_id,
     canonical_symbols: java_language_model_canonical_symbols(),
-    core: java_model_core_wave1()
+    core: java_model_core()
   }
 }

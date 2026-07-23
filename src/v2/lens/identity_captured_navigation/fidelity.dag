@@ -1,0 +1,25 @@
+module v2.lens.identity_captured_navigation.fidelity
+
+
+data projection_note: String = "Suspect\{violation: IdentityNodeEscapesAsValue\} IS the dependency-fidelity under-claim arm's int-literal class (docs/plans/dependency-fidelity-design.md S5, S1): value flows through the captured projection with no declared authority, because a consumer instead took the identity edge. This module projects Suspect findings into v2.lens.dependency_fidelity.UnderClaimedEdge\{source, dependent\} - source is the find_named_child(name: ^grammar_production_identity_node_projection) call node (the witnessed edge's undeclared origin), dependent is the enclosing match_expr whose arms consume the un-reduced identity node (the witnessed edge's dependent). Unclassifiable findings are typed, located refusals - they name a shape this lens could not resolve, not a proven discrepancy - so they do NOT project onto the verdict lattice (projecting a refusal as either Faithful-silence or a fabricated Discrepant entry would be exactly the S5 absorbing-fallback / fabricated-plausible-output DESIGN.md forbids); a caller that needs refusal visibility reads Finding directly via finding_is_refusal/finding_refusal_cause, never through this projection."
+
+fn finding_as_fidelity_discrepancy(f: Finding) -> List<FidelityDiscrepancy> {
+  match f {
+    Suspect { violation: v } =>
+      match v {
+        IdentityNodeEscapesAsValue { source: s, at: a, reduction_count: _, extraneous_mentions: _ } =>
+          list_snoc_item(xs: Empty, item: UnderClaimedEdge { source: s, dependent: a })
+      }
+    Unclassifiable { at: _, cause: _ } => Empty
+  }
+}
+
+fn identity_captured_navigation_as_fidelity_discrepancies(
+  findings: List<Finding>
+) -> List<FidelityDiscrepancy> {
+  fold(findings, init: Empty, f: fn(acc, finding) {
+    fold(finding_as_fidelity_discrepancy(f: finding), init: acc, f: fn(inner_acc, d) {
+      list_snoc_item(xs: inner_acc, item: d)
+    })
+  })
+}

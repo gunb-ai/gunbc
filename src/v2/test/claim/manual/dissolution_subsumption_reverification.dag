@@ -8,7 +8,7 @@ import v2.compiler.eval {
   eval_test_claim_subject,
   run_test_claim
 }
-import v2.std.verdict { Verdict, Deferred, Fail, Pass }
+import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
   InferredTree
@@ -62,7 +62,9 @@ import v2.std.runtime {
   RuntimeUnitValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verification {
   EqualsClaim,
@@ -197,7 +199,9 @@ fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
 fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
   match run.verdict {
     Pass => completed_lens_ci_execution()
-    Fail { actual: _, falsification: _ } => Failed
+    SemanticMismatch { actual: _, falsification: _ } => Failed
+    BuildFailed { actual: _, diagnostic: _ } => Failed
+    RunFailed { actual: _, diagnostic: _ } => Failed
     Deferred { actual: _, diagnostic: _ } => ReportUnavailable
   }
 }
@@ -348,6 +352,9 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: subsumption_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

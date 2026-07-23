@@ -1,0 +1,130 @@
+module v2.compiler.body_producer_forward
+
+data body_producer_forward_note: String = "General body producer forward fold (general-body-producer-design §3, wave2_prep_design §3): production-identity-keyed GrammarRelationRow selection at the normalize/body-producer seam — the forward reading of the same rows the emitter reads backward. First consumer of ObligationForwardDeterminism (exactly-one row per surface identity) and the production-identity selection helper grammar_relation_row_forward_production_selection. Behavior lowering (match/if/let/loop/…) dispatches through body_lower_fold in v2.compiler.body_lowering_fold until Slice 4 deletes that interim module wholesale. dissolve-on: body_lowering_fold.dag absent — this module owns the full forward slot-map apply."
+
+type BodyProducerForwardRow {
+  surface_identity: Symbol
+}
+
+data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_fn_decl
+}
+
+data body_producer_forward_row_fn_body: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_fn_body
+}
+
+data body_producer_forward_row_match_expr: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_match_expr
+}
+
+data body_producer_forward_row_if_expr: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_if_expr
+}
+
+data body_producer_forward_row_let_expr: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_let_expr
+}
+
+data body_producer_forward_row_loop_expr: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_loop_expr
+}
+
+fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
+  Cons {
+    head: body_producer_forward_row_fn_decl,
+    tail: Cons {
+      head: body_producer_forward_row_fn_body,
+      tail: Cons {
+        head: body_producer_forward_row_match_expr,
+        tail: Cons {
+          head: body_producer_forward_row_if_expr,
+          tail: Cons {
+            head: body_producer_forward_row_let_expr,
+            tail: Cons {
+              head: body_producer_forward_row_loop_expr,
+              tail: std.algebra.Empty
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn body_producer_forward_row_count() -> Int {
+  length(xs: body_producer_forward_rows())
+}
+
+fn body_producer_forward_surface_identities() -> List<Symbol> {
+  fold_list(
+    xs: body_producer_forward_rows(),
+    empty: std.algebra.Empty,
+    cons: fn(acc, row) {
+      list_append(left: acc, right: [row.surface_identity])
+    }
+  )
+}
+
+fn body_producer_forward_is_registered_surface_identity(surface_identity: Symbol) -> Bool {
+  fold(body_producer_forward_rows(), init: false, f: fn(acc, row) {
+    acc || (row.surface_identity == surface_identity)
+  })
+}
+
+fn body_producer_forward_is_behavior_surface_identity(surface_identity: Symbol) -> Bool {
+  body_producer_forward_is_registered_surface_identity(surface_identity: surface_identity)
+}
+
+fn body_producer_forward_grammar_rules() -> Node {
+  dag_translation_rules_node()
+}
+
+fn body_producer_forward_select_row(surface_identity: Symbol) -> Outcome<Node> {
+  grammar_relation_row_forward_production_selection(
+    rules: body_producer_forward_grammar_rules(),
+    surface_identity: surface_identity
+  )
+}
+
+fn body_producer_forward_is_core_substrate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: _ } => true
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+fn body_producer_forward_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_producer_forward_row_for_behavior_identity(surface_identity: Symbol) -> Optional<Node> {
+  match body_producer_forward_select_row(surface_identity: surface_identity) {
+    Accepted { value: row, diagnostics: _ } => optional_present(value: row)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn body_producer_forward_row_selected_optional(shell: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: shell) {
+    Present { value: surface_identity } =>
+      if body_producer_forward_is_behavior_surface_identity(surface_identity: surface_identity) {
+        body_producer_forward_row_for_behavior_identity(surface_identity: surface_identity)
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn body_producer_forward_row_obligation_witness_shell(surface_identity: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: surface_identity } },
+    children: []
+  )
+}

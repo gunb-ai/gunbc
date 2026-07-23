@@ -1,6 +1,6 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod }
+import std.types { HttpMethod, FermiDepth, NonEmptyStr }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
@@ -13,7 +13,37 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data rest_basic_auth_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc7617"
+  }
+}
+
 data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
+
+type TlsPosture
+  = VerifyPeer
+  | InsecureAcceptAnyCert
+
+data tls_posture_default_note: String = "Absent tls posture = VerifyPeer (fail-closed). InsecureAcceptAnyCert is an explicit per-transport-row opt-in for self-signed endpoints (BMCs); a realization must refuse an unrecognized posture value, never widen to a header or to VerifyPeer-silently."
+
+type RestAuthScheme
+  = BearerToken
+  | HeaderToken { header_name: NonEmptyStr }
+  | BasicCredentials
+
+data rest_auth_value_single_authority_note: String = "The full header value (Bearer <t> / Basic <b64(user:pass)> / raw token for HeaderToken) is derived in ONE place per realization from RestAuthScheme - a dispatch site re-deriving 'Bearer ' from a header name is the §3 fork this row forbids."
+
+data rest_auth_scheme_dissolution_note: String = "RestAuthScheme is forward-looking scaffolding: today the realizations read auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic username/password record) rather than matching this type. Dissolves when the auth axis is threaded as a first-class RestAuthScheme through parse/interp/emit - the redfish defork (PR B, extdeps.bmc.http redfish_http_hardwired_transport_dissolution_trigger) is its first BasicCredentials consumer; land the type-level consumption with that lane, or delete this row if the inline-record spelling stays the authority."
+
+type RestTargetForm
+  = OriginFormOverBase
+  | AbsoluteFormTarget
+
+data rest_target_form_note: String = "OriginFormOverBase: url = config endpoint + path template. AbsoluteFormTarget: the path template carries the full scheme://host/... target (RFC 9112 §3.2.2 absolute-form) and interpolates per-call inputs (e.g. a BMC host); a non-empty base alongside an absolute-form path is a typed refusal, never a silent concat."
+
+data rest_target_form_dissolution_note: String = "RestTargetForm is forward-looking scaffolding: absolute-form targeting works today via an empty config base + a full-URL path template (the interp/emit concat `base_url + path`), so the realizations do not yet match this type or enforce the empty-base refusal it names. Dissolves when the empty-base-vs-absolute-path check is realized as a construction wall in parse (the redfish per-call bmc_host ops, PR B, are its first consumer); land it with that lane, or delete this row if the concat spelling stays the authority."
 
 type RestTransportConfig {
   base_url: Uri
@@ -21,4 +51,5 @@ type RestTransportConfig {
   auth_header: String?
   headers: Map<String, String>
   response_format: WireFormat
+  tls: TlsPosture?
 }

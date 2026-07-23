@@ -1,8 +1,8 @@
 module v2.test.manual.branch_if_then_else_emit
 
-import v2.compiler.body_producer {
-  produce_mvp1_pick_if_arrow_with_body,
-  produce_mvp1_pick_if_arrow_with_body_swapped_arms
+import v2.test.complexity_gate.table_fixture_branch_subject_producer {
+  table_fixture_pick_if_arrow_with_body,
+  table_fixture_pick_if_arrow_with_body_swapped_arms
 }
 import v2.test.execution.branch_if_then_else_round_trip {
   branch_if_then_else_inferred_facts_for,
@@ -12,12 +12,12 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_pick_fn,
-  dag_mvp1_node_is_kw_true_atom,
-  dag_mvp1_pick_arrow_domain_conj_node,
-  dag_mvp1_pick_if_body_fixture,
-  dag_mvp1_pick_source_text,
-  dag_mvp1_pick_target_model
+  dag_fixture_emitted_pick_fn,
+  dag_node_is_kw_true_atom,
+  dag_pick_arrow_domain_conj_node,
+  dag_pick_if_body_fixture,
+  dag_pick_source_text,
+  dag_pick_target_model
 }
 import v2.compiler.source_authority { source_authority_node_equal }
 import v2.compiler.translate {
@@ -46,6 +46,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   branch_if_then_else_inferred_facts_for(node: key)
@@ -59,7 +62,7 @@ fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
@@ -70,7 +73,7 @@ fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
+  match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
@@ -100,11 +103,11 @@ fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcom
 
 fn branch_if_then_else_emit_holds() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_pick_target_model(),
-    emitted: dag_mvp1_fixture_emitted_pick_fn
+    target: dag_pick_target_model(),
+    emitted: dag_fixture_emitted_pick_fn
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+      match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
@@ -114,9 +117,9 @@ fn branch_if_then_else_emit_holds() -> Bool {
 }
 
 fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool {
-  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+  match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
-      match branch_if_then_else_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
+      match branch_if_then_else_emit_swapped_from_producer(target: dag_pick_target_model()) {
         Accepted { value: swapped, diagnostics: ds } =>
           (swapped != canonical) && (dc == None) && (ds == None)
         Rejected { diagnostics: _ } => false
@@ -133,7 +136,7 @@ fn branch_if_then_else_emit_post_translate_root() -> Outcome<Node> {
   bind_outcome(
     o: branch_if_then_else_emit_producer_tree(),
     f: fn(tree) {
-      translate_emitted_node(tree: tree, target: dag_mvp1_pick_target_model())
+      translate_emitted_node(tree: tree, target: dag_pick_target_model())
     }
   )
 }
@@ -142,7 +145,7 @@ fn branch_if_then_else_emit_diag_substrate_eq_post_translate() -> Bool {
   match branch_if_then_else_emit_post_translate_root() {
     Accepted { value: translated, diagnostics: d } =>
       source_authority_node_equal(
-        left: dag_mvp1_fixture_emitted_pick_fn,
+        left: dag_fixture_emitted_pick_fn,
         right: translated
       ) && (d == None)
     Rejected { diagnostics: _ } => false
@@ -153,12 +156,12 @@ fn branch_if_then_else_emit_diag_serialize_raw_eq_serialize_translated() -> Bool
   match branch_if_then_else_emit_post_translate_root() {
     Accepted { value: translated, diagnostics: td } =>
       match target_serialize_source_from_model(
-        target: dag_mvp1_pick_target_model(),
-        emitted: dag_mvp1_fixture_emitted_pick_fn
+        target: dag_pick_target_model(),
+        emitted: dag_fixture_emitted_pick_fn
       ) {
         Accepted { value: raw_ser, diagnostics: rd } =>
           match target_serialize_source_from_model(
-            target: dag_mvp1_pick_target_model(),
+            target: dag_pick_target_model(),
             emitted: translated
           ) {
             Accepted { value: tr_ser, diagnostics: sd } =>
@@ -215,7 +218,7 @@ fn branch_if_then_else_emit_diag_cond_bare_kw_true_on_post_translate() -> Bool {
         Accepted { value: body, diagnostics: bd } =>
           match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
             Present { value: cond } =>
-              dag_mvp1_node_is_kw_true_atom(node: cond) && (d == None) && (bd == None)
+              dag_node_is_kw_true_atom(node: cond) && (d == None) && (bd == None)
             Absent => false
           }
         Rejected { diagnostics: _ } => false
@@ -225,7 +228,7 @@ fn branch_if_then_else_emit_diag_cond_bare_kw_true_on_post_translate() -> Bool {
 }
 
 fn branch_if_then_else_emit_diag_producer_emit_accepts() -> Bool {
-  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+  match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
@@ -233,8 +236,8 @@ fn branch_if_then_else_emit_diag_producer_emit_accepts() -> Bool {
 
 fn branch_if_then_else_emit_diag_authority_serialize_accepts() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_pick_target_model(),
-    emitted: dag_mvp1_fixture_emitted_pick_fn
+    target: dag_pick_target_model(),
+    emitted: dag_fixture_emitted_pick_fn
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -251,7 +254,7 @@ fn branch_if_then_else_emit_diag_translate_accepts() -> Bool {
 fn branch_if_then_else_emit_diag_fixture_translate_accepts() -> Bool {
   match translate_emitted_node(
     tree: branch_if_then_else_inferred_tree,
-    target: dag_mvp1_pick_target_model()
+    target: dag_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -261,9 +264,9 @@ fn branch_if_then_else_emit_diag_fixture_translate_accepts() -> Bool {
 fn branch_if_then_else_emit_diag_branch_body_translate_accepts() -> Bool {
   match translate_emitted_node(
     tree: branch_if_then_else_emit_inferred_tree_for(
-      root: dag_mvp1_pick_if_body_fixture
+      root: dag_pick_if_body_fixture
     ),
-    target: dag_mvp1_pick_target_model()
+    target: dag_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -272,9 +275,9 @@ fn branch_if_then_else_emit_diag_branch_body_translate_accepts() -> Bool {
 
 fn branch_if_then_else_emit_diag_pick_empty_domain_coerce_accepts() -> Bool {
   match coerce_grounded_node(
-    source: dag_mvp1_pick_arrow_domain_conj_node(),
+    source: dag_pick_arrow_domain_conj_node(),
     tree: branch_if_then_else_inferred_tree,
-    target: dag_mvp1_pick_target_model()
+    target: dag_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -284,9 +287,9 @@ fn branch_if_then_else_emit_diag_pick_empty_domain_coerce_accepts() -> Bool {
 fn branch_if_then_else_emit_diag_pick_empty_domain_translate_accepts() -> Bool {
   match translate_emitted_node(
     tree: branch_if_then_else_emit_inferred_tree_for(
-      root: dag_mvp1_pick_arrow_domain_conj_node()
+      root: dag_pick_arrow_domain_conj_node()
     ),
-    target: dag_mvp1_pick_target_model()
+    target: dag_pick_target_model()
   ) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -297,7 +300,7 @@ fn branch_if_then_else_emit_diag_post_translate_serialize_accepts() -> Bool {
   match branch_if_then_else_emit_post_translate_root() {
     Accepted { value: translated, diagnostics: d } =>
       match target_serialize_source_from_model(
-        target: dag_mvp1_pick_target_model(),
+        target: dag_pick_target_model(),
         emitted: translated
       ) {
         Accepted { value: _, diagnostics: sd } => (d == None) && (sd == None)
@@ -308,9 +311,9 @@ fn branch_if_then_else_emit_diag_post_translate_serialize_accepts() -> Bool {
 }
 
 fn branch_if_then_else_emit_diag_emit_eq_authority_text() -> Bool {
-  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+  match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
     Accepted { value: emitted, diagnostics: d } =>
-      (emitted.carried == dag_mvp1_pick_source_text) && (d == None)
+      (emitted.carried == dag_pick_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

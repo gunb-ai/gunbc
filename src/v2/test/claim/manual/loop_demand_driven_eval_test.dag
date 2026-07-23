@@ -13,6 +13,11 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
 import v2.std.cardinality {
   RankingDimension,
   TerminationProof,
@@ -23,6 +28,7 @@ import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -46,6 +52,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Value,
   SyntheticOccurrence,
 }
 import v2.std.runtime {
@@ -76,6 +83,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn loop_eval_atom(s: Symbol) -> Node {
   Node {
@@ -103,15 +113,29 @@ fn loop_eval_one_value() -> RuntimeValue {
 }
 
 fn loop_eval_lit_one() -> Node {
-  loop_eval_atom(s: ^loop_eval_lit_one_sym)
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^loop_eval_lit_one_lexeme_invalid } },
+        occurrence_id: SyntheticOccurrence,
+        children: []
+      }
+  }
+}
+
+data loop_eval_divergent_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
 }
 
 fn loop_eval_divergent() -> Node {
-  loop_eval_atom(s: ^loop_eval_divergent_sym)
+  loop_eval_divergent_value_node
 }
 
 fn loop_eval_measure() -> Node {
-  loop_eval_atom(s: ^loop_eval_measure_sym)
+  loop_eval_lit_one()
 }
 
 fn loop_eval_diagnostic(n: Node) -> Diagnostic {
@@ -123,12 +147,17 @@ fn loop_eval_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == loop_eval_lit_one() {
-    outcome_accepted(value: loop_eval_one_value())
-  } else if node == loop_eval_measure() {
-
-    outcome_accepted(value: loop_eval_one_value())
-  } else if node == loop_eval_divergent() {
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: loop_eval_one_value())
+        } else {
+          outcome_rejected(d: loop_eval_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else if node == loop_eval_divergent_value_node {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
   } else {
     outcome_rejected(d: loop_eval_diagnostic(n: node))

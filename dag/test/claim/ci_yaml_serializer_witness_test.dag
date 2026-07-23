@@ -1,21 +1,7 @@
 module test.claim.ci_yaml_serializer_witness
 
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue, YamlString, YamlInt, YamlMapping, YamlSequence,
-  yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
-  empty_yaml_values
-}
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
-import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
-import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_workflow_expressions { ci_workflow_expression_templates, ci_cache_path_template }
-import extdeps.github.expressions {
-  ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
-  ContextAccess, Env, Runner,
-  any_template_accesses_runner_var_via_env, template_uses_context
-}
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -31,7 +17,7 @@ fn witness_rustflags_empty_string_quoted() -> Bool {
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   let job = ci_workflow.jobs.first()
   match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => els.length() == 7
+    YamlSequence { elements: els } => (els.length() == job.steps.length()) && (els.length() > 0)
     _ => false
   }
 }
@@ -117,13 +103,13 @@ fn witness_restore_keys_block_scalar_indent() -> Bool {
     !string_contains(s: yaml, pattern: "          restore-keys: |\n          cargo-ci-")
 }
 
-fn witness_rustup_run_plain_not_quoted() -> Bool {
+fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
   let yaml = expected_ci_yml()
-  let rustup_run = concat(
-    "        run: rustup default \"$(rustup show active-toolchain | awk '",
+  let rustup_line = concat(
+    "          rustup default \"$(rustup show active-toolchain | awk '",
     concat(concat("{", "print $1; exit"), concat("}", "')\""))
   )
-  string_contains(s: yaml, pattern: rustup_run) &&
+  string_contains(s: yaml, pattern: concat("        run: |\n", rustup_line)) &&
     !string_contains(s: yaml, pattern: "run: \"rustup default")
 }
 
@@ -166,18 +152,31 @@ fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
   string_contains(s: yaml, pattern: "if sccache --show-stats >/dev/null 2>&1; then") &&
     string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
     string_contains(s: yaml, pattern: "CARGO_INCREMENTAL=0") &&
-    string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=1") &&
     !string_contains(s: yaml, pattern: "sccache --stop-server") &&
     !string_contains(s: yaml, pattern: "sccache --start-server") &&
     !string_contains(s: yaml, pattern: "SCCACHE_DIR=$RUNNER_TEMP/sccache")
 }
 
+fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
+  let yaml = expected_ci_yml()
+  let n = ci_cargo_build_jobs_count()
+  string_contains(s: yaml, pattern: "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"") &&
+    string_contains(s: yaml, pattern: concat("CARGO_BUILD_JOBS=", concat(to_string(n), "\""))) &&
+    !string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=1\"") &&
+    !string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=2\"") &&
+    n >= 2
+}
+
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
-  let script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
-  string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
+  let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
+  let build_script = ci_release_build_script()
+  string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
+    string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: yaml, pattern: "$ROOT/target/release/claim_executor") &&
-    string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
+    string_contains(s: build_script, pattern: "env -u RUSTC_WRAPPER") &&
+    !string_contains(s: floor_script, pattern: "env -u RUSTC_WRAPPER") &&
+    string_contains(s: floor_script, pattern: "$ROOT/target/release/claim_executor")
 }
 
 fn witness_cache_uses_runner_context_not_env() -> Bool {
@@ -188,7 +187,7 @@ fn witness_cache_uses_runner_context_not_env() -> Bool {
 fn witness_cache_runner_env_scope_red_control() -> Bool {
 
   let bad = ExpressionTemplate { segments: [
-    Interpolation { expression: ContextAccess { context: Env, path: ["CARGO_HOME"] } },
+    Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["CARGO_HOME"] } },
     LiteralText { text: "/registry/index/" }
   ] }
   !(template_uses_context(template: bad, target: Runner) &&
@@ -203,7 +202,7 @@ fn witness_no_runner_env_context_red_control() -> Bool {
 
   let bad = concat(ci_workflow_expression_templates, [
     ExpressionTemplate { segments: [
-      Interpolation { expression: ContextAccess { context: Env, path: ["RUNNER_TEMP"] } }
+      Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["RUNNER_TEMP"] } }
     ] }
   ])
   any_template_accesses_runner_var_via_env(templates: bad)
@@ -218,12 +217,13 @@ test fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() &&
     witness_cache_path_block_scalar() &&
     witness_restore_keys_block_scalar_indent() &&
-    witness_rustup_run_plain_not_quoted() &&
+    witness_rustup_run_block_scalar_not_quoted() &&
     witness_cache_key_plain_not_quoted() &&
     witness_multiline_without_block_scalar_is_invalid() &&
     witness_cache_path_not_flat_multiline_sibling() &&
     witness_restore_keys_content_deeper_than_key() &&
     witness_sccache_wired_when_fleet_daemon_up() &&
+    witness_cargo_jobs_derived_and_jobserver_decoupled() &&
     witness_gunbc_ci_step_projects_run_script_markers() &&
     witness_cache_uses_runner_context_not_env() &&
     witness_cache_runner_env_scope_red_control() &&

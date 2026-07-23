@@ -13,6 +13,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn data_dep_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },

@@ -1,0 +1,176 @@
+module v2.test.claim.module_resolution_plan_witness
+
+import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.text { String }
+import v2.workflow.executor { ExecutorBatch, executor_job_for_node }
+import v2.workflow.realization_runner {
+  RunnerScheduleBlocked,
+  RunnerScheduleComplete,
+  node_keyed_store_node_count,
+  runner_schedule_batch_count,
+  runner_schedule_contains_batch,
+  runner_schedule_store_covers_nodes
+}
+import v2.workflow.module_resolution_plan {
+  ModuleDependencyViews,
+  ModuleImportEdge,
+  ModuleNodeBinding,
+  ModuleNodeBindingMissing,
+  module_dependency_views,
+  module_import_edges,
+  module_resolution_schedule
+}
+
+data module_fixture_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^module_fixture_a } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data module_fixture_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^module_fixture_b } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data module_fixture_c_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^module_fixture_c } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data module_fixture_d_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^module_fixture_d } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data module_fixture_declarations: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "fixture.a", path: "fixture/a.dag" },
+  ModuleDeclarationFact { module: "fixture.b", path: "fixture/b.dag" },
+  ModuleDeclarationFact { module: "fixture.c", path: "fixture/c.dag" },
+  ModuleDeclarationFact { module: "fixture.d", path: "fixture/d.dag" }
+]
+
+data module_fixture_diamond_imports: List<ImportResolutionFact> = [
+  ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true },
+  ImportResolutionFact { path: "fixture/c.dag", import_module: "fixture.a", target_declared: true },
+  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.b", target_declared: true },
+  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.c", target_declared: true },
+  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.absent", target_declared: false }
+]
+
+data module_fixture_bindings: List<ModuleNodeBinding> = [
+  ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
+  ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
+  ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node },
+  ModuleNodeBinding { module: "fixture.d", node: module_fixture_d_node }
+]
+
+data module_fixture_nodes: List<Node> = [
+  module_fixture_a_node,
+  module_fixture_b_node,
+  module_fixture_c_node,
+  module_fixture_d_node
+]
+
+fn module_fixture_diamond_views() -> List<DependencyView> {
+  match module_dependency_views(
+    edges: module_import_edges(
+      imports: module_fixture_diamond_imports,
+      declarations: module_fixture_declarations
+    ),
+    bindings: module_fixture_bindings
+  ) {
+    ModuleDependencyViews { views: views } => views
+    ModuleNodeBindingMissing { module: _ } => []
+  }
+}
+
+fn witness_dangling_import_is_not_an_edge() -> Bool {
+  let edges = module_import_edges(
+    imports: module_fixture_diamond_imports,
+    declarations: module_fixture_declarations
+  )
+  length(xs: edges) == 4
+}
+
+fn witness_diamond_schedules_as_antichain_levels() -> Bool {
+  match module_resolution_schedule(
+    nodes: module_fixture_nodes,
+    dependencies: module_fixture_diamond_views()
+  ) {
+    RunnerScheduleComplete { batches: batches, store: store } =>
+      (runner_schedule_batch_count(batches: batches) == 3)
+        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+             jobs: [executor_job_for_node(node: module_fixture_a_node)]
+           })
+        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+             jobs: [
+               executor_job_for_node(node: module_fixture_b_node),
+               executor_job_for_node(node: module_fixture_c_node)
+             ]
+           })
+        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+             jobs: [executor_job_for_node(node: module_fixture_d_node)]
+           })
+        && runner_schedule_store_covers_nodes(store: store, nodes: module_fixture_nodes)
+        && (node_keyed_store_node_count(store: store) == 4)
+    RunnerScheduleBlocked { evidence: _ } => false
+  }
+}
+
+data module_fixture_cycle_imports: List<ImportResolutionFact> = [
+  ImportResolutionFact { path: "fixture/a.dag", import_module: "fixture.b", target_declared: true },
+  ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true }
+]
+
+fn witness_cycle_refuses_never_partially_schedules() -> Bool {
+  match module_dependency_views(
+    edges: module_import_edges(
+      imports: module_fixture_cycle_imports,
+      declarations: module_fixture_declarations
+    ),
+    bindings: module_fixture_bindings
+  ) {
+    ModuleDependencyViews { views: views } =>
+      match module_resolution_schedule(
+        nodes: [module_fixture_a_node, module_fixture_b_node],
+        dependencies: views
+      ) {
+        RunnerScheduleBlocked { evidence: _ } => true
+        RunnerScheduleComplete { batches: _, store: _ } => false
+      }
+    ModuleNodeBindingMissing { module: _ } => false
+  }
+}
+
+data module_fixture_bindings_without_d: List<ModuleNodeBinding> = [
+  ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
+  ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
+  ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node }
+]
+
+fn witness_missing_binding_refuses_with_the_module_named() -> Bool {
+  match module_dependency_views(
+    edges: module_import_edges(
+      imports: module_fixture_diamond_imports,
+      declarations: module_fixture_declarations
+    ),
+    bindings: module_fixture_bindings_without_d
+  ) {
+    ModuleNodeBindingMissing { module: module } => module == "fixture.d"
+    ModuleDependencyViews { views: _ } => false
+  }
+}
+
+test fn module_resolution_plan_witnesses() -> Bool {
+  witness_dangling_import_is_not_an_edge()
+    && witness_diamond_schedules_as_antichain_levels()
+    && witness_cycle_refuses_never_partially_schedules()
+    && witness_missing_binding_refuses_with_the_module_named()
+}

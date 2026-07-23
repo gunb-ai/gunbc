@@ -1,0 +1,88 @@
+module v2.std.spine
+
+import v2.std.node { Node, Edge, NodeFold, fold_node, node_subtree_nodes }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length, reduce_or }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.materialize {
+  materialize_node_count,
+  materialize_distinct_computation_count,
+  materialize_redundant_computation_count
+}
+
+data spine_module_note: String = "The ANALYSIS spine (execution-spine-design.md FLAG A, §9; Rc-safe increment 1). run ≙ realize ∘ materialize ∘ dependency_view; this module composes the two catamorphisms that need NO interpreter thread-safety: dependency_view (the level-profile over the DependencyView DAG → critical-path depth + independence width) and materialize (content-hash Share/dedup → redundant-computation count). It emits the SpineReceipt the operator's §9 acceptance asks for BY COMPUTATION, not assertion. The RUNNER (actual wall-clock parallel execution) is increment 2+, realized by emit-on-demand native artifacts orchestrated by DependencyView independence — NOT by parallelizing the interpreter (the Rc→Arc gate is removed; ROADMAP §④, execution-spine-design.md reconciliation 2026-07-10, operator-signed). The level profile is a tree-fold over occurrences: profile[d] = count of node occurrences at depth d below the root; a DAG-shared subtree is counted once per parent here (that is exactly the redundancy materialize's Share collapses — the two readings are complementary, not a fork). critical_path_depth = number of levels (longest dependency chain, the reduce spine, §5); independence_width = max nodes at any one level (what parallelizes to hardware width, §5). Discriminating RED: a single chain A→B→C has depth 3 / width 1; a root over N independent leaves has depth 2 / width N (§9 discriminating RED)."
+
+type SpineReceipt {
+  node_count: Int
+  distinct_computation_count: Int
+  redundant_computation_count: Int
+  critical_path_depth: Int
+  independence_width: Int
+}
+
+fn int_max(a: Int, b: Int) -> Int {
+  if a < b { b } else { a }
+}
+
+fn add_profiles(a: List<Int>, b: List<Int>) -> List<Int> {
+  match a {
+    Empty => b
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => a
+        Cons { head: hb, tail: tb } =>
+          Cons { head: ha + hb, tail: add_profiles(a: ta, b: tb) }
+      }
+  }
+}
+
+fn shift_deeper(profile: List<Int>) -> List<Int> {
+  Cons { head: 0, tail: profile }
+}
+
+fn profile_fold_init(_n: Node) -> List<Int> {
+  Cons { head: 1, tail: Empty }
+}
+
+fn profile_fold_step(acc: List<Int>, _edge: Edge, child_profile: List<Int>) -> List<Int> {
+  add_profiles(a: acc, b: shift_deeper(profile: child_profile))
+}
+
+fn profile_algebra() -> NodeFold<List<Int>> {
+  NodeFold {
+    init: profile_fold_init,
+    step: profile_fold_step
+  }
+}
+
+fn level_profile(root: Node) -> List<Int> {
+  fold_node(n: root, algebra: profile_algebra())
+}
+
+fn critical_path_depth(root: Node) -> Int {
+  length(xs: level_profile(root: root))
+}
+
+fn independence_width(root: Node) -> Int {
+  reduce_or(xs: level_profile(root: root), fallback: 0, combine: int_max)
+}
+
+fn spine_receipt(root: Node) -> SpineReceipt {
+  SpineReceipt {
+    node_count: materialize_node_count(root: root),
+    distinct_computation_count: materialize_distinct_computation_count(root: root),
+    redundant_computation_count: materialize_redundant_computation_count(root: root),
+    critical_path_depth: critical_path_depth(root: root),
+    independence_width: independence_width(root: root)
+  }
+}
+
+fn spine_has_recoverable_parallelism(root: Node) -> Bool {
+  independence_width(root: root) > 1
+}
+
+fn spine_is_serial_chain(root: Node) -> Bool {
+  independence_width(root: root) == 1
+}

@@ -1,6 +1,7 @@
 module gunbc.plan_registry_batch_g
 
 import gunbc.plan { Plan }
+import gunbc.plans.ci_performance_tanking_evidence { ci_performance_tanking_evidence_plan }
 import gunbc.plans.ci_humming { ci_humming_plan }
 import gunbc.plans.edge_b_rust_dag_provenance_brief { edge_b_rust_dag_provenance_brief_plan }
 import gunbc.plans.resolver_type_name_collision_wall { resolver_type_name_collision_wall_plan }
@@ -11,6 +12,7 @@ import gunbc.plans.resolver_pathology_profile_receipt { resolver_pathology_profi
 import gunbc.plans.representation_minimization { representation_minimization_plan }
 import gunbc.plans.reference_grounding_migration { reference_grounding_migration_plan }
 import gunbc.plans.typescript_gap_census { typescript_gap_census_plan }
+import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
 import gunbc.plans.fleet_acceptance_criteria { fleet_acceptance_criteria_plan }
 import gunbc.plans.structural_quadratic_wall_coverage_audit { structural_quadratic_wall_coverage_audit_plan }
 
@@ -25,6 +27,8 @@ data batch_g_plans: List<Plan> = [
   representation_minimization_plan,
   reference_grounding_migration_plan,
   typescript_gap_census_plan,
+  cli_run_hollowing_plan,
   fleet_acceptance_criteria_plan,
-  structural_quadratic_wall_coverage_audit_plan
+  structural_quadratic_wall_coverage_audit_plan,
+  ci_performance_tanking_evidence_plan
 ]

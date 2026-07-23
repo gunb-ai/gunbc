@@ -1,0 +1,219 @@
+module test.claim.host_standup_assimilation_deduction
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data zero_elapsed: Millisecond = millisecond(count: 0)
+
+test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
+  srv3_pre_install_actuation_verdict(elapsed: zero_elapsed) == Absent
+    && !deduce_os_install_actuated_satisfied(verdict: Absent)
+}
+
+test fn post_install_lease_row_deduces_converged_noop() -> Bool {
+  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.Converged
+    && deduce_os_install_actuated_satisfied(verdict: Converged)
+    && match decision_for_os_install_actuation_verdict(
+      verdict: Converged,
+      obs: srv3_pre_install_lease_observation,
+      stall: stall_budget_verdict(
+        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+      ),
+    ) {
+      Noop => true
+      Apply { plan: _ } => false
+      Refuse { reason: _ } => false
+    }
+    && match classify_os_install_actuation_upsert(
+      obs: srv3_post_install_lease_observation,
+      fleet_slot: operator_host_srv3,
+      stall: stall_budget_verdict(
+        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+      ),
+    ) {
+      UpsertClassification { verdict: Converged, decision: Noop } => true
+      _ => false
+    }
+}
+
+test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
+  srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) == UnknownRefused
+    && srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) != Absent
+    && !deduce_os_install_actuated_satisfied(verdict: UnknownRefused)
+    && match decision_for_os_install_actuation_verdict(
+      verdict: UnknownRefused,
+      obs: srv3_unreadable_lease_observation,
+      stall: stall_budget_verdict(
+        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+      ),
+    ) {
+      Refuse { reason: r } => string_contains(s: r, pattern: "unreachable")
+      _ => false
+    }
+}
+
+test fn no_lease_past_budget_is_drifted_not_fabricated_success() -> Bool {
+  let past = millisecond(
+    count: millisecond_count(
+      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    ) + 1,
+  )
+  match srv3_pre_install_actuation_verdict(elapsed: past) {
+    Drifted =>
+      !deduce_os_install_actuated_satisfied(verdict: Drifted)
+        && match decision_for_os_install_actuation_verdict(
+          verdict: Drifted,
+          obs: srv3_pre_install_lease_observation,
+          stall: stall_budget_verdict(
+            budget: srv3_os_install_to_host_identity_budget(elapsed: past),
+          ),
+        ) {
+          Refuse { reason: _ } => true
+          Apply { plan: _ } => false
+          Noop => false
+        }
+    Converged => false
+    Absent => false
+    UnknownRefused => false
+    Conflict => false
+    Inaccessible => false
+  }
+}
+
+test fn upsert_pending_applies_assert_pending_plan() -> Bool {
+  match classify_os_install_actuation_upsert(
+    obs: srv3_pre_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: stall_budget_verdict(
+      budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+    ),
+  ) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: AssertOsInstallActuationPending } } => true
+    _ => false
+  }
+}
+
+test fn stall_cause_fold_legacy_boot_mode() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeLegacy },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || (match c {
+        StallCauseBootModeLegacyUefiRequired => true
+        _ => false
+      })
+  )
+    && match cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: RemediationSetBootOverrideModeUefi } => true
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_subiquity_storage_screen() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Present { value: SubiquityStorageScreen },
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || stall_transition_cause_label(cause: c) == "seed-not-found-awaiting-storage"
+  )
+    && match cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: RemediationRemasterSeedOrDeclareStoragePolicy } => true
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_media_and_logger_distinct() -> Bool {
+  let media_causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: false,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  let logger_causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: false,
+    boot_progress_none: false,
+  })
+  match cause_fold_primary_stall_remediation(causes: media_causes) {
+    Present { value: RemediationStartNbdServeSession } => true
+    _ => false
+  }
+    && fold(
+      logger_causes,
+      init: false,
+      f: (acc, c) =>
+        acc || (match c {
+          StallCauseConsoleRedirectOff => true
+          _ => false
+        })
+    )
+}
+
+test fn stall_cause_fold_no_bootable_device() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: true,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || (match c {
+        StallCauseNoBootableDevice => true
+        _ => false
+      })
+  )
+}
+
+test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
+  host_standup_gap_count_at_actuation_verdict(verdict: Converged) == 3
+    && fold(
+      host_standup_spine,
+      init: false,
+      f: (acc, s) =>
+        acc || (match s.phase {
+          Prefix { phase: OsInstallActuated } =>
+            !host_standup_step_is_effective_gap_at_actuation_verdict(
+              step: s,
+              verdict: Converged,
+            )
+          _ => false
+        })
+    )
+}
+
+test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || (match s.phase {
+        Assimilation { phase: HostIdentityConverge } =>
+          !host_standup_step_is_effective_gap_at_actuation_verdict(
+            step: s,
+            verdict: Converged,
+          )
+        _ => false
+      })
+  )
+}

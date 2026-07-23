@@ -1,35 +1,11 @@
 module tools.effects_rest_transport_witness_transport
 
-import extdeps.shell
-import extdeps.languages.bash.program {
-  ShellProgram,
-  lit, var_ref, command, serialize_bash
-}
-import tools.host_prelude { ensure_effects_rest_transport_witness_built }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-fn effects_rest_transport_witness_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_effects_rest_transport_witness_built(), [
-      command(words: [lit(text: "cd"), root]),
-      command(words: [var_ref(name: "EFFECTS_REST_TRANSPORT_WITNESS")])
-    ])
-  }
-}
-
-data effects_rest_transport_witness_transport_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
-  }
-}
+import tools.host_prelude { run_witness_bin }
 
 fn run_effects_rest_transport_witness() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: effects_rest_transport_witness_program()))
-  result.success
+  run_witness_bin(
+    var_name: "EFFECTS_REST_TRANSPORT_WITNESS",
+    bin_name: "effects_rest_transport_witness",
+    args: []
+  )
 }

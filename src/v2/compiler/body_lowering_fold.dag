@@ -1,0 +1,3965 @@
+module v2.compiler.body_lowering_fold
+
+import std.algebra { Cons, Empty }
+import v2.compiler.fold_lowering {
+  fold_call_head_symbol,
+  fold_call_to_loop,
+  fold_family_head
+}
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.body_producer_forward {
+  body_producer_forward_is_registered_surface_identity,
+  body_producer_forward_row_count,
+  body_producer_forward_surface_identities
+}
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFind,
+  ParseSubtreeFound,
+  dag_binding_branded_atom_identity,
+  dag_int_type_binding,
+  dag_int_literal_magnitude_node_optional,
+  dag_int_literal_node_from_lexeme,
+  dag_lex_token_symbol,
+  dag_loop_measure_node,
+  dag_node_is_int_literal_atom,
+  dag_match_arm_node,
+  dag_resolve_preserve_module_metadata_subtree,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node,
+}
+import v2.std.algebra { list_append, list_snoc_item, length, zip_eq }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  diagnostics_merge,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
+import v2.std.symbol_index {
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_lookup
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  is_empty_conj_root,
+  match_arm_body,
+  match_arm_pattern,
+  node_rebuild,
+  node_synthetic,
+  node_with_occurrence_id
+}
+import v2.std.node_query { find_named_child }
+
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
+
+data body_lowering_fold_dissolution_contract: String = "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table."
+
+data body_lowering_interim_scaffold_dissolved_note: String = "Wave 1 Gate 1 Track B: match/if/body_try interim hand-walker scaffolds dissolved into body_producer_forward (forward row table + production-identity dispatch via body_lower_fold). body_lowering_interim_scaffold_seed_retained_count is pinned at 0 — RED if any SeedRetained scaffold reappears."
+
+data body_lowering_domain_construction_disposition_note: String = "Wave 1 Gate 1 A1/B1: param-name domain harvesting is terminal param-list-walk (declaration reading, not SymbolIndex resolution). BodyLoweringDomainSymbolIndexResolved deleted in B1 — uninhabited variant with no migration trigger (operator ruling 2026-07-14)."
+
+fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
+  0
+}
+
+fn body_lowering_forward_behavior_row_count() -> Int {
+  body_producer_forward_row_count()
+}
+
+fn body_lower_fold_behavior_surface_identities() -> List<Symbol> {
+  body_producer_forward_surface_identities()
+}
+
+fn body_lowering_surface_identity_list_contains(xs: List<Symbol>, target: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, id) { acc || id == target })
+}
+
+fn body_lowering_forward_fold_surface_identities_agree() -> Bool {
+  let forward = body_producer_forward_surface_identities()
+  let fold_ids = body_lower_fold_behavior_surface_identities()
+  if length(xs: forward) != length(xs: fold_ids) {
+    false
+  } else {
+    fold(forward, init: true, f: fn(acc, id) {
+      acc && body_lowering_surface_identity_list_contains(xs: fold_ids, target: id)
+    })
+  }
+}
+
+type BodyLoweringFrontierDisposition
+  = BodyLoweringLowered
+  | BodyLoweringWrapperRetained { reason: Symbol }
+
+fn body_lower_outcome_is_wrapper_retained(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        Some { diagnostics: ne } => ne.head.reason == ^body_lowering_reason_wrapper_retained_emitted
+        None => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn body_lower_outcome_frontier_disposition(o: Outcome<Node>) -> BodyLoweringFrontierDisposition {
+  if body_lower_outcome_is_wrapper_retained(o: o) {
+    BodyLoweringWrapperRetained { reason: ^body_lowering_reason_wrapper_retained_emitted }
+  } else {
+    BodyLoweringLowered
+  }
+}
+
+fn body_lower_seq_child(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
+  match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
+    Absent => Absent
+    Present { value: after_kw_fn } =>
+      match body_lower_seq_child(node: after_kw_fn, name: ^grammar_sequence_left_node_projection) {
+        Absent => Absent
+        Present { value: ident_node } =>
+          match dag_binding_branded_atom_identity(node: ident_node) {
+            Present { value: binding } => Present { value: binding }
+            Absent =>
+              match node_atom_identity_optional(node: ident_node) {
+                Present { value: sym } =>
+                  if dag_lex_token_symbol(sym: sym) {
+                    optional_absent()
+                  } else {
+                    optional_present(value: sym)
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          Named { name: sym } => Cons { head: sym, tail: acc }
+          Positional => acc
+        }
+      })
+    _ => Empty
+  }
+}
+
+fn body_lower_binding_symbol_lists_match(
+  expected: List<Symbol>,
+  actual: List<Symbol>
+) -> Bool {
+  zip_eq(a: expected, b: actual, eq: fn(left, right) { left == right })
+}
+
+fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Symbol> {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+    Absent => Empty
+    Present { value: comma_spine } =>
+      fold(
+        body_lower_collect_param_edges(sequence_capture: comma_spine),
+        init: Empty,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: sym } => Cons { head: sym, tail: acc }
+            Positional => acc
+          }
+        }
+      )
+  }
+}
+
+fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<Symbol> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+    ParseSubtreeFound { captured: param_list } =>
+      body_lower_param_binding_symbols_from_param_list(param_list: param_list)
+    ParseSubtreeAbsent => Empty
+  }
+}
+
+fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<Symbol> {
+  match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
+    ParseSubtreeFound { captured: captured } =>
+      body_lower_param_binding_symbols_from_fn_captured(captured: captured)
+    ParseSubtreeAbsent => Empty
+  }
+}
+
+fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<Symbol> {
+  match count(arrow.children) >= 1 {
+    true =>
+      match first(arrow.children) {
+        Present { value: domain_edge } =>
+          body_lower_arrow_domain_named_bindings(root: domain_edge.target)
+        Absent => Empty
+      }
+    false => Empty
+  }
+}
+
+fn body_lower_arrow_domain_matches_ingest_param_bindings(
+  arrow: Node,
+  ingest_bindings: List<Symbol>
+) -> Bool {
+  body_lower_binding_symbol_lists_match(
+    expected: ingest_bindings,
+    actual: body_lower_arrow_domain_binding_symbols(arrow: arrow)
+  )
+}
+
+fn body_lower_frontend_symbol_index_from_module(tree: Node) -> SymbolIndex {
+  symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
+}
+
+fn body_lower_arrow_domain_matches_frontend_symbol_index(
+  arrow: Node,
+  module_tree: Node,
+  fn_name: Symbol
+) -> Bool {
+  match qualified_name_from_module_node(root: module_tree) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
+      let idx = body_lower_frontend_symbol_index_from_module(tree: module_tree)
+      fold(
+        body_lower_arrow_domain_binding_symbols(arrow: arrow),
+        init: true,
+        f: fn(ok, binding) {
+          if ok {
+            match symbol_index_lookup(
+              index: idx,
+              qualified_path: qualified_name_snoc(qn: fn_path, segment: binding)
+            ) {
+              Present { value: _ } => true
+              Absent => false
+            }
+          } else {
+            false
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
+  body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
+}
+
+fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+  if sym == dag_int_type_binding() {
+    optional_present(value: sym)
+  } else if symbol_lexeme(sym: sym) == "Int" {
+    optional_present(value: dag_int_type_binding())
+  } else if symbol_lexeme(sym: sym) == "Bool" {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
+}
+
+fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
+  match body_lower_canonical_type_binding_optional(sym: sym) {
+    Present { value: canonical } => canonical
+    Absent => sym
+  }
+}
+
+fn body_lower_type_atom_node(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
+    children: []
+  )
+}
+
+fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
+  Accepted {
+    value: shell,
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
+    }
+  }
+}
+
+fn body_lower_is_core_substrate(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_expr)
+    || (emitted == ^dag_surface_binary_expr)
+    || (emitted == ^dag_surface_unary_expr)
+    || (emitted == ^dag_surface_postfix_expr)
+    || (emitted == ^dag_surface_block_expr)
+    || (emitted == ^dag_surface_stmt)
+    || (emitted == ^dag_surface_stmt_seq)
+    || (emitted == ^dag_surface_arg)
+}
+
+fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: n } => n == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
+fn body_lower_operand_fold_children_optional(node: Node) -> Optional<Node> {
+  fold(node.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if body_lower_is_identity_projection_edge(edge: e) {
+          Absent
+        } else {
+          body_lower_operand_ref_optional(node: e.target)
+        }
+    }
+  })
+}
+
+fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_pattern)
+    || (emitted == ^dag_surface_match_arm)
+    || (emitted == ^dag_surface_match_arm_stmt_body)
+}
+
+fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
+  if emitted == ^dag_surface_fn_body {
+    under_fn_decl
+  } else {
+    body_lower_is_deferred_lower_emitted(emitted: emitted)
+  }
+}
+
+fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_module)
+    || (emitted == ^dag_surface_module_header)
+    || (emitted == ^dag_surface_import_decl)
+    || (emitted == ^dag_surface_alias_decl)
+    || (emitted == ^dag_surface_qualified_name)
+    || (emitted == ^dag_surface_top_level_item)
+    || (emitted == ^dag_surface_generic_params)
+    || (emitted == ^dag_surface_param_list)
+    || (emitted == ^dag_surface_type_expr)
+    || (emitted == ^dag_surface_type_decl)
+    || (emitted == ^dag_surface_data_decl)
+    || (emitted == ^dag_surface_import_block)
+}
+
+fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+fn body_lower_find_captured_prunable(id: Symbol) -> Bool {
+  (id == ^dag_surface_module_header)
+    || (id == ^dag_surface_qualified_name)
+    || (id == ^dag_surface_type_expr)
+}
+
+fn body_lower_find_captured_under_children(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+  fold(root.children, init: ParseSubtreeAbsent, f: fn(acc, edge) {
+    match acc {
+      ParseSubtreeFound { captured: _ } => acc
+      ParseSubtreeAbsent => body_lower_find_captured(root: edge.target, emitted: emitted)
+    }
+  })
+}
+
+fn body_lower_find_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: root) {
+          Present { value: captured } => ParseSubtreeFound { captured: captured }
+          Absent => body_lower_find_captured_under_children(root: root, emitted: emitted)
+        }
+      } else if body_lower_find_captured_prunable(id: id) {
+        ParseSubtreeAbsent
+      } else {
+        body_lower_find_captured_under_children(root: root, emitted: emitted)
+      }
+    Absent => body_lower_find_captured_under_children(root: root, emitted: emitted)
+  }
+}
+
+fn body_lower_find_production_shell_under_children(
+  root: Node,
+  emitted: Symbol
+) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_find_production_shell_optional(root: edge.target, emitted: emitted)
+    }
+  })
+}
+
+fn body_lower_find_production_shell_optional(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      match id == emitted {
+        true => Present { value: root }
+        false =>
+          match body_lower_find_captured_prunable(id: id) {
+            true => Absent
+            false => body_lower_find_production_shell_under_children(root: root, emitted: emitted)
+          }
+      }
+    Absent =>
+      body_lower_find_production_shell_under_children(root: root, emitted: emitted)
+  }
+}
+
+fn body_lower_int_literal_with_magnitude_optional(node: Node) -> Optional<Node> {
+  let unwrapped = body_lower_deep_unwrap_for_int_literal(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    match dag_int_literal_magnitude_node_optional(node: unwrapped) {
+      Present { value: _ } => optional_present(value: unwrapped)
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Present { value: captured } =>
+      match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
+        Accepted { value: op, diagnostics: _ } => optional_present(value: op)
+        Rejected { diagnostics: _ } =>
+          match body_lower_int_literal_with_magnitude_optional(node: captured) {
+            Present { value: lit } => Present { value: lit }
+            Absent => optional_absent()
+          }
+      }
+    Absent =>
+      match body_lower_try_operand_or_reject(shell: shell, captured: shell) {
+        Accepted { value: op, diagnostics: _ } => optional_present(value: op)
+        Rejected { diagnostics: _ } => body_lower_int_literal_with_magnitude_optional(node: shell)
+      }
+  }
+}
+
+fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
+  match body_lower_is_core_substrate(node: node) {
+    true => Present { value: node }
+    false =>
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: _emitted } =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: captured } =>
+          match body_lower_operand_ref_optional(node: captured) {
+            Present { value: op } => Present { value: op }
+            Absent => body_lower_operand_fold_children_optional(node: node)
+          }
+        Absent => body_lower_operand_fold_children_optional(node: node)
+      }
+    Absent =>
+      match dag_binding_branded_atom_identity(node: node) {
+        Present { value: binding } =>
+          Present { value: body_lower_param_ref_atom(source: node, identity: binding) }
+        Absent =>
+          match node_atom_identity_optional(node: node) {
+            Present { value: id } =>
+              if dag_lex_token_symbol(sym: id) {
+                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+                  optional_present(value: body_lower_param_ref_atom(source: node, identity: id))
+                } else {
+                  body_lower_int_literal_with_magnitude_optional(node: node)
+                }
+              } else {
+                optional_present(value: body_lower_param_ref_atom(source: node, identity: id))
+              }
+            Absent =>
+              match sugar_sequence_pair_optional(node: node) {
+                Present { value: pair } => body_lower_operand_ref_optional(node: pair.left)
+                Absent =>
+                  match parse_production_captured_child_optional(node: node) {
+                    Present { value: captured } =>
+                      body_lower_operand_ref_optional(node: captured)
+                    Absent => body_lower_operand_fold_children_optional(node: node)
+                  }
+              }
+          }
+      }
+  }
+  }
+}
+
+fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if dag_lex_token_symbol(sym: id) {
+        optional_present(
+          value: node_synthetic(
+            kind: TypeNode { connective: Atom { identity: id } },
+            children: []
+          )
+        )
+      } else {
+        optional_absent()
+      }
+    Absent => Absent
+  }
+}
+
+fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
+  parse_production_captured_child_optional(node: shell)
+}
+
+fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: op_seq)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operator_atom_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: operator } =>
+          match body_lower_operand_ref_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: right } =>
+              Present {
+                value: lower_binary_infix(left: left, operator: operator, right: right)
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_infix_from_operator_tail(left: Node, tail: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: tail) {
+    Present { value: pair } =>
+      match body_lower_infix_from_operator_seq(left: left, op_seq: pair.left) {
+        Present { value: found } => Present { value: found }
+        Absent => body_lower_infix_from_operator_tail(left: left, tail: pair.right)
+      }
+    Absent =>
+      match find_named_child(root: tail, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: repeat_elem, diagnostics: _ } =>
+          body_lower_infix_from_repeat_element(left: left, repeat_elem: repeat_elem)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operator_atom_optional(node: pair.left) {
+        Present { value: operator } =>
+          match body_lower_operand_ref_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: right } =>
+              Present {
+                value: lower_binary_infix(left: left, operator: operator, right: right)
+              }
+          }
+        Absent =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Present { value: inner } =>
+              match body_lower_operator_atom_optional(node: inner.left) {
+                Present { value: operator } =>
+                  match body_lower_operand_ref_optional(node: inner.right) {
+                    Absent => Absent
+                    Present { value: right } =>
+                      Present {
+                        value: lower_binary_infix(
+                          left: left,
+                          operator: operator,
+                          right: right
+                        )
+                      }
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: left } =>
+          body_lower_infix_from_operator_tail(left: left, tail: pair.right)
+      }
+  }
+}
+
+fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match body_lower_try_infix_from_sequence(node: stripped) {
+    Present { value: transform } => Present { value: transform }
+    Absent =>
+      match sugar_sequence_pair_optional(node: stripped) {
+        Present { value: pair } =>
+          match body_lower_try_infix_transform(node: pair.left) {
+            Present { value: transform } => Present { value: transform }
+            Absent => body_lower_try_infix_transform(node: pair.right)
+          }
+        Absent =>
+          match find_named_child(root: stripped, name: ^grammar_repeat_element_node_projection) {
+            Accepted { value: repeat_elem, diagnostics: _ } =>
+              match body_lower_try_infix_transform(node: repeat_elem) {
+                Present { value: transform } => Present { value: transform }
+                Absent =>
+                  match parse_production_captured_child_optional(node: stripped) {
+                    Present { value: captured } =>
+                      body_lower_try_infix_transform(node: captured)
+                    Absent =>
+                      fold(stripped.children, init: Absent, f: fn(acc, e) {
+                        match acc {
+                          Present { value: _ } => acc
+                          Absent => body_lower_try_infix_transform(node: e.target)
+                        }
+                      })
+                  }
+              }
+            Rejected { diagnostics: _ } =>
+              match parse_production_captured_child_optional(node: stripped) {
+                Present { value: captured } => body_lower_try_infix_transform(node: captured)
+                Absent =>
+                  fold(stripped.children, init: Absent, f: fn(acc, e) {
+                    match acc {
+                      Present { value: _ } => acc
+                      Absent => body_lower_try_infix_transform(node: e.target)
+                    }
+                  })
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_try_fold_loop(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: id) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_try_fold_loop(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+    Absent =>
+      fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: found, diagnostics: _ } =>
+            match found {
+              Present { value: _ } => acc
+              Absent => body_lower_try_fold_loop(node: e.target)
+            }
+        }
+      })
+  }
+}
+
+fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+  match fold_call_head_symbol(fold_call: node) {
+    Present { value: head } =>
+      if fold_family_head(sym: head) {
+        match fold_call_to_loop(fold_call: node) {
+          Accepted { value: loop_node, diagnostics: _ } =>
+            outcome_accepted(value: optional_present(value: loop_node))
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        body_lower_try_fold_loop_search(node: node)
+      }
+    Absent => body_lower_try_fold_loop_search(node: node)
+  }
+}
+
+fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_type_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_type_atom_from_expr(node: captured)
+          Absent => optional_absent()
+        }
+      } else if id == ^dag_surface_qualified_name {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } =>
+            match node_atom_identity_optional(node: captured) {
+              Present { value: sym } =>
+                optional_present(value: body_lower_type_atom_node(sym: sym))
+              Absent => body_lower_type_atom_from_expr(node: captured)
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        Absent
+      }
+    Absent =>
+      match dag_binding_branded_atom_identity(node: node) {
+        Present { value: binding } =>
+          Present { value: body_lower_type_atom_node(sym: binding) }
+        Absent =>
+          match node_atom_identity_optional(node: node) {
+            Present { value: sym } =>
+              if dag_lex_token_symbol(sym: sym) {
+                optional_absent()
+              } else {
+                optional_present(value: body_lower_type_atom_node(sym: sym))
+              }
+            Absent =>
+              match sugar_sequence_pair_optional(node: node) {
+                Present { value: pair } =>
+                  match body_lower_type_atom_from_expr(node: pair.left) {
+                    Present { value: found } => Present { value: found }
+                    Absent => body_lower_type_atom_from_expr(node: pair.right)
+                  }
+                Absent =>
+                  fold(node.children, init: Absent, f: fn(acc, e) {
+                    match acc {
+                      Present { value: _ } => acc
+                      Absent => body_lower_type_atom_from_expr(node: e.target)
+                    }
+                  })
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_unwrap_surface_shell(node: Node) -> Node {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_unwrap_surface_shell(node: captured)
+          Absent => node
+        }
+      } else {
+        node
+      }
+    Absent => node
+  }
+}
+
+fn body_lower_after_comma_tail_optional(node: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_comma {
+            optional_present(value: pair.right)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<Edge> {
+  match sugar_sequence_pair_optional(node: sequence_capture) {
+    Present { value: pair } =>
+      match body_lower_typed_param_edge(param_capture: pair.right) {
+        Present { value: edge } => Present { value: edge }
+        Absent => body_lower_typed_param_edge(param_capture: pair.left)
+      }
+    Absent => body_lower_typed_param_edge(param_capture: sequence_capture)
+  }
+}
+
+fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List<Edge> {
+  if is_empty_conj_root(n: repeat_capture) {
+    Empty
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Accepted { value: head_sequence, diagnostics: _ } =>
+        match body_lower_typed_param_from_comma_seq(sequence_capture: head_sequence) {
+          Present { value: edge } =>
+            match find_named_child(
+              root: repeat_capture,
+              name: ^grammar_sequence_right_node_projection
+            ) {
+              Accepted { value: tail, diagnostics: _ } =>
+                list_append(
+                  left: [edge],
+                  right: body_lower_collect_param_edges_from_repeat_tail(repeat_capture: tail)
+                )
+              Rejected { diagnostics: _ } => [edge]
+            }
+          Absent =>
+            match find_named_child(
+              root: repeat_capture,
+              name: ^grammar_sequence_right_node_projection
+            ) {
+              Accepted { value: tail, diagnostics: _ } =>
+                body_lower_collect_param_edges_from_repeat_tail(repeat_capture: tail)
+              Rejected { diagnostics: _ } => Empty
+            }
+        }
+      Rejected { diagnostics: _ } => Empty
+    }
+  }
+}
+
+fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
+  match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: first, diagnostics: _ } =>
+      let first_edges = match body_lower_typed_param_edge(param_capture: first) {
+        Present { value: edge } => [edge]
+        Absent => Empty
+      }
+      match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
+        Accepted { value: outer_right, diagnostics: _ } =>
+          match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
+            Accepted { value: repeat_capture, diagnostics: _ } =>
+              list_append(
+                left: first_edges,
+                right: body_lower_collect_param_edges_from_repeat_tail(
+                  repeat_capture: repeat_capture
+                )
+              )
+            Rejected { diagnostics: _ } => first_edges
+          }
+        Rejected { diagnostics: _ } => first_edges
+      }
+    Rejected { diagnostics: _ } =>
+      match body_lower_typed_param_edge(param_capture: sequence_capture) {
+        Present { value: edge } => [edge]
+        Absent =>
+          match sugar_sequence_pair_optional(node: sequence_capture) {
+            Absent => Empty
+            Present { value: pair } =>
+              match body_lower_typed_param_edge(param_capture: pair.left) {
+                Present { value: edge } =>
+                  match body_lower_after_comma_tail_optional(node: pair.right) {
+                    Present { value: tail } =>
+                      list_append(
+                        left: [edge],
+                        right: body_lower_collect_param_edges(sequence_capture: tail)
+                      )
+                    Absent => [edge]
+                  }
+                Absent =>
+                  match body_lower_after_comma_tail_optional(node: pair.right) {
+                    Present { value: tail } => body_lower_collect_param_edges(sequence_capture: tail)
+                    Absent => Empty
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
+  match dag_binding_branded_atom_identity(node: node) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          if dag_lex_token_symbol(sym: sym) {
+            optional_absent()
+          } else {
+            optional_present(value: sym)
+          }
+        Absent =>
+          match body_lower_operand_ref_optional(node: node) {
+            Present { value: ref_node } =>
+              match node_atom_identity_optional(node: ref_node) {
+                Present { value: sym } => optional_present(value: sym)
+                Absent => optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
+  match sugar_sequence_pair_optional(node: param_capture) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: binding } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: after_colon } =>
+              match body_lower_type_atom_from_expr(node: after_colon.right) {
+                Absent => Absent
+                Present { value: type_node } =>
+                  Present {
+                    value: Edge {
+                      label: Named { name: binding },
+                      target: type_node
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_deep_unwrap_optional(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } =>
+      body_lower_deep_unwrap_optional(node: child)
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn body_lower_deep_unwrap_for_int_literal(node: Node) -> Node {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: captured } =>
+      body_lower_deep_unwrap_for_int_literal(node: captured)
+    Absent => body_lower_deep_unwrap_optional(node: node)
+  }
+}
+
+fn body_lower_unwrap_optional_element(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => child
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn body_lower_param_list_comma_spine_optional(param_list_captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: param_list_captured) {
+    Absent => Absent
+    Present { value: pair } =>
+      match sugar_sequence_pair_optional(node: pair.right) {
+        Absent => Absent
+        Present { value: inner } =>
+          Present {
+            value: body_lower_unwrap_optional_element(node: inner.left)
+          }
+      }
+  }
+}
+
+fn body_lower_type_atom_from_arrow_seq_right(right: Node) -> Optional<Node> {
+  match body_lower_find_captured(
+    root: right,
+    emitted: ^dag_surface_type_expr
+  ) {
+    ParseSubtreeFound { captured: type_expr } =>
+      body_lower_type_atom_from_expr(node: type_expr)
+    ParseSubtreeAbsent =>
+      match parse_production_emitted_identity_optional(node: right) {
+        Present { value: emitted } =>
+          match emitted == ^dag_surface_type_expr {
+            true =>
+              match parse_production_captured_child_optional(node: right) {
+                Present { value: captured } =>
+                  body_lower_type_atom_from_expr(node: captured)
+                Absent => Absent
+              }
+            false => Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_arrow_seq_return_type(node: Node) -> Optional<Node> {
+  match find_named_child(root: node, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: left, diagnostics: _ } =>
+      match body_lower_sequence_head_is_arrow(node: left) {
+        true =>
+          match find_named_child(root: node, name: ^grammar_sequence_right_node_projection) {
+            Accepted { value: right, diagnostics: _ } =>
+              body_lower_type_atom_from_arrow_seq_right(right: right)
+            Rejected { diagnostics: _ } => Absent
+          }
+        false => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_arrow_seq_return_type(node: stripped) {
+    Present { value: found } => Present { value: found }
+    Absent =>
+      match parse_production_captured_child_optional(node: stripped) {
+        Present { value: captured } =>
+          match body_lower_return_type_after_arrow_walk(node: captured) {
+            Present { value: found } => Present { value: found }
+            Absent =>
+              fold(stripped.children, init: Absent, f: fn(acc, e) {
+                match acc {
+                  Present { value: _ } => acc
+                  Absent => body_lower_return_type_after_arrow_walk(node: e.target)
+                }
+              })
+          }
+        Absent =>
+          fold(stripped.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_return_type_after_arrow_walk(node: e.target)
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+    Absent => Absent
+    Present { value: comma_spine } =>
+      let edges = body_lower_collect_param_edges(sequence_capture: comma_spine)
+      if count(edges) == 0 {
+        Present {
+          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+        }
+      } else {
+        Present {
+          value: node_synthetic(
+            kind: TypeNode { connective: Conj },
+            children: edges
+          )
+        }
+      }
+  }
+}
+
+fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_arrow
+    Absent =>
+      match sugar_sequence_pair_optional(node: node) {
+        Present { value: pair } => body_lower_sequence_head_is_arrow(node: pair.left)
+        Absent => false
+      }
+  }
+}
+
+fn body_lower_type_expr_after_arrow(node: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: node) {
+    Present { value: pair } =>
+      if body_lower_sequence_head_is_arrow(node: pair.left) {
+        match body_lower_find_captured(
+          root: pair.right,
+          emitted: ^dag_surface_type_expr
+        ) {
+          ParseSubtreeFound { captured: type_expr } => Present { value: type_expr }
+          ParseSubtreeAbsent =>
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Present { value: after_arrow } =>
+                match parse_production_emitted_identity_optional(node: after_arrow.left) {
+                  Present { value: emitted } =>
+                    if emitted == ^dag_surface_type_expr {
+                      optional_present(value: after_arrow.left)
+                    } else {
+                      body_lower_type_expr_after_arrow(node: pair.right)
+                    }
+                  Absent => body_lower_type_expr_after_arrow(node: pair.right)
+                }
+              Absent => Absent
+            }
+        }
+      } else {
+        match body_lower_type_expr_after_arrow(node: pair.left) {
+          Present { value: found } => Present { value: found }
+          Absent => body_lower_type_expr_after_arrow(node: pair.right)
+        }
+      }
+    Absent =>
+      match parse_production_emitted_identity_optional(node: node) {
+        Present { value: _ } =>
+          match parse_production_captured_child_optional(node: node) {
+            Present { value: captured } => body_lower_type_expr_after_arrow(node: captured)
+            Absent => Absent
+          }
+        Absent =>
+          fold(node.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_type_expr_after_arrow(node: e.target)
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
+  body_lower_return_type_after_arrow_walk(node: captured)
+}
+
+fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
+  if body_lower_is_core_substrate(node: root) {
+    optional_present(value: root)
+  } else {
+    fold(root.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => body_lower_find_core_substrate_optional(root: e.target)
+      }
+    })
+  }
+}
+
+fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_fold(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: fd } =>
+      if body_lower_is_core_substrate(node: folded) {
+        outcome_with_diagnostics(value: optional_present(value: folded), diagnostics: fd)
+      } else {
+        outcome_with_diagnostics(value: optional_absent(), diagnostics: fd)
+      }
+  }
+}
+
+fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
+  if body_lower_is_core_substrate(node: node) {
+    outcome_accepted(value: optional_present(value: node))
+  } else {
+    match body_lower_try_fold_behavior_optional(node: node) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: fold_found, diagnostics: fd } =>
+        match fold_found {
+          Present { value: lowered } =>
+            outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: fd)
+          Absent =>
+                    match body_lower_try_let_in_from_node(node: node) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: let_found, diagnostics: ld } =>
+                        match let_found {
+                          Present { value: lowered } =>
+                            outcome_with_diagnostics(
+                              value: optional_present(value: lowered),
+                              diagnostics: ld
+                            )
+                          Absent =>
+                            match body_lower_try_loop_expr_from_node(node: node) {
+                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                              Accepted { value: loop_found, diagnostics: lcd } =>
+                                match loop_found {
+                                  Present { value: lowered } =>
+                                    outcome_with_diagnostics(
+                                      value: optional_present(value: lowered),
+                                      diagnostics: lcd
+                                    )
+                                  Absent =>
+                        match body_lower_try_fold_loop(node: node) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: fold_result, diagnostics: fd } =>
+                            match fold_result {
+                              Present { value: lowered } =>
+                                outcome_with_diagnostics(
+                                  value: optional_present(value: lowered),
+                                  diagnostics: fd
+                                )
+                              Absent =>
+                        match body_lower_try_primary_ident_call(node: node) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: primary_call, diagnostics: pcd } =>
+                            match primary_call {
+                              Present { value: lowered } =>
+                                outcome_with_diagnostics(
+                                  value: optional_present(value: lowered),
+                                  diagnostics: pcd
+                                )
+                              Absent =>
+                                match body_lower_try_postfix_projection(node: node) {
+                                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                  Accepted { value: projection, diagnostics: pd } =>
+                                    match projection {
+                                      Present { value: lowered } =>
+                                        outcome_with_diagnostics(
+                                          value: optional_present(value: lowered),
+                                          diagnostics: pd
+                                        )
+                                      Absent =>
+                                        match body_lower_try_infix_transform(node: node) {
+                                          Present { value: lowered } =>
+                                            outcome_accepted(value: optional_present(value: lowered))
+                                          Absent =>
+                                                    let stripped = body_lower_unwrap_surface_shell(node: node)
+                                                    match body_lower_try_postfix_projection(node: stripped) {
+                                                      Rejected { diagnostics: r } =>
+                                                        Rejected { diagnostics: r }
+                                                      Accepted { value: stripped_proj, diagnostics: spd } =>
+                                                        match stripped_proj {
+                                                          Present { value: lowered } =>
+                                                            outcome_with_diagnostics(
+                                                              value: optional_present(value: lowered),
+                                                              diagnostics: spd
+                                                            )
+                                                          Absent =>
+                                                            match body_lower_try_fold_loop(node: stripped) {
+                                                              Rejected { diagnostics: r } =>
+                                                                Rejected { diagnostics: r }
+                                                              Accepted { value: stripped_fold, diagnostics: sfd } =>
+                                                                match stripped_fold {
+                                                                  Present { value: lowered } =>
+                                                                    outcome_with_diagnostics(
+                                                                      value: optional_present(value: lowered),
+                                                                      diagnostics: sfd
+                                                                    )
+                                                                  Absent =>
+                                                            match body_lower_try_primary_ident_call(node: stripped) {
+                                                              Rejected { diagnostics: r } =>
+                                                                Rejected { diagnostics: r }
+                                                              Accepted { value: stripped_call, diagnostics: scd } =>
+                                                                match stripped_call {
+                                                                  Present { value: lowered } =>
+                                                                    outcome_with_diagnostics(
+                                                                      value: optional_present(value: lowered),
+                                                                      diagnostics: scd
+                                                                    )
+                                                                  Absent =>
+                                                                    match body_lower_try_infix_transform(node: stripped) {
+                                                                      Present { value: lowered } =>
+                                                                        outcome_accepted(
+                                                                          value: optional_present(value: lowered)
+                                                                        )
+                                                                      Absent =>
+                                                                        outcome_accepted(value: optional_absent())
+                                                                    }
+                                                                }
+                                                            }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                            }
+                          }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: folded) {
+    Present { value: child } => outcome_accepted(value: child)
+    Absent => outcome_accepted(value: folded)
+  }
+}
+
+fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
+  match o {
+    Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: None, rejected: r) }
+  }
+}
+
+fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+  if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: folded)
+  } else if emitted == ^dag_surface_binary_expr {
+    match body_lower_try_infix_transform(node: folded) {
+      Present { value: transform } => outcome_accepted(value: transform)
+      Absent => body_lower_reduce_passthrough(folded: folded)
+    }
+  } else if emitted == ^dag_surface_postfix_expr {
+    body_lower_reduce_or_keep(o: body_lower_postfix_expr(shell: folded), folded: folded)
+  } else if emitted == ^dag_surface_primary_expr {
+    body_lower_reduce_or_keep(o: body_lower_primary_expr(shell: folded), folded: folded)
+  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+    body_lower_reduce_passthrough(folded: folded)
+  } else if emitted == ^dag_surface_fn_decl {
+    body_lower_reduce_or_keep(o: body_lower_fn_decl_to_arrow(shell: folded), folded: folded)
+  } else {
+    outcome_accepted(value: folded)
+  }
+}
+
+fn body_lower_reduce(folded: Node) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: folded) {
+    outcome_accepted(value: folded)
+  } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    outcome_accepted(value: folded)
+  } else {
+    match parse_production_emitted_identity_optional(node: folded) {
+      Absent => outcome_accepted(value: folded)
+      Present { value: emitted } => body_lower_reduce_emitted(folded: folded, emitted: emitted)
+    }
+  }
+}
+
+fn body_lower_fold_children(node: Node) -> Outcome<Node> {
+  fold(node.children, init: outcome_accepted(value: node_rebuild(n: node, children: [])), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: shell, diagnostics: ad } =>
+        match body_lower_fold(node: e.target) {
+          Rejected { diagnostics: cr } =>
+            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+          Accepted { value: child, diagnostics: cd } =>
+            Accepted {
+              value: node_rebuild(
+                n: shell,
+                children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child })
+              ),
+              diagnostics: diagnostics_merge(outer: ad, inner: cd)
+            }
+        }
+    }
+  })
+}
+
+fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
+  if body_lower_match_capture_heads_spine(
+    spine: body_lower_unwrap_surface_shell(node: node)
+  ) {
+    match body_lower_try_match_from_captured(captured: node) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: lowered_opt, diagnostics: d } =>
+        match lowered_opt {
+          Present { value: lowered } => Accepted { value: lowered, diagnostics: d }
+          Absent => body_lower_fold_reduce(node: node)
+        }
+    }
+  } else {
+    body_lower_fold_reduce(node: node)
+  }
+}
+
+fn body_lower_fold(node: Node) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: node) {
+    outcome_accepted(value: node)
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: emitted } =>
+        if emitted == ^dag_surface_match_expr {
+          body_lower_match_expr(shell: node)
+        } else if emitted == ^dag_surface_if_expr {
+          body_lower_if_expr(shell: node)
+        } else if emitted == ^dag_surface_loop_expr {
+          body_lower_loop_expr(shell: node)
+        } else if emitted == ^dag_surface_let_expr {
+          body_lower_let_expr(shell: node)
+        } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+          outcome_accepted(value: node)
+        } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
+          outcome_accepted(value: node)
+        } else {
+          body_lower_fold_reduce(node: node)
+        }
+      Absent => body_lower_fold_identity_absent(node: node)
+    }
+  }
+}
+
+fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
+  match body_lower_fold_children(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: d } =>
+      match body_lower_reduce(folded: folded) {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: d, rejected: r) }
+        Accepted { value: reduced, diagnostics: rd } =>
+          Accepted { value: reduced, diagnostics: diagnostics_merge(outer: d, inner: rd) }
+      }
+  }
+}
+
+fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_primary_expr) {
+    ParseSubtreeFound { captured: primary } =>
+      match body_lower_primary_expr(shell: primary) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: optional_present(value: lowered),
+            diagnostics: d
+          )
+      }
+    ParseSubtreeAbsent =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt) {
+        ParseSubtreeFound { captured: stmt } =>
+          body_lower_body_subtree_lower(captured: stmt)
+        ParseSubtreeAbsent =>
+          match body_lower_find_core_substrate_optional(root: captured) {
+            Present { value: lowered } =>
+              outcome_accepted(value: optional_present(value: lowered))
+            Absent =>
+              body_lower_try_body_lowered(
+                node: body_lower_unwrap_surface_shell(node: captured)
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_body_subtree_lower_from_postfix(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
+    ParseSubtreeFound { captured: postfix } =>
+      match body_lower_try_body_lowered(node: postfix) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: lowered } =>
+              outcome_with_diagnostics(
+                value: optional_present(value: lowered),
+                diagnostics: d
+              )
+            Absent => body_lower_body_subtree_lower_from_primary(captured: captured)
+          }
+      }
+    ParseSubtreeAbsent => body_lower_body_subtree_lower_from_primary(captured: captured)
+  }
+}
+
+fn body_lower_body_subtree_lower_from_expr(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } =>
+      match body_lower_try_body_lowered(node: expr) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: lowered } =>
+              outcome_with_diagnostics(
+                value: optional_present(value: lowered),
+                diagnostics: d
+              )
+            Absent => body_lower_body_subtree_lower_from_postfix(captured: captured)
+          }
+      }
+    ParseSubtreeAbsent => body_lower_body_subtree_lower_from_postfix(captured: captured)
+  }
+}
+
+fn body_lower_body_subtree_lower_from_binary(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
+    ParseSubtreeFound { captured: binary } =>
+      match body_lower_try_body_lowered(node: binary) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: lowered } =>
+              outcome_with_diagnostics(
+                value: optional_present(value: lowered),
+                diagnostics: d
+              )
+            Absent => body_lower_body_subtree_lower_from_expr(captured: captured)
+          }
+      }
+    ParseSubtreeAbsent => body_lower_body_subtree_lower_from_expr(captured: captured)
+  }
+}
+
+fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_body_lowered(node: captured) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+        Absent =>
+          match body_lower_find_captured(
+            root: captured,
+            emitted: ^dag_surface_if_expr
+          ) {
+            ParseSubtreeFound { captured: if_capture } =>
+              body_lower_try_if_from_captured(captured: if_capture)
+            ParseSubtreeAbsent =>
+          match body_lower_find_captured(
+            root: captured,
+            emitted: ^dag_surface_match_expr
+          ) {
+            ParseSubtreeFound { captured: match_capture } =>
+              body_lower_try_match_from_captured(captured: match_capture)
+            ParseSubtreeAbsent =>
+          match body_lower_find_captured(
+            root: captured,
+            emitted: ^dag_surface_loop_expr
+          ) {
+            ParseSubtreeFound { captured: loop_capture } =>
+              body_lower_try_loop_expr_from_captured(captured: loop_capture)
+            ParseSubtreeAbsent =>
+          match body_lower_find_captured(
+            root: captured,
+            emitted: ^dag_surface_let_expr
+          ) {
+            ParseSubtreeFound { captured: let_capture } =>
+              body_lower_try_let_in_from_captured(captured: let_capture)
+            ParseSubtreeAbsent =>
+              body_lower_body_subtree_lower_from_binary(captured: captured)
+          }
+          }
+          }
+          }
+      }
+  }
+}
+
+fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => body_lower_body_subtree_lower(captured: body)
+    ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
+  }
+}
+
+fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: node) {
+    Present { value: op } => Present { value: op }
+    Absent => body_lower_operand_from_shell_optional(shell: node)
+  }
+}
+
+fn body_lower_reify_transform_edge(
+  done: List<Edge>,
+  e: Edge
+) -> Outcome<List<Edge>> {
+  if length(xs: done) == 0 {
+    outcome_accepted(
+      value: list_snoc_item(
+        xs: done,
+        item: Edge { label: e.label, target: e.target }
+      )
+    )
+  } else {
+    match body_lower_reify_operand_node(node: e.target) {
+      Present { value: reified } =>
+        outcome_accepted(
+          value: list_snoc_item(
+            xs: done,
+            item: Edge { label: e.label, target: reified }
+          )
+        )
+      Absent =>
+        outcome_rejected(
+          d: body_lower_diagnostic(
+            reason: ^body_lowering_reason_unsupported_form,
+            n: e.target
+          )
+        )
+    }
+  }
+}
+
+fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: done, diagnostics: d } =>
+            match body_lower_reify_transform_edge(done: done, e: e) {
+              Rejected { diagnostics: r } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: d, rejected: r)
+                }
+              Accepted { value: next, diagnostics: ed } =>
+                Accepted {
+                  value: next,
+                  diagnostics: diagnostics_merge(outer: d, inner: ed)
+                }
+            }
+        }
+      }) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: node_synthetic(
+              kind: ComputationNode { behavior: Transform },
+              children: children
+            ),
+            diagnostics: d
+          )
+      }
+    _ => outcome_accepted(value: body)
+  }
+}
+
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: fn_name }, target: arrow }
+    ]
+  )
+}
+
+fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_domain_from_param_list(param_list: param_list) {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: domain } =>
+              match body_lower_body_from_fn_captured(captured: captured) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: body_opt, diagnostics: bd0 } =>
+                  match body_opt {
+                    Absent => body_lower_wrapper_retained_shell(shell: shell)
+                    Present { value: body } =>
+                      match body_lower_reify_arrow_body(body: body) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: reified_body, diagnostics: bd } =>
+                          match body_lower_return_type_from_fn_captured(captured: captured) {
+                            Absent => body_lower_wrapper_retained_shell(shell: shell)
+                            Present { value: return_type } =>
+                              match body_lower_fn_decl_ident_from_captured(captured: captured) {
+                                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                                Present { value: fn_name } =>
+                                  let arrow = node_synthetic(
+                                    kind: TypeNode { connective: Arrow },
+                                    children: [
+                                      Edge { label: Positional, target: domain },
+                                      Edge { label: Positional, target: return_type },
+                                      Edge { label: Positional, target: return_type },
+                                      Edge {
+                                        label: Named { name: ^arrow_body_edge },
+                                        target: reified_body
+                                      }
+                                    ]
+                                  )
+                                  outcome_with_diagnostics(
+                                    value: body_lower_fn_decl_named_member_wrap(
+                                      arrow: arrow,
+                                      fn_name: fn_name
+                                    ),
+                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
+  let unwrapped = body_lower_deep_unwrap_optional(node: node)
+  match node_atom_identity_optional(node: unwrapped) {
+    Present { value: id } =>
+      if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+        optional_present(value: body_lower_param_ref_atom(source: unwrapped, identity: id))
+      } else {
+        body_lower_int_literal_with_magnitude_optional(node: unwrapped)
+      }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_literal_bool_atom_optional(node: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: lit } => Present { value: lit }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if body_lower_is_identity_projection_edge(edge: e) {
+              Absent
+            } else {
+              body_lower_literal_int_atom_optional(node: e.target)
+            }
+        }
+      })
+  }
+}
+
+fn body_lower_operand_ref_acceptable_optional(node: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: node) {
+    Present { value: operand } =>
+      match body_lower_int_literal_with_magnitude_optional(node: operand) {
+        Present { value: lit } => Present { value: lit }
+        Absent =>
+          match dag_node_is_int_literal_atom(node: operand) {
+            true => Absent
+            false => Present { value: operand }
+          }
+      }
+    Absent => Absent
+  }
+}
+
+fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
+  match body_lower_operand_ref_acceptable_optional(node: captured) {
+    Present { value: operand } => outcome_accepted(value: operand)
+    Absent =>
+      match body_lower_literal_bool_atom_optional(node: captured) {
+        Present { value: lit } => outcome_accepted(value: lit)
+        Absent =>
+          match body_lower_literal_int_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
+            Absent =>
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: pat_atom } => outcome_accepted(value: pat_atom)
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_unsupported_form,
+                      n: shell
+                    )
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } => outcome_accepted(value: captured)
+  }
+}
+
+fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: list_append(
+      left: [Edge { label: Positional, target: operator }],
+      right: fold(args, init: Empty, f: fn(acc, arg) {
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg })
+      })
+    )
+  )
+}
+
+fn body_lower_method_operator_atom(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  )
+}
+
+fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
+    ParseSubtreeAbsent =>
+      match parse_production_emitted_identity_optional(node: arg_capture) {
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_expr {
+            match parse_production_captured_child_optional(node: arg_capture) {
+              Present { value: captured } => body_lower_operand_ref_optional(node: captured)
+              Absent => Absent
+            }
+          } else {
+            body_lower_operand_ref_optional(node: arg_capture)
+          }
+        Absent => body_lower_operand_ref_optional(node: arg_capture)
+      }
+  }
+}
+
+fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: arg_capture) {
+    Absent =>
+      match parse_production_emitted_identity_optional(node: arg_capture) {
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_arg {
+            match parse_production_captured_child_optional(node: arg_capture) {
+              Present { value: captured } =>
+                body_lower_named_arg_value_optional(arg_capture: captured)
+              Absent => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => optional_absent()
+        Present { value: _binding } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => optional_absent()
+            Present { value: after_name } =>
+              match node_atom_identity_optional(node: after_name.left) {
+                Present { value: colon } =>
+                  if colon == ^dag_token_colon {
+                    body_lower_arg_operand_optional(arg_capture: after_name.right)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
+  match body_lower_named_arg_value_optional(arg_capture: arg_capture) {
+    Present { value: operand } => Present { value: operand }
+    Absent => body_lower_arg_operand_optional(arg_capture: arg_capture)
+  }
+}
+
+fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      match body_lower_call_arg_edge_optional(
+        arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
+      ) {
+        Present { value: operand } => [operand]
+        Absent => Empty
+      }
+    Absent =>
+      match body_lower_call_arg_edge_optional(arg_capture: stripped) {
+        Present { value: operand } => [operand]
+        Absent => Empty
+      }
+  }
+}
+
+fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_call_arg_edge_optional(arg_capture: stripped) {
+    Present { value: operand } => [operand]
+    Absent =>
+      match sugar_sequence_pair_optional(node: stripped) {
+        Present { value: pair } =>
+          let left_ops = body_lower_call_arg_operand_from_repeat_elem(repeat_elem: pair.left)
+          if count(left_ops) > 0 {
+            left_ops
+          } else {
+            body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
+          }
+        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
+      }
+  }
+}
+
+fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: Node) -> List<Node> {
+  if is_empty_conj_root(n: repeat_capture) {
+    Empty
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Accepted { value: head, diagnostics: _ } =>
+        let operands = body_lower_extract_comma_list_operand(node: head)
+        match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+          Accepted { value: tail, diagnostics: _ } =>
+            list_append(
+              left: operands,
+              right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
+            )
+          Rejected { diagnostics: _ } => operands
+        }
+      Rejected { diagnostics: _ } => Empty
+    }
+  }
+}
+
+fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
+  let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
+  match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: first, diagnostics: _ } =>
+      let first_operands = match body_lower_call_arg_edge_optional(arg_capture: first) {
+        Present { value: operand } => [operand]
+        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: first)
+      }
+      match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
+        Accepted { value: tail, diagnostics: _ } =>
+          list_append(
+            left: first_operands,
+            right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
+          )
+        Rejected { diagnostics: _ } => first_operands
+      }
+    Rejected { diagnostics: _ } =>
+      match body_lower_call_arg_edge_optional(arg_capture: unwrapped) {
+        Present { value: operand } => [operand]
+        Absent =>
+          match sugar_sequence_pair_optional(node: unwrapped) {
+            Present { value: pair } =>
+              match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
+                Present { value: operand } =>
+                  match body_lower_after_comma_tail_optional(node: pair.right) {
+                    Present { value: tail } =>
+                      list_append(
+                        left: [operand],
+                        right: body_lower_collect_call_arg_operands(sequence_capture: tail)
+                      )
+                    Absent => [operand]
+                  }
+                Absent =>
+                  match body_lower_after_comma_tail_optional(node: pair.right) {
+                    Present { value: tail } => body_lower_collect_call_arg_operands(sequence_capture: tail)
+                    Absent => Empty
+                  }
+              }
+            Absent => Empty
+          }
+      }
+  }
+}
+
+fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: args_capture) {
+    Present { value: comma_spine } =>
+      body_lower_collect_call_arg_operands(sequence_capture: comma_spine)
+    Absent => body_lower_collect_call_arg_operands(sequence_capture: args_capture)
+  }
+}
+
+fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: root)
+  match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
+    Present { value: _ } => optional_present(value: stripped)
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_primary_call_suffix_optional(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: callee_atom } =>
+          match body_lower_primary_call_suffix_optional(root: pair.right) {
+            Absent => outcome_accepted(value: optional_absent())
+            Present { value: call_suffix } =>
+              match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
+                Present { value: args } =>
+                  outcome_accepted(
+                    value: optional_present(
+                      value: body_lower_transform_call(
+                        operator: callee_atom,
+                        args: args
+                      )
+                    )
+                  )
+                Absent => outcome_accepted(value: optional_absent())
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: call_suffix) {
+    Absent => Absent
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_lparen {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => optional_present(value: Empty)
+              Present { value: inner } =>
+                optional_present(
+                  value: body_lower_call_args_from_capture(
+                    args_capture: body_lower_postfix_optional_unwrap(node: inner.left)
+                  )
+                )
+            }
+          } else {
+            Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_dot {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => Absent
+              Present { value: after_dot } =>
+                match body_lower_param_binding_optional(node: after_dot.left) {
+                  Present { value: method } => optional_present(value: method)
+                  Absent => Absent
+                }
+            }
+          } else {
+            Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_postfix_optional_unwrap(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => child
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_dot {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => optional_absent()
+              Present { value: after_dot } =>
+                optional_present(
+                  value: body_lower_postfix_optional_unwrap(node: after_dot.right)
+                )
+            }
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
+  match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
+    Absent => Empty
+    Present { value: call_suffix } =>
+      match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
+        Present { value: args } => args
+        Absent => Empty
+      }
+  }
+}
+
+fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
+  match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
+    Absent => false
+    Present { value: call_suffix } =>
+      match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: Node) -> Node {
+  match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
+    Absent => repeat_elem
+    Present { value: call_suffix } => call_suffix
+  }
+}
+
+fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Node> {
+  if is_empty_conj_root(n: repeat_capture) {
+    optional_absent()
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
+      Rejected { diagnostics: _ } =>
+        match find_named_child(root: repeat_capture, name: ^grammar_repeat_element_node_projection) {
+          Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+    }
+  }
+}
+
+fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: receiver } =>
+          match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
+            Absent => outcome_accepted(value: optional_absent())
+            Present { value: repeat_elem } =>
+              match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
+                Absent => outcome_accepted(value: optional_absent())
+                Present { value: method } =>
+                  if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+                    let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
+                    outcome_accepted(
+                      value: optional_present(
+                        value: body_lower_transform_call(
+                          operator: body_lower_method_operator_atom(sym: method),
+                          args: list_append(
+                            left: [receiver],
+                            right: args
+                          )
+                        )
+                      )
+                    )
+                  } else {
+                    outcome_rejected(
+                      d: body_lower_diagnostic(
+                        reason: ^body_lowering_reason_postfix_field_access_refused,
+                        n: node
+                      )
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: match_arm_pattern }, target: pat_node },
+      Edge { label: Named { name: match_arm_body }, target: body }
+    ]
+  )
+}
+
+fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match dag_binding_branded_atom_identity(node: stripped) {
+    Present { value: binding } =>
+      optional_present(value: body_lower_param_ref_atom(source: stripped, identity: binding))
+    Absent =>
+      match parse_production_emitted_identity_optional(node: stripped) {
+        Present { value: emitted } =>
+          match parse_production_captured_child_optional(node: stripped) {
+            Present { value: captured } => body_lower_pattern_leaf_atom_optional(node: captured)
+            Absent =>
+              if emitted == ^dag_surface_pattern {
+                fold(stripped.children, init: Absent, f: fn(acc, e) {
+                  match acc {
+                    Present { value: _ } => acc
+                    Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
+                  }
+                })
+              } else {
+                optional_absent()
+              }
+          }
+        Absent =>
+          match node_atom_identity_optional(node: stripped) {
+            Present { value: id } =>
+              if dag_lex_token_symbol(sym: id) {
+                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+                  optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+                } else {
+                  body_lower_int_literal_with_magnitude_optional(node: stripped)
+                }
+              } else {
+                optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+              }
+            Absent =>
+              fold(stripped.children, init: Absent, f: fn(acc, e) {
+                match acc {
+                  Present { value: _ } => acc
+                  Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
+                }
+              })
+          }
+      }
+  }
+}
+
+fn body_lower_pattern_first_atom_optional(node: Node) -> Optional<Node> {
+  match body_lower_pattern_leaf_atom_optional(node: node) {
+    Present { value: atom } => Present { value: atom }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_pattern_first_atom_optional(node: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_pattern_atom_optional(pattern_capture: Node) -> Optional<Node> {
+  body_lower_pattern_first_atom_optional(node: pattern_capture)
+}
+
+fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(
+      reason: ^body_lowering_reason_match_arm_navigation_refused,
+      n: arm_capture
+    )
+  )
+}
+
+fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: stripped, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => optional_present(value: expr)
+    ParseSubtreeAbsent =>
+      match body_lower_find_captured(
+        root: stripped,
+        emitted: ^dag_surface_primary_expr
+      ) {
+        ParseSubtreeFound { captured: primary } => optional_present(value: primary)
+        ParseSubtreeAbsent =>
+          match body_lower_find_captured(
+            root: stripped,
+            emitted: ^dag_surface_postfix_expr
+          ) {
+            ParseSubtreeFound { captured: postfix } => optional_present(value: postfix)
+            ParseSubtreeAbsent => optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: body_capture, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => body_lower_operand_from_shell_optional(shell: expr)
+    ParseSubtreeAbsent =>
+      match parse_production_emitted_identity_optional(node: body_capture) {
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_expr {
+            match parse_production_captured_child_optional(node: body_capture) {
+              Present { value: captured } =>
+                body_lower_match_arm_body_optional(body_capture: captured)
+              Absent => optional_absent()
+            }
+          } else if emitted == ^dag_surface_match_arm_stmt_body {
+            match parse_production_captured_child_optional(node: body_capture) {
+              Present { value: captured } =>
+                body_lower_match_arm_body_optional(body_capture: captured)
+              Absent => optional_absent()
+            }
+          } else {
+            body_lower_operand_from_shell_optional(shell: body_capture)
+          }
+        Absent =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: body_capture)) {
+            Present { value: id } =>
+              if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+                optional_present(
+                  value: body_lower_param_ref_atom(source: body_capture, identity: id)
+                )
+              } else if dag_node_is_int_literal_atom(
+                node: body_lower_deep_unwrap_optional(node: body_capture)
+              ) {
+                body_lower_int_literal_with_magnitude_optional(node: body_capture)
+              } else if dag_lex_token_symbol(sym: id) {
+                optional_absent()
+              } else {
+                optional_present(
+                  value: body_lower_param_ref_atom(source: body_capture, identity: id)
+                )
+              }
+            Absent => body_lower_operand_from_shell_optional(shell: body_capture)
+          }
+      }
+  }
+}
+
+fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
+  match body_lower_find_captured(
+    root: stripped,
+    emitted: ^dag_surface_pattern
+  ) {
+    ParseSubtreeFound { captured: pat_capture } =>
+      match body_lower_pattern_atom_optional(pattern_capture: pat_capture) {
+        Present { value: pat_node } =>
+          match body_lower_match_arm_body_capture_optional(stripped: stripped) {
+            Present { value: body_capture } =>
+              match body_lower_match_arm_body_optional(body_capture: body_capture) {
+                Present { value: body } =>
+                  outcome_accepted(
+                    value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
+                  )
+                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+              }
+            Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+          }
+        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+      }
+    ParseSubtreeAbsent =>
+      match body_lower_match_spine_left(spine: stripped) {
+        Present { value: left } =>
+          match body_lower_match_spine_right(spine: stripped) {
+            Present { value: right } =>
+              match body_lower_pattern_atom_optional(pattern_capture: left) {
+                Present { value: pat_node } =>
+                  match body_lower_match_spine_left(spine: right) {
+                    Present { value: arrow_node } =>
+                      match node_atom_identity_optional(node: arrow_node) {
+                        Present { value: arrow } =>
+                          if arrow == ^dag_token_fat_arrow {
+                            match body_lower_match_spine_right(spine: right) {
+                              Present { value: body_capture } =>
+                                match body_lower_match_arm_body_optional(
+                                  body_capture: body_capture
+                                ) {
+                                  Present { value: body } =>
+                                    outcome_accepted(
+                                      value: body_lower_match_arm_wire(
+                                        pat_node: pat_node,
+                                        body: body
+                                      )
+                                    )
+                                  Absent =>
+                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                                }
+                              Absent =>
+                                body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                            }
+                          } else {
+                            body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                          }
+                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                      }
+                    Absent =>
+                      match sugar_sequence_pair_optional(node: right) {
+                        Present { value: after_pattern } =>
+                          match node_atom_identity_optional(node: after_pattern.left) {
+                            Present { value: arrow } =>
+                              if arrow == ^dag_token_fat_arrow {
+                                match body_lower_match_arm_body_optional(
+                                  body_capture: after_pattern.right
+                                ) {
+                                  Present { value: body } =>
+                                    outcome_accepted(
+                                      value: body_lower_match_arm_wire(
+                                        pat_node: pat_node,
+                                        body: body
+                                      )
+                                    )
+                                  Absent =>
+                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                                }
+                              } else {
+                                body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                              }
+                            Absent =>
+                              body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                          }
+                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                      }
+                  }
+                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+              }
+            Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+          }
+        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+      }
+  }
+}
+
+fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_pattern)
+    || (emitted == ^dag_surface_primary_expr)
+    || (emitted == ^dag_surface_match_arm_stmt_body)
+    || body_lower_is_pass_through_emitted(emitted: emitted)
+}
+
+fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      body_lower_wire_match_arm_capture(
+        arm_capture: body_lower_postfix_optional_unwrap(node: pair.right)
+      )
+    Absent =>
+      body_lower_wire_match_arm_capture(arm_capture: stripped)
+  }
+}
+
+fn body_lower_extract_comma_list_arm_head(node: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_wire_match_arm_capture(arm_capture: stripped) {
+    Rejected { diagnostics: _ } =>
+      body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
+    Accepted { value: arm, diagnostics: d } =>
+      Accepted { value: arm, diagnostics: d }
+  }
+}
+
+fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_arm {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } =>
+            body_lower_wire_match_arm_capture(arm_capture: captured)
+          Absent => body_lower_match_arm_wire_from_sequence(stripped: stripped)
+        }
+      } else if body_lower_is_match_arm_navigate_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } =>
+            body_lower_wire_match_arm_capture(arm_capture: captured)
+          Absent => body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
+        }
+      } else {
+        body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
+      }
+    Absent => body_lower_match_arm_wire_from_sequence(stripped: stripped)
+  }
+}
+
+fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outcome<List<Node>> {
+  if is_empty_conj_root(n: repeat_capture) {
+    outcome_accepted(value: Empty)
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Accepted { value: head, diagnostics: _ } =>
+        match body_lower_extract_comma_list_arm_head(node: head) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: arm, diagnostics: d } =>
+            match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+              Accepted { value: tail, diagnostics: _ } =>
+                match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: rest, diagnostics: rd } =>
+                    Accepted {
+                      value: list_append(left: [arm], right: rest),
+                      diagnostics: diagnostics_merge(outer: d, inner: rd)
+                    }
+                }
+              Rejected { diagnostics: _ } =>
+                Accepted { value: [arm], diagnostics: d }
+            }
+        }
+      Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
+    }
+  }
+}
+
+fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> {
+  let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
+  match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: first, diagnostics: _ } =>
+      match body_lower_extract_comma_list_arm_head(node: first) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arm, diagnostics: d } =>
+          match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
+            Accepted { value: tail, diagnostics: _ } =>
+              match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: rest, diagnostics: rd } =>
+                  Accepted {
+                    value: list_append(left: [arm], right: rest),
+                    diagnostics: diagnostics_merge(outer: d, inner: rd)
+                  }
+              }
+            Rejected { diagnostics: _ } =>
+              Accepted { value: [arm], diagnostics: d }
+          }
+      }
+    Rejected { diagnostics: _ } =>
+      match sugar_sequence_pair_optional(node: unwrapped) {
+        Present { value: pair } =>
+          match body_lower_extract_comma_list_arm_head(node: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: arm, diagnostics: d } =>
+              match body_lower_after_comma_tail_optional(node: pair.right) {
+                Present { value: tail } =>
+                  match body_lower_collect_match_arms(sequence_capture: tail) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: rest, diagnostics: rd } =>
+                      Accepted {
+                        value: list_append(left: [arm], right: rest),
+                        diagnostics: diagnostics_merge(outer: d, inner: rd)
+                      }
+                  }
+                Absent => Accepted { value: [arm], diagnostics: d }
+              }
+          }
+        Absent =>
+          match body_lower_extract_comma_list_arm_head(node: unwrapped) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: arm, diagnostics: d } =>
+              Accepted { value: [arm], diagnostics: d }
+          }
+      }
+  }
+}
+
+fn body_lower_reify_branch_target(node: Node) -> Node {
+  match body_lower_materialize_int_literal_operand_optional(node: node) {
+    Present { value: reified } => reified
+    Absent =>
+      match body_lower_literal_bool_atom_optional(node: node) {
+        Present { value: reified } => reified
+        Absent =>
+          match body_lower_reify_operand_node(node: node) {
+            Present { value: reified } => reified
+            Absent => node
+          }
+      }
+  }
+}
+
+fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: Branch } =>
+      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: done, diagnostics: d } =>
+            outcome_with_diagnostics(
+              value: list_snoc_item(
+                xs: done,
+                item: Edge {
+                  label: e.label,
+                  target: body_lower_reify_branch_target(node: e.target)
+                }
+              ),
+              diagnostics: d
+            )
+        }
+      }) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: node_synthetic(
+              kind: ComputationNode { behavior: Branch },
+              children: children
+            ),
+            diagnostics: d
+          )
+      }
+    _ => outcome_accepted(value: body)
+  }
+}
+
+fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
+    ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
+    _ => outcome_accepted(value: body)
+  }
+}
+
+fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(
+      reason: ^body_lowering_reason_if_navigation_refused,
+      n: captured
+    )
+  )
+}
+
+fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: lit } => Present { value: lit }
+    Absent =>
+      match body_lower_literal_int_atom_optional(node: node) {
+        Present { value: lit } => Present { value: lit }
+        Absent =>
+          match body_lower_unwrap_captured(shell: node) {
+            Present { value: captured } =>
+              body_lower_materialize_int_literal_operand_optional(node: captured)
+            Absent =>
+              let deep = body_lower_deep_unwrap_for_int_literal(node: node)
+              match node_atom_identity_optional(node: deep) {
+                Present { value: id } =>
+                  match dag_node_is_int_literal_atom(node: deep) {
+                    true =>
+                      body_lower_int_literal_with_magnitude_optional(node: deep)
+                    false =>
+                      match integer_string_to_decimal_digits_optional(s: symbol_lexeme(sym: id)) {
+                        Present { value: _ } =>
+                          match dag_int_literal_node_from_lexeme(
+                            lexeme: symbol_lexeme(sym: id),
+                            occurrence_id: node.occurrence_id
+                          ) {
+                            Accepted { value: lit, diagnostics: _ } => optional_present(value: lit)
+                            Rejected { diagnostics: _ } => optional_absent()
+                          }
+                        Absent => optional_absent()
+                      }
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
+  match body_lower_materialize_int_literal_operand_optional(node: arm) {
+    Present { value: lit } => Present { value: lit }
+    Absent =>
+      match body_lower_literal_bool_atom_optional(node: arm) {
+        Present { value: b } => Present { value: b }
+        Absent =>
+          match body_lower_operand_from_shell_optional(shell: arm) {
+            Present { value: op } =>
+              match body_lower_materialize_int_literal_operand_optional(node: op) {
+                Present { value: lit } => Present { value: lit }
+                Absent =>
+                  match body_lower_int_literal_with_magnitude_optional(node: op) {
+                    Present { value: lit } => Present { value: lit }
+                    Absent =>
+                      if dag_node_is_int_literal_atom(
+                        node: body_lower_deep_unwrap_for_int_literal(node: op)
+                      ) {
+                        optional_absent()
+                      } else {
+                        optional_present(value: op)
+                      }
+                  }
+              }
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_if_arm_operand_optional(arm_capture: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: arm_capture) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_if_expr {
+        match body_lower_unwrap_captured(shell: arm_capture) {
+          Present { value: captured } =>
+            match body_lower_try_if_from_captured(captured: captured) {
+              Rejected { diagnostics: _ } => Absent
+              Accepted { value: lowered_opt, diagnostics: _ } =>
+                match lowered_opt {
+                  Present { value: lowered } => Present { value: lowered }
+                  Absent => Absent
+                }
+            }
+          Absent => Absent
+        }
+      } else if emitted == ^dag_surface_fn_body {
+        match body_lower_find_production_shell_optional(
+          root: arm_capture,
+          emitted: ^dag_surface_stmt
+        ) {
+          Present { value: shell } =>
+            body_lower_operand_from_shell_optional(shell: shell)
+          Absent =>
+            match body_lower_find_production_shell_optional(
+              root: arm_capture,
+              emitted: ^dag_surface_expr
+            ) {
+              Present { value: shell } =>
+                body_lower_operand_from_shell_optional(shell: shell)
+              Absent =>
+                match body_lower_find_production_shell_optional(
+                  root: arm_capture,
+                  emitted: ^dag_surface_primary_expr
+                ) {
+                  Present { value: shell } =>
+                    body_lower_operand_from_shell_optional(shell: shell)
+                  Absent =>
+                    body_lower_match_arm_body_optional(body_capture: arm_capture)
+                }
+            }
+        }
+      } else {
+        body_lower_match_arm_body_optional(body_capture: arm_capture)
+      }
+    Absent => body_lower_match_arm_body_optional(body_capture: arm_capture)
+  }
+}
+
+fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: spine, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => Present { value: expr }
+    ParseSubtreeAbsent =>
+      if is_empty_conj_root(n: spine) {
+        Absent
+      } else {
+        match body_lower_match_spine_left(spine: spine) {
+          Present { value: left } =>
+            match body_lower_match_spine_right(spine: spine) {
+              Present { value: right } =>
+                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                  Present { value: id } =>
+                    match (id == ^dag_token_kw_if) || (id == ^dag_token_kw_then) || (id == ^dag_token_kw_else) {
+                      true => body_lower_if_expr_capture_optional(spine: right)
+                      false =>
+                        match body_lower_if_expr_capture_optional(spine: left) {
+                          Present { value: found } => Present { value: found }
+                          Absent => body_lower_if_expr_capture_optional(spine: right)
+                        }
+                    }
+                  Absent =>
+                    match body_lower_if_expr_capture_optional(spine: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_expr_capture_optional(spine: right)
+                    }
+                }
+              Absent => Absent
+            }
+          Absent => Absent
+        }
+      }
+  }
+}
+
+fn body_lower_if_fn_body_capture_optional(spine: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => Present { value: body }
+    ParseSubtreeAbsent =>
+      if is_empty_conj_root(n: spine) {
+        Absent
+      } else {
+        match body_lower_match_spine_left(spine: spine) {
+          Present { value: left } =>
+            match body_lower_match_spine_right(spine: spine) {
+              Present { value: right } =>
+                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                  Present { value: id } =>
+                    match id == ^dag_token_kw_else {
+                      true => body_lower_if_fn_body_capture_optional(spine: right)
+                      false =>
+                        match body_lower_if_fn_body_capture_optional(spine: left) {
+                          Present { value: found } => Present { value: found }
+                          Absent => body_lower_if_fn_body_capture_optional(spine: right)
+                        }
+                    }
+                  Absent =>
+                    match body_lower_if_fn_body_capture_optional(spine: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_fn_body_capture_optional(spine: right)
+                    }
+                }
+              Absent => Absent
+            }
+          Absent => Absent
+        }
+      }
+  }
+}
+
+fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_if_fn_body_capture_optional(spine: spine) {
+    Present { value: first } =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
+        ParseSubtreeFound { captured: only } => Present { value: only }
+        ParseSubtreeAbsent => Present { value: first }
+      }
+    Absent => Absent
+  }
+}
+
+fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match is_empty_conj_root(n: spine) {
+    true => Absent
+    false =>
+      match body_lower_match_spine_left(spine: spine) {
+      Present { value: left } =>
+        match body_lower_match_spine_right(spine: spine) {
+          Present { value: right } =>
+            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+              Present { value: id } =>
+                match id == ^dag_token_kw_else {
+                  true =>
+                    match body_lower_find_captured(root: right, emitted: ^dag_surface_if_expr) {
+                      ParseSubtreeFound { captured: nested } => Present { value: nested }
+                      ParseSubtreeAbsent =>
+                        match body_lower_if_fn_body_capture_optional(spine: right) {
+                          Present { value: body } => Present { value: body }
+                          Absent =>
+                            match body_lower_if_expr_capture_optional(spine: right) {
+                              Present { value: expr } => Present { value: expr }
+                              Absent => Absent
+                            }
+                        }
+                    }
+                  false =>
+                    match body_lower_if_else_capture_optional(captured: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_else_capture_optional(captured: right)
+                    }
+                }
+              Absent =>
+                match body_lower_if_else_capture_optional(captured: left) {
+                  Present { value: found } => Present { value: found }
+                  Absent => body_lower_if_else_capture_optional(captured: right)
+                }
+            }
+          Absent => Absent
+        }
+      Absent =>
+        fold(spine.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => body_lower_if_else_capture_optional(captured: e.target)
+          }
+        })
+      }
+  }
+}
+
+fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match is_empty_conj_root(n: spine) {
+    true => Absent
+    false =>
+      match body_lower_match_spine_left(spine: spine) {
+      Present { value: left } =>
+        match body_lower_match_spine_right(spine: spine) {
+          Present { value: right } =>
+            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+              Present { value: id } =>
+                match id == ^dag_token_kw_if {
+                  true => body_lower_if_expr_capture_optional(spine: right)
+                  false =>
+                    match body_lower_if_condition_optional(captured: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_condition_optional(captured: right)
+                    }
+                }
+              Absent =>
+                match body_lower_operand_ref_optional(node: left) {
+                  Present { value: op } => Present { value: op }
+                  Absent =>
+                    match body_lower_if_condition_optional(captured: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_condition_optional(captured: right)
+                    }
+                }
+            }
+          Absent => Absent
+        }
+      Absent => body_lower_if_expr_capture_optional(spine: spine)
+      }
+  }
+}
+
+fn body_lower_if_then_arm_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => Present { value: body }
+    ParseSubtreeAbsent =>
+      match body_lower_if_then_fn_body_optional(captured: captured) {
+        Present { value: body } => Present { value: body }
+        Absent =>
+          match body_lower_match_spine_left(spine: spine) {
+            Present { value: left } =>
+              match body_lower_match_spine_right(spine: spine) {
+                Present { value: right } =>
+                  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                    Present { value: id } =>
+                      match id == ^dag_token_kw_then {
+                        true => body_lower_if_expr_capture_optional(spine: right)
+                        false =>
+                          match body_lower_if_then_arm_optional(captured: left) {
+                            Present { value: found } => Present { value: found }
+                            Absent => body_lower_if_then_arm_optional(captured: right)
+                          }
+                      }
+                    Absent =>
+                      match body_lower_if_then_arm_optional(captured: left) {
+                        Present { value: found } => Present { value: found }
+                        Absent => body_lower_if_then_arm_optional(captured: right)
+                      }
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_loop_navigation_reject(captured: Node) -> Outcome<Optional<Node>> {
+  outcome_rejected(
+    d: body_lower_diagnostic(
+      reason: ^body_lowering_reason_loop_navigation_refused,
+      n: captured
+    )
+  )
+}
+
+fn body_lower_let_navigation_reject(captured: Node) -> Outcome<Optional<Node>> {
+  outcome_rejected(
+    d: body_lower_diagnostic(
+      reason: ^body_lowering_reason_let_navigation_refused,
+      n: captured
+    )
+  )
+}
+
+fn body_lower_let_in_body_capture_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: spine) {
+        Present { value: right } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            Present { value: id } =>
+              if id == ^dag_token_kw_in {
+                optional_present(value: right)
+              } else {
+                match body_lower_let_in_body_capture_optional(captured: left) {
+                  Present { value: found } => optional_present(value: found)
+                  Absent =>
+                    match body_lower_let_in_body_capture_optional(captured: right) {
+                      Present { value: found } => optional_present(value: found)
+                      Absent => optional_absent()
+                    }
+                }
+              }
+            Absent =>
+              match body_lower_let_in_body_capture_optional(captured: left) {
+                Present { value: found } => optional_present(value: found)
+                Absent => body_lower_let_in_body_capture_optional(captured: right)
+              }
+          }
+        Absent => body_lower_let_in_body_capture_optional(captured: left)
+      }
+    Absent =>
+      match sugar_sequence_pair_optional(node: spine) {
+        Present { value: pair } =>
+          match body_lower_let_in_body_capture_optional(captured: pair.left) {
+            Present { value: found } => optional_present(value: found)
+            Absent => body_lower_let_in_body_capture_optional(captured: pair.right)
+          }
+        Absent =>
+          fold(spine.children, init: optional_absent(), f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_let_in_body_capture_optional(captured: e.target)
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: spine) {
+        Present { value: right } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            Present { value: id } =>
+              if id == ^dag_token_kw_in {
+                optional_absent()
+              } else {
+                match body_lower_let_in_prefix_before_in_optional(captured: left) {
+                  Present { value: found } => optional_present(value: found)
+                  Absent =>
+                    match body_lower_let_in_prefix_before_in_optional(captured: right) {
+                      Present { value: found } => optional_present(value: found)
+                      Absent => optional_present(value: captured)
+                    }
+                }
+              }
+            Absent =>
+              match body_lower_let_in_prefix_before_in_optional(captured: left) {
+                Present { value: found } => Present { value: found }
+                Absent => body_lower_let_in_prefix_before_in_optional(captured: right)
+              }
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_in_prefix_before_in_optional(captured: captured) {
+    Absent => Absent
+    Present { value: prefix } =>
+      let spine = body_lower_unwrap_surface_shell(node: prefix)
+      match body_lower_match_spine_left(spine: spine) {
+        Present { value: left } =>
+          match body_lower_match_spine_right(spine: spine) {
+            Present { value: right } =>
+              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                Present { value: id } =>
+                  if id == ^dag_token_eq {
+                    optional_present(value: right)
+                  } else {
+                    body_lower_let_in_value_capture_optional(captured: right)
+                  }
+                Absent => body_lower_let_in_value_capture_optional(captured: right)
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: spine) {
+        Present { value: right } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            Present { value: id } =>
+              if id == ^dag_token_kw_let {
+                match body_lower_param_binding_optional(node: right) {
+                  Present { value: binding } => Present { value: binding }
+                  Absent =>
+                    match dag_binding_branded_atom_identity(node: right) {
+                      Present { value: binding } => Present { value: binding }
+                      Absent => Absent
+                    }
+                }
+              } else {
+                match body_lower_let_in_key_binding_optional(captured: left) {
+                  Present { value: found } => Present { value: found }
+                  Absent => body_lower_let_in_key_binding_optional(captured: right)
+                }
+              }
+            Absent =>
+              match body_lower_let_in_key_binding_optional(captured: left) {
+                Present { value: found } => Present { value: found }
+                Absent => body_lower_let_in_key_binding_optional(captured: right)
+              }
+          }
+        Absent =>
+          match body_lower_let_in_key_binding_optional(captured: left) {
+            Present { value: found } => Present { value: found }
+            Absent => Absent
+          }
+      }
+    Absent =>
+      match sugar_sequence_pair_optional(node: spine) {
+        Present { value: pair } =>
+          match body_lower_let_in_key_binding_optional(captured: pair.left) {
+            Present { value: found } => Present { value: found }
+            Absent => body_lower_let_in_key_binding_optional(captured: pair.right)
+          }
+        Absent =>
+          fold(spine.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_let_in_key_binding_optional(captured: e.target)
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_let_in_body_capture_optional(captured: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: _ } =>
+    match body_lower_let_in_key_binding_optional(captured: captured) {
+      Present { value: key_binding } =>
+        match body_lower_let_in_value_capture_optional(captured: captured) {
+          Present { value: value_capture } =>
+            match body_lower_let_in_body_capture_optional(captured: captured) {
+              Present { value: body_capture } =>
+                match body_lower_materialize_int_literal_operand_optional(node: value_capture) {
+                  Present { value: value } =>
+                    match body_lower_operand_ref_optional(node: body_capture) {
+                      Present { value: body_ref } =>
+                        outcome_accepted(
+                          value: optional_present(
+                            value: lower_bind(
+                              key_binding: body_lower_type_atom_node(sym: key_binding),
+                              value: value,
+                              body_binding: body_ref
+                            )
+                          )
+                        )
+                      Absent =>
+                        match body_lower_arm_operand_resolved_optional(arm: body_capture) {
+                          Present { value: body_ref } =>
+                            outcome_accepted(
+                              value: optional_present(
+                                value: lower_bind(
+                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  value: value,
+                                  body_binding: body_ref
+                                )
+                              )
+                            )
+                          Absent => body_lower_let_navigation_reject(captured: captured)
+                        }
+                    }
+                  Absent =>
+                    match body_lower_arm_operand_resolved_optional(arm: value_capture) {
+                      Present { value: value } =>
+                        match body_lower_operand_ref_optional(node: body_capture) {
+                          Present { value: body_ref } =>
+                            outcome_accepted(
+                              value: optional_present(
+                                value: lower_bind(
+                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  value: value,
+                                  body_binding: body_ref
+                                )
+                              )
+                            )
+                          Absent =>
+                            match body_lower_arm_operand_resolved_optional(arm: body_capture) {
+                              Present { value: body_ref } =>
+                                outcome_accepted(
+                                  value: optional_present(
+                                    value: lower_bind(
+                                      key_binding: body_lower_type_atom_node(sym: key_binding),
+                                      value: value,
+                                      body_binding: body_ref
+                                    )
+                                  )
+                                )
+                              Absent => body_lower_let_navigation_reject(captured: captured)
+                            }
+                        }
+                      Absent => body_lower_let_navigation_reject(captured: captured)
+                    }
+                }
+              Absent => body_lower_let_navigation_reject(captured: captured)
+            }
+          Absent => body_lower_let_navigation_reject(captured: captured)
+        }
+      Absent => body_lower_let_navigation_reject(captured: captured)
+    }
+  }
+}
+
+fn body_lower_try_let_in_from_node(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_let_expr {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } =>
+            body_lower_try_let_in_from_captured(captured: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } => body_lower_try_let_in_from_node(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+    Absent => outcome_accepted(value: optional_absent())
+  }
+}
+
+fn body_lower_try_loop_expr_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+  body_lower_try_loop_keyword_from_captured(captured: captured)
+}
+
+fn body_lower_try_loop_expr_from_node(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_loop_expr {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } =>
+            body_lower_try_loop_expr_from_captured(captured: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } => body_lower_try_loop_expr_from_node(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+    Absent => outcome_accepted(value: optional_absent())
+  }
+}
+
+fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_loop_expr_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } =>
+              Accepted { value: lowered, diagnostics: d }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_let_in_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } =>
+              Accepted { value: lowered, diagnostics: d }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: spine) {
+        Present { value: right } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            Present { value: id } =>
+              if id == ^dag_token_kw_loop {
+                match body_lower_materialize_int_literal_operand_optional(node: right) {
+                  Present { value: lit } =>
+                    outcome_accepted(
+                      value: optional_present(
+                        value: lower_loop(value: lit, bound: dag_loop_measure_node())
+                      )
+                    )
+                  Absent =>
+                    match body_lower_arm_operand_resolved_optional(arm: right) {
+                      Present { value: lit } =>
+                        outcome_accepted(
+                          value: optional_present(
+                            value: lower_loop(value: lit, bound: dag_loop_measure_node())
+                          )
+                        )
+                      Absent => body_lower_loop_navigation_reject(captured: captured)
+                    }
+                }
+              } else {
+                match body_lower_try_loop_keyword_from_captured(captured: left) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: left_found, diagnostics: ld } =>
+                    match left_found {
+                      Present { value: lowered } =>
+                        outcome_with_diagnostics(
+                          value: optional_present(value: lowered),
+                          diagnostics: ld
+                        )
+                      Absent => body_lower_try_loop_keyword_from_captured(captured: right)
+                    }
+                }
+              }
+            Absent =>
+              match body_lower_try_loop_keyword_from_captured(captured: left) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: left_found, diagnostics: ld } =>
+                  match left_found {
+                    Present { value: lowered } =>
+                      outcome_with_diagnostics(
+                        value: optional_present(value: lowered),
+                        diagnostics: ld
+                      )
+                    Absent => body_lower_try_loop_keyword_from_captured(captured: right)
+                  }
+              }
+          }
+        Absent =>
+          match sugar_sequence_pair_optional(node: spine) {
+            Present { value: pair } =>
+              match body_lower_try_loop_keyword_from_captured(captured: pair.left) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: left_found, diagnostics: ld } =>
+                  match left_found {
+                    Present { value: lowered } =>
+                      outcome_with_diagnostics(
+                        value: optional_present(value: lowered),
+                        diagnostics: ld
+                      )
+                    Absent => body_lower_try_loop_keyword_from_captured(captured: pair.right)
+                  }
+              }
+            Absent =>
+              fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
+                match acc {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: found, diagnostics: _ } =>
+                    match found {
+                      Present { value: _ } => acc
+                      Absent => body_lower_try_loop_keyword_from_captured(captured: e.target)
+                    }
+                }
+              })
+          }
+      }
+    Absent =>
+      match sugar_sequence_pair_optional(node: spine) {
+        Present { value: pair } =>
+          match body_lower_try_loop_keyword_from_captured(captured: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: left_found, diagnostics: ld } =>
+              match left_found {
+                Present { value: lowered } =>
+                  outcome_with_diagnostics(
+                    value: optional_present(value: lowered),
+                    diagnostics: ld
+                  )
+                Absent => body_lower_try_loop_keyword_from_captured(captured: pair.right)
+              }
+          }
+        Absent =>
+          fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: found, diagnostics: _ } =>
+                match found {
+                  Present { value: _ } => acc
+                  Absent => body_lower_try_loop_keyword_from_captured(captured: e.target)
+                }
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_loop_expr {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } =>
+            body_lower_try_loop_keyword_from_captured(captured: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if emitted == ^dag_surface_primary_expr {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } =>
+            body_lower_try_loop_keyword_from_captured(captured: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } => body_lower_try_loop_keyword_from_node(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+    Absent => outcome_accepted(value: optional_absent())
+  }
+}
+
+fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_if_condition_optional(captured: captured) {
+    Present { value: condition_capture } =>
+      match body_lower_if_then_arm_optional(captured: captured) {
+        Present { value: then_capture } =>
+          match body_lower_if_else_capture_optional(captured: captured) {
+            Present { value: else_capture } =>
+              match body_lower_if_arm_operand_optional(arm_capture: condition_capture) {
+                Present { value: condition_raw } =>
+                  match body_lower_arm_operand_resolved_optional(arm: condition_raw) {
+                    Present { value: condition } =>
+                      match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
+                        Present { value: then_raw } =>
+                          match body_lower_arm_operand_resolved_optional(arm: then_raw) {
+                            Present { value: then_arm } =>
+                              match body_lower_if_arm_operand_optional(arm_capture: else_capture) {
+                                Present { value: else_raw } =>
+                                  match body_lower_arm_operand_resolved_optional(arm: else_raw) {
+                                    Present { value: else_arm } =>
+                                      outcome_accepted(
+                                        value: optional_present(
+                                          value: lower_branch(
+                                            condition: condition,
+                                            then_arm: then_arm,
+                                            else_arm: else_arm
+                                          )
+                                        )
+                                      )
+                                    Absent => body_lower_if_navigation_reject(captured: else_capture)
+                                  }
+                                Absent => body_lower_if_navigation_reject(captured: else_capture)
+                              }
+                            Absent => body_lower_if_navigation_reject(captured: then_capture)
+                          }
+                        Absent => body_lower_if_navigation_reject(captured: then_capture)
+                      }
+                    Absent => body_lower_if_navigation_reject(captured: condition_capture)
+                  }
+                Absent => body_lower_if_navigation_reject(captured: condition_capture)
+              }
+            Absent => body_lower_if_navigation_reject(captured: captured)
+          }
+        Absent => body_lower_if_navigation_reject(captured: captured)
+      }
+    Absent => body_lower_if_navigation_reject(captured: captured)
+  }
+}
+
+fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_if_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } =>
+              Accepted { value: lowered, diagnostics: d }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_match_arms_from_brace_interior(interior: Node) -> Outcome<List<Node>> {
+  let unwrapped = body_lower_postfix_optional_unwrap(node: interior)
+  match sugar_sequence_pair_optional(node: unwrapped) {
+    Present { value: pair } =>
+      body_lower_collect_match_arms(
+        sequence_capture: body_lower_unwrap_optional_element(node: pair.left)
+      )
+    Absent =>
+      body_lower_collect_match_arms(sequence_capture: unwrapped)
+  }
+}
+
+fn body_lower_match_spine_left(spine: Node) -> Optional<Node> {
+  match find_named_child(root: spine, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: left, diagnostics: _ } => Present { value: left }
+    Rejected { diagnostics: _ } =>
+      match sugar_sequence_pair_optional(node: spine) {
+        Present { value: pair } => Present { value: pair.left }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
+  match find_named_child(root: spine, name: ^grammar_sequence_right_node_projection) {
+    Accepted { value: right, diagnostics: _ } => Present { value: right }
+    Rejected { diagnostics: _ } =>
+      match sugar_sequence_pair_optional(node: spine) {
+        Present { value: pair } => Present { value: pair.right }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_match_scrutinee_on_token(id: Symbol, left: Node, right: Node) -> Optional<Node> {
+  match id == ^dag_token_lbrace {
+    true => Absent
+    false =>
+      match id == ^dag_token_kw_match {
+        true => body_lower_match_scrutinee_from_spine(spine: right)
+        false =>
+          match body_lower_operand_ref_optional(node: left) {
+            Present { value: op } => Present { value: op }
+            Absent => body_lower_match_scrutinee_from_spine(spine: right)
+          }
+      }
+  }
+}
+
+fn body_lower_match_scrutinee_from_spine(spine: Node) -> Optional<Node> {
+  if is_empty_conj_root(n: spine) {
+    Absent
+  } else {
+    match body_lower_match_spine_left(spine: spine) {
+      Present { value: left } =>
+        match body_lower_match_spine_right(spine: spine) {
+          Present { value: right } =>
+            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+              Present { value: id } =>
+                body_lower_match_scrutinee_on_token(id: id, left: left, right: right)
+              Absent =>
+                match body_lower_operand_ref_optional(node: left) {
+                  Present { value: op } => Present { value: op }
+                  Absent => body_lower_match_scrutinee_from_spine(spine: right)
+                }
+            }
+          Absent => Absent
+        }
+      Absent => Absent
+    }
+  }
+}
+
+fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
+    ParseSubtreeFound { captured: binary } =>
+      body_lower_operand_ref_optional(node: binary)
+    ParseSubtreeAbsent =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeFound { captured: postfix } =>
+          body_lower_operand_ref_optional(node: postfix)
+        ParseSubtreeAbsent =>
+          body_lower_match_scrutinee_from_spine(
+            spine: body_lower_unwrap_surface_shell(node: captured)
+          )
+      }
+  }
+}
+
+fn body_lower_match_arms_on_lbrace_token(id: Symbol, right: Node) -> Outcome<Optional<List<Node>>> {
+  match id == ^dag_token_lbrace {
+    true =>
+      match body_lower_match_arms_from_brace_interior(interior: right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arms, diagnostics: d } =>
+          if count(arms) > 0 {
+            Accepted {
+              value: optional_present(value: arms),
+              diagnostics: d
+            }
+          } else {
+            outcome_rejected(
+              d: body_lower_diagnostic(
+                reason: ^body_lowering_reason_match_arm_navigation_refused,
+                n: right
+              )
+            )
+          }
+      }
+    false => body_lower_match_arms_after_lbrace_optional(spine: right)
+  }
+}
+
+fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Outcome<Optional<List<Node>>> {
+  if is_empty_conj_root(n: spine) {
+    outcome_accepted(value: optional_absent())
+  } else {
+    match body_lower_match_spine_left(spine: spine) {
+      Present { value: left } =>
+        match body_lower_match_spine_right(spine: spine) {
+          Present { value: right } =>
+            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+              Present { value: id } =>
+                body_lower_match_arms_on_lbrace_token(id: id, right: right)
+              Absent =>
+                body_lower_match_arms_after_lbrace_optional(spine: right)
+            }
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      Absent => outcome_accepted(value: optional_absent())
+    }
+  }
+}
+
+fn body_lower_match_arms_optional(captured: Node) -> Outcome<Optional<List<Node>>> {
+  body_lower_match_arms_after_lbrace_optional(
+    spine: body_lower_unwrap_surface_shell(node: captured)
+  )
+}
+
+fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_match_scrutinee_optional(captured: captured) {
+    Present { value: scrutinee } =>
+      match body_lower_match_arms_optional(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arms_opt, diagnostics: d } =>
+          match arms_opt {
+            Present { value: arms } =>
+              if count(arms) > 0 {
+                Accepted {
+                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                  diagnostics: d
+                }
+              } else {
+                outcome_rejected(
+                  d: body_lower_diagnostic(
+                    reason: ^body_lowering_reason_match_arm_navigation_refused,
+                    n: captured
+                  )
+                )
+              }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_match_arm_navigation_refused,
+                  n: captured
+                )
+              )
+          }
+      }
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_match_arm_navigation_refused,
+          n: captured
+        )
+      )
+  }
+}
+
+fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
+  match body_lower_match_spine_left(spine: spine) {
+    Present { value: left } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+        Present { value: id } => id == ^dag_token_kw_match
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
+  let match_kw = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+    children: []
+  )
+  let tail = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_sequence_left_node_projection },
+        target: match_kw
+      },
+      Edge {
+        label: Named { name: ^grammar_sequence_right_node_projection },
+        target: tail
+      }
+    ]
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_sniff_holds() -> Bool {
+  body_lower_match_capture_heads_spine(
+    spine: body_lowering_match_spine_identity_absent_fixture_spine()
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
+  let fixture = body_lowering_match_spine_identity_absent_fixture_spine()
+  if !body_lower_match_capture_heads_spine(spine: fixture) {
+    false
+  } else {
+    match body_lower_fold_reduce(node: fixture) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: reduced, diagnostics: _ } =>
+        match body_lower_fold_identity_absent(node: fixture) {
+          Rejected { diagnostics: _ } => true
+          Accepted { value: dispatched, diagnostics: _ } =>
+            body_lower_is_core_substrate(node: dispatched) || dispatched != reduced
+        }
+    }
+  }
+}
+
+fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_match_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } =>
+              Accepted { value: lowered, diagnostics: d }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_pattern_first_atom_optional(node: captured) {
+        Present { value: atom } => outcome_accepted(value: atom)
+        Absent =>
+      match body_lower_try_postfix_projection(node: captured) {
+        Rejected { diagnostics: r } =>
+          match body_lower_literal_bool_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
+            Absent =>
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: atom } => outcome_accepted(value: atom)
+                Absent => Rejected { diagnostics: r }
+              }
+          }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: transform } =>
+              Accepted { value: transform, diagnostics: d }
+            Absent =>
+              match body_lower_try_infix_transform(node: captured) {
+                Present { value: transform } => outcome_accepted(value: transform)
+                Absent =>
+                  match body_lower_try_fold_loop(node: captured) {
+                    Rejected { diagnostics: _ } =>
+                      body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                    Accepted { value: fold_result, diagnostics: _ } =>
+                      match fold_result {
+                        Present { value: loop_node } => outcome_accepted(value: loop_node)
+                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                      }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
+  let captured = match body_lower_unwrap_captured(shell: shell) {
+    Present { value: inner } => inner
+    Absent => shell
+  }
+  match body_lower_literal_int_atom_optional(node: captured) {
+        Present { value: lit } => outcome_accepted(value: lit)
+        Absent =>
+      match body_lower_try_loop_keyword_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: loop_opt, diagnostics: ld } =>
+          match loop_opt {
+            Present { value: loop_node } =>
+              Accepted { value: loop_node, diagnostics: ld }
+            Absent =>
+      match body_lower_pattern_first_atom_optional(node: captured) {
+        Present { value: atom } => outcome_accepted(value: atom)
+        Absent =>
+      match body_lower_try_primary_ident_call(node: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: primary_call, diagnostics: d } =>
+          match primary_call {
+            Present { value: transform } =>
+              Accepted { value: transform, diagnostics: d }
+            Absent =>
+      match body_lower_try_postfix_projection(node: captured) {
+        Rejected { diagnostics: r } =>
+          match body_lower_literal_bool_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
+            Absent =>
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: atom } => outcome_accepted(value: atom)
+                Absent => Rejected { diagnostics: r }
+              }
+          }
+        Accepted { value: found, diagnostics: d2 } =>
+          match found {
+            Present { value: transform } =>
+              Accepted { value: transform, diagnostics: d2 }
+            Absent =>
+              match body_lower_try_infix_transform(node: captured) {
+                Present { value: transform } => outcome_accepted(value: transform)
+                Absent =>
+                  match body_lower_try_fold_loop(node: captured) {
+                    Rejected { diagnostics: _ } =>
+                      body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                    Accepted { value: fold_result, diagnostics: _ } =>
+                      match fold_result {
+                        Present { value: loop_node } => outcome_accepted(value: loop_node)
+                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                      }
+                  }
+              }
+          }
+      }
+      }
+      }
+      }
+      }
+      }
+  }
+}
+
+fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_body_subtree_lower(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } => outcome_with_diagnostics(value: lowered, diagnostics: d)
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+          }
+      }
+  }
+}
+
+fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
+  if emitted == ^dag_surface_fn_decl {
+    body_lower_fn_decl_to_arrow(shell: shell)
+  } else if emitted == ^dag_surface_fn_body {
+    body_lower_fn_body_shell(shell: shell)
+  } else if emitted == ^dag_surface_match_expr {
+    body_lower_match_expr(shell: shell)
+  } else if emitted == ^dag_surface_if_expr {
+    body_lower_if_expr(shell: shell)
+  } else if emitted == ^dag_surface_loop_expr {
+    body_lower_loop_expr(shell: shell)
+  } else if emitted == ^dag_surface_let_expr {
+    body_lower_let_expr(shell: shell)
+  } else {
+    body_lower_wrapper_retained_shell(shell: shell)
+  }
+}
+
+fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
+  if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
+  } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
+    outcome_accepted(value: shell)
+  } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
+  } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
+    body_lower_forward_row_apply(shell: shell, emitted: emitted)
+  } else if emitted == ^dag_surface_postfix_expr {
+    body_lower_postfix_expr(shell: shell)
+  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+    body_lower_unwrap_pass_through(shell: shell)
+  } else if emitted == ^dag_surface_primary_expr {
+    body_lower_primary_expr(shell: shell)
+  } else {
+    body_lower_wrapper_retained_shell(shell: shell)
+  }
+}
+
+fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: folded) {
+    outcome_accepted(value: folded)
+  } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    outcome_accepted(value: folded)
+  } else {
+    match parse_production_emitted_identity_optional(node: folded) {
+      Absent => outcome_accepted(value: folded)
+      Present { value: emitted } =>
+        body_lower_production_emitted(
+          shell: folded,
+          emitted: emitted,
+          fn_body_pass_through: fn_body_pass_through
+        )
+    }
+  }
+}
+
+fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  body_lower_finish_for_normalize(
+    n: n,
+    folded: folded,
+    cd: cd,
+    fn_body_pass_through: false
+  )
+}
+
+fn body_lower_finish_for_normalize(
+  n: Node,
+  folded: Node,
+  cd: Diagnostics,
+  fn_body_pass_through: Bool
+) -> Outcome<Node> {
+  match body_lower_after_children(folded: folded, fn_body_pass_through: fn_body_pass_through) {
+    Rejected { diagnostics: _ } =>
+      body_lower_finish_wrapper_retained(folded: folded, cd: cd)
+    Accepted { value: lowered, diagnostics: d } =>
+      Accepted {
+        value: lowered,
+        diagnostics: diagnostics_merge(outer: cd, inner: d)
+      }
+  }
+}
+
+fn body_lower_finish_wrapper_retained(folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  match body_lower_wrapper_retained_shell(shell: folded) {
+    Accepted { value: kept, diagnostics: wd } =>
+      Accepted { value: kept, diagnostics: diagnostics_merge(outer: cd, inner: wd) }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+  }
+}

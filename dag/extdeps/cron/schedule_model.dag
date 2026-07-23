@@ -1,7 +1,7 @@
 module extdeps.cron.schedule_model
 
 import std.integer { NonNegativeInt, PositiveInt }
-import std.list { List }
+import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

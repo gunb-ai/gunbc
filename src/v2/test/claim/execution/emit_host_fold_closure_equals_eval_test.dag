@@ -1,0 +1,359 @@
+module v2.test.execution.emit_host_fold_closure_equals_eval
+
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_test_claim_subject
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test { rust_fold_call_target_model_staging }
+import v2.test.emit.fold_call_closure_fixture {
+  fold_fixture_param_call_body,
+  fold_fixture_param_canonical_arrow,
+  fold_fixture_param_wrong_arrow
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { List, Map, list_at_optional, list_nth }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimeAggregate,
+  RuntimeClosure,
+  RuntimeClosureValue,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeUnit,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emit_fold_eval_subgraph_node: Node = fold_fixture_param_call_body
+
+fn emit_fold_eval_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^emit_fold_eval_generic_descent }
+      }
+    }
+  )
+}
+
+fn emit_fold_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds { value: emit_fold_eval_generic_facts(node: key) }
+}
+
+fn emit_fold_eval_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: emit_fold_eval_composed_facts }
+  }
+}
+
+fn emit_fold_eval_octet_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn emit_fold_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_fold_eval_nth_positional_target(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: Positional, target: t } => outcome_accepted(value: t)
+        Edge { label: _, target: _ } =>
+          outcome_rejected(
+            d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
+      )
+  }
+}
+
+fn emit_fold_eval_closure_operator_is_sub(closure: Node) -> Bool {
+  match find_arrow_body_child(root: closure) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } =>
+          match emit_fold_eval_nth_positional_target(node: body, wanted: 0) {
+            Accepted { value: op, diagnostics: _ } =>
+              match op.kind {
+                TypeNode { connective: Atom { identity: id } } => id == ^dag_token_minus
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_fold_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_binding_mvp1_fold_xs || id == ^dag_binding_mvp1_fold_lit_three {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: 3))
+      } else if id == ^dag_binding_mvp1_fold_z || id == ^dag_binding_mvp1_fold_lit_four {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: 4))
+      } else {
+        outcome_rejected(
+          d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_literal_miss, node: node)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_literal_miss, node: node)
+      )
+  }
+}
+
+data emit_fold_eval_closure_arg_note: String = "The closure operand is read from the EVALUATED argument list (the RuntimeClosure the eval walk materialized for transform child 3), not re-walked from the node AST. This is what makes the interpreted leg genuinely exercise structural closure-arg evaluation: if eval fails to produce a closure value at position 3, this refuses rather than silently falling back to an AST read that would pass without eval ever having evaluated the closure."
+
+fn emit_fold_eval_closure_arrow_of(v: RuntimeValue, node: Node) -> Outcome<Node> {
+  match v {
+    RuntimeClosure { value: c } => outcome_accepted(value: c.arrow)
+    RuntimePrimitive { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+    RuntimeAggregate { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+    RuntimeReference { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+    RuntimeUnit { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+  }
+}
+
+fn emit_fold_eval_closure_arg(args: List<RuntimeValue>, node: Node) -> Outcome<Node> {
+  match list_nth(
+    xs: args,
+    wanted: 2,
+    absent: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_absent, node: node)
+  ) {
+    Holds { value: arg } => emit_fold_eval_closure_arrow_of(v: arg, node: node)
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+  }
+}
+
+fn emit_fold_eval_call_primitive(
+  node: Node,
+  args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  match emit_fold_eval_closure_arg(args: args, node: node) {
+    Accepted { value: closure, diagnostics: _ } =>
+      if emit_fold_eval_closure_operator_is_sub(closure: closure) {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: -1))
+      } else {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_fold_eval_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_branch_miss, node: node)
+  )
+}
+
+fn emit_fold_eval_step_loop(
+  node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  outcome_rejected(
+    d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_loop_miss, node: node)
+  )
+}
+
+fn emit_fold_eval_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+fn emit_fold_eval_choose_arm(
+  node: Node,
+  _scrutinee: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_match_miss, node: node)
+  )
+}
+
+fn emit_fold_eval_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: emit_fold_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: emit_fold_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: emit_fold_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: emit_fold_eval_step_loop },
+    bind: BindInterpreter { bind_value: emit_fold_eval_bind_value },
+    match: MatchInterpreter { choose_arm: emit_fold_eval_choose_arm }
+  }
+}
+
+fn emit_fold_eval_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^emit_fold_eval_allocate_literal_sym,
+    call_primitive: ^emit_fold_eval_call_primitive_sym,
+    choose_branch: ^emit_fold_eval_choose_branch_sym,
+    step_loop: ^emit_fold_eval_step_loop_sym,
+    bind_value: ^emit_fold_eval_bind_value_sym,
+    choose_arm: ^emit_fold_eval_choose_arm_sym
+  }
+}
+
+fn emit_fold_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^emit_fold_eval_interpretation_pin,
+    interpretation: emit_fold_eval_interpretation(),
+    structure_witness: emit_fold_eval_structure_witness()
+  )
+}
+
+fn emit_fold_eval_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "S2 F5: rust emit(fold-call-closure-fn) host-run == eval(fold-body) via shared octet codec",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn emit_fold_eval_subject(root: Node) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: emit_fold_eval_claim(rhs_result_node: emit_fold_eval_subgraph_node),
+    context: emit_fold_eval_context(),
+    tree: emit_fold_eval_tree_for(root: root),
+    evaluator_pin: ^emit_fold_eval_evaluator_pin
+  )
+}
+
+fn emit_fold_eval_run(root: Node) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: emit_fold_eval_subject(root: root),
+    target: rust_fold_call_target_model_staging()
+  )
+}
+
+fn emit_fold_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn emit_fold_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn emit_host_fold_closure_equals_eval_holds() -> Bool {
+  emit_fold_eval_verdict_is_pass(run: emit_fold_eval_run(root: fold_fixture_param_canonical_arrow))
+}
+
+test fn emit_host_fold_closure_wrong_fixture_refuses_holds() -> Bool {
+  emit_fold_eval_verdict_is_semantic_mismatch(run: emit_fold_eval_run(root: fold_fixture_param_wrong_arrow))
+}
+
+test fn emit_host_fold_closure_equals_eval_all_holds() -> Bool {
+  emit_host_fold_closure_equals_eval_holds()
+    && emit_host_fold_closure_wrong_fixture_refuses_holds()
+}

@@ -1,16 +1,16 @@
 module v2.test.manual.add_body_emit_typescript
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.body_producer {
-  produce_mvp1_add_arrow_with_body,
-  produce_mvp1_add_arrow_with_body_swapped_operands
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body,
+  table_fixture_add_arrow_with_body_swapped_operands
 }
 import v2.extdeps.languages.dag {
-  dag_mvp1_add_arrow_signature_fixture,
-  dag_mvp1_add_arrow_with_body_fixture,
-  dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
-  dag_mvp1_add_binary_body_fixture,
-  dag_mvp1_add_binary_body_swapped_operands_fixture
+  dag_add_arrow_signature_fixture,
+  dag_add_arrow_with_body_fixture,
+  dag_add_arrow_with_body_swapped_operands_fixture,
+  dag_add_binary_body_fixture,
+  dag_add_binary_body_swapped_operands_fixture
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -20,22 +20,23 @@ import v2.extdeps.languages.typescript {
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
   ts_lex_rule,
-  ts_mvp1_binding_spellings,
-  ts_mvp1_declared_inhabitants_root,
-  ts_mvp1_selection_policy_node,
-  ts_mvp1_serialize_source_node,
-  ts_mvp1_source_text,
-  ts_mvp1_source_text_authority,
-  ts_mvp1_target_model,
-  ts_mvp1_translation_rules_node,
+  ts_binding_spellings,
+  ts_add_declared_inhabitants_root,
+  ts_selection_policy_node,
+  ts_serialize_source_node,
+  ts_source_text,
+  ts_source_text_authority,
+  ts_target_model,
+  ts_translation_rules_node,
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
   ts_value_expression_projection,
-  ts_wave1_lex,
-  ts_wave1_lex_rules
+  ts_fn_add_lex,
+  ts_fn_add_lex_rules
 }
-import v2.std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_append }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   InfixToken,
@@ -86,6 +87,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
 
@@ -116,19 +120,19 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
     children: [
       add_body_ts_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: ts_mvp1_selection_policy_node()
+        target: ts_selection_policy_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_declared_inhabitants,
-        target: ts_mvp1_declared_inhabitants_root()
+        target: ts_add_declared_inhabitants_root()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: ts_mvp1_translation_rules_node()
+        target: ts_translation_rules_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: ts_mvp1_serialize_source_node()
+        target: ts_serialize_source_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_value_expression_projection,
@@ -145,7 +149,7 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
 }
 
 fn add_body_ts_lex_with_minus() -> LexRules {
-  let base = ts_wave1_lex_rules()
+  let base = ts_fn_add_lex_rules()
   ModeledLexRules {
     root: LexRuleSet {
       rules: list_append(
@@ -163,9 +167,9 @@ fn add_body_ts_target_model_minus_catalog() -> TargetModel {
   TargetModel {
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_minus()),
     lex: add_body_ts_lex_with_minus(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_mvp1_source_text_authority(),
+    authority_source_text: ts_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -173,10 +177,10 @@ fn add_body_ts_target_model_minus_catalog() -> TargetModel {
 fn add_body_ts_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
-    lex: ts_wave1_lex(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    lex: ts_fn_add_lex(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_mvp1_source_text_authority(),
+    authority_source_text: ts_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -203,23 +207,23 @@ data add_body_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantic
 data add_body_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
 
 fn add_body_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_add_arrow_with_body_fixture {
+  if node == dag_add_arrow_with_body_fixture {
     Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_add_arrow_signature_fixture {
+  } else if node == dag_add_arrow_signature_fixture {
     Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_add_binary_body_fixture {
+  } else if node == dag_add_binary_body_fixture {
     Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_add_arrow_with_body_swapped_operands_fixture {
+  } else if node == dag_add_arrow_with_body_swapped_operands_fixture {
     Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_add_binary_body_swapped_operands_fixture {
+  } else if node == dag_add_binary_body_swapped_operands_fixture {
     Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -388,7 +392,7 @@ fn add_body_ts_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn add_body_ts_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
@@ -399,7 +403,7 @@ fn add_body_ts_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn add_body_ts_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_add_arrow_with_body_swapped_operands() {
+  match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
@@ -428,18 +432,18 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<M
 }
 
 test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
-  match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+  match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == ts_mvp1_source_text) && (d == None)
+      (source.carried == ts_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
-  match add_body_ts_emit_from_producer_swapped_tree(target: ts_mvp1_target_model()) {
+  match add_body_ts_emit_from_producer_swapped_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
-      (source.carried != ts_mvp1_source_text) &&
+      (source.carried != ts_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }
@@ -449,7 +453,7 @@ test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
-      (source.carried != ts_mvp1_source_text) &&
+      (source.carried != ts_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }

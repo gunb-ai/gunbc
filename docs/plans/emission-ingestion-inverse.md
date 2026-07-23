@@ -47,7 +47,7 @@ Three-state picture in these terms:
 | Layer | emit = ingest⁻¹? | Evidence |
 | --- | --- | --- |
 | **Languages** (syntax) | ✅ realized | `06_translate` grammar-inverse over shared rows |
-| **Bash** | 🔵 in progress | `v2.extdeps.languages.bash` slices 1–5d; `program.dag` forward-emitter still alive |
+| **Bash** | ✅ sidecar deleted | `v2.extdeps.languages.bash` slices 1–5d; `program.dag` forward-emitter deleted (#6831, Phase 0); importer ratchet baseline 0 |
 | **Intent / effect / orchestration** | ❌ absent | no ingest of "a diagnostic"/"a pipeline" → no Node → nothing to invert → consumers hand-author shell |
 
 **Honesty boundary:** emit = ingest⁻¹ is an *exact* inverse only where ingest is `Lossless` (the `DecodeFidelity` boundary, §4/§7). For lossy media (English catch-all token, dropped comments on `.dag` round-trip) emit is a *section*: `ingest ∘ emit = id` on the canonical core but `emit ∘ ingest ≠ id`. The architecture declares this **per medium** via `DecodeFidelity` / `Medium<R>` — never pretending every medium round-trips. The correctness oracle is the round-trip law itself (§4/§7 fixed point).
@@ -57,7 +57,7 @@ Three-state picture in these terms:
 Extending emission=ingestion⁻¹ past syntax to the intent layer:
 
 - **(A) diagnostic-realization rows** — `Diagnostic{Severity}` (`src/v2/std/diagnostic.dag`) → `{Bash: echo>&2, GitHubActions: ::error::, Rust: eprintln}` as **rows**, dissolving the hand-rolled `render_log_annotation` forward emitter. Filesystem predicates de-fuse the same way (`std/filesystem` → `{Bash: test/find, Rust: fs::metadata}`).
-- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only. → **design proposal (sign-ready):** [orchestration-as-intent-design.md](orchestration-as-intent-design.md) — grounds the vocab into existing carriers (`Check`=`Witness`+gap-A, control flow=substrate `Behavior`+`DescentEvidence`, `Run`=`EffectShape`+`ProcessExit`), shows `emit(intent, Bash)` over **grammar rows** (never extending the deletable `program.dag`), and works the two hardest consumers (`ci_cargo_eagain_retry_core`, `fleet_converge_emit`).
+- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only. → **design proposal (sign-ready):** [orchestration-as-intent-design.md](orchestration-as-intent-design.md) — grounds the vocab into existing carriers (`Check`=`Witness`+gap-A, control flow=substrate `Behavior`+`DescentEvidence`, `Run`=`EffectShape`+`ProcessExit`), shows `emit(intent, Bash)` over **grammar rows** (never extending the deletable `program.dag`), and works the two hardest consumers (`ci_cargo_eagain_retry_core`, `fleet_converge_emit`). **Authorization gate (sign-ready):** [provisioning-window-executor-capability-design.md](provisioning-window-executor-capability-design.md) — typed `ExecutorCapability` + `ProvisioningWindow` predicate for *when* shell emission is legitimate (foreign executor vs bootstrap vs runtime-present typed realization).
 - **(C) ci.yml as a thin shim (held consumer of B)** — the generated `.github/workflows/ci.yml` is today ~190 lines of embedded shell (bootstrap `cargo build` + EAGAIN-retry cascade + build-verification + v1 rust gate). Target = a **three-tier boundary**: (i) GHA-native YAML (job/step/trigger structure) stays YAML, authored as a `Node` not a string; (ii) build-verification + v1-gate *logic* moves **into the floor binary** (`claim_executor`, already the floor's shape — the single `--plan-entry ci_floor_plan.dag` call); (iii) the bootstrap build + retry cascade is **emitted from orchestration intent** (`emit(Pipeline/Retry, Bash)`, via (B)) into the thin shim. **Sequenced after the (B) keystone** (`src/v2/std/orchestration.dag` + `extdeps/languages/bash.dag` retry production) lands — held for the keystone, not dropped. **Dissolve-on:** ci.yml's embedded-shell line-count collapses to GHA-native YAML structure only; the §5.1 `ShellInRun` medium roster is the regression wall that keeps it from creeping back.
 
 **Cross-arc edges (first-class, not prose):**
@@ -96,7 +96,7 @@ The §5 guard catches a module *importing* a target AST it shouldn't. But there 
 | --- | --- | --- |
 | GitHub Actions `${{ }}` expression language | **opaque `String`** (🟡 scaffold) — worst | `actions.dag` `*Expression { expression: String }`; inline `${{ runner.temp }}`/`${{ hashFiles(…) }}` in `ci_workflow.dag` |
 | CI YAML structure + shell-in-`run:` | partly modeled, values strings; **three nested unmodeled languages** (YAML + GHA-expr + shell) all grepped | `ci_yaml_serializer_witness_test.dag`, `ci_runner_seam_witness_test.dag` |
-| bash intent (`program.dag`) | sidecar AST, 11 importers | the §5 guard's existing target |
+| bash intent (`program.dag`) | **deleted** (#6831); was sidecar AST | the §5 guard's former target — importer ratchet now 0 |
 | **markup** (react/html/markdown) | **modeled with escape semantics + MODEL-level discriminating witnesses** — the target state | `html_emit_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep |
 
 Markup already does it right; the CI YAML is the same problem three layers deep, still strings.
@@ -132,6 +132,8 @@ The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitig
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dag")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots`, the way `layering_imports_transport`'s `source_root_flags()` already does. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
+
+Related: [emitter ownership de-fork](emitter-ownership-defork.md) — one authority for clone-vs-move at the emit seam, no silent fallback (lane `node://adhoc-0717d295-672`, PR #6248).
 
 ## Dissolution trigger (DESIGN §6)
 

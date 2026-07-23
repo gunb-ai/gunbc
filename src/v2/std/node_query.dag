@@ -11,7 +11,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.node {
   Ambiguous,
@@ -338,7 +339,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
           Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
               Named { name: sym } =>
-                outcome_accepted(
+                outcome_with_diagnostics(
                   value: list_snoc_item(xs: bindings, item: sym),
                   diagnostics: d
                 )
@@ -356,7 +357,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
               d: node_query_domain_malformed_diagnostic(domain: domain)
             )
           } else {
-            outcome_accepted(value: bindings, diagnostics: d)
+            outcome_with_diagnostics(value: bindings, diagnostics: d)
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }

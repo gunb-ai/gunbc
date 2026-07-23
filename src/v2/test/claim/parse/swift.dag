@@ -1,0 +1,43 @@
+module v2.test.parse.swift
+
+data swift_extended_fn_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
+
+fn swift_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^swift_parse_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^swift_parse_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn swift_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn swift_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: swift_extended_fn_source,
+    file: ^swift_parse_file,
+    rules: swift_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: swift_grammar())
+  }
+}
+
+data claim_swift_extended_function_parses: TestClaim = EqualsClaim {
+  label: "Swift lex/grammar accepts an extended function with let, if, return, and binary expressions",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: swift_parse_bool_atom(
+    b: swift_parse_accepted(out: swift_tokenize_and_parse())
+  ),
+  rhs: swift_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

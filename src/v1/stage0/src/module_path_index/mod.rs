@@ -1,3 +1,4 @@
-pub mod medium_structure_census;
+pub mod index;
+pub mod parsed_dag_file;
 
-pub use medium_structure_census::medium_structure_leak_facts;
+pub use index::{parse_module_binding, ParsedModuleBinding};

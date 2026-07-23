@@ -1,0 +1,57 @@
+module v2.test.long.parse_table_memo_counter_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data parse_memo_counter_fixture_source: String = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
+
+fn parse_memo_counter_stats_for_grammar(
+  source_text: String,
+  grammar: ParseGrammar
+) -> ParseMemoStats {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match tokenize(text: source_text, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } =>
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+            Accepted { value: validated, diagnostics: _ } =>
+              parse_production_memo_stats(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              )
+          }
+        VoidGrammar =>
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      }
+  }
+}
+
+fn parse_memo_counter_fixture_stats() -> ParseMemoStats {
+  parse_memo_counter_stats_for_grammar(
+    source_text: parse_memo_counter_fixture_source,
+    grammar: dag_language_model().grammar
+  )
+}
+
+fn parse_memo_counter_counters_consistent(stats: ParseMemoStats) -> Bool {
+  stats.lookup_calls == (stats.hits + stats.misses)
+}
+
+test fn parse_memo_counter_lookup_calls_recorded_holds() -> Bool {
+  parse_memo_counter_fixture_stats().lookup_calls > 0
+}
+
+test fn parse_memo_counter_counters_consistent_holds() -> Bool {
+  parse_memo_counter_counters_consistent(stats: parse_memo_counter_fixture_stats())
+}
+
+test fn parse_memo_counter_misses_recorded_holds() -> Bool {
+  parse_memo_counter_fixture_stats().misses > 0
+}

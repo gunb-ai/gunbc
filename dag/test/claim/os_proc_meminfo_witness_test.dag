@@ -1,12 +1,7 @@
 module test.claim.os_proc_meminfo_witness
 
-import extdeps.os.proc_meminfo {
-  ProcMeminfo,
-  MemoryMetric,
-  meminfo_field_names,
-}
-import std.measure { Kibibyte, measure_count }
-import std.types { NonEmptyStr }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn proc_meminfo_witnesses() -> Bool {
   let info = ProcMeminfo {

@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn typescript_gap_census_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to `v2-self-hosting.md` Track T. **`dag/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact)."),
+    p(text: "**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to [v2-self-hosting.md](v2-self-hosting.md) Wave 4 / END GOAL (post-Rust; Track T retired). **`dag/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact)."),
     p(text: "**Method:** enumerate construct families `src/v2` actually uses (compiler substrate behaviors in `src/v2/compiler/*` + TargetModel emit surfaces in `src/v2/extdeps/languages/typescript.dag`). For each family report three independent bars: (a) grammar-inverse row enrolled on the committed TargetModel node, (b) VEP / pipeline emits the expected **TypeScript source string** (witness PASS), (c) **`tsc` / emit_host accepts the output** (consumer green-by-execution). Every FAIL names a witness or authority site — not a stub count."),
     quote(blocks: [
       p(text: "**Two-bar clarification (parent reframe 2026-07-01).** The GREEN column below is **bar (b) only** — VEP produces the expected TS source string. Bar (c) — `tsc` actually compiles the emitted output — is **UNMET even for `add`**: `typescript_descriptor_node_ts_node_run_add_holds` (`src/v2/test/claim/manual/typescript_descriptor_node_run_test.dag`) and `emit_host_gate_passes` (`dag/tools/emit_host_gate.dag`) both **FAIL wet** in execution. A construct is not genuinely first-class until bar (c) is green. **Do not stack breadth on a red tsc foundation.**"),
@@ -45,9 +45,9 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
       li(text: "**#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`typescript.dag:606`)."),
       li(text: "**#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`typescript.dag:609`)."),
       li(text: "**#16 default operator catalog** — `ts_operator_realizations_catalog_node()` rows = `[ts_add_operator_realization_row()]` only (`typescript.dag:640–641`). Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`)."),
-      li(text: "**#17 grammar-inverse rows beyond add** — committed `ts_mvp1_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_mvp1_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`)."),
+      li(text: "**#17 grammar-inverse rows beyond add** — committed `ts_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`)."),
       li(text: "**#18 branch dispatch** — compiler uses `Branch` (`04_infer` / `05_eval`); zero TS emit witnesses."),
-      li(text: "**#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_mvp1_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add."),
+      li(text: "**#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add."),
       li(text: "**#20 whole `src/v2` → TS** — no module; Route-A tsc analogue not started (terminal slice E)."),
     ]),
     h2(text: "3. Discriminating counts"),
@@ -56,7 +56,7 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
       li(text: "**FAIL-CLOSED:** 2 (#11–#12)"),
       li(text: "**FAIL-OPEN compiler-scale gaps:** 8 (#13–#20)"),
       li(text: "**tsc-green (bar c):** 0/N wet — add fixture attempted, red in execution (#19)"),
-      li(text: "**Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 wave2a productions defined"),
+      li(text: "**Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 type-decl productions defined"),
     ]),
     h2(text: "4. Size call"),
     p(text: "**LARGE multi-slice** — not a single row PR. Cheap tranche = grammar-row extensions (#17) + operator catalog derivation onto default TargetModel if row-only (#16). Load-bearing tranche = Match (#13) + loop/bind forms (#14–#15) + Branch (#18) — **HOLD for parent sign** before authoring TargetModel surfaces. Whole-tree tsc (#20) is terminal after per-construct gaps close."),
@@ -64,7 +64,7 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
     ol(items: [
       li(text: "**A. Land this census** (this plan) — audit-first record, generated md."),
       li(text: "**A2. tsc-green oracle REAL on existing VEP-green slices (#19 pulled forward)** — per-construct `tsc` acceptance on #1–#9 before stacking breadth. Converts string-green families into compile-green. Highest-value foundation work."),
-      li(text: "**B. Cheap row extensions (#17)** — enroll type_alias + pr3 rows into committed `ts_mvp1_translation_rules_node`; rows only, no new TargetModel surface."),
+      li(text: "**B. Cheap row extensions (#17)** — enroll type_alias + pr3 rows into committed `ts_translation_rules_node`; rows only, no new TargetModel surface."),
       li(text: "**C. Operator catalog (#16)** — proceed **only** if genuinely row-derivation onto the default model; if it needs a new TargetModel surface → load-bearing → sign first."),
       li(text: "**D. HOLD for parent sign:** Match (#13) + loop/bind (#14–#15) + Branch (#18) — compiler-scale TargetModel surfaces."),
       li(text: "**E. Whole-tree Route-A tsc (#20)** — terminal."),
@@ -72,8 +72,6 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
     p(text: "**Priority note:** Lane C is language-breadth; operator retains burn-down sequencing call. Proceed A → A2 → B meanwhile; HOLD D for both parent sign and operator priority."),
   ]
 }
-
-data typescript_gap_census_plan_doc_provenance: String = "bind: docs/plans/typescript-gap-census.md"
 
 data typescript_gap_census_plan: Plan = Plan {
   slug: "typescript-gap-census",

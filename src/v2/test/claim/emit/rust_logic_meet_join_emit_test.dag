@@ -1,0 +1,105 @@
+module v2.test.emit.rust_logic_meet_join_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_meet_arrow_with_body_fixture,
+  dag_meet_arrow_with_body_swapped_arms_fixture,
+  dag_join_arrow_with_body_fixture,
+  dag_join_arrow_with_body_swapped_arms_fixture
+}
+import v2.extdeps.languages.rust_test {
+  rust_logic_meet_source_text,
+  rust_logic_meet_swapped_arms_source_text,
+  rust_logic_meet_target_model_staging,
+  rust_logic_join_source_text,
+  rust_logic_join_swapped_arms_source_text,
+  rust_logic_join_target_model_staging
+}
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn meet_join_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_logic_meet_join_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn meet_join_emit_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: meet_join_emit_facts_miss }
+  }
+}
+
+fn meet_join_emit_source_equals(root: Node, target: TargetModel, expected: String) -> Bool {
+  match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == expected) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn meet_join_emit_discriminates(
+  root: Node,
+  target: TargetModel,
+  expected: String,
+  wrong: String
+) -> Bool {
+  match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == expected) && (source.carried != wrong) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_logic_meet_emit_holds() -> Bool {
+  meet_join_emit_source_equals(
+    root: dag_meet_arrow_with_body_fixture,
+    target: rust_logic_meet_target_model_staging(),
+    expected: rust_logic_meet_source_text
+  )
+    && meet_join_emit_discriminates(
+      root: dag_meet_arrow_with_body_swapped_arms_fixture,
+      target: rust_logic_meet_target_model_staging(),
+      expected: rust_logic_meet_swapped_arms_source_text,
+      wrong: rust_logic_meet_source_text
+    )
+}
+
+fn rust_logic_join_emit_holds() -> Bool {
+  meet_join_emit_source_equals(
+    root: dag_join_arrow_with_body_fixture,
+    target: rust_logic_join_target_model_staging(),
+    expected: rust_logic_join_source_text
+  )
+    && meet_join_emit_discriminates(
+      root: dag_join_arrow_with_body_swapped_arms_fixture,
+      target: rust_logic_join_target_model_staging(),
+      expected: rust_logic_join_swapped_arms_source_text,
+      wrong: rust_logic_join_source_text
+    )
+}
+
+test fn rust_logic_meet_join_emit_holds() -> Bool {
+  rust_logic_meet_emit_holds() && rust_logic_join_emit_holds()
+}

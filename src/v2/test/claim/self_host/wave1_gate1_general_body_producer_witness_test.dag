@@ -1,0 +1,20 @@
+module v2.test.claim.self_host.wave1_gate1_general_body_producer_witness
+
+import v2.compiler.compile { always_required_lenses }
+import v2.compiler.self_host.frontier {
+  compiler_frontier_row_03_body_producer,
+  compiler_frontier_row_03_normalize
+}
+import v2.std.algebra { length }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data wave1_gate1_witness_note: String = "Wave 1 exit gate 1 fast-lane witness (compile-gate + roster): import-closure resolution of 03_body_producer and 03_normalize. Full ingest execution proofs (add Transform, classical_not Match via tokenize→parse_module→normalize) live in long/wave1_gate1_general_body_producer_witness_test.dag. Stage D MVP subsumption receipts: self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag. Not proven here: frontier probe per-module receipts or FLAG E dissolution of body_lowering_fold.dag."
+
+test fn wave1_gate1_body_producer_modules_import_resolve_holds() -> Bool {
+  (length(xs: always_required_lenses()) == 2)
+    && (compiler_frontier_row_03_body_producer.module_path == "src/v2/compiler/03_body_producer.dag")
+    && (compiler_frontier_row_03_normalize.module_path == "src/v2/compiler/03_normalize.dag")
+}

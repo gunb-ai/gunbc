@@ -2,9 +2,9 @@ module v2.test.manual.branch_infer_fail_open_audit
 
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
-  dag_mvp1_pick_if_body_fixture,
-  dag_mvp1_pick_if_body_from_arms,
-  dag_mvp1_type_atom_node
+  dag_pick_if_body_fixture,
+  dag_pick_if_body_from_arms,
+  dag_type_atom_node
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -14,12 +14,15 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_fail_open_audit_body() -> Node {
-  dag_mvp1_pick_if_body_from_arms(
-    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
-    else_arm: dag_mvp1_type_atom_node(identity: ^dag_token_ident)
+  dag_pick_if_body_from_arms(
+    condition: dag_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_type_atom_node(identity: ^dag_pick_lit_one),
+    else_arm: dag_type_atom_node(identity: ^dag_token_ident)
   )
 }
 
@@ -38,7 +41,7 @@ fn branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
 }
 
 fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
-  match infer(tree: dag_mvp1_pick_if_body_fixture) {
+  match infer(tree: dag_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }

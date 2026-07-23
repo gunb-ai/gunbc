@@ -1,11 +1,11 @@
 module gunbc.live_deploy.spec
 
-import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
   package_tailscale,
-  package_nodejs,
+  package_tmux,
 }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
@@ -13,34 +13,50 @@ import gunbc.fleet_intent_network {
   fleet_intent_network,
   operator_host_srv1,
 }
-import gunbc.node_http_server_emit {
-  roadmap_dashboard_node_http_static_server_spec,
+import gunbc.host_layout {
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+  srv1_dispatch_worktree_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
+import gunbc.ownership { Ownership, Owned, Ensured }
+
+data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user; unit_user=root is NOT the authorization principal). #7011 realization: tree sync AS service user via gunbc-tree-sync.service; six roster sudo grants (Wave C adds visudo for dropin gate). Wave C envelope: in-script preflight + roster-emitted sudoers dropin (gunbc.live_deploy.emit deploy_apply_preamble_shell)."
+
+data gunbc_service_user: NonEmptyStr = "briansrls"
 
 type OwnedArtifactKind =
-    ServerScript
+    ServeBinary
+  | GunbcSourceTree
+  | DispatchWorktreeRoot
   | SystemdUnit
   | TailscaleServeMapping
 
 type EnsuredDependencyKind =
     TailscalePackage
-  | NodeJsPackage
+  | TmuxPackage
 
-type DeploymentOwnedStep {
+type DeploymentArtifactStep {
   kind: OwnedArtifactKind
   path: NonEmptyStr
 }
 
-type DeploymentEnsuredStep {
+type DeploymentDependencyStep {
   kind: EnsuredDependencyKind
   package: NonEmptyStr
 }
 
 type DeploymentStep
-  = Owned { step: DeploymentOwnedStep }
-  | Ensured { step: DeploymentEnsuredStep }
+  = Artifact { step: DeploymentArtifactStep }
+  | Dependency { step: DeploymentDependencyStep }
+
+fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
+  match step {
+    Artifact { step: _ } => Owned
+    Dependency { step: _ } => Ensured
+  }
+}
 
 type DeploymentHostTarget {
   host: ComputeHost
@@ -52,52 +68,58 @@ type DeploymentHostTarget {
 
 type DeploymentServiceConfig {
   unit_name: NonEmptyStr
-  server_path: NonEmptyStr
+  serve_binary: NonEmptyStr
+  repo_root: NonEmptyStr
+  service_user: NonEmptyStr
   listen: HttpServerListenConfig
 }
 
-type DeploymentSpec {
-  target: DeploymentHostTarget
-  steps: List<DeploymentStep>
-  service: DeploymentServiceConfig
-}
-
 data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
-data gunbc_roadmap_server_path: NonEmptyStr = "/opt/gunbc/server.js"
 data gunbc_roadmap_systemd_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-roadmap.service"
 data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
+
+data gunbc_tree_sync_note: String = "gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent member: a oneshot unit running AS the service user (the tree's owner writes its own tree — ownership by construction, no chown), installed/started by the deploy through the granted install+systemctl channel because the ci-runner principal holds no rsync grant and no write access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries the runner checkout path (varies per runner slot), written by the apply at run time. Both files are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm."
+data gunbc_tree_sync_unit_name: NonEmptyStr = "gunbc-tree-sync.service"
+data gunbc_tree_sync_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-tree-sync.service"
+data gunbc_tree_sync_env_path: NonEmptyStr = "/etc/gunbc-tree-sync.env"
 
 fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-fn deployment_owned_steps() -> List<DeploymentOwnedStep> {
+data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the worktree root (belt spawns target it), all before the unit (ExecStart references binary + tree), and the tailscale mapping last (routes to a live service). Retract is the reverse, with DispatchWorktreeRoot torn down by rmdir — LOUD failure when worktrees exist, so a retract cannot silently destroy live agent sessions (a construction-level refusal, not a check)."
+
+fn deployment_owned_steps() -> List<DeploymentArtifactStep> {
   [
-    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
-    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
-    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
   ]
 }
 
-fn deployment_ensured_steps() -> List<DeploymentEnsuredStep> {
+fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
-    DeploymentEnsuredStep { kind: TailscalePackage, package: package_tailscale },
-    DeploymentEnsuredStep { kind: NodeJsPackage, package: package_nodejs },
+    DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+    DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux },
   ]
 }
 
 fn deployment_steps_apply_order() -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(), s => Ensured { step: s }),
-    map(deployment_owned_steps(), s => Owned { step: s })
+    map(deployment_ensured_steps(), s => Dependency { step: s }),
+    map(deployment_owned_steps(), s => Artifact { step: s })
   )
 }
 
-fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
+fn deployment_owned_steps_retract_order() -> List<DeploymentArtifactStep> {
   [
-    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
-    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
-    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+    DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },
   ]
 }
 
@@ -112,11 +134,15 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 }
 
 fn deployment_service_config() -> DeploymentServiceConfig {
-  let spec = roadmap_dashboard_node_http_static_server_spec()
   DeploymentServiceConfig {
     unit_name: gunbc_roadmap_unit_name,
-    server_path: gunbc_roadmap_server_path,
-    listen: spec.listen,
+    serve_binary: srv1_gunbc_serve_binary as String as NonEmptyStr,
+    repo_root: srv1_gunbc_repo_root as String as NonEmptyStr,
+    service_user: gunbc_service_user,
+    listen: HttpServerListenConfig {
+      host: "0.0.0.0",
+      port: 8080,
+    },
   }
 }
 
@@ -126,6 +152,12 @@ fn deployment_spec_srv1() -> DeploymentSpec {
     steps: deployment_steps_apply_order(),
     service: deployment_service_config(),
   }
+}
+
+type DeploymentSpec {
+  target: DeploymentHostTarget
+  steps: List<DeploymentStep>
+  service: DeploymentServiceConfig
 }
 
 fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {

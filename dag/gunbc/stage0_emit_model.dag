@@ -1,6 +1,5 @@
 module gunbc.stage0_emit_model
 
-import std.types { List, String, Bool, Int }
 
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
@@ -23,12 +22,17 @@ data generated_stage0_files: List<String> = [
   "extdeps_uri_path.rs",
   "extdeps_version.rs",
   "extdeps_version_semver.rs",
+  "gunbc_stage0_crate_layout_generated.rs",
+  "gunbc_stage0_crate_partition_generated.rs",
   "lib.rs",
   "std_algebra.rs",
   "std_coercion.rs",
   "std_computation.rs",
   "std_constructors.rs",
+  "std_content_hash.rs",
+  "std_currency.rs",
   "std_decl_ref.rs",
+  "std_disposition.rs",
   "std_effects.rs",
   "std_emit_model.rs",
   "std_error_primitives.rs",
@@ -36,9 +40,8 @@ data generated_stage0_files: List<String> = [
   "std_http_path.rs",
   "std_induction.rs",
   "std_integer.rs",
+  "std_interface_summary.rs",
   "std_iteration.rs",
-  "std_lens_verdict.rs",
-  "std_list.rs",
   "std_logic.rs",
   "std_machine_constraints.rs",
   "std_magnitude.rs",
@@ -102,11 +105,11 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
 }
 
 fn stage0_module_emit_basename(module_path: String) -> String {
-  module_path |> split(delimiter: ".") |> join(separator: "_")
+  rust_qualified_module_mod_basename(qualified_module: module_path)
 }
 
 fn stage0_module_emit_filename(module_path: String) -> String {
-  concat(stage0_module_emit_basename(module_path: module_path), ".rs")
+  rust_qualified_module_mod_filename(qualified_module: module_path)
 }
 
 fn is_generated_stage0_file(basename: String) -> Bool {

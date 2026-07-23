@@ -1,16 +1,9 @@
 module test.claim.realization_schedule_witness
 
-import std.realization_schedule {
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableSingleClaim,
-  RunnableDiscoveryBatch,
-  runnable_resource_profile_negligible,
-  schedule_lens_verdict_for_ci_floor,
-  cost_account_predicted_zero,
-}
-import std.types { ContentHash }
+import v2.workflow.ci_floor_plan { cheap_floor_gate_step_labels }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_target: ContentHash = "realization-schedule-witness-v1"
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"
@@ -18,16 +11,23 @@ data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
 fn synthetic_correct_schedule() -> List<List<Runnable>> {
   [
+    [
+      RunnableSingleClaim { entry: gate_entry, function: "layering_imports_gate_passes", profile: runnable_resource_profile_negligible() },
+      RunnableSingleClaim { entry: gate_entry, function: "extdeps_external_authority_gate_passes", profile: runnable_resource_profile_negligible() },
+      RunnableSingleClaim { entry: gate_entry, function: "generated_artifact_drift_gate_passes", profile: runnable_resource_profile_negligible() }
+    ],
     [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
     [
       RunnableDiscoveryBatch {
         source_roots: ["dag"]
         scan_dirs: []
         explicit_entries: []
-        skip_unaffected_node_frontier: false
+        node_frontier_selection: SelectionOff
         profile: runnable_resource_profile_negligible()
+        exclude_substrings: []
+        discovery_scope_dirs: []
       },
-      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
+      RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
   ]
 }
@@ -49,9 +49,10 @@ fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Ru
 }
 
 fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
-  match schedule_lens_verdict_for_ci_floor(
+  match v2.lens.schedule_lens.schedule_lens_verdict_for_ci_floor(
     plan: synthetic_correct_plan(),
-    compile_gate_fn: compile_gate_fn
+    compile_gate_fn: compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
   ) {
     Holds => true
     Violation { diagnostic: _ } => false
@@ -67,7 +68,11 @@ fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
     schedule: perturbed_schedule_wrong_order(correct: synthetic_correct_schedule())
     total: cost_account_predicted_zero()
   }
-  match schedule_lens_verdict_for_ci_floor(plan: perturbed, compile_gate_fn: compile_gate_fn) {
+  match v2.lens.schedule_lens.schedule_lens_verdict_for_ci_floor(
+    plan: perturbed,
+    compile_gate_fn: compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
+  ) {
     Holds => false
     Violation { diagnostic: _ } => true
     NotApplicable { diagnostic: _ } => false

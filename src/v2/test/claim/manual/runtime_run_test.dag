@@ -12,6 +12,7 @@ import v2.std.collection { List, Map }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   diagnostics_singleton
@@ -56,6 +57,9 @@ import v2.workflow.runtime_run {
 import v2.workflow.scheduler { RunnableFrontier }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.runtimes.v2_effect_io_pure { effect_io_pure_unit_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data runtime_run_node_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runtime_run_node_a_symbol } },

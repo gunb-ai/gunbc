@@ -17,6 +17,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data parallel_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },
   children: [],

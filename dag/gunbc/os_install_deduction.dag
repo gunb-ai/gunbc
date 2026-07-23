@@ -11,8 +11,11 @@ import extdeps.os.ubuntu_autoinstall {
 }
 import product.placement_supply { HostIdentity }
 
+<<<<<<< HEAD
 data os_install_deduction_doc: String = "OS install deduction spine — construction-time preflight (intent+policy completeness) and runtime KVM-attested diagnostic vocabulary. Consumed by gunbc.srv3_os_install_reconcile (srv3-install-reconcile-a). Preflight fold is scoped to the NBD-proxy/on-ISO actuator path: NoCloudNet is incomplete for that path only, not universally."
 
+=======
+>>>>>>> origin/main
 type TargetDiskState
   = EmptyDisk
   | ForeignOsPresent
@@ -35,14 +38,14 @@ type OsInstallPreflightPlan
   | RefuseNotUnattendedByPolicy
 
 type OsInstallRuntimeDiagnosticVerdict
-  = ReadyToBoot
+  = RuntimeReadyToBoot
   | KvmFirmwareIdleObserved
-  | BootOverrideConsumedNoInstallEvidence
+  | RuntimeBootOverrideConsumedNoInstallEvidence
   | InstallerAwaitingStorage
   | InstallerRunning
-  | InstallerHung
+  | RuntimeInstallerHung
   | KvmSuggestsOsBooted
-  | OsInstalled
+  | RuntimeOsInstalled
 
 type KvmObservedScreen
   = FirmwareSetup
@@ -112,6 +115,6 @@ fn runtime_verdict_from_kvm_attestation(
     FirmwareSetup => KvmFirmwareIdleObserved
     UefiBootMenu => KvmFirmwareIdleObserved
     GrubMenu => InstallerRunning
-    ErrorScreen { summary: _ } => InstallerHung
+    ErrorScreen { summary: _ } => RuntimeInstallerHung
   }
 }

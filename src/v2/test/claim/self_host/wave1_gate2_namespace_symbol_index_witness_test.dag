@@ -1,0 +1,42 @@
+module v2.test.claim.self_host.wave1_gate2_namespace_symbol_index_witness
+
+import v2.compiler.compile { always_required_lenses }
+import v2.compiler.self_host.frontier {
+  compiler_frontier_row_00_compile,
+  compiler_frontier_row_01_tokenize,
+  compiler_frontier_row_03_body_producer
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.test.claim.symbol_index.containment {
+  symbol_index_flat_index_false_accept_discriminator_holds,
+  symbol_index_lexical_lookup_unique_variant_holds,
+  symbol_index_lexical_lookup_chain_shadow_refuses_holds,
+  symbol_index_lexical_lookup_variant_alias_shadow_refuses_holds,
+  symbol_index_lookup_miss_red_control_holds,
+  symbol_index_unique_variant_without_alias_red_control_holds,
+  symbol_index_variant_visibility_equivalence_holds
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data wave1_gate2_witness_note: String = "Wave 1 exit gate 2 verification (namespace SymbolIndex / containment-tree resolution) by execution. Proven here: symbol_index_fill + symbol_index_lexical_lookup via containment_test greens (symbol_index_lexical_lookup_unique_variant_holds, symbol_index_variant_visibility_equivalence_holds) and named RED controls (lookup_miss, flat_index_false_accept, unique_variant_without_alias). Import-closure resolution of 00_compile, 01_tokenize, 03_body_producer is compile-gated (symbols import or the witness module does not resolve). Not proven here: frontier probe blocker_class rows, 03_name_resolve/03_resolve end-to-end ingest wire (variant_visibility_test.dag; normalize-stage debt)."
+
+test fn wave1_gate2_symbol_index_containment_substrate_holds() -> Bool {
+  symbol_index_lexical_lookup_unique_variant_holds()
+    && symbol_index_variant_visibility_equivalence_holds()
+}
+
+test fn wave1_gate2_symbol_index_containment_red_controls_holds() -> Bool {
+  symbol_index_lookup_miss_red_control_holds()
+    && symbol_index_flat_index_false_accept_discriminator_holds()
+    && symbol_index_unique_variant_without_alias_red_control_holds()
+}
+
+test fn wave1_gate2_name_resolution_gap_modules_import_resolve_holds() -> Bool {
+  (length(xs: always_required_lenses()) == 2)
+    && (compiler_frontier_row_00_compile.module_path == "src/v2/compiler/00_compile.dag")
+    && (compiler_frontier_row_01_tokenize.module_path == "src/v2/compiler/01_tokenize.dag")
+    && (compiler_frontier_row_03_body_producer.module_path == "src/v2/compiler/03_body_producer.dag")
+}

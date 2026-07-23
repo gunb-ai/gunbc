@@ -1,6 +1,15 @@
 module v2.std.cardinality
 
-import v2.std.collection { List }
+import std.algebra { Cons, Empty }
+import std.termination {
+  DescentEvidence,
+  Strict,
+  NonIncreasing,
+  DescentUnknown,
+  descent_evidence_lattice_meet,
+  evidence_rank
+}
+import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -105,10 +114,6 @@ fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
   positive_nat_le_witness_well_formed(w: b.le)
 }
 
-type DescentEvidence
-  = Strict
-  | NonIncreasing
-  | DescentUnknown
 type RankingDimension {
   measured: Symbol
 }
@@ -227,10 +232,201 @@ fn behavior_multiplicity(b: Behavior) -> Multiplicity {
   }
 }
 
+data measure_descent_registry_note: String = "Measure descent facts ground the loop termination derivation on the single DescentEvidence authority (std.termination — operator standing rule 2026-07-08: dag/std wins v2↔dag forks; body-lowering design Stage 2/T1). A measure Atom carries descent evidence only via a cited registry row; an unregistered symbol is DescentUnknown — the lattice bottom — so an unproven measure refuses, never fabricates. Copied-port facts use the same derive-not-hand-stamp discipline via v2.lens.cost.copied_port_derivation (Wave 1 Gate 1 C1)."
+
+type MeasureDescentFact {
+  measure: Symbol
+  evidence: DescentEvidence
+  citation: String
+}
+
+data measure_descent_fact_structural_node_size: MeasureDescentFact = {
+  measure: ^cardinality_structural_node_size,
+  evidence: Strict,
+  citation: "v2.std.node.fold_node structural recursion: every child is a strict subtree of its parent — the dimension structural_node_size_termination_proof already names"
+}
+
+data measure_descent_fact_dag_loop_measure: MeasureDescentFact = {
+  measure: ^dag_loop_measure_sym,
+  evidence: Strict,
+  citation: "loop-body producer's declared loop bound (v2.extdeps.languages.dag.dag_loop_measure_node); grounds the exact TerminationProof that loop_round_trip_test and loop_eval_by_execution_test previously hand-fabricated per test site"
+}
+
+data measure_descent_fact_fold_iteration: MeasureDescentFact = {
+  measure: ^dag_surface_fold_iteration_measure,
+  evidence: Strict,
+  citation: "fold iteration over a finite collection descends by construction (std.termination DescentSource.FoldIteration: each step consumes one element of the folded list); the surface cost-shape lowering stamps this measure on every fold-family call it lowers to Loop (v2.extdeps.languages.dag)"
+}
+
+data measure_descent_fact_registry: List<MeasureDescentFact> = [
+  measure_descent_fact_structural_node_size,
+  measure_descent_fact_dag_loop_measure,
+  measure_descent_fact_fold_iteration
+]
+
+fn measure_descent_some(e: DescentEvidence) -> Optional<DescentEvidence> {
+  Present { value: e }
+}
+
+fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: Symbol) -> Optional<DescentEvidence> {
+  fold(registry, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if row.measure == s {
+          measure_descent_some(e: row.evidence)
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: Symbol) -> DescentEvidence {
+  match measure_descent_fact_for(registry: registry, s: s) {
+    Present { value: e } => e
+    Absent => DescentUnknown
+  }
+}
+
+type MeasureDimensionEvidence {
+  dimension: RankingDimension
+  evidence: DescentEvidence
+}
+
+fn measure_dimension_unknown_rows() -> List<MeasureDimensionEvidence> {
+  [
+    MeasureDimensionEvidence {
+      dimension: RankingDimension { measured: ^cardinality_measure_shape_unknown },
+      evidence: DescentUnknown
+    }
+  ]
+}
+
+fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> List<MeasureDimensionEvidence> {
+  match measure.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: s } =>
+          [
+            MeasureDimensionEvidence {
+              dimension: RankingDimension { measured: s },
+              evidence: measure_descent_evidence_for_symbol(registry: registry, s: s)
+            }
+          ]
+        Conj =>
+          fold(measure.children, init: Empty, f: fn(acc, e) {
+            fold(measure_dimension_rows(registry: registry, measure: e.target), init: acc, f: fn(acc2, row) {
+              Cons { head: row, tail: acc2 }
+            })
+          })
+        Disj => measure_dimension_unknown_rows()
+        Arrow => measure_dimension_unknown_rows()
+        Cardinality => measure_dimension_unknown_rows()
+        Instantiation => measure_dimension_unknown_rows()
+      }
+    ComputationNode { behavior: _ } => measure_dimension_unknown_rows()
+  }
+}
+
+fn dimension_rows_meet(rows: List<MeasureDimensionEvidence>) -> DescentEvidence {
+  fold(rows, init: Strict, f: fn(acc, row) {
+    descent_evidence_lattice_meet(a: acc, b: row.evidence)
+  })
+}
+
+fn dimension_row_is_strict(row: MeasureDimensionEvidence) -> Bool {
+  evidence_rank(e: row.evidence) == evidence_rank(e: Strict)
+}
+
+fn ranking_dimension_some(d: RankingDimension) -> Optional<RankingDimension> {
+  Present { value: d }
+}
+
+fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> Optional<RankingDimension> {
+  fold(rows, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if dimension_row_is_strict(row: row) {
+          ranking_dimension_some(d: row.dimension)
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+type LexicographicSplit {
+  strict_taken: Bool
+  non_increasing: List<RankingDimension>
+}
+
+fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> List<RankingDimension> {
+  let split = fold(rows, init: LexicographicSplit { strict_taken: false, non_increasing: Empty }, f: fn(acc, row) {
+    if dimension_row_is_strict(row: row) && !acc.strict_taken {
+      LexicographicSplit { strict_taken: true, non_increasing: acc.non_increasing }
+    } else {
+      LexicographicSplit {
+        strict_taken: acc.strict_taken,
+        non_increasing: Cons { head: row.dimension, tail: acc.non_increasing }
+      }
+    }
+  })
+  split.non_increasing
+}
+
+fn lexicographic_multiplicity(rows: List<MeasureDimensionEvidence>) -> Multiplicity {
+  match first_strict_dimension(rows: rows) {
+    Absent => RequiresTerminationProof
+    Present { value: strict_dim } =>
+      ProvenTermination {
+        proof: TerminationProof {
+          non_increasing: non_strict_dimensions_after_first(rows: rows),
+          strict: strict_dim
+        }
+      }
+  }
+}
+
+fn loop_multiplicity_from_rows(rows: List<MeasureDimensionEvidence>) -> Multiplicity {
+  if count(rows) == 0 {
+    RequiresTerminationProof
+  } else {
+    match dimension_rows_meet(rows: rows) {
+      DescentUnknown => RequiresTerminationProof
+      NonIncreasing => lexicographic_multiplicity(rows: rows)
+      Strict => lexicographic_multiplicity(rows: rows)
+    }
+  }
+}
+
+fn loop_multiplicity_with(registry: List<MeasureDescentFact>, n: Node) -> Multiplicity {
+  match loop_measure_node(n: n) {
+    Violates { diagnostic: _ } => RequiresTerminationProof
+    Holds { value: measure } =>
+      loop_multiplicity_from_rows(rows: measure_dimension_rows(registry: registry, measure: measure))
+  }
+}
+
+fn loop_multiplicity(n: Node) -> Multiplicity {
+  loop_multiplicity_with(registry: measure_descent_fact_registry, n: n)
+}
+
+data loop_multiplicity_node_aware_note: String = "FLAG B (body-lowering design, operator-signed): Loop multiplicity is decided node-aware here while the other behaviors stay tag-only in behavior_multiplicity — a real distinction, not inconsistency: only Loop's termination depends on a node-level edge (the ^loop_bound_edge measure), which the Behavior tag structurally cannot carry. behavior_multiplicity(Loop) stays RequiresTerminationProof as the honest measure-less projection."
+
 fn node_multiplicity(n: Node) -> Multiplicity {
   match n.kind {
     TypeNode { connective: c } => connective_multiplicity(c: c)
-    ComputationNode { behavior: b } => behavior_multiplicity(b: b)
+    ComputationNode { behavior: b } =>
+      match b {
+        Value => behavior_multiplicity(b: b)
+        Transform => behavior_multiplicity(b: b)
+        Branch => behavior_multiplicity(b: b)
+        Loop => loop_multiplicity(n: n)
+        Bind => behavior_multiplicity(b: b)
+        Match => behavior_multiplicity(b: b)
+      }
   }
 }
 

@@ -1,6 +1,7 @@
 module v2.std.timeseries_signal
 
-import v2.std.algebra { Cons, Empty, fold_list, fold_list_right }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, fold_list_right }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v2.std.integer { Int, int_add, int_div, int_mul }
@@ -319,7 +320,7 @@ fn capacitor_fold_step(
           }
           charge_microcoulombs: charge_micro(new_charge)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -333,7 +334,7 @@ fn fold_capacitor_transient(
 ) -> Outcome<CapacitorState> {
   fold_list(
     xs: currents,
-    empty: Accepted { value: initial, diagnostics: None },
+    empty: Accepted { value: initial, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, current) {
       match acc {
         Accepted { value: state, diagnostics: _ } =>
@@ -390,7 +391,7 @@ fn inductor_fold_step(
           }
           flux_microwebers: flux_micro(new_flux)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }

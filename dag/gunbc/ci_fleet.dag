@@ -11,7 +11,11 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
+<<<<<<< HEAD
   srv4_host,
+=======
+  fleet_host_memory_nominal_vs_usable_note,
+>>>>>>> origin/main
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
@@ -19,6 +23,8 @@ import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
 import std.currency { CurrencyCode }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, NamedField }
 import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, LogicalTime }
@@ -125,6 +131,17 @@ data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
   version: none,
   filesystem_semantics: Posix,
   process_semantics: PosixProcess,
+}
+
+data gunbc_ci_host_memory_deferral_note: String = fleet_host_memory_nominal_vs_usable_note
+
+data gunbc_ci_host_memory_deferral_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_fleet",
+    decl_name: "gunbc_ci_host",
+    field: NamedField { field_name: "memory" },
+  },
 }
 
 data gunbc_ci_host: ComputeHost = ComputeHost {

@@ -1,0 +1,187 @@
+module v2.test.claim.loop_multiplicity_measure
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn lmm_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn lmm_loop_with_measure(measure: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
+      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn lmm_loop_without_measure() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn lmm_conj_measure(a: Node, b: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^lmm_dim_left }, target: a },
+      Edge { label: Named { name: ^lmm_dim_right }, target: b }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data lmm_registry: List<MeasureDescentFact> = [
+  MeasureDescentFact {
+    measure: ^lmm_strict_dim,
+    evidence: Strict,
+    citation: "test fixture: a strictly descending dimension"
+  },
+  MeasureDescentFact {
+    measure: ^lmm_non_increasing_dim,
+    evidence: NonIncreasing,
+    citation: "test fixture: a non-increasing dimension"
+  }
+]
+
+fn lmm_is_proven(m: Multiplicity) -> Bool {
+  match m {
+    ProvenTermination { proof: _ } => true
+    RequiresTerminationProof => false
+    Bounded => false
+  }
+}
+
+fn lmm_is_refused(m: Multiplicity) -> Bool {
+  match m {
+    RequiresTerminationProof => true
+    ProvenTermination { proof: _ } => false
+    Bounded => false
+  }
+}
+
+fn lmm_proven_strict_dimension(m: Multiplicity) -> Symbol {
+  match m {
+    ProvenTermination { proof } => proof.strict.measured
+    RequiresTerminationProof => ^lmm_no_proof
+    Bounded => ^lmm_no_proof
+  }
+}
+
+fn lmm_proven_non_increasing_count(m: Multiplicity) -> Int {
+  match m {
+    ProvenTermination { proof } => count(proof.non_increasing)
+    RequiresTerminationProof => 0 - 1
+    Bounded => 0 - 1
+  }
+}
+
+test fn loop_strict_measure_infers_proven_termination() -> Bool {
+  let m = loop_multiplicity_with(
+    registry: lmm_registry,
+    n: lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_strict_dim))
+  )
+  lmm_is_proven(m: m) && (lmm_proven_strict_dimension(m: m) == ^lmm_strict_dim)
+}
+
+test fn loop_perturbed_measure_is_refused() -> Bool {
+  lmm_is_refused(
+    m: loop_multiplicity_with(
+      registry: lmm_registry,
+      n: lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_unregistered_dim))
+    )
+  )
+}
+
+test fn loop_lone_non_increasing_measure_is_refused() -> Bool {
+  lmm_is_refused(
+    m: loop_multiplicity_with(
+      registry: lmm_registry,
+      n: lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_non_increasing_dim))
+    )
+  )
+}
+
+test fn loop_lexicographic_measure_proves_with_strict_dimension() -> Bool {
+  let m = loop_multiplicity_with(
+    registry: lmm_registry,
+    n: lmm_loop_with_measure(
+      measure: lmm_conj_measure(
+        a: lmm_atom(s: ^lmm_strict_dim),
+        b: lmm_atom(s: ^lmm_non_increasing_dim)
+      )
+    )
+  )
+  lmm_is_proven(m: m) && (lmm_proven_non_increasing_count(m: m) == 1)
+}
+
+test fn loop_unknown_dimension_poisons_lexicographic_measure() -> Bool {
+  lmm_is_refused(
+    m: loop_multiplicity_with(
+      registry: lmm_registry,
+      n: lmm_loop_with_measure(
+        measure: lmm_conj_measure(
+          a: lmm_atom(s: ^lmm_strict_dim),
+          b: lmm_atom(s: ^lmm_unregistered_dim)
+        )
+      )
+    )
+  )
+}
+
+test fn loop_missing_measure_is_refused() -> Bool {
+  lmm_is_refused(
+    m: loop_multiplicity_with(registry: lmm_registry, n: lmm_loop_without_measure())
+  )
+}
+
+fn lmm_termination_holds(w: Witness<TerminationProof>) -> Bool {
+  match w {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn lmm_loop_bound_termination_holds(w: Witness<LoopBound>) -> Bool {
+  match w {
+    Holds { value: bound } => lmm_termination_holds(w: bound.termination)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn live_registry_proves_loop_measure() -> Bool {
+  let n = lmm_loop_with_measure(measure: lmm_atom(s: ^dag_loop_measure_sym))
+  lmm_is_proven(m: loop_multiplicity(n: n))
+    && lmm_is_proven(m: node_multiplicity(n: n))
+    && lmm_termination_holds(w: termination_proof_witness_for_node(n: n))
+    && lmm_loop_bound_termination_holds(w: loop_bound_witness_for_node(n: n))
+}
+
+test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
+  let inner = lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_unregistered_dim))
+  let outer = Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: inner },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: lmm_atom(s: ^dag_loop_measure_sym)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+  lmm_is_proven(m: loop_multiplicity(n: outer))
+    && !lmm_termination_holds(w: termination_proof_witness_for_node(n: outer))
+}

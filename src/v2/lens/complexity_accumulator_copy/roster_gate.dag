@@ -1,0 +1,102 @@
+module v2.lens.complexity_accumulator_copy.roster_gate
+
+
+data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
+
+type RosterVerdict
+  = RosterClean
+  | RosterIngestRegressed
+  | RosterSuspectFound
+  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+
+fn source_findings(source_text: String) -> Optional<List<Finding>> {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^accumulator_copy_roster_gate_port)
+  match lm.grammar {
+    VoidGrammar => Absent
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(
+            text: source_text,
+            file: ^accumulator_copy_roster_subject,
+            rules: lm.lex
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => Absent
+                    Accepted { value: tree, diagnostics: _ } =>
+                      Present { value: accumulator_copy_findings(root: tree) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ingest_findings(path: String) -> Optional<List<Finding>> {
+  source_findings(source_text: filesystem_read(path: path).content)
+}
+
+fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
+  fold_list(xs: fs, empty: 0, cons: fn(acc, f) {
+    if pred(f) { acc + 1 } else { acc }
+  })
+}
+
+fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
+  match ingest_findings(path: path) {
+    Absent => RosterIngestRegressed
+    Present { value: fs } =>
+      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+        RosterSuspectFound
+      } else {
+        let refusals = count_matching(fs: fs, pred: finding_is_refusal)
+        if refusals > refusal_ceiling {
+          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+        } else {
+          RosterClean
+        }
+      }
+  }
+}
+
+fn file_suspect_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect)
+  }
+}
+
+fn file_refusal_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_refusal)
+  }
+}
+
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
+    RosterClean => true
+    RosterIngestRegressed => false
+    RosterSuspectFound => false
+    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+fn source_has_suspect(source_text: String) -> Bool {
+  match source_findings(source_text: source_text) {
+    Absent => false
+    Present { value: fs } =>
+      count_matching(fs: fs, pred: finding_is_suspect) > 0
+  }
+}

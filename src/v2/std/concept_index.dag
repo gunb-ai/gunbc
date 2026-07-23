@@ -1,14 +1,20 @@
 module v2.std.concept_index
 
-import v2.std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
-import v2.std.node { Conj, Disj, Node, TypeNode }
-import v2.std.node_query {
+import v2.std.node {
+  Conj,
   CoproductArm,
+  Disj,
+  Node,
+  TypeNode,
+  named_edge_sort_key,
+}
+import v2.std.node_query {
   coproduct_arm_list_from_node,
   coproduct_arm_payload_pair_from_arm,
   edge_field_type_name,
-  named_edge_sort_key,
   node_is_coproduct,
   node_labeled_child_edges
 }

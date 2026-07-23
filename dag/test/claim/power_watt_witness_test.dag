@@ -1,8 +1,7 @@
 module test.claim.power_watt
 
-import std.logic { Bool }
-import std.types { Int, List }
-import std.measure { Watt, watt, watt_count }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn total_power_watts(components: List<Watt>) -> Watt {
   watt(count: fold(components, init: 0, f: (acc, w) => acc + watt_count(w: w)))

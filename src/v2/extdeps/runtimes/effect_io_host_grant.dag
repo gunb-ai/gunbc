@@ -1,0 +1,145 @@
+module v2.extdeps.runtimes.effect_io_host_grant
+
+import std.types { String, List, Bool }
+import std.execution_mode {
+  ExecutionMode,
+  execution_mode_is_wet_dispatch
+}
+import std.effect_grant {
+  Verb, Read, Write,
+  UriTree, ServiceOpTree, CodeNameTree,
+  NamespacePosition,
+  RealTransport, Replay,
+  LifecycleByConvention,
+  Grant, Envelope,
+  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
+}
+import std.materialization_ladder { Frame, SharedStateFrame }
+import v2.extdeps.runtimes.v2_effect_io_pure {
+  EffectIoResourceBackend,
+  EffectIoResourceLocator,
+  FileResourceBackend,
+  HttpResourceBackend,
+  StorageResourceBackend,
+  effect_io_pure_backends_match,
+}
+
+data effect_io_host_grant_note: String = "P-B/P-C effect-io host grant authority (docs/plans/effect-namespace-grants.md 6): the Envelope is the SINGLE per-grant authority for both reach (admit_effect wall) and transport-vs-replay (covering_grant binding). Mode maps to bindings ONCE at runtime construction (effect_io_host_envelope) and dispatch NEVER re-reads ExecutionMode (design line 27, 62 — P-C: 'select handler bindings per grant instead of per-process mode'). A WET runtime carries RealTransport-bound Read+Write grants on the declared backend subtree (frame-wide real ownership — any locator under it admitted by construction); a HERMETIC runtime carries a Replay-bound Read grant and ZERO Write grants (reads served from fixtures, writes refused by absence, fail-closed). EffectIoResourceLocator carries a content-Hash identity projected onto the cited backend tree with locator.identity as the terminal segment; backend/locator mismatch is a located EffectOutsideGrant. FRONTIER (operator-approved 2026-07-22): the Replay grant's fixture_store String is declared (effect_io_host_replay_fixture) but the runtime resolves the actual fixture STORE from the still-passed fixture object — the per-grant store-string resolution is a follow-on. The seed eval_service_op transport selection stays on per-process ExecutionMode on its own declared frontier (v1_interpreter.rs, dissolution-triggered)."
+
+data effect_io_host_frame: Frame = Frame {
+  name: "effect-io-host",
+  kind: SharedStateFrame
+}
+
+data effect_io_host_http_authority: String = "effect-io.local"
+
+data effect_io_host_storage_service: String = "effect-io-storage"
+
+data effect_io_host_file_backend_tree_note: String = "FileResourceBackend projects onto CodeNameTree as the interim namespace home for the content-addressed effect-io file store — Hash identity is not a code name, but CodeNameTree keeps backends disjoint under position_under until a dedicated content-addressed NamespaceTree variant is grounded."
+
+data effect_io_host_replay_fixture: String = "effect-io-host-replay"
+
+fn effect_io_host_backend_root(backend: EffectIoResourceBackend) -> NamespacePosition {
+  match backend {
+    FileResourceBackend =>
+      NamespacePosition {
+        tree: CodeNameTree,
+        path: ["effect-io", "file"]
+      }
+    HttpResourceBackend =>
+      NamespacePosition {
+        tree: UriTree,
+        path: [effect_io_host_http_authority]
+      }
+    StorageResourceBackend =>
+      NamespacePosition {
+        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        path: [effect_io_host_storage_service]
+      }
+  }
+}
+
+fn effect_io_host_locator_position(
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator
+) -> NamespacePosition {
+  match backend {
+    FileResourceBackend =>
+      NamespacePosition {
+        tree: CodeNameTree,
+        path: ["effect-io", "file", locator.identity]
+      }
+    HttpResourceBackend =>
+      NamespacePosition {
+        tree: UriTree,
+        path: [effect_io_host_http_authority, locator.identity]
+      }
+    StorageResourceBackend =>
+      NamespacePosition {
+        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        path: [effect_io_host_storage_service, locator.identity]
+      }
+  }
+}
+
+fn effect_io_host_hermetic_envelope(backend: EffectIoResourceBackend) -> Envelope {
+  Envelope {
+    frame: effect_io_host_frame,
+    grants: [
+      Grant {
+        verb: Read,
+        root: effect_io_host_backend_root(backend: backend),
+        binding: Replay { fixture_store: effect_io_host_replay_fixture },
+        lifecycle: LifecycleByConvention
+      },
+    ]
+  }
+}
+
+fn effect_io_host_wet_envelope(backend: EffectIoResourceBackend) -> Envelope {
+  Envelope {
+    frame: effect_io_host_frame,
+    grants: [
+      Grant {
+        verb: Read,
+        root: effect_io_host_backend_root(backend: backend),
+        binding: RealTransport,
+        lifecycle: LifecycleByConvention
+      },
+      Grant {
+        verb: Write,
+        root: effect_io_host_backend_root(backend: backend),
+        binding: RealTransport,
+        lifecycle: LifecycleByConvention
+      },
+    ]
+  }
+}
+
+fn effect_io_host_envelope(
+  mode: ExecutionMode,
+  backend: EffectIoResourceBackend
+) -> Envelope {
+  if execution_mode_is_wet_dispatch(mode: mode) {
+    effect_io_host_wet_envelope(backend: backend)
+  } else {
+    effect_io_host_hermetic_envelope(backend: backend)
+  }
+}
+
+fn effect_io_host_write_admissible(
+  env: Envelope,
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator
+) -> EffectAdmission {
+  let target = effect_io_host_locator_position(backend: backend, locator: locator)
+  if !effect_io_pure_backends_match(left: locator.backend, right: backend) {
+    EffectOutsideGrant {
+      verb: Write,
+      target: target,
+      frame: env.frame
+    }
+  } else {
+    admit_effect(env: env, verb: Write, target: target)
+  }
+}

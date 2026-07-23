@@ -9,8 +9,11 @@ import v1.std.core {
   NewlineIndex,
   authored_name_at
 }
+
 import v1.compiler.infer_types { emit_map_has }
+
 import std.induction { SubValueRelation }
+
 
 type ResolvedFuncSig {
   name: String
@@ -22,6 +25,7 @@ type ResolvedFuncSig {
 }
 
 type ResolvedFuncEnv {
+  name: String
   local: Map<String, ResolvedFuncSig>
   parents: List<ResolvedFuncEnv>
 }
@@ -41,26 +45,74 @@ type CallEdge {
   callee: String
 }
 
-fn lookup_in_parent_chain(parents: List<ResolvedFuncEnv>, name: String) -> ResolvedFuncSig? {
-  match parents |> last {
-    Absent => Absent
-    Present { value: tail_parent } =>
-      match lookup_resolved_sig(env: tail_parent, name: name) {
-        Present { value: sig } => Present { value: sig }
-        Absent =>
-          lookup_in_parent_chain(
-            parents: parents |> take(n: (parents |> count) - 1),
-            name: name
-          )
-      }
+data sigs_env_flat_parents_note: String = "Cost shape (§6 bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import closure held FLAT — precedence-ordered (first = highest precedence: the last direct import's closure first, then earlier imports'; own local always wins before any parent), deduped by env name keeping the first occurrence. The prior shape nested each parent env recursively and lookup walked the shared import DAG as a TREE with no visited state, so a shared ancestor was probed once per PATH, not per module (measured: identical 541 signature requests cost 53.3M env probes, and 902.8M after one merge widened the host-effect closure by 54 modules — 16.95x from visibility alone), with a quadratic parents-prefix copy per recursion step. Flattening at the two assembly points (resolve_func_sigs at typecheck time; rewire_func_env_parent_links post-fold) makes lookup one ordered scan over closure members' own local maps: probes are bounded by distinct closure modules, never paths. The name dedup is load-bearing: without it flat lists compose additively along every import path and the list length re-becomes the path count. Shadowing is preserved exactly — the old deep-first, last-import-first walk linearizes to closure-of-last-import before closure-of-earlier-imports, and a member's own local precedes its parents' contributions."
+
+type FlattenAccum {
+  seen: Map<String, Bool>
+  out: List<ResolvedFuncEnv>
+}
+
+fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
+  let ordered = flat_map(direct_parents |> reverse, p => concat([p], p.parents))
+  let dedup = fold(ordered, init: FlattenAccum { seen: empty_map(), out: [] }, f: (acc, p) =>
+    if emit_map_has(m: acc.seen, key: p.name) { acc }
+    else { FlattenAccum { seen: map_insert(acc.seen, p.name, true), out: list_push(acc.out, p) } }
+  )
+  dedup.out
+}
+
+type ParentSigScan {
+  sig: ResolvedFuncSig?
+  match_count: Int
+  first_parent: String?
+}
+
+fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+  let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
+    match map_get(p.local, name) {
+      Present { value: sig } =>
+        ParentSigScan {
+          sig: if acc.sig != none { acc.sig } else { Present { value: sig } },
+          match_count: acc.match_count + 1,
+          first_parent: if acc.first_parent != none { acc.first_parent } else { Present { value: p.name } }
+        }
+      Absent => acc
+    }
+  )
+  if scan.match_count >= 2 && scan.sig != none {
+    match scan.first_parent {
+      Present { value: chosen_parent } =>
+        resolution_silent_pick_record_fn_parent_first_hit(
+          env_module_path: env.name,
+          name: name,
+          parent_match_count: scan.match_count,
+          chosen_parent_module: chosen_parent
+        )
+      Absent => {}
+    }
   }
+  scan.sig
 }
 
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
   match map_get(env.local, name) {
     Present { value: sig } => Present { value: sig }
-    Absent => lookup_in_parent_chain(parents: env.parents, name: name)
+    Absent =>
+      if resolution_silent_pick_is_enabled() {
+        lookup_resolved_sig_with_telemetry(env: env, name: name)
+      } else {
+        fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
+          match acc {
+            Present { value: sig } => Present { value: sig }
+            Absent => map_get(p.local, name)
+          }
+        )
+      }
   }
+}
+
+fn none_resolved_sig() -> ResolvedFuncSig? {
+  Absent
 }
 
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
@@ -134,7 +186,7 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { local: all_resolved, parents: parent_envs },
+      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: diagnostics
     }
   }
@@ -165,7 +217,7 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { local: all_resolved, parents: parent_envs },
+      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
@@ -218,7 +270,7 @@ fn resolve_func_sigs(
     local_func_set: local_func_set,
     module_name: module_name,
     diagnostics: [],
-    parent_envs: parent_envs,
+    parent_envs: flatten_parent_envs(direct_parents: parent_envs),
     fuel: local_func_names |> count
   )
 }

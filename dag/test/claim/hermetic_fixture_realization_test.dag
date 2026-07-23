@@ -1,26 +1,7 @@
 module test.claim.hermetic_fixture_realization
 
-import std.types { Bool, ContentHash }
-import std.cache_identity { hermetic_fixture_artifact_kind }
-import std.cache_interface {
-  ArtifactIdentity,
-  ContentAddressedByValue,
-  PerHostFilesystem,
-  InProcess,
-  StructuredArtifact,
-  MissIsDiagnostic,
-}
-import extdeps.cache.cache {
-  cache_interface_facts_from_catalog,
-  cache_key_projection_transport,
-}
-import extdeps.cache.types { catalog_key_derivation_classification }
-import extdeps.realization.hermetic_fixture {
-  hermetic_fixture_file_facts,
-  hermetic_fixture_in_process_facts,
-  hermetic_fixture_file_store_id,
-  hermetic_fixture_in_process_id,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_input_digest: ContentHash = "hermetic-fixture-witness-shared-input-digest"
 

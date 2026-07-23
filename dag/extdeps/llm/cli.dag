@@ -1,13 +1,122 @@
 module extdeps.llm.cli
 
+import std.types { List, String, Int, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+  json_text_parse_value,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/openai/codex"
   }
+}
+
+data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
+  }
+}
+
+data claude_cli_program_note: String = "The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)"
+
+data claude_cli_program: String = "claude"
+
+data claude_workspace_trust_note: String = "Claude code's per-user config is `~/.claude.json`; its `projects` map keys ABSOLUTE workspace paths to per-project rows, and `hasTrustDialogAccepted: true` on a row is the accepted workspace-trust dialog. Two facts proven by execution (srv1, 2026-07-23, roadmap-dispatch go-live): (1) `--dangerously-skip-permissions` does NOT cover the trust dialog — an unseeded workspace blocks interactively on first launch (same finding as ctrl's container entrypoint trust seed); (2) trust INHERITS from ancestor directories — seeding one parent root covers every child workspace spawned under it, so a dispatcher seeds its worktree ROOT once, not per-worktree. claude_workspace_trust_seeded is the pure classifier over (config text, project path): it locates the quoted path as a projects-map KEY (next non-ws char must be ':' — a path appearing as an array VALUE, e.g. in githubRepoPaths, is not a key; ALL occurrences are tried), delimits the entry with the JSON grammar's string-aware value parser (extdeps.languages.json.grammar — one grammar, both directions, DESIGN §4; a naive first-brace scan lies on entries carrying nested objects or brace-in-string values like mcpServers/lastSessionFirstPrompt), and requires the flag's own value to be the literal `true` (a `false` row or a `true` elsewhere in the entry does not count). Fail-closed: anything unparseable or absent classifies NOT seeded — the consumer refuses loudly instead of spawning a session that hangs on the dialog. Scaffold residue: the slice-and-scan inside the located entry dissolves into a projection over the parsed tree when the JSON grammar grows its forward ingest fold (JsonValue built by ingest, the ingest_yaml_source analogue)."
+
+fn claude_trust_store_path(home: String) -> String {
+  concat(home, "/.claude.json")
+}
+
+fn claude_trust_key_token(project_path: String) -> String {
+  concat(concat("\"", project_path), "\"")
+}
+
+fn claude_trust_entry_slice(config_text: String, i_after_key: Int) -> String {
+  let i_colon = json_text_skip_ws(s: config_text, i: i_after_key)
+  if !json_text_starts_with_at(s: config_text, i: i_colon, lit: ":") {
+    ""
+  } else {
+    let v_start = json_text_skip_ws(s: config_text, i: i_colon + 1)
+    match json_text_parse_value(s: config_text, i: v_start) {
+      JsonTextParseOk { end: end } => substring(s: config_text, start: v_start, end: end)
+      JsonTextParseFail { end: _ } => ""
+    }
+  }
+}
+
+fn claude_trust_flag_true_after(rest: String) -> Bool {
+  let j = json_text_skip_ws(s: rest, i: 0)
+  if !json_text_starts_with_at(s: rest, i: j, lit: ":") {
+    false
+  } else {
+    json_text_starts_with_at(s: rest, i: json_text_skip_ws(s: rest, i: j + 1), lit: "true")
+  }
+}
+
+fn claude_trust_entry_accepts(entry_slice: String) -> Bool {
+  let parts = split(s: entry_slice, delimiter: "\"hasTrustDialogAccepted\"")
+  any(parts.skip(n: 1), rest => claude_trust_flag_true_after(rest: rest))
+}
+
+type ClaudeTrustScanAcc {
+  pos: Int
+  boundaries: Int
+  found: Bool
+}
+
+fn claude_workspace_trust_seeded(config_text: String, project_path: String) -> Bool {
+  let key = claude_trust_key_token(project_path: project_path)
+  let out = fold(
+    split(s: config_text, delimiter: key),
+    init: ClaudeTrustScanAcc { pos: 0, boundaries: 0, found: false },
+    f: fn(acc, p) {
+      let hit = if acc.boundaries == 0 {
+        false
+      } else {
+        claude_trust_entry_accepts(
+          entry_slice: claude_trust_entry_slice(config_text: config_text, i_after_key: acc.pos),
+        )
+      }
+      ClaudeTrustScanAcc {
+        pos: acc.pos + string_length(s: p) + string_length(s: key),
+        boundaries: acc.boundaries + 1,
+        found: acc.found || hit,
+      }
+    },
+  )
+  out.found
+}
+
+fn shape_claude_invoke_argv(
+  session_id: String,
+  node_id: String,
+  effort: String,
+  settings_json: String,
+  append_system_prompt: String,
+  start_prompt: String,
+  permission_args: List<String>,
+) -> List<String> {
+  concat(
+    [claude_cli_program],
+    concat(
+      permission_args,
+      [
+        "--settings", settings_json,
+        "--effort", effort,
+        "--session-id", session_id,
+        "-n", node_id,
+        "--append-system-prompt", append_system_prompt,
+        start_prompt,
+      ],
+    ),
+  )
 }
 
 service llm.Codex {
@@ -36,6 +145,40 @@ service llm.Codex {
     exit {
       0 => Unit
       nonzero => String "Codex CLI failed"
+    }
+  }
+}
+
+service claude.Invoke {
+  operation Run {
+    input {
+      session_id: String
+      node_id: String
+      effort: String
+      settings_json: String
+      append_system_prompt: String
+      start_prompt: String
+      permission_args: List<String> = []
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", permission_args,
+        "--settings", "{settings_json}",
+        "--effort", "{effort}",
+        "--session-id", "{session_id}",
+        "-n", "{node_id}",
+        "--append-system-prompt", "{append_system_prompt}",
+        "{start_prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI invocation failed"
     }
   }
 }

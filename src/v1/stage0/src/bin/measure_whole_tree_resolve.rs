@@ -3,15 +3,16 @@
 //! Phase-0 whole-tree resolve RSS probe (calm-ram-408 / stern-moth-225).
 //!
 //! Strict-resolves every `.dag` module under the given source roots that passes
-//! the floor discovery exclude list plus `--exclude-subpath` filters, in ONE
-//! `whole_tree_resolved_ctx` pass — the width-1 all-modules-live worst case
-//! from representation-minimization.md.
+//! `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings` (floor
+//! `witness_exclusion_substrings` ∪ probe `whole_tree_strict_resolve_exclusion_substrings`)
+//! plus `--exclude-subpath` filters, in ONE `whole_tree_resolved_ctx` pass —
 
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    peak_rss_vhwm_bytes, whole_corpus_semantic_oracle_snapshot, whole_tree_resolved_ctx,
-    WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
+    peak_rss_vhwm_bytes, whole_corpus_semantic_oracle_snapshot,
+    whole_tree_ancestry_retention_probe, whole_tree_probe_exclusion_substrings,
+    whole_tree_resolved_ctx, WholeTreeCtx,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -28,19 +29,8 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    // Probe-specific extras beyond `FLOOR_DISCOVERY_EXCLUDES` (whole-tree resolve
-    // cannot strict-resolve test trees or eval-only workflow scaffolds).
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
+    let mut exclude_subpaths = whole_tree_probe_exclusion_substrings();
+    let mut ancestry_report = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -53,6 +43,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 exclude_subpaths.push(require_value(&args, i, "--exclude-subpath")?);
             }
+            // M0 ancestry-retention mode (v1-run-stability-throughline): one strict
+            // resolve, then per-field retained-vs-distinct entry counts + peak RSS.
+            // Replaces the default flow (no oracle snapshot — one resolve, one report).
+            "--ancestry-report" => {
+                ancestry_report = true;
+            }
             other => {
                 eprintln!("measure_whole_tree_resolve: unknown argument: {other}");
                 return Err(ExitCode::from(2));
@@ -64,6 +60,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     if source_roots.is_empty() {
         eprintln!("measure_whole_tree_resolve: at least one --source-root is required");
         return Err(ExitCode::from(2));
+    }
+
+    if ancestry_report {
+        whole_tree_ancestry_retention_probe(&source_roots, &exclude_subpaths).map_err(|e| {
+            eprintln!("measure_whole_tree_resolve: ancestry probe failed:\n{e}");
+            ExitCode::from(2)
+        })?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     let WholeTreeCtx {

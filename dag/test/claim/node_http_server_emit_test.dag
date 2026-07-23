@@ -1,7 +1,7 @@
 module test.claim.node_http_server_emit
 
-import std.logic { Bool }
-import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn node_http_server_source_contains_create_server() -> Bool {
   string_contains(s: gunbhub_node_http_server_source(), pattern: "createServer")

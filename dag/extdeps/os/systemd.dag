@@ -1,7 +1,7 @@
 module extdeps.os.systemd
 
 import std.types { NonEmptyStr, String }
-import std.list { List }
+import std.types { List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -26,14 +26,32 @@ data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
   "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
+type SystemdUnitProperty
+  = MemoryMax
+  | MemorySwapMax
+  | MemoryHigh
+  | CPUWeight
+  | MemoryCurrent
 
-data systemd_memory_max_property: NonEmptyStr = "MemoryMax"
+fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
+  match property {
+    MemoryMax => "MemoryMax" as NonEmptyStr
+    MemorySwapMax => "MemorySwapMax" as NonEmptyStr
+    MemoryHigh => "MemoryHigh" as NonEmptyStr
+    CPUWeight => "CPUWeight" as NonEmptyStr
+    MemoryCurrent => "MemoryCurrent" as NonEmptyStr
+  }
+}
 
-data systemd_memory_swap_max_property: NonEmptyStr = "MemorySwapMax"
+data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
-data systemd_memory_high_property: NonEmptyStr = "MemoryHigh"
+data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemorySwapMax)
 
-data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
+data systemd_memory_high_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryHigh)
+
+data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(property: CPUWeight)
+
+data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
 
 type SystemdCgroupMemoryLimit
   = MemoryLimitUnbounded

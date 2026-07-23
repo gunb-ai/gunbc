@@ -11,10 +11,10 @@ pub use crate::std_algebra::{BoundedLattice, Ordering};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -28,7 +28,7 @@ pub enum DescentEvidence {
 }
 
 pub fn evidence_rank(e: DescentEvidence) -> i64 {
-    match e {
+    match e.clone() {
         DescentEvidence::Strict => 2,
         DescentEvidence::NonIncreasing => 1,
         DescentEvidence::DescentUnknown => 0,
@@ -36,13 +36,13 @@ pub fn evidence_rank(e: DescentEvidence) -> i64 {
 }
 
 pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-        DescentEvidence::Strict => match b {
+    match a.clone() {
+        DescentEvidence::Strict => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
             _ => DescentEvidence::DescentUnknown,
         },
-        DescentEvidence::NonIncreasing => match b {
+        DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::NonIncreasing,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
             _ => DescentEvidence::DescentUnknown,
@@ -52,7 +52,7 @@ pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> 
 }
 
 pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
+    match a.clone() {
         DescentEvidence::DescentUnknown => b,
         DescentEvidence::NonIncreasing => match b {
             DescentEvidence::Strict => DescentEvidence::Strict,
@@ -78,7 +78,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
-    match evidence {
+    match evidence.clone() {
         DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
         DescentEvidence::Strict => DescentEvidence::Strict,
         _ => DescentEvidence::DescentUnknown,
@@ -107,9 +107,9 @@ pub fn map_evidence_merge_at(
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
             key.clone(),
-            descent_evidence_lattice_meet(existing.clone(), new_val),
+            descent_evidence_lattice_meet(existing.clone(), new_val.clone()),
         ),
-        None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val),
+        None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone()),
     }
 }
 
@@ -152,10 +152,12 @@ impl PositiveDescentAmount {
 }
 
 pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
-        PositiveDescentAmount::OneStep => 1,
-        PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
-            (1 + positive_descent_count(p.clone()))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*steps.clone()).clone() {
+            PositiveDescentAmount::OneStep => 1,
+            PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
+                (1 + positive_descent_count(p.clone()))
+            }
         }
     })
 }
@@ -176,7 +178,7 @@ impl ProportionalDivisor {
 }
 
 pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
         ProportionalDivisor::DivideByTwo => 2,
         ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
             (1 + proportional_divisor_to_int(p.clone()))

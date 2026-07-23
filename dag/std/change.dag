@@ -2,9 +2,6 @@ module std.change
 
 import std.types { List, Bool }
 import std.algebra { Monoid }
-
-data keyed_change_doc: String = "Keyed delta fold carrier — generic keyed zip-fold into an algebraic codomain. Unchanged vanishes by monoid identity (never by filtering). Three-way uses a join-semilattice with KeyedUnchanged as the benign bottom (safety inversion of std.termination.DescentEvidence, whose bottom is the fail state). KeyedLeafVerdict is the single three-way authority (verdict is the plan). Codomain carries NO Unknown element."
-
 type KeyedRow<K, V> {
   row_key: K
   value: V
@@ -269,13 +266,13 @@ fn keyed_collect_keys<K, V>(
   rows: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<K> {
-  fold(rows, init: [], f: fn(acc, row) {
+  reverse(rows |> fold(init: [], f: fn(acc, row) {
     if fold(acc, init: false, f: fn(found, k) { found || key_eq(a: k, b: row.row_key) }) {
       acc
     } else {
-      concat(acc, [row.row_key])
+      concat([row.row_key], acc)
     }
-  })
+  }))
 }
 
 fn keyed_union_keys<K, V>(
@@ -544,9 +541,7 @@ fn keyed_invert_hunk<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedDiffHunk<K, V> {
 
 fn keyed_invert_patch<K, V>(patch: KeyedPatch<K, V>) -> KeyedPatch<K, V> {
   KeyedPatch {
-    hunks: fold(patch.hunks, init: [], f: fn(acc, hunk) {
-      concat(acc, [keyed_invert_hunk(hunk: hunk)])
-    }),
+    hunks: map(patch.hunks, fn(hunk) { keyed_invert_hunk(hunk: hunk) }),
   }
 }
 

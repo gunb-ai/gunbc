@@ -21,30 +21,26 @@ data bool_primitive_facts: BoolPrimitiveFacts = BoolPrimitiveFacts {
   encoding: BoolEncodingFact {}
 }
 data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: fn(a, b) {
-        match a {
-          True => b
-          False => False
-        }
-      },
-      join: fn(a, b) {
-        match a {
-          True => True
-          False => b
-        }
-      }
-    },
-    top: True,
-    bottom: False
+  meet: fn(a, b) {
+    match a {
+      True => b
+      False => False
+    }
+  },
+  join: fn(a, b) {
+    match a {
+      True => True
+      False => b
+    }
   },
   complement: fn(a) {
     match a {
       True => False
       False => True
     }
-  }
+  },
+  top: True,
+  bottom: False
 }
 
 fn bool_node() -> Node {

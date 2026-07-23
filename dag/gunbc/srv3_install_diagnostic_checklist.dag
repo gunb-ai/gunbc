@@ -1,12 +1,18 @@
 module gunbc.srv3_install_diagnostic_checklist
 
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import extdeps.filesystem.filesystem_io { Filesystem }
+<<<<<<< HEAD
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
 import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
+=======
+import gunbc.shell_bash_runner { shell_printf_line }
+>>>>>>> origin/main
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
   OsInstallAttemptIntent,
+  srv3_install_diagnostic_observe_script_for_intent,
   Srv3InstallDebugObservation,
   Srv3InstallDiagnostic,
   NbdServeObservation,
@@ -21,20 +27,40 @@ import gunbc.srv3_os_install_diagnostic {
   srv3_install_diagnostic_recommended_action_wire,
   parse_srv3_install_debug_observation,
 }
+import gunbc.host_effect {
+  Srv3InstallDiagnosticObserve,
+  HostOs,
+  host_effect_read_evidence,
+  LocalShell,
+  ShellEffectApplied,
+  ConvergePlanApplied,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.types { String }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data srv3_install_diagnostic_checklist_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+type Srv3InstallDiagnosticObserveOutcome
+  = Srv3InstallDiagnosticObserved { stdout: String }
+  | Srv3InstallDiagnosticObserveRefused { reason: String }
+
+data srv3_install_diagnostic_checklist_receipt_echo_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.srv3_install_diagnostic_checklist",
-    decl_name: "srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger",
+    decl_name: "srv3_install_diagnostic_checklist",
     field: WholeDeclaration,
   }
 }
 
+<<<<<<< HEAD
 data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_diagnostic_checklist — observe script via shell_exec_via_bash + stdout parse into Srv3InstallDebugObservation then diagnose_srv3_install; curl/redfish/sol concat tails in this module are TERMINAL for the reconcile spine — FROZEN effective at merge (no further concat-shell growth here; this PR's tail expansion is pre-freeze forward-fix for TOKEN_PATH/SOL/NBDKIT markers); receipt echo via shell_printf_line; DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue; retire medium_structure_exception_roster entry for dag/gunbc/srv3_install_diagnostic_checklist.dag"
 
 data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_diagnostic_observe.sh"
@@ -372,8 +398,23 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
   )
 }
 
+=======
+data srv3_install_diagnostic_checklist_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_install_diagnostic_checklist",
+    decl_name: "srv3_install_diagnostic_checklist_receipt_echo_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "dissolved: observe path routes through host_effect_apply Srv3InstallDiagnosticObserve; receipt echo and observe-script oracle remain medium-as-string pending bash-emit (#5828)"
+
+data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_diagnostic_observe.sh"
+
+>>>>>>> origin/main
 func srv3_install_diagnostic_emit_observe_script() -> ProcessExit {
-  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
   let write = Filesystem.Write(path: srv3_install_diagnostic_observe_script_path, content: script)
   if write.success {
     ExitSuccess
@@ -382,8 +423,44 @@ func srv3_install_diagnostic_emit_observe_script() -> ProcessExit {
   }
 }
 
+fn srv3_install_diagnostic_observe_outcome(
+  intent: OsInstallAttemptIntent,
+) -> Srv3InstallDiagnosticObserveOutcome {
+  let target = HostOs { node: srv3_os_install_actuator_host }
+  match host_effect_apply(
+    target: target,
+    effect: Srv3InstallDiagnosticObserve {
+      bmc: intent.bmc_endpoint,
+      port: intent.serve_port,
+      iso_path: intent.iso_path,
+      iso_content_hash: intent.iso_content_hash,
+    },
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  ) {
+    Converged { evidence: ShellEffectApplied { exit_code: _, stdout: out }, applied: _ } =>
+      Srv3InstallDiagnosticObserved { stdout: out }
+    Converged { evidence: ConvergePlanApplied { exit_code: _, stdout: _ }, applied: _ } =>
+      Srv3InstallDiagnosticObserveRefused {
+        reason: "srv3-install-diagnostic-observe: unexpected ConvergePlanApplied evidence for Srv3InstallDiagnosticObserve",
+      }
+    NotConverged { reason: why, applied: _ } =>
+      Srv3InstallDiagnosticObserveRefused { reason: why }
+  }
+}
+
+fn srv3_install_diagnostic_observe_stdout(
+  intent: OsInstallAttemptIntent,
+) -> String? {
+  match srv3_install_diagnostic_observe_outcome(intent: intent) {
+    Srv3InstallDiagnosticObserved { stdout: out } => Present { value: out }
+    Srv3InstallDiagnosticObserveRefused { reason: _ } => none
+  }
+}
+
 func srv3_install_diagnostic_checklist() -> ProcessExit {
   let intent = srv3_os_install_attempt_intent
+<<<<<<< HEAD
   let observe_script = srv3_install_diagnostic_observe_script(intent: intent)
   let observe_run = shell.Exec.Run(script: shell_exec_via_bash(body: observe_script))
   if !observe_run.success {
@@ -405,6 +482,30 @@ func srv3_install_diagnostic_checklist() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: concat("srv3-install-diagnostic-receipt: ", echo_run.stderr))
+=======
+  match srv3_install_diagnostic_observe_outcome(intent: intent) {
+    Srv3InstallDiagnosticObserved { stdout } => {
+      let observation = parse_srv3_install_debug_observation(
+        stdout: stdout,
+        intent: intent,
+      )
+      let verdict = diagnose_srv3_install(intent: intent, observation: observation)
+      let receipt = srv3_install_diagnostic_receipt_line(verdict: verdict, observation: observation)
+      let action = srv3_install_diagnostic_recommended_action_wire(verdict: verdict)
+      let echo_body = concat(
+        shell_printf_line(line: receipt),
+        shell_printf_line(line: concat("Srv3InstallDiagnosticAction: ", action)),
+      )
+      let echo_run = shell.Exec.Run(script: transport_script_from_body(body: echo_body))
+      if echo_run.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("srv3-install-diagnostic-receipt: ", echo_run.stderr))
+      }
+    }
+    Srv3InstallDiagnosticObserveRefused { reason } =>
+      exit_failure(reason: reason)
+>>>>>>> origin/main
   }
 }
 
@@ -443,14 +544,5 @@ fn srv3_install_diagnostic_websocket_wire(observation: BmcWebsocketObservation) 
 }
 
 fn srv3_install_diagnostic_checklist_entrypoint_is_declared() -> Bool {
-  string_contains(s: srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger, pattern: "diagnose_srv3_install")
-}
-
-fn srv3_install_diagnostic_observe_script_declares_five_surfaces() -> Bool {
-  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
-  string_contains(s: script, pattern: "surface=serve")
-    && string_contains(s: script, pattern: "surface=bmc_websocket")
-    && string_contains(s: script, pattern: "surface=redfish")
-    && string_contains(s: script, pattern: "surface=sol")
-    && string_contains(s: script, pattern: "surface=router")
+  string_contains(s: srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger, pattern: "Srv3InstallDiagnosticObserve")
 }

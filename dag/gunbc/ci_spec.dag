@@ -2,26 +2,77 @@ module gunbc.ci_spec
 
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
-  witness_layer_source_flags
+  witness_discovery_scan_dirs
+}
+import gunbc.cli_invoke {
+  claim_executor_run_plan_shell,
+  claim_executor_verify_artifacts_shell,
+  gunbc_run_shell
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_ci_rust_job_gates
+  project_ci_regen_job_gates,
+  project_ci_floor_witness_entries
 }
+import std.realization_schedule { ScheduleWitnessEntry }
+import gunbc.ci_diff_defaults { ci_merge_base_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
+import gunbc.merge_admission_produce {
+  ci_floor_stamp_merge_admission_script,
+  ci_floor_disposition_marker_init_script,
+}
+import extdeps.git {
+  git_remote_ref_parts,
+  git_fetch_no_tags_shell,
+  git_toplevel_shell_subexpr_with_fallback,
+}
+import std.types { GitRef }
 import extdeps.github.actions { RunnerSpec }
+import v2.std.orchestration {
+  Do,
+  EnvSet,
+  EnvUnset,
+  EscalationLevel,
+  FailFast,
+  LogMatches,
+  Pipeline,
+  PipelineStep,
+  Retry,
+  Run,
+  StdoutAndStderr,
+  TeeTo
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { EmitDirective, SeverityWarning }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
+
+type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
+
+data gunbc_ci_floor_batch_stop_policy_note: String = "Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request → StopBeforeDependents (fail-fast: a cheap-gate red stops before compile/corpus). push (main) and schedule (falsifier) → FullLedger (record batch failure and continue; exit non-zero at end). Unknown/unrecognized events default to FullLedger — never silently stop-early and lose ledger (the absorbing fallback). Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan; consumer: claim_executor.rs run_walk (see gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note)."
+
+data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorBatchStopPolicy enum mirrors this type; run_walk halts or continues based on the variant returned by gunbc_ci_floor_batch_stop_policy_for_github_event after gunbc_ci_floor_plan_uses_batch_stop_policy gates enrollment. Reason: batch-walk halt is executor realization — host-process control flow over an already-evaluated .dag policy, not yet expressible as substrate behavior inside claim_executor. Checkable receipts: witness_floor_stop_policy_* + witness_floor_batch_stop_policy_plan_roster_enrolled in ci_floor_plan_witness_test; acceptance measurement (PR fail-fast ~2min; main push prints complete gate+corpus ledger under FullLedger). Dissolve-on: v2 self-emitted claim_executor run_walk when the executor bin crosses the self-host frontier (DESIGN §7 terminal collapse of stage0 host bins)."
+
+data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "FloorBatchStopPolicy",
+    field: WholeDeclaration
+  }
+}
 
 type DiffPolicy {
   base: String
@@ -39,8 +90,13 @@ type DeployStage {
   runner: RunnerSpec
 }
 
+data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus shrunk by affected-set selection, and the roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
+
+data ci_spec_discovery_flip_note: String = "discovery_scan_dirs is the affected-set enrollment flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
   gates: List<Gate>
+  witness_entries: List<ScheduleWitnessEntry>
+  discovery_scan_dirs: List<String>
   diff_policy: DiffPolicy
   notice_title: String
   deploy_stages: List<DeployStage>
@@ -48,9 +104,11 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
+data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
 
-data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
+
+data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
 data live_deploy_apply_entry: String = "dag/gunbc/live_deploy/apply.dag"
 data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
@@ -69,8 +127,10 @@ data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
+  witness_entries: gunbc_ci_floor_witness_entries,
+  discovery_scan_dirs: witness_discovery_scan_dirs,
   diff_policy: {
-    base: "origin/main",
+    base: ci_merge_base_ref,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -78,187 +138,298 @@ data gunbc_ci_spec: CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
+data gunbc_ci_regen_spec: CiSpec = {
+  gates: gunbc_ci_regen_floor_gates,
+  witness_entries: [],
+  discovery_scan_dirs: [],
+  diff_policy: {
+    base: ci_merge_base_ref,
+    head: "HEAD",
+    mode: DiffMergeBase
+  },
+  notice_title: "self-host fixed-point (regen + staleness) — required; folded into ci job",
+  deploy_stages: [],
+}
+
+fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
+  CiSpec {
+    gates: spec.gates,
+    witness_entries: entries,
+    discovery_scan_dirs: spec.discovery_scan_dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
+fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec {
+  CiSpec {
+    gates: spec.gates,
+    witness_entries: spec.witness_entries,
+    discovery_scan_dirs: dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
 data ci_release_features: String = "text_lookup_work_counter"
 
 fn ci_repo_root_shell() -> String {
-  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  git_toplevel_shell_subexpr_with_fallback()
 }
 
 fn ci_release_build_line() -> String {
   concat(
     concat(
-      "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
+      "\"$CARGO_BIN\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
-    " --bins"
-  )
-}
-
-fn ci_cargo_eagain_retry_core(command: String) -> String {
-  concat(
-    concat(
-      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
-      concat(command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
-    ),
-    concat(
-      concat(
-        concat(
-          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
-          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
-        ),
-        concat(
-          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
-          concat(command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
-        )
-      ),
-      concat(
-        concat(
-          concat(
-            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
-            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
-          ),
-          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
-        ),
-        concat(
-          concat("      else\n", "        exit 1\n"),
-          concat("      fi\n", "    fi\n")
-        )
-      )
-    ),
-    concat(
-      concat(
-        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
-        concat("    exit 1\n", "  fi\n")
-      ),
-      concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
+    fold(
+      ci_floor_required_artifact_names,
+      init: "",
+      f: (acc, name) => concat(acc, concat(" --bin ", name))
     )
   )
 }
 
-fn ci_cargo_eagain_retry_script(command: String) -> String {
-  concat("set -o pipefail\n", ci_cargo_eagain_retry_core(command: command))
+data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.rust_tests_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (DESIGN 5) — and fmt was collateral damage of a DESIGN 3 fusion: tools.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (DESIGN 5: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.cargo_build cargo.Build.Fmt (the same operation tools.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at DESIGN 7 terminal collapse, when no .rs remains to format."
+
+fn ci_fmt_gate_line() -> String {
+  "\"$CARGO_BIN\" fmt --all --check"
 }
 
-fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
-  concat(
-    concat("bash -o pipefail <<'__GUNBC_CI_RETRY__'\n", ci_cargo_eagain_retry_core(command: command)),
-    "__GUNBC_CI_RETRY__"
-  )
+fn ci_retry_body_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Present { value: StdoutAndStderr },
+    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+  }
 }
 
-data ci_floor_required_artifact_names: List<String> = ["claim_executor", "gunbc"]
+fn ci_retry_exhausted_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+    on_failure: FailFast
+  }
+}
+
+fn ci_retry_escalation_level1() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+    },
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
+  }
+}
+
+fn ci_retry_escalation_level2() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
+    },
+    env: [
+      EnvUnset { name: "RUSTC_WRAPPER" },
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+    ]
+  }
+}
+
+fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [Do { run: ci_retry_body_run(command: command) }],
+      on_failure: FailFast
+    },
+    escalations: [ci_retry_escalation_level1(), ci_retry_escalation_level2()],
+    on_exhausted: ci_retry_exhausted_pipeline()
+  }
+}
+
+data ci_floor_required_artifact_names: List<String> = [
+  "claim_executor",
+  "gunbc",
+  "compile_clean_floor_skip_witness",
+  "regen_floor_skip_witness",
+  "floor_skip_discovery_witness",
+  "discover_source_root_ingest",
+  "claim_batch",
+  "regen_stage0",
+  "interp_recorded_fixture_witness",
+  "v1_src_dag_parse",
+  "auth_declared_but_unwired_witness",
+  "bootstrap_witness",
+  "dag_collect_fingerprint_witness",
+  "diagnostics_witness",
+  "effects_rest_transport_witness",
+  "infer_semantics_witness",
+  "parse_witness"
+]
+
+data ci_floor_required_artifact_names_note: String = "This list is the single cross-job handoff manifest (operator job-split ruling 2026-07-11): ci_release_build_line derives its --bin flags from it (build/manifest skew is unwritable), the build job verifies these bins post-build, packs exactly these into the release-bins artifact, and the downstream ci floor job unpacks and re-verifies the same list before running (pre-Phase-D the emit_determinism job did too; removed 2026-07-14). Membership = the floor-invoked bins (claim_executor, gunbc, floor_skip_discovery_witness) plus the FULL bin_name universe of tools.host_prelude transports (witness_bin / ensure_bin_built_and_verified) that corpus witnesses can address — pre-split those fell back to in-job cargo builds against the build step's warm target/ (cheap); post-split the floor job has no build cache, so a bin missing here would silently re-absorb the ~33min monolith cold compile the job split exists to bound. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
 
 fn artifact_shell_path(name: String) -> String {
   concat(concat("\"$ROOT/target/release/", name), "\"")
 }
 
 fn ci_floor_build_verify_script() -> String {
-  let bin = claim_executor_bin_shell()
-  let paths = fold(
-    ci_floor_required_artifact_names,
-    init: "",
-    f: (acc, name) => concat(acc, concat(" ", artifact_shell_path(name: name)))
-  )
-  concat(concat(concat(bin, " --verify-build-artifacts"), paths), "\n")
+  let paths = map(ci_floor_required_artifact_names, name => artifact_shell_path(name: name))
+  claim_executor_verify_artifacts_shell(artifact_paths: paths)
 }
 
-fn ci_release_build_script() -> String {
+data ci_release_bins_archive_name: String = "release-bins.tgz"
+
+fn ci_release_bins_pack_script() -> String {
+  let names = fold(
+    ci_floor_required_artifact_names,
+    init: "",
+    f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
+  )
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
-      ci_cargo_eagain_retry_script(command: ci_release_build_line()),
-      concat(
-        ci_floor_build_verify_script(),
-        "sccache --show-stats 2>/dev/null || true"
-      )
+      concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
+      concat(names, "\n")
     )
   )
 }
 
-fn claim_executor_bin_shell() -> String {
-  "\"$ROOT/target/release/claim_executor\""
+fn ci_release_bins_unpack_verify_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      "mkdir -p \"$ROOT/target/release\"\n",
+      concat(
+        concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
+        concat(
+          concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
+          ci_floor_build_verify_script()
+        )
+      )
+    )
+  )
 }
 
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
+data ci_documentation_only_floor_shortcut_retired_note: String = "REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission."
+
+fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
+  match policy.mode {
+    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
+    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
+  }
+}
+
 fn git_fetch_script(policy: DiffPolicy) -> String {
-  let parts = split(s: policy.base, delimiter: "/")
-  let remote = parts.first()
-  let ref_name = join_slash(parts: parts.skip(n: 1))
-  concat(
-    concat(concat("git fetch --no-tags ", remote), " "),
-    concat(ref_name, " 2>/dev/null || true")
-  )
+  let parts = git_remote_ref_parts(ref: policy.base as GitRef)
+  git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: true)
 }
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
+data plan_artifact_plan_function: String = "gunbc_ci_plan_artifact_batches"
+data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
 
-fn scheduler_invoke(spec: CiSpec) -> String {
-  concat(
-    concat(
-      concat(
-        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", floor_plan_function)
-      ),
-      concat(concat(" --notice-title \"", spec.notice_title), "\"")
-    ),
-    ""
+
+fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
+  claim_executor_run_plan_shell(
+    source_roots: witness_layer_roots,
+    plan_entry: floor_plan_entry,
+    plan_function: plan_function,
+    notice_title: Present { value: spec.notice_title },
+    rooted: true
   )
 }
 
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
+fn scheduler_invoke(spec: CiSpec) -> String {
+  scheduler_invoke_with(spec: spec, plan_function: floor_plan_function)
+}
+
+fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
-      concat(ci_release_build_script(), "\n"),
-      concat(git_fetch_script(policy: spec.diff_policy), "\n")
-    ),
-    concat(
-      concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-      ci_floor_stamp_merge_admission_script()
+      concat(
+        concat("# ", concat(ci_documentation_only_floor_shortcut_retired_note, "\n")),
+        concat(git_fetch_script(policy: spec.diff_policy), "\n")
+      ),
+      concat(
+        concat(ci_floor_disposition_marker_init_script(), "\n"),
+        concat(
+          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+          ci_floor_stamp_merge_admission_script()
+        )
+      )
     )
   )
+}
+
+data regen_floor_skip_witness_bin: String = "regen_floor_skip_witness"
+
+data ci_regen_floor_skip_policy_note: String = "Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 immediately (a required step that passes because the self-host fixed-point is provably unchanged — regen runs before the floor so emitter drift fails fast, with no floor or merge-admission dependency). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control."
+
+fn ci_regen_floor_skip_shortcut_script() -> String {
+  concat(
+    concat("# ", concat(ci_regen_floor_skip_policy_note, "\n")),
+    concat(
+      "if [ \"$GITHUB_EVENT_NAME\" = \"pull_request\" ]; then\n",
+      concat(
+        concat(
+          concat("  _ci_regen_skip=$(", concat(artifact_shell_path(name: regen_floor_skip_witness_bin), " 2>/dev/null || echo run_regen)")),
+          "\n  if [ \"$_ci_regen_skip\" = \"regen_not_affected_skip\" ]; then\n"
+        ),
+        concat(
+          "      echo \"gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)\"\n",
+          concat("      exit 0\n", concat("  fi\n", "fi\n"))
+        )
+      )
+    )
+  )
+}
+
+fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(
+        concat(ci_regen_floor_skip_shortcut_script(), "\n"),
+        concat(scheduler_invoke_with(spec: spec, plan_function: regen_floor_plan_function), "\n")
+      )
+    )
+  )
+}
+
+fn gunbc_ci_regen_floor_run(spec: CiSpec) -> String {
+  gunbc_ci_regen_floor_only_script(spec: spec)
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  gunbc_ci_run_script(spec: spec)
+  gunbc_ci_floor_only_script(spec: spec)
 }
 
-fn gunbc_ci_rust_gate_invoke() -> String {
-  ci_cargo_eagain_retry_script(
-    command: concat(
-      concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
-      " --entry dag/tools/rust_gates_ci.dag --function main"
-    )
-  )
-}
-
-fn gunbc_ci_rust_job_run() -> String {
-  concat(
-    concat(ci_release_build_script(), "\n"),
-    concat(
-      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
-      gunbc_ci_rust_gate_invoke()
-    )
-  )
+fn gunbc_ci_floor_run(spec: CiSpec) -> String {
+  gunbc_ci_floor_only_script(spec: spec)
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
-    concat(
-      concat(
-        concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
-        concat(" --entry ", stage.entry)
-      ),
-      concat(" --function ", stage.function)
-    ),
-    "\n"
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: stage.entry,
+      function: stage.function,
+      rooted: true,
+      claim_run: false
+    )
   )
-}
-
-fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
-  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_deploy_invoke(stage: stage))
 }
 

@@ -94,11 +94,11 @@ fn non_negative_int_admits(value: Int) -> Bool {
 }
 
 fn at_least_minus_one_int_admits(value: Int) -> Bool {
-  value >= -1
+  value >= (0 - 1)
 }
 
 fn at_least_minus_two_int_admits(value: Int) -> Bool {
-  value >= -2
+  value >= (0 - 2)
 }
 
 fn exact_one_int_admits(value: Int) -> Bool {

@@ -58,11 +58,12 @@ fn account_password_body(new_password: String) -> String {
   ]))
 }
 
-fn boot_override_body(target: String, enabled: String) -> String {
+fn boot_override_body(target: String, enabled: String, mode: String) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "Boot", value: json_object(members: [
       json_kv(key: "BootSourceOverrideTarget", value: json_string(s: target)),
       json_kv(key: "BootSourceOverrideEnabled", value: json_string(s: enabled)),
+      json_kv(key: "BootSourceOverrideMode", value: json_string(s: mode)),
     ])),
   ]))
 }

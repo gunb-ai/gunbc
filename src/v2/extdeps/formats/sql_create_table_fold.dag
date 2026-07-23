@@ -97,8 +97,6 @@ data sql_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data sql_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: sql_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (sql_fold_unsupported_variant_diagnostic, sql_fold_columns_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN SQL emit-medium follow-on lands: production emit callers surface sql_fold_column_def_emitted_witness / sql_fold_schema_operation_bundle_witness Violates diagnostics through emit() with node_locus over the offending SqlColumnDefinition or SqlSchemaOperation subtree in SqlFoldCreateTableBundle.emitted, retiring the synthetic anchor."
-
 fn sql_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
@@ -573,14 +571,10 @@ fn sql_fold_kind_emit_transform(_spelling: String) -> String {
   ""
 }
 
-data sql_fold_stmt_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0002} stmt-kind lex byte and zero-width sql_fold_kind_emit_transform are replaced by real SQL production-tag lexing that disambiguates create_table/column_def/primary_key productions without sentinel bytes"
-
 fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   let m0 = sql_token_class_emit_transforms()
   map_insert(m0, ^sql_fold_stmt_kind_tag, sql_fold_kind_emit_transform)
 }
-
-data sql_fold_whitespace_embedded_lex_dissolution_trigger: String = "🟡 dissolve-on: whitespace-baked sql_token_create_table/sql_token_lparen/sql_token_type_text/sql_token_not_null/sql_token_primary_key lex literals (and sql_token_comma overlap with primary_key prefix) replaced by whitespace-free token classes plus explicit separator emit transforms, so future SQL emit-mediums do not copy longest-match lex hacks"
 
 fn sql_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {

@@ -9,6 +9,7 @@ text_lookup_work_counter = []
 
 [dependencies]
 stacker = "0.1"
+im = { version = "15.1", features = ["serde"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 unicode-ident = "1"

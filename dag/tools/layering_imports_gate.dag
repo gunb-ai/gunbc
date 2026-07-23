@@ -3,13 +3,15 @@ module tools.layering_imports_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.layering_imports_transport {
   run_clean_tree_gate,
-  run_scanner_perturb_receipts
+  run_scanner_perturb_receipts,
+  run_reference_only_perturb_receipt
 }
 
 func run_layering_imports_gate_body() -> ProcessExit {
   let clean = run_clean_tree_gate()
   let perturb = run_scanner_perturb_receipts()
-  return if clean && perturb {
+  let reference_only = run_reference_only_perturb_receipt()
+  return if clean && perturb && reference_only {
     ExitSuccess
   } else {
     exit_failure(

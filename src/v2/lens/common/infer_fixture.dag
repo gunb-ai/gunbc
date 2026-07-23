@@ -7,7 +7,7 @@ import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 fn claim_atom_node(s: Symbol) -> Node {

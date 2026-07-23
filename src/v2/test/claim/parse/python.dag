@@ -1,0 +1,43 @@
+module v2.test.parse.python
+
+data python_extended_fn_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
+
+fn python_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^python_parse_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^python_parse_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn python_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn python_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: python_extended_fn_source,
+    file: ^python_parse_file,
+    rules: python_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: stream, diagnostics: _ } =>
+      parse(tokens: stream, grammar: python_grammar())
+  }
+}
+
+data claim_python_extended_function_parses: TestClaim = EqualsClaim {
+  label: "Python lex/grammar accepts an extended function with assignment, if, and indented returns",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: python_parse_bool_atom(
+    b: python_parse_accepted(out: python_tokenize_and_parse())
+  ),
+  rhs: python_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

@@ -1,7 +1,7 @@
 module v2.extdeps.posix
 
 import v2.extdeps.file_system { AbsolutePath, Filesystem, PosixByteString }
-import v2.std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid }
 import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
 import v2.std.integer { Int }
 import v2.std.machine { Byte }

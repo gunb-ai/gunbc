@@ -1,0 +1,180 @@
+module test.claim.membership_reconcile_witness
+
+import std.types { String, List, Bool, Int }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.membership_reconcile {
+  MembershipPlan, MemberAction,
+  MemberUpsert, MemberTeardown, MemberTeardownRefused,
+  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
+  membership_reconcile,
+  membership_upsert_count, membership_teardown_count, membership_refusal_count,
+  MemberEffect, EffectUpsert, EffectTeardown,
+  MemberRefusal,
+  EffectsOrRefusal, EffectsReady, ApplyRefused,
+  membership_effects,
+  MembershipTally, membership_tally,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type TMember { mid: String, ver: String, own: Ownership? }
+
+fn tm_owned(mid: String, ver: String) -> TMember {
+  TMember { mid: mid, ver: ver, own: Present { value: Owned } }
+}
+
+fn tm_ensured(mid: String, ver: String) -> TMember {
+  TMember { mid: mid, ver: ver, own: Present { value: Ensured } }
+}
+
+fn tm_unknown(mid: String, ver: String) -> TMember {
+  TMember { mid: mid, ver: ver, own: Absent }
+}
+
+fn t_key(m: TMember) -> String { m.mid }
+fn t_key_eq(a: String, b: String) -> Bool { a == b }
+fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
+fn t_own(m: TMember) -> Ownership? { m.own }
+
+fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: t_key,
+    key_eq: t_key_eq,
+    value_eq: t_val_eq,
+    ownership_of: t_own,
+  )
+}
+
+fn plan_has_upsert(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+  any(plan.actions, a => match a { MemberUpsert { member: m } => m.mid == mid  _ => false })
+}
+
+fn plan_has_teardown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+  any(plan.actions, a => match a { MemberTeardown { member: m } => m.mid == mid  _ => false })
+}
+
+fn plan_has_refused_not_owned(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberTeardownRefused { member: m, cause: c } =>
+        m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false })
+      _ => false
+    }
+  )
+}
+
+fn plan_has_refused_unknown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberTeardownRefused { member: m, cause: c } =>
+        m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false })
+      _ => false
+    }
+  )
+}
+
+fn w_added_upserts() -> Bool {
+  let plan = t_reconcile(desired: [tm_owned(mid: "a", ver: "1")], observed: [])
+  plan_has_upsert(plan: plan, mid: "a")
+    && membership_upsert_count(plan: plan) == 1
+    && membership_teardown_count(plan: plan) == 0
+}
+
+fn w_removed_owned_tears_down() -> Bool {
+  let plan = t_reconcile(desired: [], observed: [tm_owned(mid: "a", ver: "1")])
+  plan_has_teardown(plan: plan, mid: "a")
+    && membership_teardown_count(plan: plan) == 1
+    && membership_refusal_count(plan: plan) == 0
+}
+
+fn w_unchanged_noop() -> Bool {
+  let m = tm_owned(mid: "a", ver: "1")
+  let plan = t_reconcile(desired: [m], observed: [m])
+  membership_upsert_count(plan: plan) == 0
+    && membership_teardown_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+}
+
+fn w_modified_reupserts() -> Bool {
+  let plan = t_reconcile(
+    desired: [tm_owned(mid: "a", ver: "2")],
+    observed: [tm_owned(mid: "a", ver: "1")],
+  )
+  plan_has_upsert(plan: plan, mid: "a")
+    && membership_upsert_count(plan: plan) == 1
+    && membership_teardown_count(plan: plan) == 0
+}
+
+fn w_r5_owned_only_teardown_synthetic() -> Bool {
+  let plan = t_reconcile(
+    desired: [],
+    observed: [
+      tm_owned(mid: "o", ver: "1"),
+      tm_ensured(mid: "e", ver: "1"),
+      tm_unknown(mid: "u", ver: "1"),
+    ],
+  )
+  plan_has_teardown(plan: plan, mid: "o")
+    && plan_has_refused_not_owned(plan: plan, mid: "e")
+    && !plan_has_teardown(plan: plan, mid: "e")
+    && plan_has_refused_unknown(plan: plan, mid: "u")
+    && !plan_has_teardown(plan: plan, mid: "u")
+    && membership_teardown_count(plan: plan) == 1
+    && membership_refusal_count(plan: plan) == 2
+}
+
+fn effects_has_teardown(es: List<MemberEffect<TMember>>, mid: String) -> Bool {
+  any(es, e => match e { EffectTeardown { member: m } => m.mid == mid  EffectUpsert { member: _ } => false })
+}
+
+data w_effects_wholesale_refuse_note: String = "DISCRIMINATING (§5): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects returns ApplyRefused (o's owned teardown NOT surfaced as an effect), never EffectsReady with the refused sibling silently filtered out. If membership_effects is ever broken to drop-the-refused and return the effects, this hits the EffectsReady arm and returns false = RED. The degenerate apply/retract poles never produce a Refused, so only this synthetic mixed observed set exercises the wall."
+
+fn w_effects_refuses_wholesale_on_any_refusal() -> Bool {
+  let plan = t_reconcile(
+    desired: [],
+    observed: [tm_owned(mid: "o", ver: "1"), tm_ensured(mid: "e", ver: "1")],
+  )
+  match membership_effects(plan: plan) {
+    ApplyRefused { refusals: rs } =>
+      count(rs) == 1
+        && any(rs, r =>
+             r.member.mid == "e"
+               && (match r.cause { MemberNotOwned => true  OwnershipUnknown => false }))
+    EffectsReady { effects: _ } => false
+  }
+}
+
+fn w_effects_ready_when_no_refusal() -> Bool {
+  let plan = t_reconcile(desired: [], observed: [tm_owned(mid: "o", ver: "1")])
+  match membership_effects(plan: plan) {
+    EffectsReady { effects: es } =>
+      count(es) == 1 && effects_has_teardown(es: es, mid: "o")
+    ApplyRefused { refusals: _ } => false
+  }
+}
+
+fn w_tally_matches_counts() -> Bool {
+  let plan = t_reconcile(
+    desired: [tm_owned(mid: "a", ver: "1")],
+    observed: [tm_owned(mid: "b", ver: "1"), tm_ensured(mid: "c", ver: "1")],
+  )
+  let t = membership_tally(plan: plan)
+  t.upserts == 1 && t.teardowns == 1 && t.refusals == 1
+    && t.upserts == membership_upsert_count(plan: plan)
+    && t.teardowns == membership_teardown_count(plan: plan)
+    && t.refusals == membership_refusal_count(plan: plan)
+}
+
+test fn membership_reconcile_witnesses() -> Bool {
+  w_added_upserts()
+    && w_removed_owned_tears_down()
+    && w_unchanged_noop()
+    && w_modified_reupserts()
+    && w_r5_owned_only_teardown_synthetic()
+    && w_effects_refuses_wholesale_on_any_refusal()
+    && w_effects_ready_when_no_refusal()
+    && w_tally_matches_counts()
+}

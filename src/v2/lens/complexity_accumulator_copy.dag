@@ -1,0 +1,158 @@
+module v2.lens.complexity_accumulator_copy
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.cost {
+  PolynomialCost,
+  SizeVariable,
+  SymbolicCost,
+  polynomial_degree_two
+}
+import v2.lens.cost.copied_port_citations { copied_port_index_of }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+
+type PortReading
+  = PortBareName { name: Symbol }
+  | PortPureLiteral
+  | PortComputedExpression { mentions: List<Symbol> }
+  | PortMissing
+
+data port_mentions_note: String = "PortComputedExpression carries the value identifiers the expression MENTIONS (collected by the same walk that decides the 0/1/many identifier split - one authority). Without the payload, a carrier buried inside a non-call computed argument (Wrapped { inner: acc }) reaching an UNREGISTERED combiner was a silent false-clean: the reading destroyed the occurrence at construction time, any_port_carries_carrier saw nothing, and no descendant call capture existed to catch it. Mentions make the unregistered-combiner arm fail closed: intersect(mentions, carriers) => ^combiner_unregistered_carrier_reaches. BindsComputed carries the same payload with the RHS's raw mentions (depth-1; see mentions_depth_note in the analyze module for why bind-time substitution was priced and deferred to Stage B). The collector itself is the linear accumulator-threading walk and earns one honest ^combiner_unregistered_carrier_reaches refusal from this lens (see roster_lens_traversal_ceiling_note in the roster gate) - linearity wins over lens-greenness per the bare-minimum-cost rule."
+
+type Finding
+  = Poly2Suspect { at: Node, cost: v2.lens.cost.SymbolicCost }
+  | Unclassifiable { at: Node, cause: Symbol }
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { s == needle }
+  })
+}
+
+fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
+  PolynomialCost {
+    variable: SizeVariable { source: n },
+    degree: polynomial_degree_two()
+  }
+}
+
+fn some_finding(f: Finding) -> Optional<Finding> {
+  Present { value: f }
+}
+
+fn any_symbol_in(needles: List<Symbol>, xs: List<Symbol>) -> Bool {
+  fold(needles, init: false, f: fn(acc, n) {
+    if acc { true } else { symbol_in(needle: n, xs: xs) }
+  })
+}
+
+fn port_carries_carrier(p: PortReading, carriers: List<Symbol>) -> Bool {
+  match p {
+    PortBareName { name: n } => symbol_in(needle: n, xs: carriers)
+    PortPureLiteral => false
+    PortComputedExpression { mentions: ms } => any_symbol_in(needles: ms, xs: carriers)
+    PortMissing => false
+  }
+}
+
+fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<Symbol>) -> Bool {
+  fold(ports, init: false, f: fn(acc, p) {
+    if acc { true } else { port_carries_carrier(p: p, carriers: carriers) }
+  })
+}
+
+type LetBindingFact
+  = BindsFresh
+  | BindsComputed { mentions: List<Symbol> }
+
+type LetBinding {
+  name: Symbol
+  fact: LetBindingFact
+}
+
+data let_binding_note: String = "The within-body definition closure (Stage A: def edges decide aliasing). A let binder whose RHS closes to a CARRIER joins the carriers list at bind time - transitive closure by construction, so `let g = acc  let h = g` proves h - and needs no carrier here. BindsFresh (RHS a pure literal) and BindsComputed (RHS a computed expression) substitute the port reading via resolve_port_reading BEFORE classification, so classify_call and the copied-port lattice stay untouched. A binder whose RHS is a bare name that closes to NOTHING (unbound in scope) records NO binding: its uses still refuse ^copied_port_name_may_alias - the closure only ever DECIDES, never defaults clean. Reader today: the analyze traversal's let-spine arm over surface captures (binding-name lexeme stamping, dag_grammar_let_expr); repoints to Bind definition edges when stmt-chain lowering lands, deleting the surface read."
+
+fn no_let_binding_fact() -> Optional<LetBindingFact> {
+  Absent
+}
+
+fn some_let_binding_fact(fact: LetBindingFact) -> Optional<LetBindingFact> {
+  Present { value: fact }
+}
+
+fn let_binding_fact_for(name: Symbol, bindings: List<LetBinding>) -> Optional<LetBindingFact> {
+  fold(bindings, init: no_let_binding_fact(), f: fn(acc, b) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if b.name == name {
+          some_let_binding_fact(fact: b.fact)
+        } else {
+          no_let_binding_fact()
+        }
+    }
+  })
+}
+
+fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> PortReading {
+  match reading {
+    PortBareName { name: n } =>
+      match let_binding_fact_for(name: n, bindings: bindings) {
+        Present { value: fact } =>
+          match fact {
+            BindsFresh => PortPureLiteral
+            BindsComputed { mentions: ms } => PortComputedExpression { mentions: ms }
+          }
+        Absent => reading
+      }
+    PortPureLiteral => reading
+    PortComputedExpression { mentions: _ } => reading
+    PortMissing => reading
+  }
+}
+
+fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) -> Optional<Finding> {
+  match reading {
+    PortBareName { name: n } =>
+      if symbol_in(needle: n, xs: carriers) {
+        some_finding(f: Poly2Suspect { at: at, cost: poly_two_cost(n: at) })
+      } else {
+        some_finding(f: Unclassifiable { at: at, cause: ^copied_port_name_may_alias })
+      }
+    PortPureLiteral => Absent
+    PortComputedExpression { mentions: _ } =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_computed_argument })
+    PortMissing =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+  }
+}
+
+fn classify_call(
+  at: Node,
+  combiner: Symbol,
+  ports: List<PortReading>,
+  carriers: List<Symbol>
+) -> Optional<Finding> {
+  match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: combiner) {
+    Absent =>
+      if any_port_carries_carrier(ports: ports, carriers: carriers) {
+        some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })
+      } else {
+        Absent
+      }
+    Present { value: idx } =>
+      match list_at_optional(xs: ports, index: idx) {
+        Absent =>
+          some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+        Present { value: reading } =>
+          classify_copied_port(at: at, reading: reading, carriers: carriers)
+      }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}

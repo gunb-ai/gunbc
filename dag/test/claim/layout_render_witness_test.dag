@@ -1,11 +1,7 @@
 module test.claim.layout_render_witness
 
-import std.layout {
-  Doc, DocEmpty, DocText, DocLine, DocConcat, DocNest,
-  LayoutProtocol,
-  doc_text, doc_concat, doc_nest, doc_line_of, doc_blank,
-  render
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 data yaml_proto: LayoutProtocol = LayoutProtocol { indent_unit: "  " }

@@ -1,0 +1,17 @@
+[package]
+name = "v1-stage0-v1-infer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+im = { version = "15.1", features = ["serde"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
+v1-stage0-runtime = { path = "../stage0_runtime" }
+v1-stage0-std-core = { path = "../stage0_std_core" }
+v1-stage0-std-surface = { path = "../stage0_std_surface" }
+v1-stage0-extdeps-base = { path = "../stage0_extdeps_base" }
+v1-stage0-extdeps-languages = { path = "../stage0_extdeps_languages" }

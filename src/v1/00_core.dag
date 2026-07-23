@@ -85,7 +85,7 @@ type MethodSemantics
   | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
-type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
+type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
 type ExprData
   = NoExprData
@@ -143,6 +143,7 @@ type CompilerDiagnostic
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
   | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
   | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | MissingField       { field: String, type_name: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
@@ -153,6 +154,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | UnlistedImportUse { name: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -172,6 +174,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
     VariantNotFound    { variant: _, type_name: _, span: s }   => s
     FieldNotFound      { field: _, type_name: _, span: s }     => s
+    MissingField       { field: _, type_name: _, span: s }     => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
@@ -182,6 +185,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    UnlistedImportUse { name: _, span: s } => s
   }
 }
 
@@ -194,6 +198,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
     VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
     FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
+    MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
@@ -204,31 +209,28 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
   }
 }
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
-  true
+  match d {
+    UnlistedImportUse { name: _, span: _ } => false
+    _ => true
+  }
 }
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
+    UnlistedImportUse { name: _, span: _ } => false
     _ => true
   }
 }
 
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
-    UnresolvedType { name: _, span: _ } => true
-    TypeMismatch { expected: _, got: _, span: _ } => true
-    ArityMismatch { name: _, expected: _, got: _, span: _ } => true
-    VariantNotFound { variant: _, type_name: _, span: _ } => true
-    FieldNotFound { field: _, type_name: _, span: _ } => true
-    NonExhaustiveMatch { missing: _, span: _ } => true
-    MissingAnnotation { fn_name: _, what: _, span: _ } => true
-    VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => true
-    SoleConstructorViolation { type_name: _, span: _ } => true
+    UnlistedImportUse { name: _, span: _ } => true
     _ => false
   }
 }
@@ -770,6 +772,29 @@ fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
 
+type FieldAccessSpine {
+  root: String
+  dotted: String
+}
+
+fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+      Present { value: FieldAccessSpine { root: name, dotted: name } }
+    ExprFieldAccess { summary: _ } =>
+      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
+        Present { value: base_spine } =>
+          Present { value: FieldAccessSpine {
+            root: base_spine.root,
+            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+          } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
@@ -828,6 +853,8 @@ data transport_body_key: String = "body"
 data transport_stdin_key: String = "stdin"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
+data transport_auth_basic_key: String = "auth_basic"
+data transport_tls_key: String = "tls"
 
 fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
@@ -888,9 +915,14 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
   }
 }
 
-fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
+fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-  make_transport_node(properties: [path_field], children: [], body: none, span: span)
+  let props = match verb {
+    Present { value: verb_expr } =>
+      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+    Absent => [path_field]
+  }
+  make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
 fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -986,6 +1018,18 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
+    || name == transport_auth_basic_key || name == transport_tls_key
+}
+
+fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
+}
+
+fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
+    Present { value: n } => Present { value: authored_name_at(source_indices: source_indices, node: n) }
+    Absent => Absent
+  }
 }
 
 fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
@@ -1288,7 +1332,7 @@ fn intern(table: InternTable, s: String) -> InternResult {
 }
 
 fn intern_str(table: InternTable, id: Int) -> String {
-  match table.strings |> skip(id) |> first {
+  match table.strings |> get(id) {
     Present { value: s } => s
     Absent => ""
   }
@@ -1334,4 +1378,21 @@ fn with_optional_cardinality(n: Node) -> Node {
 
 fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+}
+
+fn module_path_segments(path: String) -> List<String> {
+  if path == "" { [] } else { path |> split(delimiter: ".") }
+}
+
+fn qualified_last_segment(name: String) -> String {
+  match module_path_segments(path: name) |> last {
+    Present { value: s } => s
+    Absent => name
+  }
+}
+
+fn type_name_compatible(a: String, b: String) -> Bool {
+  if a == b { true }
+  else if contains(a, ".") && contains(b, ".") { false }
+  else { qualified_last_segment(name: a) == qualified_last_segment(name: b) }
 }

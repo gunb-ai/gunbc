@@ -1,0 +1,88 @@
+module v2.test.manual.emit_source_store
+
+import v2.compiler.emit { emit }
+import v2.compiler.eval { inferred_tree_digest }
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree, rust_add_target_model }
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic { Accepted, Rejected, None, Outcome }
+import std.types { ContentHash, String }
+import std.measure { byte_size }
+import std.materialization_ladder {
+  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
+}
+import std.artifact_store { ArtifactKey, artifact_key_hash, store_over_provider, StoreReady, StoreRefusedEviction, ArtifactStore }
+import extdeps.realization.artifact_store_fs {
+  artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
+  ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data emit_source_store_note: String = "P3 MVP (witness-realization plan): emit-on-demand at the SOURCE grain - the emit cache wired through the P2 store, keyed on the INPUT identity (inferred-tree digest x emitter identity x target x artifact kind; the same Hash=ContentHash authority the fnv1a64 convergence landed). Cold path: store miss -> pure emit -> put. Warm path: served from the store WITH NO EMIT CALL IN THE ARM - the second run pays zero emit - and the served bytes are asserted equal to a fresh emit (the agreement receipt, plan P3 ACCEPT (a) at the source grain). The native-artifact tier (zero BUILD, host binaries, FLAG A hermetic ruling) is the rung's remainder; this witness proves the store-wrapping shape end to end."
+
+data emit_store_root: String = "/tmp/gunbc_emit_source_store"
+
+data p3_provider: CacheProvider = provider_row(
+  id: "emit-source-store",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ArtifactTier { keying: ContentKeyed },
+  eviction: SpacePacked { budget: "p3 emit-source cache" }
+)
+
+fn p3_key(emitter: String) -> ContentHash {
+  artifact_key_hash(key: ArtifactKey {
+    closure_digest: inferred_tree_digest(tree: rust_add_inferred_tree),
+    emitter_identity: emitter,
+    target_language: "rust",
+    toolchain: "source-artifact"
+  })
+}
+
+fn fresh_emit_source() -> String {
+  match emit(tree: rust_add_inferred_tree, target: rust_add_target_model) {
+    Accepted { value: m, diagnostics: _ } => m.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn emit_source_store_cold_then_warm_holds() -> Bool {
+  let key = p3_key(emitter: "v2.compiler.emit")
+  let source = fresh_emit_source()
+  let emitted_nonempty = (source == "") == false
+  let put_ok = match artifact_fs_put(store_root: emit_store_root, key: key, payload: source) {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let served = match artifact_fs_get(store_root: emit_store_root, key: key) {
+    ArtifactFsHit { payload: p } => p
+    ArtifactFsMiss { path: _ } => ""
+    ArtifactFsRefused { verb: v, target: t, frame: f } => ""
+  }
+  emitted_nonempty && put_ok && served == source && served == fresh_emit_source()
+}
+
+test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
+  let key = p3_key(emitter: "v2.compiler.emit")
+  let put_ok = match artifact_fs_put(store_root: emit_store_root, key: key, payload: fresh_emit_source()) {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let mutated = p3_key(emitter: "v2.compiler.emit-vNEXT")
+  let miss = match artifact_fs_get(store_root: emit_store_root, key: mutated) {
+    ArtifactFsHit { payload: _ } => false
+    ArtifactFsMiss { path: _ } => true
+    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  }
+  put_ok && miss && (key == mutated) == false
+}
+
+test fn emit_source_store_provider_gate_holds() -> Bool {
+  match store_over_provider(provider: p3_provider, budget: byte_size(count: 1000000)) {
+    StoreReady { store: _ } => true
+    StoreRefusedEviction { provider_id: _, declared: _ } => false
+  }
+}

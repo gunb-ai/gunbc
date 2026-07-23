@@ -1,0 +1,197 @@
+module v2.test.claim.module_storage_binding
+
+import v2.compiler.source_authority {
+  ModuleStorageBinding,
+  ModuleStorageIndex,
+  module_storage_binding_file_path,
+  module_storage_binding_module_dotted,
+  module_storage_index_insert,
+  module_storage_module_for_path,
+  module_storage_produced_binding,
+  module_storage_parsed_binding,
+  ModuleStorageAgrees,
+  ModuleStorageDivergent,
+  ModuleStorageUncovered,
+  module_storage_host_agrees_with_oracle
+}
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { Absent, Present }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.provenance { span_index_empty }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data msb_fast_lane_note: String = "FAST-LANE half of the Phase-1 binding witnesses (operator 5-second rule 2026-07-12; authority gunbc.ci_layer_roots long_lane_exclusion_note). These exercise the index CONSTRUCTION WALL — duplicate-module refusal, its accept control, and the produced/zero-file arm — over hand-built ModuleStorageBinding rows, so they carry ZERO parse cost and run in per-PR discovery. The parse-DERIVED proofs (that the binding is read back out of a real parsed module node, and the underivable-name refusal) cost ~13s of eval each and therefore live in src/v2/test/claim/long/module_storage_binding_derivation_test.dag, run by the long-lane recipe. Split, not deleted: the note's own division — fast receipts stay discovered, execution proofs live in long/. Duplicate detection keys on module identity independently of provenance, which is exactly why the §5 wall can be proven here without paying for a parse."
+
+data msb_fixture_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_fixture, tail: Empty } }
+}
+
+data msb_other_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_other_fixture, tail: Empty } }
+}
+
+data msb_produced_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_fixture_qn,
+  producer: ^msb_body_producer,
+  source_root: V2Tree
+)
+
+data msb_produced_duplicate_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_fixture_qn,
+  producer: ^msb_other_body_producer,
+  source_root: V2Tree
+)
+
+data msb_produced_other_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_other_qn,
+  producer: ^msb_body_producer,
+  source_root: V2Tree
+)
+
+data msb_singleton_index: ModuleStorageIndex = Cons { head: msb_produced_binding, tail: Empty }
+
+test fn module_storage_duplicate_module_insert_refuses() -> Bool {
+  match module_storage_index_insert(
+    index: msb_singleton_index,
+    binding: msb_produced_duplicate_binding
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn module_storage_distinct_module_insert_accepts() -> Bool {
+  match module_storage_index_insert(
+    index: msb_singleton_index,
+    binding: msb_produced_other_binding
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn module_storage_produced_module_has_no_storage() -> Bool {
+  match module_storage_binding_file_path(binding: msb_produced_binding) {
+    Present { value: _ } => false
+    Absent =>
+      module_storage_binding_module_dotted(binding: msb_produced_binding) == "v2.std.msb_fixture"
+  }
+}
+
+test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool {
+  match module_storage_module_for_path(
+    index: msb_singleton_index,
+    file_path: "src/v2/std/msb_fixture.dag"
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+data msb_parsed_path: String = "src/v2/std/msb_parsed_fixture.dag"
+
+data msb_parsed_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_parsed_fixture, tail: Empty } }
+}
+
+data msb_parsed_binding: ModuleStorageBinding = module_storage_parsed_binding(
+  module: msb_parsed_qn,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^msb_parsed_artifact,
+    file_path: msb_parsed_path
+  },
+  span_index: span_index_empty(),
+  source_root: V2Tree
+)
+
+data msb_parsed_index: ModuleStorageIndex = Cons { head: msb_parsed_binding, tail: Empty }
+
+test fn module_storage_parsed_module_has_storage() -> Bool {
+  match module_storage_binding_file_path(binding: msb_parsed_binding) {
+    Absent => false
+    Present { value: p } => p == msb_parsed_path
+  }
+}
+
+test fn module_storage_parsed_module_resolves_path_to_module() -> Bool {
+  match module_storage_module_for_path(index: msb_parsed_index, file_path: msb_parsed_path) {
+    Absent => false
+    Present { value: qn } =>
+      qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_parsed_fixture"
+  }
+}
+
+data msb_agreement_control_note: String = "ENROLLED discriminating control for module_storage_host_agrees_with_oracle (review 39735). The wet gate runs only GREEN claims, so a regression of the comparator to always-Agrees would still pass wherever scan and parse happen to agree — the honesty the scaffold trigger claims was verified by hand, never by a wired consumer, which is the 'enrolled, zero executions' shape one tier up. These run in per-PR discovery over hand-built indexes at ZERO parse cost, so the negative controls execute on every PR rather than only inside the wet lane: a host row carrying the WRONG module for an oracle-covered path must report Divergent, and a host index MISSING the path must report Uncovered. Divergence and coverage stay distinct because their remedies differ. Together with the agreeing case these pin all three arms, so the comparator cannot silently collapse to a constant."
+
+data msb_oracle_row: ModuleStorageBinding = module_storage_parsed_binding(
+  module: msb_parsed_qn,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^msb_oracle_artifact,
+    file_path: msb_parsed_path
+  },
+  span_index: span_index_empty(),
+  source_root: V2Tree
+)
+
+data msb_oracle_only_index: ModuleStorageIndex = Cons { head: msb_oracle_row, tail: Empty }
+
+data msb_host_divergent_row: ModuleStorageBinding = module_storage_parsed_binding(
+  module: Cons {
+    head: ^v2,
+    tail: Cons { head: ^std, tail: Cons { head: ^msb_wrong_fixture, tail: Empty } }
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^msb_divergent_artifact,
+    file_path: msb_parsed_path
+  },
+  span_index: span_index_empty(),
+  source_root: V2Tree
+)
+
+data msb_host_divergent_index: ModuleStorageIndex = Cons { head: msb_host_divergent_row, tail: Empty }
+
+test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool {
+  match module_storage_host_agrees_with_oracle(
+    oracle: msb_oracle_only_index,
+    host: msb_parsed_index
+  ) {
+    ModuleStorageAgrees => true
+    ModuleStorageDivergent { path: _ } => false
+    ModuleStorageUncovered { path: _ } => false
+  }
+}
+
+test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool {
+  match module_storage_host_agrees_with_oracle(
+    oracle: msb_oracle_only_index,
+    host: msb_host_divergent_index
+  ) {
+    ModuleStorageDivergent { path: p } => p == msb_parsed_path
+    ModuleStorageAgrees => false
+    ModuleStorageUncovered { path: _ } => false
+  }
+}
+
+test fn module_storage_agreement_reports_uncovered_on_missing_row() -> Bool {
+  match module_storage_host_agrees_with_oracle(
+    oracle: msb_oracle_only_index,
+    host: Empty
+  ) {
+    ModuleStorageUncovered { path: p } => p == msb_parsed_path
+    ModuleStorageAgrees => false
+    ModuleStorageDivergent { path: _ } => false
+  }
+}

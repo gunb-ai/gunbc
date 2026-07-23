@@ -1,27 +1,5 @@
 module product.placement_supply
 
-import std.measure {
-  ByteSize,
-  Hertz,
-  HardwareThreadCount,
-  byte_size_count,
-  hardware_thread_count_value,
-  hertz,
-  hertz_count,
-}
 import std.types { NonEmptyStr }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
-
-type PlacementSupplyRow {
-  identity: HostIdentity
-  hardware_threads: HardwareThreadCount
-  clock_hz: Hertz
-  ram_bytes: ByteSize
-}
-
-fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
-  let thread_count = hardware_thread_count_value(row.hardware_threads)
-  let clock_count = hertz_count(row.clock_hz)
-  hertz(thread_count * clock_count)
-}

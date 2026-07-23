@@ -1,0 +1,10 @@
+module v2.test.long.lattice_not_diverged_green
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data lattice_key: String = "std/algebra.dag:Lattice"
+
+test fn corpus_lattice_not_diverged_green_holds() -> Bool {
+  !fact_cardinality_live_cross_tree_is_diverged_fork(rel_path_decl_key: lattice_key)
+}

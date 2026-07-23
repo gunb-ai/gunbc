@@ -1,6 +1,7 @@
 module v2.compiler.ingest
 
-import v2.std.algebra { Empty, list_append, zip_eq }
+import std.algebra { Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection {
   Absent,
   List,
@@ -13,6 +14,7 @@ import v2.std.collection {
 import v2.std.grammar {
   ParseTree,
   grammar_relation_emitted_rebuild_from_token_spine,
+  grammar_relation_row_forward_token_spine_selection,
   grammar_relation_rules_formal_productions,
   node_atom_identity_optional
 }
@@ -48,6 +50,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+
+data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → infer → emit over CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
 
 fn parse_atom_frontier_class(atom_identity: Symbol, binding_to_class: Map<Symbol, Symbol>) -> Symbol {
   match map_get(binding_to_class, atom_identity) {
@@ -152,86 +156,8 @@ fn operational_parse_tree_project_to_formal_captures(
   }
 }
 
-fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
-  bind_outcome(
-    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
-    f: fn(tokens_root) {
-      bind_outcome(
-        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
-        f: fn(tokens) {
-          let classes = fold(
-            tokens,
-            init: Empty,
-            f: fn(acc, t) {
-              list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
-            }
-          )
-          outcome_accepted(value: classes)
-        }
-      )
-    }
-  )
-}
-
-type ForwardRowSelection
-  = ForwardRowNone
-  | ForwardRowOne { emitted: Node }
-  | ForwardRowMany
-
-fn forward_row_select_step(acc: ForwardRowSelection, frontier: List<Symbol>, row: Node) -> ForwardRowSelection {
-  match row_token_spine_classes(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: spine, diagnostics: _ } =>
-      if zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y }) {
-        match find_named_child(root: row, name: ^grammar_relation_field_emitted) {
-          Rejected { diagnostics: _ } => acc
-          Accepted { value: row_emitted, diagnostics: _ } =>
-            match acc {
-              ForwardRowNone => ForwardRowOne { emitted: row_emitted }
-              ForwardRowOne { emitted: _ } => ForwardRowMany
-              ForwardRowMany => ForwardRowMany
-            }
-        }
-      } else {
-        acc
-      }
-  }
-}
-
 fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -> Outcome<Node> {
-  match rules.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        rules.children,
-        init: ForwardRowNone,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: _ } => forward_row_select_step(acc: acc, frontier: frontier, row: e.target)
-            Positional => acc
-          }
-        }
-      ) {
-        ForwardRowOne { emitted: emitted } => outcome_accepted(value: emitted)
-        ForwardRowMany =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^parse_tree_to_emitted_node_ambiguous_row,
-            at: node_locus(node: rules),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
-        ForwardRowNone =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^parse_tree_to_emitted_node_no_matching_row,
-            at: node_locus(node: rules),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
-      }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^parse_tree_to_emitted_node_no_matching_row,
-        at: node_locus(node: rules),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
-  }
+  grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
 }
 
 fn concrete_syntax_token_spine_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {

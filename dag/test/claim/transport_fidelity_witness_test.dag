@@ -1,6 +1,7 @@
 module test.claim.transport_fidelity
 
 import std.fidelity { TransportClass, TestClass, DerivedClassification }
+import std.types { FermiDepth }
 import std.fermi { fermi_eq }
 import std.logic { Bool }
 import extdeps.transports.fidelity {
@@ -8,6 +9,9 @@ import extdeps.transports.fidelity {
   transport_hermetic,
   classify_transports,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_class_is_hermetic(c: TestClass) -> Bool {
   match c {

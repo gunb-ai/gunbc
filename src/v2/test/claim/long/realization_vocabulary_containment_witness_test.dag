@@ -1,0 +1,29 @@
+module v2.test.long.realization_vocabulary_containment_witness
+
+import v2.lens.layering_imports { layer_import_facts_live }
+import v2.lens.realization_vocabulary_containment {
+  realization_vocab_consumer_scan_roots,
+  realization_vocab_exception_paths,
+  realization_vocab_leak_count,
+  realization_vocab_leak_candidate_paths_from_facts,
+  realization_vocab_roster_sound
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data realization_vocab_long_witness_note: String = "Full-corpus realization_vocabulary_containment live-tree receipts exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). One layer_import_facts_live scan per eval checks clean-tree containment and roster soundness together. Fast-lane per-PR coverage (explicit commit_gate_roster rows): lens_unit/discriminators_test.dag synthetic predicate receipts, scanner/planted_leak_test.dag fixture scan, roster_soundness_test.dag stale-roster RED. Excluded from discovery AND the affected-set falsifier by test/claim/long/ dir grain (gunbc.ci_layer_roots witness_exclusion_substrings) — same offlining contract as commit_workflow_long_lane_note. NOT roster-enrolled; dissolve-on: long-lane scheduled falsifier follow-on enrolls this row. Local recipe until then: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag --function realization_vocab_live_corpus_receipt_holds."
+
+test fn realization_vocab_live_corpus_receipt_holds() -> Bool {
+  let facts = layer_import_facts_live(
+    std_roots: realization_vocab_consumer_scan_roots,
+    extdeps_roots: []
+  )
+  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_paths()) == 0
+    && realization_vocab_roster_sound(
+      roster: realization_vocab_exception_paths(),
+      live_leak_paths: realization_vocab_leak_candidate_paths_from_facts(facts: facts)
+    )
+}

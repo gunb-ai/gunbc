@@ -1,7 +1,8 @@
 use v1_compiler::cli_run::{
-    discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
-    wet_hermetic_discovery_outcome_divergences, wet_hermetic_scaffold_roster_entry_prefix,
-    ClaimOutcome, DiscoveryRow, DiscoveryWitnessOutcome, FLOOR_DISCOVERY_EXCLUDES,
+    discover_floor_corpus_rows, is_governed_service_representative_row,
+    run_discovery_corpus_with_options, wet_hermetic_discovery_outcome_divergences,
+    wet_hermetic_scaffold_roster_entry_prefix, witness_exclusion_substrings, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoveryRow, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -81,10 +82,7 @@ fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
     let prefix = wet_hermetic_scaffold_roster_entry_prefix(&roots)
         .expect("load scaffold roster prefix from witness .dag authority");
     let scan_dirs = ci_witness_scan_dirs();
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let excludes = witness_exclusion_substrings();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for governed-service representative roster");
     let rep: Vec<(String, String)> = rows
@@ -109,10 +107,7 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
         "dag authority prefix must select lens_mock_totality tree: {prefix}"
     );
     let scan_dirs = ci_witness_scan_dirs();
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let excludes = witness_exclusion_substrings();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for prefix authority check");
     let rep: Vec<&DiscoveryRow> = rows
@@ -134,6 +129,7 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
         label: "outsider".into(),
         entry: "dag/test/claim/unrelated_witness_test.dag".into(),
         function: "witness_holds".into(),
+        reads_live_tree: true,
     };
     assert!(
         !is_governed_service_representative_row(&outsider, &prefix),
@@ -146,10 +142,24 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
 fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();
     let explicit = governed_service_representative_explicit_entries();
-    let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet, 1)
-        .expect("wet discovery run for scaffold roster");
-    let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic, 1)
-        .expect("hermetic discovery run for scaffold roster");
+    let wet = run_discovery_corpus_with_options(
+        &roots,
+        &[],
+        &explicit,
+        ExecutionMode::Wet,
+        DiscoveryWidthPolicy::Serial,
+        DiscoveryCorpusOptions::default(),
+    )
+    .expect("wet discovery run for scaffold roster");
+    let hermetic = run_discovery_corpus_with_options(
+        &roots,
+        &[],
+        &explicit,
+        ExecutionMode::Hermetic,
+        DiscoveryWidthPolicy::Serial,
+        DiscoveryCorpusOptions::default(),
+    )
+    .expect("hermetic discovery run for scaffold roster");
     let divergences = wet_hermetic_discovery_outcome_divergences(
         &wet.witness_outcomes,
         &hermetic.witness_outcomes,

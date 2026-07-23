@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use im::OrdSet as BTreeSet;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_emit_rust::{
@@ -7,49 +7,45 @@ use v1_compiler::v1_compiler_emit_rust::{
 use v1_compiler::v1_compiler_infer_emit_info::RustCorpusRepr;
 
 #[test]
-fn faithful_string_leaf_base_is_freemonoid_char() {
+fn faithful_string_leaf_base_grounds_to_native_string() {
     let leaf = rust_named_type_base("String".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
     assert_eq!(
-        leaf, "FreeMonoid<Char>",
-        "faithful String leaf must render the declared Char element (got {leaf:?})"
+        leaf, "String",
+        "faithful String leaf must ground to native String (Gate-1 text-carrier grounding), got {leaf:?}"
     );
     assert_ne!(
-        leaf, "FreeMonoid<Nat>",
-        "leaf must not bake the wrong Nat element"
+        leaf, "FreeMonoid<Char>",
+        "faithful String must not render FreeMonoid<Char> after grounding"
     );
 }
 
 #[test]
-fn faithful_string_text_carrier_is_freemonoid_char() {
+fn faithful_string_text_carrier_grounds_to_native_string() {
     let carrier = render_rust_text_carrier(Rc::new(BTreeSet::new()));
-    assert_eq!(carrier, "FreeMonoid<Char>");
-    assert_ne!(carrier, "FreeMonoid<Nat>");
+    assert_eq!(carrier, "String");
+    assert_ne!(carrier, "FreeMonoid<Char>");
 }
 
 #[test]
-fn faithful_string_applied_base_is_bare_freemonoid() {
+fn faithful_string_applied_base_grounds_to_native_string() {
     let base = rust_applied_type_base("String".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
     assert_eq!(
-        base, "FreeMonoid",
-        "applied String base must be bare (element from the resolved child)"
+        base, "String",
+        "applied String base must ground to native String, got {base:?}"
     );
     assert!(
-        !base.contains('<'),
-        "applied base must hold no element literal (got {base:?})"
+        !base.contains("FreeMonoid"),
+        "applied base must not render FreeMonoid after grounding (got {base:?})"
     );
 }
 
 #[test]
-fn faithful_string_applied_single_application_not_doubled() {
+fn faithful_string_applied_single_application_stays_string() {
     let base = rust_applied_type_base("String".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
     let applied = format!("{base}<{}>", "Char");
     assert_eq!(
-        applied, "FreeMonoid<Char>",
-        "applied String must be a single application"
-    );
-    assert_ne!(
-        applied, "FreeMonoid<Nat><Char>",
-        "applied String must not double-apply"
+        applied, "String<Char>",
+        "applied String after grounding is still the native carrier (got {applied:?})"
     );
 }
 

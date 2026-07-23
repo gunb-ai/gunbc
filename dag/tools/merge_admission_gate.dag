@@ -1,8 +1,8 @@
 module tools.merge_admission_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { ContentHash }
-import extdeps.shell
+import std.types { GitRef }
+import extdeps.git
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
@@ -15,25 +15,14 @@ import gunbc.merge_admission {
 }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
+  merge_admission_merge_base_ref,
   parse_receipt_wire,
-  ci_repo_root_shell,
-  shell_stdout_line,
+  observe_merge_target_tree_hash,
+  merge_target_tree_hash_refusal_reason,
+  MergeTargetTreeHashOk,
+  MergeTargetTreeHashRefused,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
-import gunbc.ci_spec { gunbc_ci_spec }
-
-fn merge_target_tree_hash() -> ContentHash {
-  let policy = gunbc_ci_spec.diff_policy
-  let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", policy.base)
-  )
-  shell_stdout_line(raw: result.stdout)
-}
-
-fn repo_root() -> String {
-  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  shell_stdout_line(raw: result.stdout)
-}
 
 fn verdict_reason(v: MergeAdmissionVerdict) -> String {
   match v {
@@ -45,7 +34,7 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
 }
 
 func main() -> ProcessExit {
-  let root = repo_root()
+  let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let read = Filesystem.Read(path: path)
   if !read.success {
@@ -60,28 +49,35 @@ func main() -> ProcessExit {
     Absent =>
       exit_failure(reason: "merge_admission_gate: receipt wire format invalid")
     Present { value: receipt } =>
-      let target = merge_target_tree_hash()
-      if target == "" {
-        exit_failure(reason: "merge_admission_gate: merge-target tree hash unavailable")
-      } else {
-        let verdict = classify_merge_admission_verdict(
-          receipt: receipt,
-          merge_target_tree_hash: target,
-          current_roster_hash: current_gate_roster_hash,
-        )
-        if merge_admission_blocks_merge(
-          receipt: receipt,
-          merge_target_tree_hash: target,
-          current_roster_hash: current_gate_roster_hash,
-        ) {
+      match observe_merge_target_tree_hash(ref: merge_admission_merge_base_ref as GitRef) {
+        MergeTargetTreeHashRefused { ref: ref, cause: cause } =>
           exit_failure(
-            reason: concat(
-              "merge_admission_gate: blocked (",
-              concat(verdict_reason(v: verdict), ")")
+            reason: merge_target_tree_hash_refusal_reason(
+              prefix: "merge_admission_gate",
+              ref: ref,
+              cause: cause
             )
           )
-        } else {
-          ExitSuccess
+        MergeTargetTreeHashOk { hash: target } => {
+          let verdict = classify_merge_admission_verdict(
+            receipt: receipt,
+            merge_target_tree_hash: target,
+            current_roster_hash: current_gate_roster_hash,
+          )
+          if merge_admission_blocks_merge(
+            receipt: receipt,
+            merge_target_tree_hash: target,
+            current_roster_hash: current_gate_roster_hash,
+          ) {
+            exit_failure(
+              reason: concat(
+                "merge_admission_gate: blocked (",
+                concat(verdict_reason(v: verdict), ")")
+              )
+            )
+          } else {
+            ExitSuccess
+          }
         }
       }
   }

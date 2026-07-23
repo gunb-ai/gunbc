@@ -1,9 +1,7 @@
 module v2.test.layering_imports.coverage_domain_equivalence
 
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data layer_root_src_v2_std: String = "src/v2/std"
 data layer_root_src_v2_extdeps: String = "src/v2/extdeps"

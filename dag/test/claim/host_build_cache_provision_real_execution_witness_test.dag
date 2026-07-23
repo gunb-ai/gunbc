@@ -1,0 +1,52 @@
+module test.claim.host_build_cache_provision_real_execution
+
+import std.logic { Bool }
+import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
+import extdeps.filesystem.filesystem_io
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.host_build_cache_provision_script { build_cache_read_back_body }
+import gunbc.host_effect_realize {
+  provision_build_cache_reconcile_shell_observed,
+  ShellExecObserved,
+}
+import std.realization_reconcile { NotConverged, Converged }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Wet execution witness for ProvisionBuildCache read-back fail-closed: runs build_cache_read_back_body under set -euo pipefail with a PATH-prepended fake sccache that always exits 1, then asserts provision_build_cache_reconcile_shell_observed returns NotConverged (not Converged/ExitSuccess). Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. RED control: a regressing script that implicit-exit-0 on failed read-back would reconcile Converged and fail this witness."
+
+test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fake_sccache_path = concat(dir.path as String, "/sccache")
+  let wrote = Filesystem.Write(path: fake_sccache_path, content: "#!/bin/sh\nexit 1\n")
+  let chmod = shell.Exec.Run(script: transport_script_from_body(body: concat("chmod +x ", fake_sccache_path)))
+  let body = concat(
+    "set -euo pipefail\n",
+    concat(
+      concat("export PATH=\"", dir.path as String),
+      concat(":$PATH\"\n", build_cache_read_back_body()),
+    ),
+  )
+  let script = shell_exec_via_bash(body: body)
+  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+  let observed = ShellExecObserved {
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
+  let reconciled = provision_build_cache_reconcile_shell_observed(observed: observed)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && wrote.success
+    && chmod.success
+    && !result.success
+    && cleaned.success
+    && match reconciled {
+      NotConverged { reason: why, applied: _ } =>
+        string_contains(s: why, pattern: "fail-closed")
+      Converged { evidence: _, applied: _ } => false
+    }
+}

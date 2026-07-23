@@ -1,16 +1,5 @@
 module extdeps.container.oci.image_config
 
-import extdeps.container.oci.types {
-  ContainerExposedPort,
-  ContainerPortProtocol,
-  Tcp,
-}
-import extdeps.container.oci.types { Architecture }
-import extdeps.toolchain.types { Os }
-import std.types { Bool, ContentHash, FilePath, NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

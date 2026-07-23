@@ -4,5 +4,8 @@ import v2.std.logic { Bool }
 import v2.test.synthesis_gate.optimality_gap_completeness {
   synthesis_optimality_family_gate
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test data witness_lens_synthesis_family_gate_closed: Bool = synthesis_optimality_family_gate()

@@ -1,0 +1,74 @@
+module v2.test.emit.rust_record_construct_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_fixture_emitted_rec_fn
+}
+import v2.extdeps.languages.rust_test {
+  rust_rec_source_text,
+  rust_rec_target_model_staging,
+  rust_rec_wrong_field_target_model_staging,
+  rust_rec_wrong_value_source_text
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_record_construct_emit_inferred_tree: InferredTree = InferredTree {
+  root: dag_fixture_emitted_rec_fn,
+  facts: Map { lookup: rust_record_construct_emit_facts_miss }
+}
+
+fn rust_record_construct_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_record_construct_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_record_construct_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  emit(tree: rust_record_construct_emit_inferred_tree, target: target)
+}
+
+fn rust_record_construct_emit_mk_accepts() -> Bool {
+  match rust_record_construct_emit_from_tree(target: rust_rec_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_rec_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
+  match rust_record_construct_emit_from_tree(target: rust_rec_wrong_field_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_rec_wrong_value_source_text) &&
+      (source.carried != rust_rec_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_record_construct_emit_holds() -> Bool {
+  rust_record_construct_emit_mk_accepts()
+    && rust_record_construct_emit_wrong_field_discriminates()
+}

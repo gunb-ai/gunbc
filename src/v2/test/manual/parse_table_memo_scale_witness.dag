@@ -1,0 +1,84 @@
+module v2.test.manual.parse_table_memo_scale_witness
+
+
+
+data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"
+
+fn parse_memo_scale_stats_for_grammar(
+  source_text: String,
+  grammar: ParseGrammar
+) -> ParseMemoStats {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } =>
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+            Accepted { value: validated, diagnostics: _ } =>
+              parse_production_memo_stats(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              )
+          }
+        VoidGrammar =>
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      }
+  }
+}
+
+fn parse_memo_scale_tokenize_stats() -> ParseMemoStats {
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  parse_memo_scale_stats_for_grammar(
+    source_text: source_text,
+    grammar: dag_language_model().grammar
+  )
+}
+
+fn witness_parse_memo_scale_tokenize_hits() -> Int {
+  parse_memo_scale_tokenize_stats().hits
+}
+
+fn witness_parse_memo_scale_tokenize_misses() -> Int {
+  parse_memo_scale_tokenize_stats().misses
+}
+
+fn witness_parse_memo_scale_tokenize_lookup_calls() -> Int {
+  parse_memo_scale_tokenize_stats().lookup_calls
+}
+
+fn witness_parse_memo_scale_tokenize_report() -> List<Int> {
+  let stats = parse_memo_scale_tokenize_stats()
+  Cons {
+    head: stats.hits,
+    tail: Cons {
+      head: stats.misses,
+      tail: Cons { head: stats.lookup_calls, tail: Empty }
+    }
+  }
+}
+
+fn witness_stage_tokenize_only_holds() -> Bool {
+  let lm = dag_language_model()
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_stage_parse_only_holds() -> Bool {
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  match parse_memo_scale_stats_for_grammar(
+    source_text: source_text,
+    grammar: dag_language_model().grammar
+  ) {
+    ParseMemoStats { hits: _, misses: misses, lookup_calls: calls } =>
+      (misses > 0) && (calls > 0)
+  }
+}

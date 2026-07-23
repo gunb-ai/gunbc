@@ -1,63 +1,68 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, witness_exclusion_substrings }
+import std.execution_mode { Hermetic, Wet }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
+import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
+  ci_spec_with_discovery_scan_dirs,
+  floor_plan_function,
+  plan_artifact_plan_function,
+  FloorBatchStopPolicy,
 }
-import v2.std.algebra { length, list_snoc_item, skip, zip_map }
-import v2.std.collection { List }
+import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.ci_gate {
+  Gate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.algebra { filter, length, list_map, list_snoc_item, skip, zip_map }
+import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
-import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
-import gunbc.fleet_container {
-  ResourceEnvelope,
-  parallel_run_demand_envelope,
-  demand_envelope_thread_count,
-  demand_envelope_fits_budget
-}
-import gunbc.ci_floor_measurement {
-  gunbc_ci_floor_per_shard_peak_rss_bytes,
-  gunbc_ci_floor_host_compiler_spawn_peak,
-  gunbc_ci_floor_conservative_fallback_width,
-  gunbc_ci_floor_memory_derived_width,
-  gunbc_ci_runner_cgroup_memory_cap,
-  gunbc_ci_execution_corpus_available_width,
-  gunbc_ci_floor_execution_corpus_per_witness_rss,
-  gunbc_ci_floor_executor_base_overhead_bytes,
-}
-import gunbc.ci_budget_tree { srv1_floor_memory_budget }
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import std.nat { Nat }
+import std.measure { Second, second, second_count }
+import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
+  SelectionApplied,
+  SelectionPredictOnly,
+  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  ScheduleWitnessEntry,
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
   RunnableResourceProfile,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
   runnable_memory_negligible,
   runnable_memory_substantial,
-  runnable_memory_substantial_sum,
   runnable_excludes_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
-  schedule_lens_verdict_for_ci_floor
+  runnable_selection_applied,
+  runnable_step_label
 }
+import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
+import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
-  ExecutorBatch,
-  ExecutorJob,
-  ExecutorRunBlocked,
-  ExecutorRunComplete,
-  ExecutorRunRunnable,
-  parallel_executor_plan_from_dependencies
+  ExecutorBatch
+}
+import v2.workflow.realization_runner {
+  RunnerScheduleBlocked,
+  RunnerScheduleComplete,
+  runner_ordering_only,
+  runner_schedule_plan_from_dependencies,
+  runner_schedule_store_covers_nodes
 }
 
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
@@ -70,32 +75,121 @@ data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_
 
 data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
 
+data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
+
+data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
+  LayeringImportsGate,
+  ExtdepsExternalAuthorityGate,
+  GeneratedArtifactDriftGate,
+]
+
+data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the three negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that scan imports, extdeps authority, and generated-artifact drift — seconds each, no whole-tree compile. They run in batch 0 BEFORE DagCompileCleanGate so a layering/drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: when per-gate cost attribution lands, derive from measurement."
+
+data gunbc_ci_cheap_floor_gate_membership_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_plan",
+    decl_name: "gunbc_ci_cheap_floor_gate_membership",
+    field: WholeDeclaration
+  }
+}
+
+fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
+  fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(found, member) {
+    match member {
+      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
+      ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
+      GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
+      _ => found
+    }
+  })
+}
+
+fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
+  fold(spec.gates, init: false, f: fn(found, sg) {
+    match sg {
+      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
+      ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
+      GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
+      DagCompileCleanGate => match g { DagCompileCleanGate => true  _ => found }
+      EmitHostGate => match g { EmitHostGate => true  _ => found }
+      SourceRootIngestGate => match g { SourceRootIngestGate => true  _ => found }
+      RegenVerifyGate => match g { RegenVerifyGate => true  _ => found }
+      SelfHostReadsRealBytesGate => match g { SelfHostReadsRealBytesGate => true  _ => found }
+      SelfHostStalenessGate => match g { SelfHostStalenessGate => true  _ => found }
+    }
+  })
+}
+
+fn floor_compile_depends_on_cheap_gate(g: Gate) -> DependencyView {
+  DependencyView {
+    source: gate_node(g: g),
+    dependent: floor_compile_root_node(),
+    kind: DataDependsOn,
+    usage_site: floor_compile_root_node()
+  }
+}
+
+fn floor_cheap_gates_precede_compile_edges(spec: CiSpec) -> List<DependencyView> {
+  fold(gunbc_ci_cheap_floor_gate_membership, init: [], f: fn(acc, g) {
+    if spec_enrolls_gate(spec: spec, g: g) {
+      list_snoc_item(xs: acc, item: floor_compile_depends_on_cheap_gate(g: g))
+    } else {
+      acc
+    }
+  })
+}
+
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
-data floor_grounding_whole_tree_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_grounding_whole_tree } },
-  children: []
+fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
+  match w.kind {
+    ExecutionWitnessKind => true
+    CorpusWitnessKind => false
+  }
 }
 
-data floor_grounding_whole_tree_entry: String = "src/v2/test/manual/grounding_lens_whole_tree_test.dag"
+fn corpus_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
+  filter(xs: spec.witness_entries, predicate: fn(w) {
+    !entry_kind_is_execution(w: w)
+  })
+}
 
-data floor_grounding_whole_tree_function: String = "grounding_lens_whole_tree_witnesses"
+fn execution_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
+  filter(xs: spec.witness_entries, predicate: fn(w) {
+    entry_kind_is_execution(w: w)
+  })
+}
+
+fn bin_witness_corpus_enrolled(spec: CiSpec) -> Bool {
+  length(xs: spec.discovery_scan_dirs) > 0 && length(xs: bin_witness_wet_entries) > 0
+}
+
+fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
+  concat(
+    if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
+    concat(
+      if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] },
+      if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] }
+    )
+  )
+}
 
 fn gate_node(g: Gate) -> Node {
   match g {
-    RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
-    EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
-    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
-    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
-    DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
-    GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
-    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
-    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
-    SelfHostRealizedComparisonGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_realized_comparison } }, children: [] }
-    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
+    EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [], occurrence_id: SyntheticOccurrence }
+    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [], occurrence_id: SyntheticOccurrence }
+    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [], occurrence_id: SyntheticOccurrence }
+    DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
+    GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [], occurrence_id: SyntheticOccurrence }
+    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [], occurrence_id: SyntheticOccurrence }
+    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [], occurrence_id: SyntheticOccurrence }
+    SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [], occurrence_id: SyntheticOccurrence }
+    SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [], occurrence_id: SyntheticOccurrence }
   }
 }
 
@@ -104,60 +198,82 @@ fn floor_compile_root_node() -> Node {
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
-  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node)
+  (node == floor_compile_root_node())
+    || (node == floor_corpus_node)
+    || (node == execution_corpus_node)
+    || (node == bin_witness_corpus_node)
+    || fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(acc, g) {
+      acc || (node == gate_node(g: g))
+    })
 }
 
+data gate_profile_memory_marker_note: String = "Gate memory classes are structural markers (Negligible vs Substantial) since the 2026-07-12 adaptive-width ruling: the fabricated per-gate byte predictions (per-shard peak, host-compiler spawn peak, and their sums) retired with the width folds they fed. Run-time concurrency is governed by the executor's memory governor against the slot's own cgroup budget; the marker still feeds co-residence structure (runnable_excludes_corpus_co_residence)."
+
 fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
-  let per_shard = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let host_compiler = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_host_compiler_spawn_peak)
+  let substantial = runnable_memory_substantial()
   match g {
     DagCompileCleanGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: substantial,
+        execution_mode: Wet
       )
     SourceRootIngestGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: substantial,
+        execution_mode: Wet
       )
     RegenVerifyGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
       )
-    SelfHostRealizedComparisonGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: false,
-        spawns_host_compiler: false,
-        memory: per_shard
-      )
-    EmitDeterminismGate =>
+    SelfHostReadsRealBytesGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
+      )
+    SelfHostStalenessGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: true,
+        memory: substantial,
+        execution_mode: Wet
       )
     EmitHostGate =>
       runnable_resource_profile(
-        heavy_whole_tree_resolve: false,
+        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: host_compiler
+        memory: substantial,
+        execution_mode: Wet
       )
-    RustMonolithGate => runnable_resource_profile_negligible()
-    LayeringImportsGate => runnable_resource_profile_negligible()
-    ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
-    GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
+    LayeringImportsGate => gate_profile_negligible_wet_declared()
+    ExtdepsExternalAuthorityGate => gate_profile_negligible_wet_declared()
+    GeneratedArtifactDriftGate => gate_profile_negligible_wet_declared()
   }
+}
+
+data gate_profile_wet_declaration_note: String = "Every floor GATE declares execution_mode: Wet explicitly — an honest declaration of pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed), kept while gates run effectful work (fmt/nextest, emit-host, regen, compile-clean shell receipts). The three negligible-memory gates (layering-imports scan, extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared; per-gate hermetic tightening is a follow-on, each flip proven by a green hermetic run of that gate entry. The DISCOVERY and FALSIFIER corpus batches flipped to Hermetic with the audit receipt (claim_batch default-hermetic census 2026-07-12: 1042 PASS / 105 FAIL before remediation; the mode-typed refusals zeroed by the Filesystem.Read checkout carve-out, the git.Core.Toplevel checkout-root mock case, and the six wet-integration offline rows in gunbc.ci_layer_roots — see wet_integration_offline_note). The fail-closed default (runnable_resource_profile_negligible = Hermetic, absent profile = Hermetic at the executor) applies to every NEW runnable: an undeclared live effect refuses with a typed, located diagnostic instead of dispatching."
+
+fn gate_profile_negligible_wet_declared() -> RunnableResourceProfile {
+  runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: runnable_memory_negligible(),
+    execution_mode: Wet
+  )
 }
 
 fn gate_runnable(g: Gate) -> Runnable {
   let profile = gate_runnable_profile(g: g)
   match g {
-    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes", profile: profile }
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
@@ -169,80 +285,228 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
-    SelfHostRealizedComparisonGate => RunnableSingleClaim {
+    SelfHostReadsRealBytesGate => RunnableSingleClaim {
       entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_gate_passes",
+      function: "self_host_realized_comparison_reads_real_bytes_gate_holds",
       profile: profile
     }
-    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
+    SelfHostStalenessGate => RunnableSingleClaim {
+      entry: floor_self_host_realized_comparison_gate_entry,
+      function: "self_host_realized_comparison_staleness_gate_holds",
+      profile: profile
+    }
   }
+}
+
+fn cheap_floor_gate_step_labels() -> List<String> {
+  list_map(
+    xs: gunbc_ci_cheap_floor_gate_membership,
+    f: fn(g) { runnable_step_label(r: gate_runnable(g: g)) }
+  )
+}
+
+fn floor_batch_has_any_cheap_gate(batch: List<Runnable>) -> Bool {
+  schedule_lens_batch_has_any_cheap_gate(batch: batch, cheap_gate_labels: cheap_floor_gate_step_labels())
+}
+
+fn gunbc_ci_floor_batch_stop_policy_for_github_event(event: String) -> FloorBatchStopPolicy {
+  match event {
+    "pull_request" => StopBeforeDependents
+    _ => FullLedger
+  }
+}
+
+fn gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: String) -> Bool {
+  (plan_function == floor_plan_function)
+    || (plan_function == plan_artifact_plan_function)
+    || (plan_function == falsifier_plan_function)
+}
+
+fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
+  let gate_labels = list_map(xs: spec.gates, f: fn(g) {
+    runnable_single_claim_function(r: gate_runnable(g: g))
+  })
+  let corpus_labels = list_map(xs: corpus_plan_nodes(spec: spec), f: fn(node) {
+    runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
+  })
+  concat(gate_labels, corpus_labels)
+}
+
+fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> List<String> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    fold(batch, init: acc, f: fn(inner, r) {
+      list_snoc_item(xs: inner, item: runnable_single_claim_function(r: r))
+    })
+  })
+}
+
+fn runnable_is_discovery_batch(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn batch_has_discovery_corpus(batch: List<Runnable>) -> Bool {
+  fold(batch, init: false, f: fn(found, r) { found || runnable_is_discovery_batch(r: r) })
+}
+
+fn witness_cheap_gates_only_in_early_batch(batches: List<List<Runnable>>) -> Bool {
+  fold(cheap_floor_gate_step_labels(), init: true, f: fn(ok, label) {
+    ok && floor_batch_contains_function(batch: batches.first(), target: label)
+  })
+    && fold(skip(xs: batches, n: 1), init: true, f: fn(ok, batch) {
+      ok && !floor_batch_has_any_cheap_gate(batch: batch)
+    })
+}
+
+fn witness_no_corpus_batch_contains_cheap_gate(batches: List<List<Runnable>>) -> Bool {
+  fold(batches, init: true, f: fn(ok, batch) {
+    if batch_has_discovery_corpus(batch: batch) {
+      ok && !floor_batch_has_any_cheap_gate(batch: batch)
+    } else {
+      ok
+    }
+  })
+}
+
+fn witness_cheap_gates_precede_all_corpus_batches() -> Bool {
+  let batches = gunbc_ci_floor_batches()
+  witness_cheap_gates_only_in_early_batch(batches: batches)
+    && witness_no_corpus_batch_contains_cheap_gate(batches: batches)
+}
+
+fn witness_non_cheap_gate_absent_from_early_batch() -> Bool {
+  !floor_batch_contains_function(
+    batch: gunbc_ci_floor_batches().first(),
+    target: ci_floor_compile_gate_fn
+  )
+}
+
+fn witness_floor_stop_policy_pr_is_fail_fast() -> Bool {
+  match gunbc_ci_floor_batch_stop_policy_for_github_event(event: "pull_request") {
+    StopBeforeDependents => true
+    FullLedger => false
+  }
+}
+
+fn witness_floor_stop_policy_push_is_full_ledger() -> Bool {
+  match gunbc_ci_floor_batch_stop_policy_for_github_event(event: "push") {
+    FullLedger => true
+    StopBeforeDependents => false
+  }
+}
+
+fn witness_floor_stop_policy_unknown_defaults_full_ledger() -> Bool {
+  match gunbc_ci_floor_batch_stop_policy_for_github_event(event: "__unknown_event__") {
+    FullLedger => true
+    StopBeforeDependents => false
+  }
+}
+
+fn witness_floor_batch_stop_policy_plan_roster_enrolled() -> Bool {
+  gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: floor_plan_function)
+    && gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: plan_artifact_plan_function)
+    && gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: falsifier_plan_function)
+    && !gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: "bre_claim_batches")
 }
 
 fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
 
-fn grounding_whole_tree_profile() -> RunnableResourceProfile {
-  runnable_resource_profile(
-    heavy_whole_tree_resolve: true,
-    spawns_host_compiler: false,
-    memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  )
+data gunbc_ci_adaptive_width_note: String = "Adaptive width (operator ruling 2026-07-12, superseding the pinned-cap regime): the plan no longer authors spawn widths or per-shard byte predictions — the retired machinery was gunbc_ci_corpus_discovery_spawn_width_cap (pinned 1 after the run 28999086030 width=2 OOM), the per-plan *_plan_spawn_width fns the executor evaluated by name, and the gunbc.ci_floor_measurement width folds over hand-edited peak samples (pins freezing derivations: stale samples predated the enrollment flip, and the base-overhead re-measure chased its own tail — the July OOM/wedge regime). The executor now governs concurrency at run time: v1_compiler::memory_governor admits workers AIMD-style against the slot's OWN declared budget (memory.high else memory.max else MemAvailable else MemTotal — MemAvailable precedes MemTotal on uncapped hosts because the kernel's availability estimate excludes the co-tenant baseline that let run 29180195694 reach physical RAM; GUNBC_MEMORY_BUDGET_BYTES to override). Admission is paced (at most one worker whose front-loaded index-build cost has not yet landed), predictive (the run measures its first worker's share over the pool baseline and admits only while current + share fits under high-water), and ceilinged at half the budget — the maturation reserve: the 2026-07-12 run series proved admitted demand matures minutes after admission at ~7x its digest-time footprint, so reactive arms alone always observe it too late and half the pipe stays reserved for in-flight growth. The creep-episode edge (memory.current high-water, PSI some avg10, swap growth) halves the window AND holds admissions — early congestion is TCP's ECN, not a stop-and-hope — while hard events halve it again (memory.events high/oom_kill deltas) and memory.current crossing the declared budget itself collapses the window to one (the reachable loss signal on uncapped hosts, where memory.events never fires); the width-1 progress floor still guarantees forward motion. The window re-grows additively on calm completions. Every hold/back-off is typed, counted, and surfaced in the [governor] receipt line (DESIGN §5: loud bounded degradation, never an absorbing widen). Dissolve-on: graph-derived per-node demand (CostAccount.space measured, the realization-measurement lane) replaces the reactive estimator and the governor demotes to a safety net."
+
+data gunbc_ci_fast_lane_rule_note: String = "Fast-lane 5-second rule (operator ruling 2026-07-12): a witness whose OWN eval takes 5 seconds or longer does not run in per-PR discovery — it lives under a long/ test dir (dag/test/claim/long/, src/v2/test/claim/long/), excluded from discovery at dir grain (gunbc.ci_layer_roots) and triggered independently (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>; scheduled-lane enrollment rides the falsifier follow-on). Enforcement is by execution, not census: the executor arms a cooperative per-witness eval deadline from the budget row below (v1_interpreter EvalBudgetExceeded — a typed FAIL row naming the over-budget witness; the bound unwinds from INSIDE eval because in-process worker threads have no kill authority, the Phase A governor lesson). The deadline arms at eval start, so resolve/index cost is infra and never counted against the witness (the operator's carve-out: 'assuming the infra isn't the problem'). This is also the wedge tourniquet: an unbounded eval that previously burned the 270-minute step cap in billed silence (run 29183446733: 243 of 270 minutes after the last progress line, zero witnesses completed) now fails red in seconds with its name in the log. Dissolve-on: per-witness declared cost envelopes (the witness-cost-locality admission law) replace the blanket lane budget with declared rows."
+
+data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
+
+fn gunbc_ci_fast_lane_eval_budget_ms() -> Nat {
+  second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
-fn grounding_whole_tree_runnable() -> Runnable {
-  RunnableSingleClaim {
-    entry: floor_grounding_whole_tree_entry,
-    function: floor_grounding_whole_tree_function,
-    profile: grounding_whole_tree_profile()
-  }
+data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). The primary refusal is WitnessWallBudgetExceeded on whole-receipt wall time; the secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget."
+
+data gunbc_falsifier_self_host_wet_receipt_wall_budget: Second = second(count: 600)
+
+fn gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() -> Nat {
+  second_count(s: gunbc_falsifier_self_host_wet_receipt_wall_budget) * 1000
 }
 
-fn corpus_runnable() -> Runnable {
+data gunbc_falsifier_self_host_wet_interp_eval_budget: Second = second(count: 120)
+
+fn gunbc_falsifier_self_host_wet_interp_eval_budget_ms() -> Nat {
+  second_count(s: gunbc_falsifier_self_host_wet_interp_eval_budget) * 1000
+}
+
+fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: witness_discovery_scan_dirs,
-    explicit_entries: [],
-    skip_unaffected_node_frontier: true,
-    exclude_substrings: witness_exclusion_substrings,
+    scan_dirs: spec.discovery_scan_dirs,
+    explicit_entries: corpus_witness_entries(spec: spec),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
-    spawn_width_cap: hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()),
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
     )
   }
 }
 
 data execution_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_execution_corpus } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
-fn execution_corpus_spawn_width() -> Int {
-  gunbc_ci_execution_corpus_available_width(each: gunbc_ci_floor_execution_corpus_per_witness_rss)
-}
-
-fn execution_corpus_runnable() -> Runnable {
+fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: [],
-    skip_unaffected_node_frontier: true,
+    explicit_entries: execution_witness_entries(spec: spec),
+    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
-    discovery_scope_dirs: ["src/v2/test/claim/execution"],
-    spawn_width_cap: execution_corpus_spawn_width(),
+    discovery_scope_dirs: [],
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss)
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+data bin_witness_corpus_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_bin_witness_corpus } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bin_witness_corpus_note: String = "The bin-execution witness batch: the declared Wet lane for witnesses whose fns execute compiled seed witness binaries (gunbc.ci_layer_roots bin_witness_wet_entries — see bin_witness_wet_note there). They ran silently wet inside the discovery corpus until the hermetic flip; now the discovery batch is Hermetic and these rows keep their per-PR coverage under an explicit Wet profile (spawns_host_compiler: the runner may cargo-build a missing witness bin locally; in CI the build job prebuilds them). Enrolled only when the spec runs live discovery (bin_witness_corpus_enrolled), so regen/emit-determinism/synthetic specs carry no bin batch."
+
+fn bin_witness_corpus_runnable_for() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: bin_witness_wet_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
     )
   }
 }
 
 fn floor_nodes(spec: CiSpec) -> List<Node> {
-  fold(spec.gates, init: [floor_corpus_node, execution_corpus_node, floor_grounding_whole_tree_node], f: fn(acc, g) {
+  fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
   })
 }
@@ -266,23 +530,31 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 }
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let after_floor_corpus = [
-    floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node),
-    floor_resource_depends_on(source: floor_corpus_node, dependent: floor_grounding_whole_tree_node),
-    floor_resource_depends_on(source: execution_corpus_node, dependent: floor_grounding_whole_tree_node)
-  ]
+  let corpus_nodes = corpus_plan_nodes(spec: spec)
+  let floor_present = length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0
+  let after_floor_corpus = concat(
+    if floor_present && length(xs: execution_witness_entries(spec: spec)) > 0 {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
+    } else {
+      []
+    },
+    if floor_present && bin_witness_corpus_enrolled(spec: spec) {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: bin_witness_corpus_node)]
+    } else {
+      []
+    }
+  )
   fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
     } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
-      list_snoc_item(
-        xs: list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
-        ),
-        item: floor_resource_depends_on(source: execution_corpus_node, dependent: node)
-      )
+      fold(corpus_nodes, init: acc, f: fn(edges, corpus_node) {
+        list_snoc_item(
+          xs: edges,
+          item: floor_resource_depends_on(source: corpus_node, dependent: node)
+        )
+      })
     } else {
       acc
     }
@@ -300,7 +572,6 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
       acc
     }
   })
-  let heavy_nodes = list_snoc_item(xs: heavy_nodes, item: floor_grounding_whole_tree_node)
   zip_map(
     a: heavy_nodes,
     b: skip(xs: heavy_nodes, n: 1),
@@ -310,38 +581,63 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
   )
 }
 
-fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
-  fold(
-    spec.gates,
-    init: [
-      floor_depends_on_compile(dependent: floor_corpus_node),
-      floor_depends_on_compile(dependent: execution_corpus_node),
-      floor_depends_on_compile(dependent: floor_grounding_whole_tree_node)
-    ],
-    f: fn(acc, g) {
-      match g {
-        DagCompileCleanGate => acc
-        _ => list_snoc_item(
-          xs: acc,
-          item: floor_depends_on_compile(dependent: gate_node(g: g))
-        )
-      }
-    }
-  )
-}
-
-fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let has_self_host = fold(spec.gates, init: false, f: fn(acc, g) {
+fn floor_spec_has_compile_gate(spec: CiSpec) -> Bool {
+  fold(spec.gates, init: false, f: fn(acc, g) {
     match g {
-      SelfHostRealizedComparisonGate => true
+      DagCompileCleanGate => true
       _ => acc
     }
   })
-  if has_self_host {
+}
+
+fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
+  if floor_spec_has_compile_gate(spec: spec) {
+    concat(
+      floor_cheap_gates_precede_compile_edges(spec: spec),
+      fold(
+        spec.gates,
+        init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
+          list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
+        }),
+        f: fn(acc, g) {
+          match g {
+            DagCompileCleanGate => acc
+            _ =>
+              if gate_in_cheap_floor_membership(g: g) {
+                acc
+              } else {
+                list_snoc_item(
+                  xs: acc,
+                  item: floor_depends_on_compile(dependent: gate_node(g: g))
+                )
+              }
+          }
+        }
+      )
+    )
+  } else {
+    []
+  }
+}
+
+fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
+  let has_staleness = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      SelfHostStalenessGate => true
+      _ => acc
+    }
+  })
+  let has_regen = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      RegenVerifyGate => true
+      _ => acc
+    }
+  })
+  if has_staleness && has_regen {
     [
       floor_resource_depends_on(
         source: gate_node(g: RegenVerifyGate),
-        dependent: gate_node(g: SelfHostRealizedComparisonGate)
+        dependent: gate_node(g: SelfHostStalenessGate)
       )
     ]
   } else {
@@ -349,12 +645,48 @@ fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView
   }
 }
 
+data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation under cheap-gate-early ordering (operator ruling 2026-07-22, fail-fast lane; run 29120615071 receipt retained under adaptive width): when discovery_scan_dirs is non-empty, resource edges from every enrolled corpus plan node (floor_corpus_node, execution_corpus_node when ExecutionWitnessKind rows exist, bin_witness_corpus_node when enrolled) to every non-anchor gate still isolate corpus batches from gates so gates start only after discovery completes and walk_memo holds the shared index. Cheap gates are floor_resource_anchor nodes and are EXCLUDED from corpus→gate serialization (the anchor carve-out): cheap→compile data deps require cheap first; corpus→cheap would deadlock with compile→corpus data order; anchors break the cycle by letting cheap gates run without waiting behind corpus while still feeding walk_memo to later gates. Dissolve-on: when per-gate cost attribution lands, derive from measurement."
+
+fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
+  if length(xs: spec.discovery_scan_dirs) > 0 {
+    let corpus_nodes = corpus_plan_nodes(spec: spec)
+    fold(spec.gates, init: [], f: fn(acc, g) {
+      let node = gate_node(g: g)
+      if floor_resource_anchor_node(node: node) {
+        acc
+      } else {
+        fold(corpus_nodes, init: acc, f: fn(edges, corpus_node) {
+          list_snoc_item(
+            xs: edges,
+            item: floor_resource_depends_on(source: corpus_node, dependent: node)
+          )
+        })
+      }
+    })
+  } else {
+    []
+  }
+}
+
+fn floor_discovery_flip_corpus_gate_serialization_edge_count(spec: CiSpec) -> Int {
+  floor_non_anchor_gate_count(spec: spec) * length(xs: corpus_plan_nodes(spec: spec))
+}
+
+fn floor_non_anchor_gate_count(spec: CiSpec) -> Int {
+  fold(spec.gates, init: 0, f: fn(count, g) {
+    if floor_resource_anchor_node(node: gate_node(g: g)) { count } else { count + 1 }
+  })
+}
+
 fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   concat(
-    floor_corpus_exclusion_resource_edges(spec: spec),
+    floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec),
     concat(
-      floor_heavy_resolve_chain_resource_edges(spec: spec),
-      floor_regen_emit_artifact_resource_edges(spec: spec)
+      floor_corpus_exclusion_resource_edges(spec: spec),
+      concat(
+        floor_heavy_resolve_chain_resource_edges(spec: spec),
+        floor_regen_emit_artifact_resource_edges(spec: spec)
+      )
     )
   )
 }
@@ -368,10 +700,6 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
   }
 }
 
-fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
-  floor_dependencies_with(spec: spec, serialize_heavy: true)
-}
-
 fn floor_unrunnable_sentinel() -> Runnable {
   RunnableSingleClaim {
     entry: "",
@@ -382,11 +710,11 @@ fn floor_unrunnable_sentinel() -> Runnable {
 
 fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
   if node == floor_corpus_node {
-    corpus_runnable()
+    corpus_runnable_for(spec: spec)
   } else if node == execution_corpus_node {
-    execution_corpus_runnable()
-  } else if node == floor_grounding_whole_tree_node {
-    grounding_whole_tree_runnable()
+    execution_corpus_runnable_for(spec: spec)
+  } else if node == bin_witness_corpus_node {
+    bin_witness_corpus_runnable_for()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
@@ -400,48 +728,325 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn floor_schedule_for_dependencies(dependencies: List<DependencyView>) -> List<List<Runnable>> {
-  match parallel_executor_plan_from_dependencies(
-    nodes: floor_nodes(spec: gunbc_ci_spec),
-    dependencies: dependencies,
-    scheduled: []
+fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) -> List<List<Runnable>> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
+  })
+}
+
+fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  match runner_schedule_plan_from_dependencies(
+    nodes: floor_nodes(spec: spec),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
+    value: runner_ordering_only
   ) {
-    ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      fold(batches, init: [], f: fn(acc, batch) {
-        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: gunbc_ci_spec))
-      })
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
-    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
+    RunnerScheduleComplete { batches: batches, store: store } =>
+      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec)) {
+        runnables_for_executor_batches(batches: batches, spec: spec)
+      } else {
+        [[floor_unrunnable_sentinel()]]
+      }
+    RunnerScheduleBlocked { evidence: _ } => [[floor_unrunnable_sentinel()]]
   }
 }
 
+fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+}
+
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
-  floor_schedule_for_dependencies(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
 }
 
-fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
-  floor_schedule_for_dependencies(
-    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
-  )
-}
-
-fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
+fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
     objective: RealizationObjective { goals: width_fold_objective_goals() }
-    schedule: gunbc_ci_floor_schedule_inner()
+    schedule: floor_schedule_for(spec: spec, serialize_heavy: true)
     total: cost_account_predicted_zero()
   }
 }
 
+fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
+}
+
+fn gunbc_falsifier_predict_only_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
+    explicit_entries: [],
+    node_frontier_selection: SelectionPredictOnly,
+    exclude_substrings: witness_exclusion_substrings(),
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
+data falsifier_self_host_wet_batch_note: String = "Nightly falsifier batch 2 (Wave 2 CI substrate): the declared Wet lane for emit->compile->run->equals-seed self-host behavioral receipts (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_entries — template + frontier-flipped SelfEmitted bindings only; see falsifier_self_host_wet_note in gunbc.ci_layer_roots). Gate-4 std/logic is the inaugural green template; compiler modules enroll when frontier rows flip SelfEmitted with a declared binding — never known-red. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget. Runs SelectionApplied after the hermetic predict-only affected-set sweep; claim_executor halts batch 2 if batch 1 fails (fail-closed)."
+
+fn falsifier_self_host_wet_batch_enrolled() -> Bool {
+  length(xs: falsifier_self_host_wet_entries()) > 0
+}
+
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+
+fn falsifier_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_entries) > 0
+}
+
+data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches."
+
+fn falsifier_silent_pick_gate_batch_enrolled() -> Bool {
+  length(xs: falsifier_silent_pick_gate_entries) > 0
+}
+
+fn gunbc_falsifier_silent_pick_gate_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_silent_pick_gate_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: known_red_probe_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
+fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_self_host_wet_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+data gunbc_falsifier_native_cache_cold_note: String = "Native-cache cold control plan (widen-only, the compile-clean cold-control pattern): the COLD-VALID roster (falsifier_native_cache_cold_roster — agreement + native_cold legs only, never the full aggregates whose cold_then_warm legs assert the warm-ness this control deliberately destroys), run by the falsifier cold-control step with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1 so every .native_ready marker is ignored and the full emit+cargo+run chain executes cold. Can only force MORE work per entry than the warm nightly batch, never less; a warm-poisoned entry (content_verified_on_read=false in extdeps.realization.native_artifact_cache) surfaces here as a cold-vs-warm receipt divergence."
+
+fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_native_cache_cold_roster(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+fn gunbc_falsifier_native_cache_cold_batches() -> List<List<Runnable>> {
+  [[gunbc_falsifier_native_cache_cold_batch()]]
+}
+
+fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: Runnable) -> List<List<Runnable>> {
+  if enrolled {
+    list_snoc_item(xs: acc, item: [batch])
+  } else {
+    acc
+  }
+}
+
+fn gunbc_falsifier_batches() -> List<List<Runnable>> {
+  let base = [[gunbc_falsifier_predict_only_batch()]]
+  let with_wet = falsifier_batches_append_if_enrolled(
+    acc: base,
+    enrolled: falsifier_self_host_wet_batch_enrolled(),
+    batch: gunbc_falsifier_self_host_wet_batch()
+  )
+  let with_probe = falsifier_batches_append_if_enrolled(
+    acc: with_wet,
+    enrolled: falsifier_known_red_probe_batch_enrolled(),
+    batch: gunbc_falsifier_known_red_probe_batch()
+  )
+  falsifier_batches_append_if_enrolled(
+    acc: with_probe,
+    enrolled: falsifier_silent_pick_gate_batch_enrolled(),
+    batch: gunbc_falsifier_silent_pick_gate_batch()
+  )
+}
+
+data gunbc_pr_native_batch_note: String = "Per-PR native batch (P6 routing consumption, 2026-07-22): explicit entries = the equals_eval agreement legs of families the native-routing frontier marks NativeRouted — nothing else. The frontier is the ONE authority for both sides of the floor (this batch enrolls exactly the routed set; nothing else changes), and flips are parity-window-gated data, so at landing the routed set is empty and this appends no batch: zero behavior change until receipts flip a family. Wet profile: the admitted transport cargo-builds cold or runs warm against GUNBC_NATIVE_CACHE_ROOT."
+
+fn gunbc_pr_native_entries() -> List<ScheduleWitnessEntry> {
+  fold(
+    native_routed_rows(),
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [
+        ScheduleWitnessEntry {
+          entry: row.agreement_entry,
+          function: row.agreement_function,
+          kind: ExecutionWitnessKind
+        }
+      ])
+    }
+  )
+}
+
+fn gunbc_pr_native_batch_enrolled() -> Bool {
+  length(xs: gunbc_pr_native_entries()) > 0
+}
+
+fn gunbc_pr_native_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: gunbc_pr_native_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
-  gunbc_ci_floor_realization_plan().schedule
+  falsifier_batches_append_if_enrolled(
+    acc: gunbc_ci_floor_realization_plan().schedule,
+    enrolled: gunbc_pr_native_batch_enrolled(),
+    batch: gunbc_pr_native_batch()
+  )
+}
+
+data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_batches, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
+
+fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
+  [[corpus_runnable_for(spec: gunbc_ci_spec)]]
+}
+
+fn runnable_scan_dir_count(r: Runnable) -> Int {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
+    RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
+  }
+}
+
+fn gunbc_ci_spec_discovery_flip_enrolled() -> CiSpec {
+  ci_spec_with_discovery_scan_dirs(spec: gunbc_ci_spec, dirs: witness_discovery_scan_dirs)
+}
+
+fn witness_ci_corpus_discovery_flip_parked_on_live_spec() -> Bool {
+  (length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0)
+    && (length(xs: witness_discovery_scan_dirs) > 0)
+}
+
+fn witness_ci_corpus_discovery_flip_authored() -> Bool {
+  length(xs: witness_discovery_scan_dirs) > 0
+}
+
+fn witness_ci_corpus_discovery_is_live() -> Bool {
+  witness_ci_corpus_discovery_flip_authored()
+    && (length(xs: gunbc_ci_spec.discovery_scan_dirs) > 0)
+    && (runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0)
+    && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
+}
+
+fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> Bool {
+  if length(xs: spec.discovery_scan_dirs) == 0 {
+    true
+  } else {
+    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == floor_discovery_flip_corpus_gate_serialization_edge_count(spec: spec)
+  }
+}
+
+fn witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: CiSpec) -> Bool {
+  fold(floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec), init: true, f: fn(ok, edge) {
+    ok && (edge.dependent != floor_compile_root_node())
+  })
+}
+
+fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
+  length(xs: corpus_plan_nodes(spec: gunbc_ci_regen_spec)) == 0
+}
+
+fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
+}
+
+fn runnable_single_claim_function(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f, profile: _ } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
+  }
+}
+
+fn floor_batch_contains_function(batch: List<Runnable>, target: String) -> Bool {
+  fold(batch, init: false, f: fn(found, r) {
+    found || (runnable_single_claim_function(r: r) == target)
+  })
+}
+
+fn floor_compile_clean_batch(batches: List<List<Runnable>>) -> List<List<Runnable>> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    if length(xs: acc) > 0 {
+      acc
+    } else if floor_batch_contains_function(batch: batch, target: ci_floor_compile_gate_fn) {
+      [batch]
+    } else {
+      acc
+    }
+  })
+}
+
+data gunbc_ci_plan_artifact_batches_note: String = "The docs-only / plan-artifact-only CI shortcut (ci_spec.ci_plan_artifact_compile_clean_invoke): the compile-clean anchor batch of the floor schedule (batch 1 after the cheap-gate early batch — see gunbc_ci_cheap_floor_gate_membership_note) runs alone through the SAME executor path, never a parallel gate runner. The gate must run inside claim_executor because it consumes the executor's in-run whole-tree --target dag compile receipt (standalone gunbc-run invocation refuses, by execution 2026-07-11); the pre-fix invoke passed gunbc-run-style --entry/--function flags claim_executor does not parse, so the shortcut arm died with exit 2 on the first plan-artifact-only diff to reach it."
+
+fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
+  floor_compile_clean_batch(batches: gunbc_ci_floor_batches())
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
-    compile_gate_fn: ci_floor_compile_gate_fn
+    compile_gate_fn: ci_floor_compile_gate_fn,
+    cheap_gate_labels: cheap_floor_gate_step_labels()
   ) {
     Holds => true
     Violation { diagnostic: _ } => false
@@ -454,87 +1059,10 @@ fn gunbc_ci_floor_breadth() -> Int {
   length(xs: gunbc_ci_spec.gates)
 }
 
-fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
-  altra_max_m12830_catalog.threads
-}
-
-fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
-  let budget_count = byte_size_count(b: memory_budget)
-  if budget_count <= 0 {
-    hardware_thread_count(count: int_min(a: gunbc_ci_floor_conservative_fallback_width, b: execution_corpus_spawn_width()))
-  } else {
-    let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
-      shard_count: gunbc_ci_floor_breadth(),
-      hardware_threads: gunbc_ci_floor_hardware_threads()
-    ))
-    hardware_thread_count(count: gunbc_ci_floor_memory_derived_width(cap: memory_budget, cpu_bound: cpu_bound))
-  }
-}
-
-fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: srv1_floor_memory_budget())
-}
-
-fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
-}
-
-fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
-  parallel_run_demand_envelope(
-    width: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes)),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
-  )
-}
-
-fn witness_floor_tight_budget_backs_off_envelope() -> Bool {
-  let tight_budget = 10000000000
-  let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: tight_budget)
-
-  demand_envelope_thread_count(envelope: envelope) < gunbc_ci_floor_breadth()
-    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(tight_budget))
-}
-
-fn witness_floor_fail_open_would_exceed_budget() -> Bool {
-  let tight_budget = 10000000000
-  let blind_envelope = parallel_run_demand_envelope(
-    width: bounded_host_spawn_width(
-      shard_count: gunbc_ci_floor_breadth(),
-      hardware_threads: gunbc_ci_floor_hardware_threads()
-    ),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
-  )
-  demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(tight_budget)) == false
-}
-
-fn witness_floor_width_governed_by_budget_tree() -> Bool {
-  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
-  let cpu_only_width = hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: gunbc_ci_floor_breadth(), hardware_threads: gunbc_ci_floor_hardware_threads()))
-  return tree_width < cpu_only_width
-}
-
-fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
-  byte_size_count(b: srv1_floor_memory_budget()) > 0
-    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()) > 0
-}
-
-fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
-  let tight = 10000000000
-  let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: tight))
-  width < gunbc_ci_floor_breadth()
-}
-
-fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: 0))
-  width == int_min(
-    a: gunbc_ci_floor_conservative_fallback_width,
-    b: execution_corpus_spawn_width()
-  )
-}
-
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => acc
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {
@@ -554,18 +1082,24 @@ fn floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: List<List<Runnab
   })
 }
 
+fn floor_plan_serializes_heavy_resolves_for(spec: CiSpec) -> Bool {
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
+    batches: floor_schedule_for(spec: spec, serialize_heavy: true)
+  )
+}
+
+fn floor_plan_co_runs_heavy_without_serialization_for(spec: CiSpec) -> Bool {
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
+    batches: floor_schedule_for(spec: spec, serialize_heavy: false)
+  ) == false
+}
+
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
 }
 
-fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
-  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
-    batches: gunbc_ci_floor_schedule_without_serialization()
-  ) == false
-}
-
-fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
-  length(xs: floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec)) > 0
+fn witness_floor_corpus_exclusion_edges_exist(spec: CiSpec) -> Bool {
+  length(xs: floor_corpus_exclusion_resource_edges(spec: spec)) > 0
 }
 
 fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
@@ -573,25 +1107,55 @@ fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
     && runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: DagCompileCleanGate))
 }
 
-fn witness_floor_no_corpus_resource_edge_to_compile_anchor() -> Bool {
-  fold(floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec), init: true, f: fn(ok, edge) {
+fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool {
+  fold(floor_corpus_exclusion_resource_edges(spec: spec), init: true, f: fn(ok, edge) {
     ok && (edge.dependent != floor_compile_root_node())
   })
 }
 
-fn witness_corpus_effective_widths_fit_runner_cap() -> Bool {
-  let cap = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-  let base = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes())
-  let floor_cap_w = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
-  let floor_committed = base + floor_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let exec_cap_w = execution_corpus_spawn_width()
-  let exec_committed = base + exec_cap_w * byte_size_count(b: gunbc_ci_floor_execution_corpus_per_witness_rss)
-  floor_committed <= cap && exec_committed <= cap
+data gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed: List<String> = [
+  floor_plan_function,
+  plan_artifact_plan_function,
+  falsifier_plan_function,
+]
+
+data gunbc_floor_arm_time_budget_refusal_plan_functions: List<String> = gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
+
+fn gunbc_floor_arm_time_budget_refusal_plan_function_roster() -> List<String> {
+  gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed
 }
 
-fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
-  let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
-  let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
-  committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+fn gunbc_floor_arm_time_budget_refusal_applies(plan_function: String) -> Bool {
+  any(gunbc_floor_arm_time_budget_refusal_plan_functions, f => f == plan_function)
 }
 
+fn witness_string_lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
+  (length(xs: a) == length(xs: b))
+    && all(a, item => any(b, x => x == item))
+    && all(b, item => any(a, x => x == item))
+}
+
+fn witness_floor_schedule_preserves_enrolled_set() -> Bool {
+  witness_string_lists_have_same_members(
+    a: gunbc_ci_floor_enrolled_runnable_labels_for(spec: gunbc_ci_spec),
+    b: gunbc_ci_floor_schedule_runnable_labels(batches: gunbc_ci_floor_batches())
+  )
+}
+
+fn witness_floor_arm_time_budget_refusal_plan_roster_authority() -> Bool {
+  (length(xs: gunbc_floor_arm_time_budget_refusal_plan_functions) == 3)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: floor_plan_function)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: plan_artifact_plan_function)
+    && gunbc_floor_arm_time_budget_refusal_applies(plan_function: falsifier_plan_function)
+}
+
+fn witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed() -> Bool {
+  witness_string_lists_have_same_members(
+    a: gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed,
+    b: gunbc_floor_arm_time_budget_refusal_plan_function_roster()
+  )
+}
+
+fn gunbc_pr_native_batches() -> List<List<Runnable>> {
+  [[gunbc_pr_native_batch()]]
+}

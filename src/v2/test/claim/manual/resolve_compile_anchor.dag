@@ -5,16 +5,18 @@ import v2.compiler.name_resolve {
   Import,
   ImportVisible,
   ResolutionSubject,
-  resolve_with_admission
+  resolve_with_admission_policy
 }
+import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
-  dag_language_model_wave1_void,
+  dag_language_model_void,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -31,6 +33,7 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -40,6 +43,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn service_atom_conj_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -59,21 +63,21 @@ fn service_atom_conj_tree() -> Node {
 }
 }
 
-fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
+fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: service_atom_conj_tree(),
-    lm: dag_language_model_wave1_void()
+    lm: dag_language_model_void()
   )
 }
 
-fn anchor_resolve_wave1_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
+fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
   resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_surface_empty_prelude()
   )
 }
 
-fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
+fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
@@ -101,11 +105,11 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_wave1_void()
+    lm: dag_language_model_void()
   )
 }
 
-fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
+fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
@@ -152,7 +156,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_wave1_void()
+    lm: dag_language_model_void()
   )
 }
 
@@ -290,7 +294,7 @@ fn resolve_import_target() -> QualifiedName {
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_with_admission(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: resolve_roots_single_import(),
     admission: Admission {
@@ -304,7 +308,10 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
         },
         tail: Empty
       }
-    }
+    },
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

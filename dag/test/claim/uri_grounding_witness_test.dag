@@ -1,7 +1,7 @@
 module test.claim.uri_grounding_witness
 
-import extdeps.uri { Uri, Https, uri_is_url, uri_wire }
-import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_uri_requires_scheme_and_locator() -> Bool {
   let uri = Uri { scheme: Https, locator: "api.example.com" }

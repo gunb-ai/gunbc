@@ -1,0 +1,70 @@
+module test.claim.srv3_host_effect_realize_witness
+
+import std.logic { Bool }
+import gunbc.host_effect {
+  Srv3InstallDiagnosticObserve,
+  OsInstallActuatorToolchainEnsure,
+  HostOs,
+  BmcController,
+  host_effect_read_evidence,
+  host_effect_identity_evidence,
+  LocalShell,
+  EmitArtifactThenThinRun,
+  BootstrapFragment,
+  ThinInvocation,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
+import gunbc.fleet_intent { srv1_host }
+import std.realization_reconcile { NotConverged }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv3_diagnostic_observe_rejects_bmc_controller_target() -> Bool {
+  let intent = srv3_os_install_attempt_intent
+  match host_effect_apply(
+    target: BmcController { node: srv1_host },
+    effect: Srv3InstallDiagnosticObserve {
+      bmc: intent.bmc_endpoint,
+      port: intent.serve_port,
+      iso_path: intent.iso_path,
+      iso_content_hash: intent.iso_content_hash,
+    },
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "Srv3InstallDiagnosticObserve")
+    _ => false
+  }
+}
+
+test fn os_install_actuator_toolchain_ensure_rejects_bmc_controller_target() -> Bool {
+  match host_effect_apply(
+    target: BmcController { node: srv1_host },
+    effect: OsInstallActuatorToolchainEnsure {},
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "OsInstallActuatorToolchainEnsure")
+    _ => false
+  }
+}
+
+test fn os_install_actuator_toolchain_ensure_rejects_emit_artifact_transport() -> Bool {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: OsInstallActuatorToolchainEnsure {},
+    evidence: host_effect_identity_evidence,
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "true" },
+      invocation: ThinInvocation { argv: ["true"] },
+    },
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "EmitArtifactThenThinRun")
+    _ => false
+  }
+}

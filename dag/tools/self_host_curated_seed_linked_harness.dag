@@ -1,0 +1,253 @@
+module tools.self_host_curated_seed_linked_harness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.text { String }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and zero or more supplementary claim-runs. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_runs = skip supplementary claim-runs. LANDED: the per-module copy-paste this note names is dissolved by tools.self_host_module_behavioral_transport_roster — one config row per frontier module, one generic compiler_module_behavioral_receipt_for(module_path) dispatch, this kernel unchanged as the sole executor."
+
+data cssl_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
+
+data cssl_std_seed_link_followup_note: String = "LANDED (2026-07-17): generic seed-shim closure assembly via cssl_assemble bin + cssl_seed_linked_closure_assembly.rs (typed Refused final arm; explicit dag/std · lens · peripheral emit-retain). Former assembly Refused arms (compiler dep absent from seed lib.rs; v2_std module without shared std-bridge shim) fold into emit-retain + optional sanitize scaffold — refusal relocates to cargo verdict, not silent green (probe-side carrier; stderr + cssl_emit_artifact_sanitize_scaffold_debt). Invoked from cssl_seed_linked_behavioral_receipt when shim_lib_rel empty and shim_writes empty. Probe runners use cssl_assemble when CSSL_STD_SEED_LINK=1 (scripts/curated_cargo_probe_one.sh)."
+
+data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
+
+data cssl_std_bridge_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges."
+
+data cssl_emit_artifact_sanitize_scaffold_debt: String = "SCAFFOLD — probe-side sanitize in cssl_seed_linked_closure_assembly.rs on every emit-retained artifact. CENSUSED 2026-07-22 (content-diff evidence, not raw fs-write != which false-positives on the pass's own trailing-newline line-rejoin — every write normalizes a trailing newline as a no-op side effect, so the stderr 'sanitize scaffold applied' line still fires on nearly every file even when zero rules changed anything semantically; that stderr line is NOT itself evidence of a live rule). Former rule (1) strip use crate::v1_rt::NAME when the file locally defines pub enum/struct/type NAME (generic-arg-aware — Witness and Optional shared the rule) is DEAD and DELETED: zero real firings across a representative sweep of 13 emit-retained closures (02_parse, 06_translate, 00_compile, 05_eval, materialization_carriers, 05_emit, emit_module, emit_produced, emit_semantic_decl, emit_host, fold_lowering, 03_name_resolve, 03_normalize) — #6981 (emit_imports: field-struct import synth asks provides not physically-defines) and #7033 (fold-closure generic-T, Witness prelude, value-qualified refs) dissolved it at the emitter. Remaining LIVE rule (2): dedupe symbols across sequential pub use braces (transitive re-export collision) — CONFIRMED still firing 2026-07-22 on src/v2/compiler/emit_produced.dag closure, file v2_extdeps_languages_rust.rs: pub use crate::v2_std_collection listing List, Map, Set, Optional carries a duplicate Optional already re-exported one line above via pub use crate::v2_std_grammar listing grammar_formal_terminal, Optional. Named emitter gap: the Rust target's pub-use re-export synthesis (05_emit_rust.dag / the emit_produced.dag closure's import-surface construction — exact function not yet located) does not dedupe a symbol re-exported transitively through two distinct source modules before emitting the pub use line for each; construction fix (single-pass symbol->module ownership map before emitting any pub use block, so a duplicate is unwritable) is owned by crisp-fox-839 (05_emit_rust.dag owner, in-flight PR #7057) — coordinate before editing that file, do not implement here. Dissolution trigger: delete dedupe_pub_use_symbols + this rule's debt note entry when a curated probe sweep (scripts/curated_cargo_frontier_probe_sweep.sh with CSSL_STD_SEED_LINK=1, content-diff not raw stderr) shows zero real firings."
+
+data cssl_closure_assembly_note: String = "Generic closure assembly: dep manifest = gunbc-emitted src/lib.rs pub mod list (structural closure-membership authority). Entry module bytes hash-locked. Emit-retain rule: any module listed in the emitted closure manifest with a matching emitted src sibling .rs is emit-retained — seed lib.rs pub mod presence is external-oracle only and must NOT trigger seed-replace (seed stubs may lack gunbc type surface). Hand shim_lib_rel/shim_writes = optional fast-path override (body_producer / behavioral receipts)."
+
+data cssl_medium_as_string_scaffold_debt: String = "SCAFFOLD — tracked debt: Cargo.toml TOML markup authored via concat string literals in cssl_v1_compiled_cargo_* (same class as slb_cargo_toml / ssuv_cargo_toml / peh_cargo_toml). Probe-only throwaway measurement — not gate-side substrate. dissolve-on: extdeps cargo manifest grammar rows + bash-emit #5828 OR harness consolidation; until then one concat producer per variant ([[bin]] witness vs [lib] probe), consumed only via tools.self_host_curated_probe_cargo."
+
+fn cssl_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+fn cssl_v1_compiled_cargo_deps_block(root: String) -> String {
+  concat(
+    "[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    concat(root, "/src/v1/stage0\" }\n")
+  )
+}
+
+fn cssl_v1_compiled_cargo_package_header() -> String {
+  "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n"
+}
+
+data cssl_witness_bin_variant_note: String = "Witness-driver [[bin]] layout (cssl_v1_compiled_cargo_toml) for ferret flip lanes. Probe does not consume this variant — probe uses cssl_v1_compiled_probe_lib_cargo_toml only."
+
+fn cssl_v1_compiled_cargo_toml(root: String) -> String {
+  concat(
+    cssl_v1_compiled_cargo_package_header(),
+    concat(
+      "[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n",
+      cssl_v1_compiled_cargo_deps_block(root: root)
+    )
+  )
+}
+
+data cssl_probe_lib_variant_note: String = "Probe-lib [lib] layout (cssl_v1_compiled_probe_lib_cargo_toml): single authority for curated_cargo_probe_one — no shell sed fork."
+
+fn cssl_v1_compiled_probe_lib_cargo_toml(root: String) -> String {
+  concat(
+    cssl_v1_compiled_cargo_package_header(),
+    concat(
+      "[lib]\npath = \"src/lib.rs\"\n\n",
+      cssl_v1_compiled_cargo_deps_block(root: root)
+    )
+  )
+}
+
+type CuratedSeedLinkedShimWrite {
+  dest_rel: String
+  source_rel: String
+}
+
+fn cssl_write_shim_from_repo(
+  root: String,
+  out_dir: String,
+  shim: CuratedSeedLinkedShimWrite
+) -> Bool {
+  let read = Filesystem.Read(path: cssl_repo_path(root: root, rel: shim.source_rel))
+  let write = Filesystem.Write(
+    path: concat(out_dir, concat("/src/", shim.dest_rel)),
+    content: read.content
+  )
+  read.success && write.success
+}
+
+fn cssl_write_shims_from_repo(
+  root: String,
+  out_dir: String,
+  shims: List<CuratedSeedLinkedShimWrite>
+) -> Bool {
+  fold_list(
+    xs: shims,
+    empty: true,
+    cons: fn(ok, shim) {
+      ok && cssl_write_shim_from_repo(root: root, out_dir: out_dir, shim: shim)
+    }
+  )
+}
+
+fn cssl_write_shim_lib_from_repo(
+  root: String,
+  out_dir: String,
+  shim_lib_rel: String
+) -> Bool {
+  if shim_lib_rel == "" {
+    true
+  } else {
+    let read = Filesystem.Read(path: cssl_repo_path(root: root, rel: shim_lib_rel))
+    let write = Filesystem.Write(path: concat(out_dir, "/src/lib.rs"), content: read.content)
+    read.success && write.success
+  }
+}
+
+fn cssl_uses_hand_shim_fast_path(shim_lib_rel: String, shim_writes: List<CuratedSeedLinkedShimWrite>) -> Bool {
+  shim_lib_rel != "" || length(xs: shim_writes) > 0
+}
+
+fn cssl_run_generic_closure_assembly(
+  root: String,
+  out_dir: String,
+  source_rel: String,
+  cssl_assemble_bin: String
+) -> Bool {
+  let assemble = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: cssl_assemble_bin,
+    args: [
+      "--out-dir", out_dir,
+      "--entry-dag", source_rel,
+      "--root", root,
+      "--std-bridge-dir", cssl_std_bridge_shims_rel
+    ]
+  )
+  assemble.success && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
+}
+
+type CuratedSeedLinkedClaimRun {
+  entry_rel: String
+  function: String
+}
+
+fn cssl_supplemental_claim_run_ok(
+  root: String,
+  gunbc_bin: String,
+  run: CuratedSeedLinkedClaimRun
+) -> Bool {
+  let eval = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", run.entry_rel,
+      "--function", run.function
+    ]
+  )
+  eval.success
+}
+
+fn cssl_supplemental_claims_ok(
+  root: String,
+  gunbc_bin: String,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> Bool {
+  fold_list(
+    xs: claim_runs,
+    empty: true,
+    cons: fn(ok, run) {
+      ok && cssl_supplemental_claim_run_ok(root: root, gunbc_bin: gunbc_bin, run: run)
+    }
+  )
+}
+
+fn cssl_seed_linked_behavioral_receipt(
+  source_rel: String,
+  shim_lib_rel: String,
+  shim_writes: List<CuratedSeedLinkedShimWrite>,
+  driver_rel: String,
+  pass_marker: String,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> Bool {
+  let root = git.Core.Toplevel()
+  let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
+  let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", source_rel,
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
+  let hand_shim_path = cssl_uses_hand_shim_fast_path(shim_lib_rel: shim_lib_rel, shim_writes: shim_writes)
+  let generic_assembly_ok = if hand_shim_path {
+    true
+  } else {
+    cssl_run_generic_closure_assembly(
+      root: root.path,
+      out_dir: out_dir.path,
+      source_rel: source_rel,
+      cssl_assemble_bin: cssl_assemble_bin
+    )
+  }
+  let lib_written = cssl_write_shim_lib_from_repo(root: root.path, out_dir: out_dir.path, shim_lib_rel: shim_lib_rel)
+  let shims_written = cssl_write_shims_from_repo(root: root.path, out_dir: out_dir.path, shims: shim_writes)
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: cssl_v1_compiled_cargo_toml(root: root.path))
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+  let claim_ok = cssl_supplemental_claims_ok(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    claim_runs: claim_runs
+  )
+
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
+
+  module_read.success && driver_read.success
+    && out_dir.success && gunbc_built && cssl_assemble_built && emit.success
+    && src_dir.success
+    && generic_assembly_ok
+    && lib_written && shims_written
+    && manifest.success && main_rs.success
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker)
+    && (fault_run.success == false)
+    && claim_ok
+    && cleanup_out.success
+}

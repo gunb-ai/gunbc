@@ -1,0 +1,9 @@
+module test.claim.self_host_parse_engine_hooks_behavioral_witness
+
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+
+data self_host_parse_engine_hooks_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 Band A (parse_engine_hooks): tools.self_host_module_behavioral_transport_roster's compiler_module_behavioral_receipt_for emits src/v2/compiler/parse_engine_hooks.dag via gunbc --entry, assembles a seed-linked v1_compiled crate (shim-free — gunbc-emitted lib.rs + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault), and equals-eval on parse_engine_hooks_test. Live host effects — nightly falsifier Wet batch when frontier row is SelfEmitted with binding."
+
+test fn self_host_parse_engine_hooks_behavioral_receipt_holds() -> Bool {
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/parse_engine_hooks.dag")
+}

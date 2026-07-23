@@ -13,10 +13,10 @@ pub use crate::std_error_primitives::{DivError, Result};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -152,31 +152,7 @@ pub struct BooleanAlgebra<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Clone)]
-pub struct FreeMonoid<T> {
-    pub concat: Rc<dyn Fn(Rc<Vec<T>>, Rc<Vec<T>>) -> Rc<Vec<T>>>,
-    pub empty: Rc<Vec<T>>,
-    pub append: Rc<dyn Fn(T) -> Rc<Vec<T>>>,
-    pub slice: Rc<dyn Fn(i64, i64) -> Rc<Vec<T>>>,
-    pub length: Rc<dyn Fn() -> i64>,
-    pub is_empty: Rc<dyn Fn() -> bool>,
-    pub count: Rc<dyn Fn() -> i64>,
-    pub first: Rc<dyn Fn() -> Option<T>>,
-    pub last: Rc<dyn Fn() -> Option<T>>,
-    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<Vec<T>>>,
-    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<Vec<T>>>,
-    pub fold: Rc<dyn Fn(T, Rc<dyn Fn(T, T) -> T>) -> T>,
-    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<Vec<T>>>) -> Rc<Vec<T>>>,
-    pub any: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub all: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub enumerate: Rc<dyn Fn() -> Rc<Vec<(i64, T)>>>,
-    pub reverse: Rc<dyn Fn() -> Rc<Vec<T>>>,
-    pub skip: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub take: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<Vec<T>>>,
-    pub contains: Rc<dyn Fn(T) -> bool>,
-    pub _phantom: std::marker::PhantomData<T>,
-}
+pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
@@ -296,18 +272,42 @@ pub struct AlgebraFieldTemplate {
     pub callback_element_position: Option<i64>,
 }
 
+pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
+    v1_rt::rc_map_insert(
+        v1_rt::rc_map_insert(
+            v1_rt::rc_map_insert(
+                v1_rt::rc_map_insert(
+                    v1_rt::rc_map_insert(
+                        v1_rt::rc_map_insert(
+                            v1_rt::rc_map_insert(
+                                v1_rt::rc_empty_map::<String, AlgebraProfile>(),
+                                "Int".to_string(),
+                                AlgebraProfile::OrderedRingProfile,
+                            ),
+                            "Float".to_string(),
+                            AlgebraProfile::ApproximateFieldProfile,
+                        ),
+                        "Bool".to_string(),
+                        AlgebraProfile::BooleanAlgebraProfile,
+                    ),
+                    "String".to_string(),
+                    AlgebraProfile::FreeMonoidScalarProfile,
+                ),
+                "List".to_string(),
+                AlgebraProfile::FreeMonoidCollectionProfile,
+            ),
+            "Set".to_string(),
+            AlgebraProfile::BooleanAlgebraCollectionProfile,
+        ),
+        "Map".to_string(),
+        AlgebraProfile::PartialFunctionProfile,
+    )
+}
+
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
-            let mut __m = HashMap::new();
-            __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
-            __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
-            __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
-            __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
-            __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-            __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-            __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
-            Rc::new(__m)
+            kernel_algebra_profile_value()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
@@ -1081,6 +1081,21 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
+            name: "get".to_string(),
+            param_types: Rc::new(vec![
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                }),
+            ]),
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+                inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
+            }),
+            size_effect: Some(CollectionSizeEffect::ProjectionEffect),
+            cost_shape: Some(CostShape::ShapeLinearScan),
+            callback_element_position: None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
             name: "skip".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -1415,8 +1430,41 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     ])
 }
 
+pub fn algebra_method_template_name(name: String) -> bool {
+    {
+        let mut __found = false;
+        for p in Rc::new(vec![
+            AlgebraProfile::OrderedRingProfile,
+            AlgebraProfile::ApproximateFieldProfile,
+            AlgebraProfile::BooleanAlgebraProfile,
+            AlgebraProfile::BooleanAlgebraCollectionProfile,
+            AlgebraProfile::FreeMonoidScalarProfile,
+            AlgebraProfile::FreeMonoidCollectionProfile,
+            AlgebraProfile::PartialFunctionProfile,
+        ])
+        .iter()
+        .cloned()
+        {
+            if {
+                let mut __found = false;
+                for t in algebra_templates_for_profile(p.clone()).iter().cloned() {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
-    match profile {
+    match profile.clone() {
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
         AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
@@ -1428,7 +1476,7 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
 }
 
 pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
-    match profile {
+    match profile.clone() {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
         AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),

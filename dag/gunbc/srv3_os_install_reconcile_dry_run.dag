@@ -1,5 +1,6 @@
 module gunbc.srv3_os_install_reconcile_dry_run
 
+<<<<<<< HEAD
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -27,20 +28,30 @@ import gunbc.srv3_os_install_reconcile_receipt {
   srv3_install_reconcile_action_line,
 }
 import std.temporal_effect { GrantAbsent, NoPriorReceipt }
+=======
+>>>>>>> origin/main
 
 data srv3_os_install_reconcile_dry_run_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
+<<<<<<< HEAD
     module_path: "gunbc.srv3_os_install_reconcile",
     decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+=======
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
+>>>>>>> origin/main
     field: WholeDeclaration,
   }
 }
 
+<<<<<<< HEAD
 fn srv3_install_reconcile_git_meta_script() -> String {
   srv3_install_reconcile_observe_meta_script()
 }
 
+=======
+>>>>>>> origin/main
 fn parse_reconcile_git_branch(stdout: String) -> NonEmptyStr {
   let parts = split(s: stdout, delimiter: "surface=git branch=")
   if parts.length() <= 1 {
@@ -65,6 +76,7 @@ fn parse_reconcile_git_commit(stdout: String) -> NonEmptyStr {
 
 func srv3_os_install_reconcile_dry_run() -> ProcessExit {
   let intent = srv3_os_install_attempt_intent
+<<<<<<< HEAD
   let observe_script = concat(
     srv3_install_diagnostic_observe_script(intent: intent),
     srv3_install_reconcile_git_meta_script(),
@@ -75,6 +87,19 @@ func srv3_os_install_reconcile_dry_run() -> ProcessExit {
   }
   let observation = parse_srv3_install_debug_observation(
     stdout: observe_run.stdout,
+=======
+  let observe_r = srv3_host_effect_observe_read_apply()
+  let observe_stdout = match srv3_shell_stdout_from_apply(r: observe_r) {
+    Present { value: out } => out
+    Absent =>
+      return match srv3_reconciliation_failure_reason(r: observe_r) {
+        Present { value: why } => exit_failure(reason: concat("srv3-install-reconcile-observe: ", why))
+        Absent => exit_failure(reason: "srv3-install-reconcile-observe: host_effect_apply failed")
+      }
+  }
+  let observation = parse_srv3_install_debug_observation(
+    stdout: observe_stdout,
+>>>>>>> origin/main
     intent: intent,
   )
   let grant = GrantAbsent
@@ -88,8 +113,13 @@ func srv3_os_install_reconcile_dry_run() -> ProcessExit {
     prior: prior,
   )
   let lease = srv3_held_lease_from_serve(serve: observation.actuator_serve)
+<<<<<<< HEAD
   let git_branch = parse_reconcile_git_branch(stdout: observe_run.stdout)
   let git_commit = parse_reconcile_git_commit(stdout: observe_run.stdout)
+=======
+  let git_branch = parse_reconcile_git_branch(stdout: observe_stdout)
+  let git_commit = parse_reconcile_git_commit(stdout: observe_stdout)
+>>>>>>> origin/main
   let receipt = srv3_install_reconcile_full_receipt(
     result: result,
     intent: intent,
@@ -101,6 +131,7 @@ func srv3_os_install_reconcile_dry_run() -> ProcessExit {
     git_commit: git_commit,
   )
   let action = srv3_install_reconcile_action_line(result: result)
+<<<<<<< HEAD
   let echo_body = concat(
     shell_printf_line(line: receipt),
     shell_printf_line(line: action),
@@ -111,4 +142,9 @@ func srv3_os_install_reconcile_dry_run() -> ProcessExit {
   } else {
     return exit_failure(reason: concat("srv3-install-reconcile-receipt: ", echo_run.stderr))
   }
+=======
+  srv3_emit_typed_receipt(
+    receipt: srv3_typed_receipt_from_lines(lines: [receipt, action]),
+  )
+>>>>>>> origin/main
 }

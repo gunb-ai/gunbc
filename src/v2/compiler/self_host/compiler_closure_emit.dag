@@ -6,7 +6,7 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.program_partition { emit_for_target }
 import v2.compiler.source_authority { SourceRootIngest }
 import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 import v2.std.algebra { contains, length }
 import v2.std.collection { List }
@@ -90,7 +90,7 @@ fn emit_compiler_import_closure_from_ingest(
   admission: Admission,
   target: TargetModel
 ) -> Outcome<CompilerClosureEmitReceipt> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
     f: fn(resolved) {

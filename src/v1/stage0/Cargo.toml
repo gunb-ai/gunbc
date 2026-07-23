@@ -6,16 +6,31 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
+interp_test_witness = []
 
 [dependencies]
-# Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
-# (thread-confined, matching the Value Rc-discipline) crate providing BOTH
-# carriers v2.std.value_carrier declares: HashMap is a hash array mapped trie
-# (map_carrier: ^hash_array_mapped_trie) and Vector is a relaxed radix
-# balanced tree (list_carrier: ^relaxed_radix_balanced_tree, O(log n)
-# concatenation). rpds was the considered alternative; rejected because its
-# Vector has no concatenation, so it cannot realize the declared list carrier.
-im-rc = "15.1"
+# Persistent value carriers (ctrl#1533 phase 2). `im` and `im-rc` are the same
+# crate source; build.rs switches on CARGO_PKG_NAME to set cfg(threadsafe),
+# which flips one alias in that crate's util.rs -- Ref<A> = std::rc::Rc for
+# im-rc, std::sync::Arc for im. Public API, macro set, and algorithms are
+# identical; the only feature im-rc adds is `pool`, which we do not request.
+# It provides BOTH carriers v2.std.value_carrier declares: HashMap is a hash
+# array mapped trie (map_carrier: ^hash_array_mapped_trie) and Vector is a
+# relaxed radix balanced tree (list_carrier: ^relaxed_radix_balanced_tree,
+# O(log n) concatenation). rpds was the considered alternative; rejected
+# because its Vector has no concatenation, so it cannot realize the declared
+# list carrier.
+#
+# im-rc -> im so the typed payloads these carriers build CAN become Send. The
+# floor runs serially because each worker rebuilds its own whole-tree typed
+# index; cross-entry reuse is real (measured 92.5% typed_module_cache hit rate
+# over 80 sequential discovery entries), but sharing it needs Send payloads,
+# and an outer Arc cannot make a value Send when its interior is im_rc-backed.
+# NOT Send yet: the Value substrate is still std::rc::Rc. That is the
+# follow-on step, gated on this swap's measured cost -- im refcounts
+# atomically, so this taxes every collection op including the interpreter
+# hot path.
+im = { version = "15.1", features = ["serde"] }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"
@@ -23,7 +38,13 @@ clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+sha2 = "0.10"
 ureq = { version = "2", features = ["json"] }
+# Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
+# budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
+# time-slicing is not misclassified as an eval-wedge (a true non-terminating eval still
+# burns CPU and is caught). Already present transitively; declared direct for this use.
+libc = "0.2"
 
 [[bin]]
 name = "gunbc"
@@ -33,6 +54,10 @@ path = "src/main.rs"
 name = "regen_stage0"
 path = "src/bin/regen_stage0.rs"
 # cache-bust-v2-binary-20260526
+
+[[bin]]
+name = "cssl_assemble"
+path = "src/bin/cssl_assemble.rs"
 
 # Batch claim runner: resolve one --entry closure once, run many witnesses.
 # Hand-written CI tool (like regen_stage0); reuses the v1-compiler lib, does NOT
@@ -60,6 +85,17 @@ path = "src/bin/discover_owned_data.rs"
 [[bin]]
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
+
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — per-module emit-frontier survey host transport.
+# Authority: module census reads `compiler_frontier_sweep_order` from `frontier.dag` at runtime (no parallel roster).
+# NOT floor-enrolled — long-lane local recipe via `frontier_probe_survey_transport.dag`.
+# DISSOLUTION: shrink when `^migrate_when_frontier_per_module_probe_receipt_binds` lands (gunbc.plans.wave2_prep_design
+# §census carrier) and survey receipts replace knowledge-attributed roster rows; then delete this bin and fold the
+# per-module loop into a pure `.dag` witness or self-emitted transport (same dissolution row as
+# `frontier_probe_survey_transport_scaffold_note`).
+[[bin]]
+name = "frontier_probe_survey"
+path = "src/bin/frontier_probe_survey.rs"
 
 # Whole-tree v2 parse regression scanner (host transport; one harness, N files).
 [[bin]]
@@ -98,10 +134,22 @@ name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
 
 [[bin]]
+name = "resolution_divergence_census"
+path = "src/bin/resolution_divergence_census.rs"
+
+[[bin]]
+name = "walk_target_alias_plan"
+path = "src/bin/walk_target_alias_plan.rs"
+
+[[bin]]
+name = "measure_dependency_view_build"
+path = "src/bin/measure_dependency_view_build.rs"
+
+[[bin]]
 name = "capture_func_env_semantic_oracle"
 path = "src/bin/capture_func_env_semantic_oracle.rs"
 
-# Host-physics floor witness for extdep REST transport collection (rest_transport_facts.rs).
+# Floor witness for extdep REST transport collection (cli_run::collect_rest_transport_operations).
 # Parses the eight-file authority closure live, resolves tracked ops, and checks
 # fingerprint uniqueness + derive_op_effect obligations. SCAFFOLD — dissolves when
 # REST transport facts move to modeled .dag authority (interpreter_kernel_d).
@@ -116,6 +164,44 @@ path = "src/bin/effects_rest_transport_witness.rs"
 name = "infer_semantics_witness"
 path = "src/bin/infer_semantics_witness.rs"
 
+# Host-physics floor witness for the auth-declared-but-unwired guard oracle suite
+# (auth_declared_but_unwired_witness_test.rs). Exercises v1_interpreter's auth
+# resolution/dispatch guard until that behavior is witness-layer importable.
+[[bin]]
+name = "auth_declared_but_unwired_witness"
+path = "src/bin/auth_declared_but_unwired_witness.rs"
+
+# Host-physics floor witness for the v1 bootstrap self-host oracle suite
+# (bootstrap.rs). Exercises stage0 check/compile/fixed-point/freshness gates
+# until v2.workflow.bootstrap self-host gates are witness-layer importable.
+[[bin]]
+name = "bootstrap_witness"
+path = "src/bin/bootstrap_witness.rs"
+
+# Host-physics floor witness for the affected-set floor skip/discovery mechanism
+# (run_discovery_corpus_with_options node-precise skip semantics). Runtime host-effect
+# behavior (git diff observation, multi-entry resolve, per-witness skip decisions), not
+# pure logic, so a bare .dag test fn would be spec-without-execution (DESIGN §5).
+[[bin]]
+name = "floor_skip_discovery_witness"
+path = "src/bin/floor_skip_discovery_witness.rs"
+
+# Host-physics CI witness: docs-only floor admission via tools.dag_compile_clean_scope
+# (Ruling 1 path grain). Prints documentation_only_skip | run_full_floor for the
+# generated ci floor script; empty diff / diff failure → run_full_floor (fail-closed).
+[[bin]]
+name = "compile_clean_floor_skip_witness"
+path = "src/bin/compile_clean_floor_skip_witness.rs"
+
+# Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
+# regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
+# the merge-base diff with the [src/v1, dag] regen input closure (shared authority
+# cli_run::regen_input_sources). Empty diff / diff failure / closure failure → run_regen
+# (fail-closed; main + the 4-hourly falsifier run regen cold as the control).
+[[bin]]
+name = "regen_floor_skip_witness"
+path = "src/bin/regen_floor_skip_witness.rs"
+
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
@@ -124,3 +210,48 @@ path = "src/bin/infer_semantics_witness.rs"
 [[bin]]
 name = "interp_recorded_fixture_witness"
 path = "src/bin/interp_recorded_fixture_witness.rs"
+
+# Host-physics floor witness for the v1 compiler diagnostic oracle suite
+# (diagnostics.rs). Exercises compile-time diagnostic shape, message text, and
+# span→line/col mapping via compile_multi until that harness is witness-layer
+# importable from pure .dag floor witnesses.
+[[bin]]
+name = "diagnostics_witness"
+path = "src/bin/diagnostics_witness.rs"
+
+# Host-physics floor witness for dag_collect fingerprint oracle suite
+# (dag_collect_fingerprint_witness_test.rs). Exercises bag/seq hash and
+# recursive surface fingerprint discrimination until v1.compiler.dag_collect_support
+# is witness-layer importable from pure .dag floor witnesses.
+[[bin]]
+name = "dag_collect_fingerprint_witness"
+path = "src/bin/dag_collect_fingerprint_witness.rs"
+
+# Host-physics floor witness for parse/tokenize oracle suite (parse.rs).
+[[bin]]
+name = "parse_witness"
+path = "src/bin/parse_witness.rs"
+
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — whole-tree compile-clean hard-diagnostic
+# histogram host transport for namespace migration burndown
+# (docs/plans/namespace-resolution-design.md · ROADMAP §1 namespace-only lane).
+# NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
+# DISSOLUTION: delete this bin and `CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER`
+# plumbing in cli_run.rs when the namespace-only lane closes (import strip + global_bare wiring
+# fixed; whole-tree compile-clean quiet on the strip tree) OR a floor-enrolled diagnostic-histogram
+# lens subsumes this host transport; receipt:
+# `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion.
+[[bin]]
+name = "compile_clean_diagnostic_histogram"
+path = "src/bin/compile_clean_diagnostic_histogram.rs"
+
+# SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
+# gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
+# top of the same closure-scoped census the gate itself consumes. Not a CI consumer —
+# resolution_divergence_census --closure-scoped is the gate's own binary; this is for
+# human triage of a red run. DISSOLUTION: delete when the falsifier_silent_pick_gate
+# telemetry class dissolves (§13 unique-on-chain resolution ships, per
+# falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
+[[bin]]
+name = "silent_pick_crosscheck"
+path = "src/bin/silent_pick_crosscheck.rs"

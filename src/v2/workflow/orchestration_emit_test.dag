@@ -14,6 +14,9 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn orch_pipeline_step1() -> PipelineStep {
   Do {

@@ -1,0 +1,7 @@
+module gunbc.ownership
+
+import std.types { String }
+
+type Ownership = Owned | Ensured
+
+data ownership_authority_note: String = "The single authority for the ownership classification of a reconcile member. Owned = this reconcile created/owns it (teardown-eligible); Ensured = a dependency it requires present but does NOT own (never torn down). The reconcile spine gunbc.membership_reconcile reads ownership through THIS type; teardown-owned-only (R5) partitions Removed members on it. gunbc.live_deploy.spec DeploymentStep does NOT define its own Owned/Ensured coproduct — its Artifact/Dependency variants are the payload discriminator, and deployment_step_ownership PROJECTS each onto this authority (Artifact -> Owned, Dependency -> Ensured; ownership DERIVED, never stored, so an inconsistent ownership/payload pair is unwritable — DESIGN §5 construction-over-validation). One Owned|Ensured coproduct in the tree, here. (The pass-1 ownership_deployment_step_reground_trigger Scaffold dissolved when this projection landed in pass 2 — §6: a scaffold and its dissolution trigger, fired.)"

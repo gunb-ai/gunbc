@@ -1,6 +1,7 @@
 module test.claim.gitignore_gate
 
-import gunbc.gitignore_emit { expected_gitignore, gitignore_drifted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_has_cargo_patterns() -> Bool {
   let eg = expected_gitignore()

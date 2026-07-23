@@ -1,32 +1,10 @@
 module gunbc.accelerator_demo_recognizer
 
-import gunbc.accelerator_demo_program {
-  AcceleratorDemoProgram,
-  PureElementwiseMap,
-  EffectfulElementwiseMap,
-  DataDependentGatherMap,
-  pure_elementwise_ops_shape_recognizable,
-  relu_mul_add_pure_program,
-  relu_mul_add_effectful_program,
-  relu_mul_add_gather_program,
-}
-import gunbc.accelerator_demo_plan {
-  AcceleratorRecognitionOutcome,
-  Recognized,
-  Refused,
-  NotElementwisePure,
-  CarriesEffects,
-  FmaContractionViolatesContract,
-  AcceleratorUnsupportedNumericalDomain,
-  recognize_with_contract,
-  integer_exact_contract,
-  NumericalContract,
-}
 
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
   recognize_accelerator_program_with_contract(
     program: program,
-    contract: integer_exact_contract(),
+    contract: std.numerical_contract.integer_exact_contract(),
     insist_on_fma_fused_kernel: false
   )
 }
@@ -38,18 +16,18 @@ fn recognize_accelerator_program_with_contract(
 ) -> AcceleratorRecognitionOutcome {
   match program {
     PureElementwiseMap { ops: ops } =>
-      if pure_elementwise_ops_shape_recognizable(ops: ops) {
-        recognize_with_contract(
+      if gunbc.accelerator_demo_program.pure_elementwise_ops_shape_recognizable(ops: ops) {
+        gunbc.accelerator_demo_plan.recognize_with_contract(
           contract: contract,
           insist_on_fma_fused_kernel: insist_on_fma_fused_kernel
         )
       } else {
-        Refused { reason: NotElementwisePure }
+        gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
       }
     EffectfulElementwiseMap { ops: _ } =>
-      Refused { reason: CarriesEffects }
+      gunbc.accelerator_demo_plan.Refused { reason: CarriesEffects }
     DataDependentGatherMap { ops: _ } =>
-      Refused { reason: NotElementwisePure }
+      gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
   }
 }
 

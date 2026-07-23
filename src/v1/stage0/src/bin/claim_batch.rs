@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::HashMap;
+use im::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -10,7 +10,7 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
     discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
-    ClaimOutcome, DiscoveryRow, MultiEntryIndex, FLOOR_DISCOVERY_EXCLUDES,
+    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -151,6 +151,20 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
+/// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
+/// on a nonexistent path — never falling back to the compile-time-baked workspace root
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    let given = require_value(args, idx, flag)?;
+    match v1_compiler::cli_run::resolve_cli_path_arg("claim_batch", flag, &given) {
+        Ok(resolved) => Ok(resolved),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
 struct EntryGroup {
     entry: String,
     functions: Vec<String>,
@@ -162,6 +176,8 @@ struct ParsedArgs {
     discovery: Option<DiscoveryConfig>,
     execution_mode: ExecutionMode,
     fixture_store: Option<PathBuf>,
+    eval_budget_ms: Option<u64>,
+    pre_push: bool,
 }
 
 struct DiscoveryConfig {
@@ -177,17 +193,19 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut notice_title = "v2 CI claim gate".to_string();
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
+    let mut eval_budget_ms: Option<u64> = None;
+    let mut pre_push = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--source-root" => {
                 i += 1;
-                source_roots.push(require_value(args, i, "--source-root")?);
+                source_roots.push(require_path_value(args, i, "--source-root")?);
             }
             "--entry" => {
                 i += 1;
-                let entry = require_value(args, i, "--entry")?;
+                let entry = require_path_value(args, i, "--entry")?;
                 entry_groups.push(EntryGroup {
                     entry,
                     functions: Vec::new(),
@@ -223,7 +241,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--roster-from-discovery" => roster_from_discovery = true,
             "--scan-dir" => {
                 i += 1;
-                scan_dirs.push(require_value(args, i, "--scan-dir")?);
+                scan_dirs.push(require_path_value(args, i, "--scan-dir")?);
             }
             "--notice-title" => {
                 i += 1;
@@ -233,10 +251,22 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             "--record" => execution_mode = ExecutionMode::Record,
+            "--eval-budget-ms" => {
+                i += 1;
+                let v = require_value(args, i, "--eval-budget-ms")?;
+                let ms: u64 = v.parse().map_err(|_| {
+                    eprintln!(
+                        "claim_batch: --eval-budget-ms requires a positive integer, got {v:?}"
+                    );
+                    ExitCode::from(2)
+                })?;
+                eval_budget_ms = Some(ms);
+            }
             "--fixture-store" => {
                 i += 1;
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
+            "--pre-push" => pre_push = true,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -266,6 +296,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         discovery,
         execution_mode,
         fixture_store,
+        eval_budget_ms,
+        pre_push,
     })
 }
 
@@ -405,6 +437,7 @@ fn run_witnesses(
     execution_mode: ExecutionMode,
     fixture_store: Option<Rc<RecordedFixtureStore>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    eval_budget_ms: Option<u64>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
@@ -420,8 +453,13 @@ fn run_witnesses(
         fixture_store,
         whole_tree_published_keys,
     );
+    ctx.set_witness_eval_budget(eval_budget_ms);
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
+        // The eval-call memo's eviction scope is the witness frame, not this
+        // shared per-entry ctx — ctx-lifetime retention of argument+result
+        // values across witnesses is byte-unbounded (20GiB-class kills).
+        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     Ok(())
 }
@@ -443,8 +481,12 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
+    if parsed.pre_push {
+        return Ok(v1_compiler::cli_run::handle_pre_push());
+    }
     let source_roots = parsed.source_roots;
     let execution_mode = parsed.execution_mode;
+    let eval_budget_ms = parsed.eval_budget_ms;
     let fixture_store_path = parsed.fixture_store;
     validate_fixture_flags(execution_mode, &fixture_store_path)?;
     let fixture_store = fixture_store_rc(&fixture_store_path);
@@ -456,16 +498,17 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
     v1_compiler::cli_run::install_output_policy(&source_roots);
+    // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,
+    // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
+    // phases — a 20-minute silent resolve is uninterpretable.
+    let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         if let Err(e) = check_floor_filename_hygiene(&source_roots) {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = witness_exclusion_substrings();
         let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs, &excludes) {
             Ok(r) => r,
             Err(e) => {
@@ -484,6 +527,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                         label: function.clone(),
                         entry: group.entry.clone(),
                         function: function.clone(),
+                        // claim_batch runs every row (no selection); the undeclared
+                        // fail-closed default is the honest fill for a transient row.
+                        reads_live_tree: true,
                     });
                 }
             }
@@ -491,6 +537,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         if rows.is_empty() {
             eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
             return Err(ExitCode::from(2));
+        }
+        // P4 advisory-first: predict the memory-packed width per witness from its
+        // derived space bound, logged for offline comparison against the run's peak
+        // RSS. Gated (opt-in); no scheduling change.
+        if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
+            v1_compiler::cli_run::emit_realize_advisory_for_rows(&source_roots, &rows);
         }
         rows.sort_by(|a, b| {
             a.entry
@@ -559,12 +611,20 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if entry_groups.len() == 1 {
         let group = &entry_groups[0];
+        // Two lines so the log cannot lie about sequencing: the past-tense line
+        // printed BEFORE the resolve once mis-attributed a resolve-phase OOM to
+        // witness eval (eager-ram-612 bisect, 2026-07-10).
         eprintln!(
-            "claim_batch: resolved {} once; running {} witness(es)",
+            "claim_batch: resolving {} once ({} witness(es))",
             group.entry,
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
+        eprintln!(
+            "claim_batch: resolved {}; running {} witness(es)",
+            group.entry,
+            group.functions.len()
+        );
         let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
@@ -576,6 +636,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             fixture_store.clone(),
             whole_tree_published_keys.clone(),
         );
+        ctx.set_witness_eval_budget(eval_budget_ms);
         for function in &group.functions {
             run_claim_timed(
                 &ctx,
@@ -584,6 +645,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &mut any_failed,
                 &mut timings,
             );
+            // Witness frame exit on the single-entry fast path too — this is
+            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
+            // must not retain values across witnesses sharing this ctx).
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);
@@ -595,15 +660,28 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(
+            // A group whose resolve fails is COUNTED — every enrolled witness in
+            // it reports FAIL and the batch continues (exit stays 1 via
+            // any_failed). Aborting the whole batch on the first red entry
+            // truncated the measurement: each run revealed only the NEXT red
+            // class, and everything alphabetically after it went unmeasured.
+            if run_witnesses(
                 &index,
                 group,
                 execution_mode,
                 fixture_store.clone(),
                 whole_tree_published_keys.clone(),
+                eval_budget_ms,
                 &mut any_failed,
                 &mut timings,
-            )?;
+            )
+            .is_err()
+            {
+                for function in &group.functions {
+                    println!("FAIL {} (entry resolve failed: {})", function, group.entry);
+                }
+                any_failed = true;
+            }
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);
@@ -635,6 +713,75 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod cli_path_resolution_wiring_tests {
+    use super::parse_args;
+    use v1_compiler::cli_run::workspace_root;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        std::iter::once("claim_batch")
+            .chain(v.iter().copied())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
+    #[test]
+    fn absolute_existing_args_parse_and_survive_resolution() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/commit_workflow_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--function",
+            "commit_workflow_witnesses",
+        ]))
+        .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
+        assert_eq!(parsed.source_roots, vec![root]);
+        assert_eq!(parsed.entry_groups.len(), 1);
+        assert_eq!(parsed.entry_groups[0].entry, entry);
+    }
+
+    /// A nonexistent --source-root refuses at the CLI boundary (exit-code error), never
+    /// proceeding to a partial run.
+    #[test]
+    fn nonexistent_source_root_refuses_at_parse() {
+        assert!(parse_args(&args(&["--source-root", "/no/such/tree"])).is_err());
+    }
+
+    /// Relative args resolve against the PROCESS CWD, not the baked workspace root.
+    /// `cargo test` runs bin unit tests with cwd == the package dir (src/v1/stage0),
+    /// where `dag` does not exist — while it DOES exist under the baked workspace root.
+    /// parse_args must therefore agree with the cwd, whichever it is: refuse when
+    /// cwd/dag is absent (a baked-root fallback would accept), accept when present.
+    #[test]
+    fn relative_source_root_follows_process_cwd_not_baked_root() {
+        let cwd = std::env::current_dir().expect("test cwd");
+        let cwd_has_dag = cwd.join("dag").is_dir();
+        let result = parse_args(&args(&[
+            "--source-root",
+            "dag",
+            "--entry",
+            "dag/test/claim/commit_workflow_witness_test.dag",
+            "--function",
+            "commit_workflow_witnesses",
+        ]));
+        assert_eq!(
+            result.is_ok(),
+            cwd_has_dag,
+            "relative --source-root must resolve against the process cwd {} (dag present: {cwd_has_dag}), never the baked workspace root {}",
+            cwd.display(),
+            workspace_root().display()
+        );
     }
 }
 

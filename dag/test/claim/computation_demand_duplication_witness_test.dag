@@ -1,0 +1,46 @@
+module test.claim.computation_demand_duplication_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn synthetic_replicated_invocation(run_site: String, out_dir: String) -> v2.lens.duplicate_computation.TypedArgvInvocation {
+  v2.lens.duplicate_computation.TypedArgvInvocation {
+    site: run_site,
+    tool: "gunbc",
+    args: ["compile", "--source-root", "dag", "--dependency-pool-index", "primary-precedence", "--output-dir", out_dir, "--target", "rust"]
+  }
+}
+
+fn replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.ReplicationIntent) -> List<v2.lens.duplicate_computation.ComputationDemandFact> {
+  concat(
+    v2.lens.duplicate_computation.typed_argv_computation_demands(
+      invocation: synthetic_replicated_invocation(
+        run_site: "test.claim.computation_demand_duplication_witness#first",
+        out_dir: "/tmp/replicated-oracle-out-first"
+      ),
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
+      replication: replication
+    ),
+    v2.lens.duplicate_computation.typed_argv_computation_demands(
+      invocation: synthetic_replicated_invocation(
+        run_site: "test.claim.computation_demand_duplication_witness#second",
+        out_dir: "/tmp/replicated-oracle-out-second"
+      ),
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
+      replication: replication
+    )
+  )
+}
+
+test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
+  return v2.lens.duplicate_computation.duplicate_computation_clean_holds(
+    facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 })
+  )
+}
+
+test fn replicated_pair_without_declaration_reds() -> Bool {
+  return v2.lens.duplicate_computation.duplicate_computation_violation_count(
+    facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.SingleRun)
+  ) == 1
+}
+
+data typed_projection_subject_note: String = "The live subject is the typed-argv projection: both facts are projected from synthetic_replicated_invocation (same tool+args except the --output-dir placement flag), and the two distinct --output-dir values prove the placement-flag stripping keeps the pair's computation_key equal — a declared ReplicatedOracle (runs 2) pair is admissible, SingleRun reds. Formerly keyed on tools.emit_determinism_transport.ed_typed_compile_invocation (the x2 full-corpus emit oracle); re-homed to a self-contained synthetic fixture when the x2 emit-determinism gate and transport were deleted (Phase D, 2026-07-14 — determinism became a construction gate, v2.lens.determinism enrolled in always_required_root_lenses). The lens's ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar."

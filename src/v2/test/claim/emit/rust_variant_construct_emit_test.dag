@@ -1,0 +1,83 @@
+module v2.test.emit.rust_variant_construct_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_variant_construct_arrow_with_body_fixture,
+  dag_variant_construct_arrow_with_body_wrong_value_fixture
+}
+import v2.extdeps.languages.rust_test {
+  rust_variant_construct_source_text,
+  rust_variant_construct_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_variant_construct_emit_wrong_value_source_text: String = "fn one_or_two() -> i32 { match (Holds { value: 1 }) { Holds { value: v } => v, True => 2 } }"
+
+fn rust_variant_construct_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_variant_construct_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_variant_construct_emit_facts_miss }
+  }
+}
+
+data rust_variant_construct_emit_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_fixture)
+
+data rust_variant_construct_emit_wrong_value_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
+
+fn rust_variant_construct_emit_holds_accepts() -> Bool {
+  match emit(
+    tree: rust_variant_construct_emit_inferred_tree,
+    target: rust_variant_construct_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_variant_construct_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
+  match emit(
+    tree: rust_variant_construct_emit_wrong_value_inferred_tree,
+    target: rust_variant_construct_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_variant_construct_emit_wrong_value_source_text) &&
+      (source.carried != rust_variant_construct_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_variant_construct_emit_holds() -> Bool {
+  rust_variant_construct_emit_holds_accepts()
+    && rust_variant_construct_emit_wrong_value_discriminates()
+}

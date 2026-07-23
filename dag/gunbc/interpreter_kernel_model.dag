@@ -1,6 +1,5 @@
 module gunbc.interpreter_kernel_model
 
-import std.types { List, String, Bool, Int }
 
 type InterpreterSeamClass
   = PureEvalAuthority
@@ -11,7 +10,7 @@ type V1InterpreterDissolutionPhase
   | PureEvalEmitWired
   | HostPhysicsPinnedTerminal
 
-data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = ModelAndWitnessOnly
+data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = PureEvalEmitWired
 
 data pure_eval_authority_modules: List<String> = [
   "src/v2/compiler/05_eval.dag",
@@ -24,8 +23,6 @@ data pure_eval_authority_modules: List<String> = [
 data pinned_host_physics_stage0_files: List<String> = [
   "recorded_fixture.rs",
   "resolved_graph_cache.rs",
-  "rest_transport_facts.rs",
-  "wire_value_serialize.rs",
 ]
 
 data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"
@@ -42,14 +39,6 @@ fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
   list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
 }
 
-fn pinned_host_physics_file_count() -> Int {
-  pinned_host_physics_stage0_files.length()
-}
-
-fn pure_eval_authority_module_count() -> Int {
-  pure_eval_authority_modules.length()
-}
-
 fn interpreter_kernel_d_phase_is_model_only() -> Bool {
   match interpreter_kernel_d_current_phase {
     ModelAndWitnessOnly => true
@@ -58,6 +47,35 @@ fn interpreter_kernel_d_phase_is_model_only() -> Bool {
   }
 }
 
+fn interpreter_kernel_d_phase_is_pure_eval_emit_wired() -> Bool {
+  match interpreter_kernel_d_current_phase {
+    PureEvalEmitWired => true
+    ModelAndWitnessOnly => false
+    HostPhysicsPinnedTerminal => false
+  }
+}
+
 fn v1_interpreter_not_classified_as_pinned_host_physics() -> Bool {
   !is_pinned_host_physics_stage0_file(basename: v1_interpreter_hybrid_seed_file)
+}
+
+fn seam_class_for_authority_module(path: String) -> InterpreterSeamClass? {
+  match is_pure_eval_authority_module(path: path) {
+    true => Present { value: PureEvalAuthority }
+    false => Absent
+  }
+}
+
+fn seam_class_for_pinned_basename(basename: String) -> InterpreterSeamClass? {
+  match is_pinned_host_physics_stage0_file(basename: basename) {
+    true => Present { value: PinnedHostPhysics }
+    false => Absent
+  }
+}
+
+fn hybrid_seed_file_is_seam_unclassified() -> Bool {
+  match seam_class_for_pinned_basename(basename: v1_interpreter_hybrid_seed_file) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

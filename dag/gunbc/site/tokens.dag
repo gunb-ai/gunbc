@@ -1,0 +1,33 @@
+module gunbc.site.tokens
+
+import gunbc.design.material {
+  Material, AreaClass, PointArea, HairlineArea, TextArea, FieldArea, DataVizArea,
+  chroma_admissible, quiet_envelope, quiet_envelope_hsl_pct, quiet_envelope_srgb8,
+  area_max_sat, area_key, area_exempt_from_quiet_envelope,
+  paint, paint_alpha,
+  TimingToken, respond_fast, reveal_deliberate, restore_gentle, reframe_page, timing_scale,
+  MotionTrigger, OnHover, OnFocusVisible, OnActive, trigger_pseudo,
+  CssDecl, decl, transition_decl,
+  TriggerShape, SelfResponse, WithinSubject, ContainerHas,
+  BuildRule, StaticRule, ResponseRule,
+  response_base_selector, response_hot_selector,
+  serialize_decls, css_block, serialize_rule, serialize_rules,
+  reduced_motion_block,
+}
+import gunbc.design.theme {
+  ThemeRole, CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
+  FigureRole, FigureLitRole, FigureHaloRole, FigureEdgeRole, FocusRole, BoundaryRole,
+  theme_roles, role_key, role_area, role_var, role_decl,
+  RoleAssignment, Theme, assign, assign_alpha,
+  night_canvas, night_surface, night_border, night_text, night_text_dim,
+  warm_starlight, warm_starlight_lit, starlight_edge, night_brass, night_clay,
+  day_canvas, day_surface, day_border, day_ink, day_ink_dim,
+  ink_star, ink_star_lit, ink_edge, day_brass, day_clay,
+  night_theme, day_theme, site_themes,
+  role_eq, theme_has_role, theme_gaps, theme_total, theme_area_coherent,
+  theme_materials_admissible, assignment_material, roles_clear_wcag,
+  theme_contrast_ok, theme_coherent, themes_coherent,
+  assignment_paint, theme_var_decls, theme_root_css,
+}
+
+data site_tokens_facade_note: String = "L5 instance façade — register machinery authority is gunbc.design.material + gunbc.design.theme (Phase-A lift, design-register-library.md). Import those modules directly; this module retains only the site binding note until call sites finish migrating."

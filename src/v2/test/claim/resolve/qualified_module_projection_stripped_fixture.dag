@@ -1,0 +1,5 @@
+module v2.test.resolve.qualified_module_projection_stripped_fixture
+
+data g1_stripped_fixture_note: String = "Grammar lane G1 corpus fixture: no import lines — qualified type projection must resolve via SymbolIndex (container.member), not import-scoped or value field-access. Whole-tree compile-clean (batch 1) is the authority receipt; this module is intentionally not a *_test.dag discovery entry."
+
+type LocalAlias = v2.test.resolve.qualified_module_projection_provider.ProviderType

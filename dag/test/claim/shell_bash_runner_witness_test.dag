@@ -1,15 +1,20 @@
 module test.claim.shell_bash_runner
 
+<<<<<<< HEAD
 import gunbc.shell_bash_runner {
   shell_bash_runner_dissolution_trigger,
   shell_exec_via_bash,
   shell_printf_line,
   gunbc_bash_heredoc_delimiter,
 }
+=======
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+>>>>>>> origin/main
 
 test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
   string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "medium_structure_exception_roster")
+    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "bash_fold")
     && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "shell_exec_via_bash")
 }
 

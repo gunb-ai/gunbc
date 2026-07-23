@@ -1,13 +1,8 @@
 module v2.test.manual.map_lookup_miss_witness_violates
 
-import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.witness { Holds, Violates, Witness }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type LookupKey {
   id: Int
 }

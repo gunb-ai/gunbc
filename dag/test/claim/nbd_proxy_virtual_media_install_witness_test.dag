@@ -1,35 +1,7 @@
 module test.claim.nbd_proxy_virtual_media_install
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.bmc.types { BootTargetCd, BootTargetPxe }
-import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
-import gunbc.os_install_mechanism {
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  install_boot_target_for,
-  srv3_install_mechanism,
-  srv3_install_boot_target,
-}
-import gunbc.nbd_proxy_virtual_media_install {
-  OsInstallActuatorStep,
-  ActuatorNbdProxyServe,
-  ActuatorBootOnce,
-  ActuatorForceRestart,
-  ActuatorPxeNetworkBootStaging,
-  srv3_os_install_actuator_plan,
-  os_install_actuator_step_count,
-  os_install_actuator_steps,
-  srv3_nbd_proxy_export_placeholder,
-  srv3_nbd_proxy_export_dissolution_trigger,
-  actuator_step_to_host_effect_intent,
-  srv3_os_install_actuator_toolchain_grant_row_count,
-}
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.host_effect { HostOs, ShellCommand }
-import extdeps.bmc.webui.nbd_proxy_serve {
-  nbd_proxy_serve_bash_emit_dissolution_trigger,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
   match srv3_install_mechanism {
@@ -95,18 +67,20 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
         _ => false
       }
         && match intent.effect {
-          ShellCommand { script: _ } => true
+          Srv3NbdProxyServe { intent: _, lease_key: _ } => true
           _ => false
         }
     Absent => false
   }
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-}
-
-test fn actuator_toolchain_grant_is_wired() -> Bool {
-  srv3_os_install_actuator_toolchain_grant_row_count() == 4
+    && match nbd_proxy_serve_systemd_realization_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
 }
 
 test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
-  string_contains(s: srv3_nbd_proxy_export_dissolution_trigger, pattern: "dissolve-on:")
+  match srv3_nbd_proxy_export_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }

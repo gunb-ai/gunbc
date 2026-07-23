@@ -1,0 +1,77 @@
+module test.claim.floor_materialization_witness
+
+import std.types { Bool, Int, List, String }
+import std.realization_schedule { ScheduleWitnessEntry }
+import gunbc.ci_gate { Gate }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
+import gunbc.floor_materialization {
+  floor_index_build_identity,
+  floor_index_build_share_provider_id,
+  floor_index_build_materialization,
+  floor_index_build_materialization_without_provider,
+  floor_index_build_reader_count,
+  floor_typecheck_store_identity,
+  floor_typecheck_store_share_provider_id,
+  floor_typecheck_store_materialization,
+  floor_typecheck_store_materialization_without_provider,
+  floor_typecheck_store_reader_count
+}
+import std.materialization_ladder {
+  value_verdict_is_shared_by_reference,
+  value_verdict_is_refused_needing_reference
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn live_floor_gates() -> List<Gate> {
+  project_ci_floor_gates(roster: commit_gate_roster)
+}
+
+fn live_floor_witnesses() -> List<ScheduleWitnessEntry> {
+  project_ci_floor_witness_entries(roster: commit_gate_roster)
+}
+
+data floor_materialization_witness_note: String = "The value-tier ladder run against the LIVE floor consumer roster (spec gates + witness entries projected from commit_gate_roster, plus the fixed prelude), enrolled on the CI surface. Proves the in-process index-build share (process_shared_index) discharges the plural readonly reads as ValueSharedByReference — green because the share is DECLARED and covers every consumer, not because nothing looked. RED control removes the ReferenceTier provider and demands ValueRefusedNoCarrierProvider, so the witness discriminates. S2a increment C adds the process-scoped typecheck store share (process_shared_typecheck_store) with the same ladder pattern. Backing green-by-execution (cited, run under rust_tests nextest): memo_deduplicates_resolve_count + memo_warm_cold_results_are_identical (claim_executor.rs), union_view_result_equals_private_resolve_in_every_order + union_resolve_typechecks_each_node_once + cross_worker_shared_typecheck_cache_process_once_per_node + cross_worker_shared_typecheck_cache_purity (src/v1/tests/src/union_resolve_receipts_test.rs)."
+
+test fn floor_index_build_share_is_shared_by_reference() -> Bool {
+  let gates = live_floor_gates()
+  let witnesses = live_floor_witnesses()
+  value_verdict_is_shared_by_reference(
+    v: floor_index_build_materialization(gates: gates, witnesses: witnesses),
+    identity: floor_index_build_identity,
+    provider_id: floor_index_build_share_provider_id,
+    reader_count: floor_index_build_reader_count(gates: gates, witnesses: witnesses)
+  )
+}
+
+test fn floor_index_build_has_plural_readers() -> Bool {
+  floor_index_build_reader_count(gates: live_floor_gates(), witnesses: live_floor_witnesses()) >= 2
+}
+
+test fn floor_index_build_reds_without_reference_provider() -> Bool {
+  value_verdict_is_refused_needing_reference(
+    v: floor_index_build_materialization_without_provider(gates: live_floor_gates(), witnesses: live_floor_witnesses()),
+    identity: floor_index_build_identity
+  )
+}
+
+test fn floor_typecheck_store_share_is_shared_by_reference() -> Bool {
+  value_verdict_is_shared_by_reference(
+    v: floor_typecheck_store_materialization(),
+    identity: floor_typecheck_store_identity,
+    provider_id: floor_typecheck_store_share_provider_id,
+    reader_count: floor_typecheck_store_reader_count()
+  )
+}
+
+test fn floor_typecheck_store_has_plural_readers() -> Bool {
+  floor_typecheck_store_reader_count() >= 2
+}
+
+test fn floor_typecheck_store_reds_without_reference_provider() -> Bool {
+  value_verdict_is_refused_needing_reference(
+    v: floor_typecheck_store_materialization_without_provider(),
+    identity: floor_typecheck_store_identity
+  )
+}

@@ -1,87 +1,13 @@
 module test.claim.extdeps_llm_type_grounding_witness
 
-import extdeps.llm.openai {
-  ToolCall,
-  FunctionCall,
-  OpenAiToolCallFunction,
-  OpenAiToolCallTypeOther,
-  OpenAiResponsesOutputText,
-  OpenAiResponsesOutputContentTypeOther,
-  OpenAiResponsesOutputMessage,
-  OpenAiResponsesOutputItemTypeOther,
-  OpenAiResponses200OutputContent,
-  OpenAiResponses200OutputItem,
-  OpenAiResponsesStatusCompleted,
-  OpenAiResponsesStatusIncomplete,
-  OpenAiResponsesStatusOther,
-  OpenAiResponsesOutputItemInProgress,
-  OpenAiResponsesOutputItemStatusOther,
-  parse_openai_tool_call_type,
-  openai_tool_call_type_label,
-  parse_openai_responses_output_content_type,
-  openai_responses_output_content_type_label,
-  parse_openai_responses_output_item_type,
-  openai_responses_output_item_type_label,
-  parse_openai_responses_status,
-  openai_responses_status_label,
-  parse_openai_responses_output_item_status,
-  openai_responses_output_item_status_label,
-}
-import extdeps.llm.openai_errors {
-  OpenAiErrorDetails,
-  OpenAiInvalidRequestError,
-  OpenAiAuthenticationError,
-  OpenAiPermissionError,
-  OpenAiNotFoundError,
-  OpenAiRateLimitError,
-  OpenAiApiError,
-  OpenAiInsufficientQuota,
-  OpenAiErrorTypeOther,
-  parse_openai_error_type,
-  openai_error_type_label,
-}
-import extdeps.llm.anthropic {
-  Base64Image,
-  UrlImage,
-  ImageJpeg,
-  ImagePng,
-  ImageGif,
-  ImageWebp,
-  AnthropicImageMediaTypeOther,
-  CacheControl,
-  CacheEphemeral,
-  AnthropicMessages200Body,
-  MessagesObjectMessage,
-  Assistant,
-  MessagesTextBlock,
-  EndTurn,
-  AnthropicMessages200Usage,
-  Standard,
-  parse_anthropic_image_media_type,
-  anthropic_image_media_type_label,
-  cache_control_type_label,
-  anthropic_messages_object_type_label,
-}
-import extdeps.llm.anthropic_errors {
-  AnthropicErrorEnvelope,
-  AnthropicAuthenticationError,
-  AnthropicInvalidRequestError,
-  AnthropicRateLimitError,
-  AnthropicOverloadedError,
-  AnthropicNotFoundError,
-  AnthropicApiError,
-  AnthropicErrorTypeOther,
-  anthropic_error_example,
-  parse_anthropic_error_type,
-  anthropic_error_type_label,
-  anthropic_error_envelope_type_label,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_openai_tool_call_type_known() -> Bool {
   let row = ToolCall {
     id: "call_1",
     type: OpenAiToolCallFunction,
-    function: FunctionCall { name: "get_weather", arguments: "{}" },
+    function: extdeps.llm.openai.FunctionCall { name: "get_weather", arguments: "{}" },
   }
   row.type == OpenAiToolCallFunction
     && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
@@ -215,7 +141,7 @@ fn w_anthropic_messages_object_type() -> Bool {
   let body = AnthropicMessages200Body {
     id: "msg_01",
     type: MessagesObjectMessage {},
-    role: Assistant {},
+    role: extdeps.llm.anthropic.Assistant {},
     content: [MessagesTextBlock { text: "hi", citations: none }],
     model: "claude-sonnet-4-6",
     stop_reason: EndTurn,
@@ -225,7 +151,7 @@ fn w_anthropic_messages_object_type() -> Bool {
       output_tokens: 1,
       cache_creation_input_tokens: none,
       cache_read_input_tokens: none,
-      service_tier: Present { value: Standard },
+      service_tier: Present { value: extdeps.llm.anthropic.Standard },
     },
     container: none,
   }

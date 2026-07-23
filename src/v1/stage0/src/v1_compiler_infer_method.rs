@@ -6,6 +6,7 @@ pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
@@ -16,8 +17,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -28,7 +28,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id })),
+        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
@@ -53,23 +53,29 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    make_container_type("List".to_string(), type_variable_node(id))
+    make_container_type("List".to_string(), type_variable_node(id.clone()))
         .ty
         .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("List".to_string(), element).ty.clone()
+    make_container_type("List".to_string(), element.clone())
+        .ty
+        .clone()
 }
 
 pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("Witness".to_string(), element)
+    make_container_type("Witness".to_string(), element.clone())
         .ty
         .clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
@@ -121,6 +127,26 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "record_source_chars_index_lookup".to_string(),
             unit_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_is_enabled".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_global_bare_lcp_tie".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_fn_parent_first_hit".to_string(),
+            unit_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
@@ -165,8 +191,18 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "sorted_map_keys".to_string(),
+            list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "map_values".to_string(),
             list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "get".to_string(),
+            with_optional_cardinality(type_variable_node("collection_element".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -180,11 +216,35 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
         let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "observed_peak_resident_bytes".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "filesystem_read".to_string(),
             type_variable_node("filesystem_read_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "emit_host_run_transport".to_string(),
+            type_variable_node("emit_host_run_transport_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "emit_host_run_transport_cached".to_string(),
+            type_variable_node("emit_host_run_transport_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "emit_host_native_cache_evict".to_string(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -213,58 +273,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "extdeps_external_authority_anchor_kind_for_qualified_name".to_string(),
-            string_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_scheme_identity_for_qualified_name".to_string(),
-            string_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_locator_for_qualified_name".to_string(),
-            string_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_derived_extdeps_modules".to_string(),
-            list_of_type_variable("extdeps_derived_extdeps_module_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_backfill_entries".to_string(),
-            list_of_type_variable("extdeps_external_authority_backfill_entry_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_is_backfill_pending_for_qualified_name".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_is_machinery_exempt_for_qualified_name".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name"
-                .to_string(),
-            bool_type(),
+            "extdeps_external_authority_facts_for_qualified_name".to_string(),
+            type_variable_node("extdeps_external_authority_module_facts_record".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "extdeps_external_authority_live_clean_tree_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_anchor_shadow_masked_for_qualified_name".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_live_shadow_mask_holds".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(
@@ -275,10 +289,35 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "doc_graph_admitted_root_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "doc_graph_dangling_link_count".to_string(),
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "compile_dag_rust_emit_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "witness_layer_roots_compile_clean_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "witness_layer_roots_compile_clean_emit_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_floor_compile_clean_gate_verdict".to_string(),
+            bool_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_module_count".to_string(),
@@ -303,6 +342,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "test_migration_debt_known_covered_module_is_not_debt".to_string(),
             bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_delete_guard_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_delete_guard_uncovered_deletes".to_string(),
+            list_of_type_variable("test_migration_delete_guard_uncovered_delete_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -342,6 +391,36 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "commit_witness_claim_roster_unresolvable_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "commit_witness_claim_pair_resolvable".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_wildcard_red_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_total_fold_green_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_roster_red_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_synthetic_unrostered_red_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "complexity_linearity_syntactic_finding_count".to_string(),
             int_type(),
         );
@@ -349,11 +428,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "complexity_linearity_wildcard_facts".to_string(),
             list_of_type_variable("complexity_linearity_wildcard_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "complexity_linearity_migration_debt_roster".to_string(),
-            list_of_type_variable("complexity_linearity_migration_debt_roster_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -382,6 +456,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "reference_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "module_declaration_facts".to_string(),
             list_of_type_variable("module_declaration_fact_elem".to_string()),
         );
@@ -397,8 +476,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "medium_structure_leak_facts".to_string(),
-            list_of_type_variable("medium_structure_leak_fact_elem".to_string()),
+            "export_signature_facts".to_string(),
+            list_of_type_variable("decl_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -443,11 +522,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    v1_rt::map_get(&builtin_function_registry(), name)
+    v1_rt::map_get(&builtin_function_registry(), name.clone())
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name) {
+    match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
         None => unit_type(),
     }

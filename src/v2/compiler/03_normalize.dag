@@ -1,10 +1,11 @@
 module v2.compiler.normalize
 
 import v2.std.algebra { list_snoc_item }
-import v2.std.collection { Absent, Present }
+import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree }
 
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   Diagnostics,
   node_locus,
@@ -17,7 +18,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.node {
-  Disj,
+  Atom,
   Edge,
   Node,
   Symbol,
@@ -26,16 +27,24 @@ import v2.std.node {
   well_formed
 }
 import v2.std.compilers.sugar {
+  ProductionIdentityKey,
+  SugarKey,
+  SurfaceAtomKey,
   apply_sugar,
-  classify_sugar,
-  sugar_fold_coproduct_pipe_chain
+  sugar_rule_for_key
+}
+import v2.compiler.body_lowering_fold {
+  body_lower_finish_for_normalize,
+  body_lower_is_deferred_lower_at_normalize
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_is_graft_candidate
 }
 import v2.extdeps.languages.dag {
-  parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-
-type NormalizedTree = Node
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -73,56 +82,38 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
   }
 }
 
-fn normalize_production_coproduct_fold(
-  n: Node,
-  folded: Node,
-  cd: Diagnostics
-) -> Outcome<Node> {
-  match parse_production_emitted_identity_optional(node: folded) {
-    Present { value: id } =>
-      if id == ^dag_surface_type_alias_rhs {
-        match parse_production_captured_child_optional(node: folded) {
-          Present { value: captured } =>
-            match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
-              Rejected { diagnostics: r } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: cd, rejected: r)
-                }
-              Accepted { value: result, diagnostics: d } =>
-                match result.kind {
-                  TypeNode { connective: Disj } =>
-                    Accepted {
-                      value: result,
-                      diagnostics: diagnostics_merge(outer: cd, inner: d)
-                    }
-                  _ =>
-                    Accepted { value: folded, diagnostics: cd }
-                }
-            }
-          Absent =>
-            Accepted { value: folded, diagnostics: cd }
-        }
-      } else {
-        Accepted { value: folded, diagnostics: cd }
+fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
+  match folded.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      optional_present(value: SurfaceAtomKey { atom: id })
+    TypeNode { connective: _ } =>
+      match parse_production_emitted_identity_optional(node: folded) {
+        Present { value: id } =>
+          optional_present(value: ProductionIdentityKey { identity: id })
+        Absent => optional_absent()
       }
-    Absent =>
-      Accepted { value: folded, diagnostics: cd }
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
 fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
-  match classify_sugar(n: n) {
-    Present { value: rule } =>
-      match apply_sugar(rule: rule, n: n, children: folded.children) {
-        Rejected { diagnostics: r } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: cd, rejected: r)
+  match normalize_sugar_key_optional(folded: folded) {
+    Present { value: key } =>
+      match sugar_rule_for_key(key: key) {
+        Present { value: rule } =>
+          match apply_sugar(rule: rule, n: n, folded: folded) {
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(pending: cd, rejected: r)
+              }
+            Accepted { value: v, diagnostics: d } =>
+              Accepted {
+                value: v,
+                diagnostics: diagnostics_merge(outer: cd, inner: d)
+              }
           }
-        Accepted { value: v, diagnostics: d } =>
-          Accepted {
-            value: v,
-            diagnostics: diagnostics_merge(outer: cd, inner: d)
-          }
+        Absent =>
+          Accepted { value: folded, diagnostics: cd }
       }
     Absent =>
       Accepted { value: folded, diagnostics: cd }
@@ -130,15 +121,90 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
 }
 
 fn normalize_node(n: Node) -> Outcome<Node> {
+  normalize_node_ctx(n: n, under_fn_decl: false)
+}
+
+fn normalize_scope_under_fn_decl(under_fn_decl: Bool, emitted: Symbol) -> Bool {
+  under_fn_decl || (emitted == ^dag_surface_fn_decl)
+}
+
+fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) -> Bool {
+  (emitted == ^dag_surface_fn_body) && under_fn_decl
+}
+
+fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } =>
+      if body_lower_is_deferred_lower_at_normalize(
+        emitted: emitted,
+        under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
+      ) {
+        match body_lower_finish_for_normalize(
+          n: n,
+          folded: n,
+          cd: None,
+          fn_body_pass_through: normalize_fn_body_pass_through_at_seam(
+            emitted: emitted,
+            under_fn_decl: normalize_scope_under_fn_decl(
+              under_fn_decl: under_fn_decl,
+              emitted: emitted
+            )
+          )
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: after_body, diagnostics: cd0 } =>
+            normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+        }
+      } else {
+        normalize_node_fold_children_ctx(
+          n: n,
+          under_fn_decl: normalize_scope_under_fn_decl(
+            under_fn_decl: under_fn_decl,
+            emitted: emitted
+          )
+        )
+      }
+    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
+  }
+}
+
+fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  if namespace_graft_is_graft_candidate(root: folded) {
+    match module_header_containment_graft(root: folded) {
+      Rejected { diagnostics: r } =>
+        Rejected {
+          diagnostics: rejected_with_pending(pending: cd, rejected: r)
+        }
+      Accepted { value: grafted, diagnostics: d } =>
+        Accepted {
+          value: grafted,
+          diagnostics: diagnostics_merge(outer: cd, inner: d)
+        }
+    }
+  } else {
+    Accepted { value: folded, diagnostics: cd }
+  }
+}
+
+fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
-    normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))
+    normalize_fold_step(
+      acc: acc,
+      edge: e,
+      child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+    )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: cd } =>
-      match normalize_production_coproduct_fold(n: n, folded: folded, cd: cd) {
+      match body_lower_finish_for_normalize(
+        n: n,
+        folded: folded,
+        cd: cd,
+        fn_body_pass_through: false
+      ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: after_prod, diagnostics: cd1 } =>
-          normalize_sugar_finish(n: n, folded: after_prod, cd: cd1)
+        Accepted { value: after_body, diagnostics: cd0 } =>
+          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
       }
   }
 }
@@ -147,17 +213,21 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
-      if well_formed(n: normalized) {
-        Accepted { value: normalized, diagnostics: d }
-      } else {
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: d,
-            rejected: diagnostics_singleton(
-              d: post_normalize_not_well_formed_diagnostic(n: normalized)
-            )
-          )
-        }
+      match normalize_module_graft_finish(folded: normalized, cd: d) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: grafted, diagnostics: d1 } =>
+          if well_formed(n: grafted) {
+            Accepted { value: grafted, diagnostics: d1 }
+          } else {
+            Rejected {
+              diagnostics: rejected_with_pending(
+                pending: d1,
+                rejected: diagnostics_singleton(
+                  d: post_normalize_not_well_formed_diagnostic(n: grafted)
+                )
+              )
+            }
+          }
       }
   }
 }

@@ -12,6 +12,7 @@ import v1.std.core {
   CardOptional,
   param_node_name_at
 }
+import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
   normalize_access_type_node,
   child_type_node, emit_map_has, node_type_equals
@@ -30,15 +31,50 @@ type TypeSummary {
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
+  field_import_surface_names: List<String>
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
   has_fn_fields: Bool
+}
+
+type FieldTypeMapBuild {
+  field_types: Map<String, String>
+  import_surface_names: List<String>
+}
+
+type UniqueStringAccum {
+  seen: Map<String, Bool>
+  result: List<String>
+}
+
+fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
+  let acc = items |> fold(init: UniqueStringAccum { seen: empty_map(), result: [] }, f: (inner, item) =>
+    if item == "" || emit_map_has(m: inner.seen, key: item) { inner }
+    else { UniqueStringAccum { seen: map_insert(inner.seen, item, true), result: concat(inner.result, [item]) } }
+  )
+  acc.result
+}
+
+fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let peeled = normalize_access_type_node(n: n)
+  let name = authored_name_at(source_indices: source_indices, node: peeled)
+  let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
+  let own = if name != "" && name != "Dynamic" && !is_tv { [name] } else { [] }
+  let child_names = peeled.children |> flat_map(ch =>
+    collect_type_node_import_surface_names(n: child_type_node(ch: ch), source_indices: source_indices)
+  )
+  let inferred_names = match peeled.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
+    _ => []
+  }
+  dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
 }
 
 type RustCorpusRepr = HostNative | FaithfulFreeMonoid
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
+  type_decl_items: Map<String, Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -53,15 +89,22 @@ type EmitGraphInfo {
   read_only_params: Set<String>
 
   corpus_repr: RustCorpusRepr
+
+  fn_generic_param_names: List<String>
+  fn_type_env: TypeEnv
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
+  type_decl_items: Map<String, Node>
 }
+
+data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
+    type_decl_items: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
@@ -73,7 +116,29 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
 
-    corpus_repr: FaithfulFreeMonoid
+    corpus_repr: FaithfulFreeMonoid,
+    fn_generic_param_names: [],
+    fn_type_env: empty_type_env()
+  }
+}
+
+fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: emit_info.type_summaries,
+    type_decl_items: emit_info.type_decl_items,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    positional_payload_variants: emit_info.positional_payload_variants,
+    shared_types: emit_info.shared_types,
+    ownership_index: emit_info.ownership_index,
+    movable: emit_info.movable,
+    variant_to_enum: emit_info.variant_to_enum,
+    owned_bindings: emit_info.owned_bindings,
+    read_only_params_index: emit_info.read_only_params_index,
+    read_only_params: emit_info.read_only_params,
+    corpus_repr: emit_info.corpus_repr,
+    fn_generic_param_names: generic_param_names,
+    fn_type_env: env
   }
 }
 
@@ -88,6 +153,21 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
+}
+
+fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> Node? {
+  map_get(emit_info.type_decl_items, type_name)
+}
+
+fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match build_type_summary(item: item, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent =>
+      item.connective == NoConnective
+        && (item.children |> count) == 0
+        && (item.params |> count) == 0
+        && item.transport == none
+  }
 }
 
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
@@ -224,17 +304,21 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   )
 }
 
-fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
-  fold(children, init: empty_map(), f: (acc, child) =>
+fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> FieldTypeMapBuild {
+  fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-
         let key = authored_name_at(source_indices: source_indices, node: child)
-        if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
-          map_insert(acc, key, resolved_name)
-        } else { acc }
+        let surface_names = collect_type_node_import_surface_names(n: ft, source_indices: source_indices)
+        let next_field_types = if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
+          map_insert(acc.field_types, key, resolved_name)
+        } else { acc.field_types }
+        FieldTypeMapBuild {
+          field_types: next_field_types,
+          import_surface_names: dedupe_nonempty_strings(items: concat(acc.import_surface_names, surface_names))
+        }
       _ => acc
     }
   )
@@ -253,11 +337,13 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
     }
   )
   if is_product {
+    let field_types = build_field_type_map(children: item.children, source_indices: source_indices)
     Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
-      field_type_map: build_field_type_map(children: item.children, source_indices: source_indices),
+      field_type_map: field_types.field_types,
+      field_import_surface_names: field_types.import_surface_names,
       variant_name_set: empty_map(),
       generic_param_names: gpn,
       has_fn_fields: has_fn
@@ -269,6 +355,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),
+      field_import_surface_names: [],
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, authored_name_at(source_indices: source_indices, node: child), true)),
       generic_param_names: gpn,
       has_fn_fields: has_fn
@@ -303,6 +390,7 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
             repr: s.repr,
             field_summaries: s.field_summaries,
             field_type_map: s.field_type_map,
+            field_import_surface_names: s.field_import_surface_names,
             variant_name_set: s.variant_name_set,
             generic_param_names: s.generic_param_names,
             has_fn_fields: true
@@ -314,6 +402,15 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
 }
 
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
+  let decl_name = authored_name_at(source_indices: source_indices, node: item)
+  let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
+    EmitInfoBuildState {
+      type_summaries: state.type_summaries,
+      type_decl_items: map_insert(state.type_decl_items, decl_name, item)
+    }
+  } else {
+    state
+  }
   match build_type_summary(item: item, source_indices: source_indices) {
     Present { value: summary } =>
       let with_variants = match summary.repr {
@@ -328,11 +425,13 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
               )
               let vname = authored_name_at(source_indices: source_indices, node: variant)
               let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
+              let variant_field_types = build_field_type_map(children: variant.children, source_indices: source_indices)
               map_insert(acc, qualified_vname, TypeSummary {
                 name: qualified_vname,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
-                field_type_map: build_field_type_map(children: variant.children, source_indices: source_indices),
+                field_type_map: variant_field_types.field_types,
+                field_import_surface_names: variant_field_types.import_surface_names,
                 variant_name_set: empty_map(),
                 generic_param_names: [],
                 has_fn_fields: v_has_fn
@@ -343,8 +442,11 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
       EmitInfoBuildState {
-        type_summaries: next_summaries
+        type_summaries: next_summaries,
+        type_decl_items: state.type_decl_items
       }
     Absent => state
   }
 }
+
+data emit_dependency_registration_dissolve_on_note: String = "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure."

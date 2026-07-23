@@ -2,7 +2,7 @@
 
 //! Whole-tree wiring-liveness scan (gunbc#5364 widening).
 //!
-//! `v2.lens.wiring_liveness.wiring_liveness_corpus_is_clean` folds the wave-1
+//! `v2.lens.wiring_liveness.wiring_liveness_corpus_is_clean` folds the
 //! reachability over `fn_arrow_decl_facts_live()`, which enumerates one
 //! `FnArrowDecl` per declared fn across `ctx.modules`. Run as a per-entry witness
 //! (`--claim-run --entry <file>`), `ctx.modules` is only that entry's import
@@ -33,7 +33,10 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{
+    peak_rss_vhwm_bytes, whole_tree_probe_exclusion_substrings, whole_tree_resolved_ctx,
+    WholeTreeCtx,
+};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
@@ -51,10 +54,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    // Intentionally-malformed scanner fixture inputs (test DATA referenced by string
-    // path, not live code) declare imports of nonexistent modules and so cannot be
-    // part of a Strict whole-tree resolve. Excluded by default; extendable via flag.
-    let mut exclude_subpaths: Vec<String> = vec!["test/fixture/".to_string()];
+    let mut exclude_subpaths = whole_tree_probe_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {

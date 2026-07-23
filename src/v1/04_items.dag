@@ -1,6 +1,19 @@
 module v1.compiler.infer_items
 
 import std.types { SourceSpan }
+
+import std.interface_summary {
+  InterfaceSummary,
+  ExportEntry,
+  ExportFn,
+  ExportType,
+  ExportData,
+  ExportService,
+  ExportKind,
+  signature_contract,
+  interface_summary_rollup
+}
+
 import v1.std.core {
   Node, ErrorNode,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -12,19 +25,23 @@ import v1.std.core {
   node_name_span, no_span,
   NewlineIndex, authored_name_at
 }
+
 import v1.compiler.infer_types {
   child_type_node
 }
-import std.induction { SubValueUnknown }
+
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding
+  TypeEnv, TypeEnvCache, empty_type_env_cache
 }
+
 import v1.compiler.infer_sigs {
   ResolvedFuncEnv
 }
+
 import v1.compiler.infer_emit_info {
   EmitGraphInfo
 }
+
 
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
 
@@ -39,10 +56,20 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+type ModuleInterface {
+  summary: InterfaceSummary
+  env: TypeEnv
+  cache: TypeEnvCache
+}
+
+data typed_module_interface_body_dual_field_dissolution_trigger: String = "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test."
+
 type TypedModule {
   module: Node
   items: List<Node>
   type_env: TypeEnv
+  type_env_cache: TypeEnvCache
+  interface: ModuleInterface
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
 }
@@ -109,18 +136,3 @@ fn item_kind(item: Node) -> ItemKind {
   kind
 }
 
-fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
-  fold(items, init: init, f: (acc, item) =>
-    let is_coproduct = item.connective == Disj
-    if is_coproduct {
-      fold(item.children, init: acc, f: (vacc, child) =>
-        let child_name = authored_name_at(source_indices: source_indices, node: child)
-        map_insert(vacc, child_name, TypeBinding {
-          name: child_name,
-          resolved: item,
-          provenance: SubValueUnknown
-        })
-      )
-    } else { acc }
-  )
-}

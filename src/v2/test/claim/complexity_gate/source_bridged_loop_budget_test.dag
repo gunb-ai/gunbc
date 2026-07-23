@@ -15,18 +15,21 @@ import v2.test.complexity_gate.lens_subject_body_supply {
 }
 import v2.test.complexity_gate.subject_complexity_budget_roster {
   LensSubjectComplexityBudgetRow,
-  complexity_budget_row_source_bridged_loop,
+  complexity_budget_row_table_fixture_loop,
   complexity_declared_budget_for_row
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn source_bridged_loop_cost_lens_holds(body: Node) -> Bool {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn table_fixture_loop_cost_lens_holds(body: Node) -> Bool {
   match cost_lens(n: body) {
     Holds { value: _ } => true
     _ => false
   }
 }
 
-fn source_bridged_loop_tightened_budget_fails_dominance(
+fn table_fixture_loop_tightened_budget_fails_dominance(
   body: Node,
   row: LensSubjectComplexityBudgetRow
 ) -> Bool {
@@ -44,12 +47,12 @@ fn source_bridged_loop_tightened_budget_fails_dominance(
   }
 }
 
-test fn source_bridged_loop_budget_claim_holds() -> Bool {
-  let row = complexity_budget_row_source_bridged_loop
+test fn table_fixture_loop_budget_claim_holds() -> Bool {
+  let row = complexity_budget_row_table_fixture_loop
   match lens_subject_arrow_body_for_budget_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
-      source_bridged_loop_cost_lens_holds(body: body)
-        && source_bridged_loop_tightened_budget_fails_dominance(body: body, row: row)
+      table_fixture_loop_cost_lens_holds(body: body)
+        && table_fixture_loop_tightened_budget_fails_dominance(body: body, row: row)
     Rejected { diagnostics: _ } => false
   }
 }

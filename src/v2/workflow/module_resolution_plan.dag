@@ -1,0 +1,129 @@
+module v2.workflow.module_resolution_plan
+
+import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.workflow.realization_runner {
+  RunnerOrderingResult,
+  RunnerSchedulePlan,
+  runner_ordering_only,
+  runner_schedule_plan_from_dependencies
+}
+
+data module_resolution_plan_intent_note: String = "S2a move 2 (resolver-graph-major-design.md 7): module resolution is dependency execution over the same substrate as the CI floor - module nodes ride the SAME scheduler (antichain batches from DependencyView rows) and the SAME layer-2 runner + node-keyed store. This file is the model authority for the module-node schedule shape; the resolver stops being the system's one scheduling special case here."
+
+data module_resolution_store_value_note: String = "Store-value grain: ordering-only for the schedule facts modeled here. The module handler's produced value is the module's interface (std.interface_summary is the modeled carrier) - Inc B LANDED (#6543): cross-module consumption reads ModuleInterface; the host typed_module_cache still holds full TypecheckModuleResult for cache-hit semantics. Cross-worker share (S2a increment C, cross-worker-typecheck-share-design.md) moves that cache to process-scoped Arc at SharedStateFrame - modeled cross-boundary read remains interface grain only."
+
+data module_resolution_host_realization_note: String = "Host realization: module_schedule_batches + the dispatch/assembly split in reconcile_with_typed_cache (src/v1/stage0/src/cli_run.rs) walk the same antichain-batch shape this plan derives, at the resolver's name grain. Behavior receipts are the every-order equivalence and once-per-node oracles (design 6.1/6.2). One asymmetry, named: a CYCLIC closure is not a schedulable plan - the model refuses (RunnerScheduleBlocked, witnessed); the host dispatches the cyclic residue after the schedulable prefix in original order so the resolver's existing missing-parent diagnostics stay byte-identical to the serial fold - the refusal surface for cycles remains the resolver's own diagnostics, never a new silent arm."
+
+data module_resolution_edge_definition_note: String = "Edges are defined among DECLARED pool modules only: an import row whose target is not declared in the pool is not a schedule edge (the missing-parent diagnostic stays typecheck's own, unchanged - see the host module_schedule_batches doc), and an import row whose importer path carries no declared module is outside the node set by definition. These are structural definitions of the edge relation, not failure arms; the fail-closed arm here is the module->node binding lookup (ModuleNodeBindingMissing)."
+
+type ModuleImportEdge {
+  source_module: String
+  dependent_module: String
+}
+
+type ModuleNodeBinding {
+  module: String
+  node: Node
+}
+
+type ModuleDependencyViewsResult
+  = ModuleDependencyViews { views: List<DependencyView> }
+  | ModuleNodeBindingMissing { module: String }
+
+fn declared_module_match(decl: ModuleDeclarationFact, path: String) -> String? {
+  if decl.path == path {
+    optional_present(value: decl.module)
+  } else {
+    optional_absent()
+  }
+}
+
+fn declared_module_for_path(declarations: List<ModuleDeclarationFact>, path: String) -> String? {
+  fold(declarations, init: Absent, f: fn(acc, decl) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => declared_module_match(decl: decl, path: path)
+    }
+  })
+}
+
+fn module_import_edges(
+  imports: List<ImportResolutionFact>,
+  declarations: List<ModuleDeclarationFact>
+) -> List<ModuleImportEdge> {
+  fold(imports, init: [], f: fn(acc, fact) {
+    if fact.target_declared {
+      match declared_module_for_path(declarations: declarations, path: fact.path) {
+        Present { value: importer } =>
+          list_snoc_item(xs: acc, item: ModuleImportEdge {
+            source_module: fact.import_module,
+            dependent_module: importer
+          })
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn binding_node_match(binding: ModuleNodeBinding, module: String) -> Node? {
+  if binding.module == module {
+    optional_present(value: binding.node)
+  } else {
+    optional_absent()
+  }
+}
+
+fn module_node_for(bindings: List<ModuleNodeBinding>, module: String) -> Node? {
+  fold(bindings, init: Absent, f: fn(acc, binding) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => binding_node_match(binding: binding, module: module)
+    }
+  })
+}
+
+fn module_dependency_views(
+  edges: List<ModuleImportEdge>,
+  bindings: List<ModuleNodeBinding>
+) -> ModuleDependencyViewsResult {
+  fold(edges, init: ModuleDependencyViews { views: [] }, f: fn(acc, edge) {
+    match acc {
+      ModuleNodeBindingMissing { module: _ } => acc
+      ModuleDependencyViews { views: views } =>
+        match module_node_for(bindings: bindings, module: edge.source_module) {
+          Absent => ModuleNodeBindingMissing { module: edge.source_module }
+          Present { value: source_node } =>
+            match module_node_for(bindings: bindings, module: edge.dependent_module) {
+              Absent => ModuleNodeBindingMissing { module: edge.dependent_module }
+              Present { value: dependent_node } =>
+                ModuleDependencyViews {
+                  views: list_snoc_item(xs: views, item: DependencyView {
+                    source: source_node,
+                    dependent: dependent_node,
+                    kind: DataDependsOn,
+                    usage_site: dependent_node
+                  })
+                }
+            }
+        }
+    }
+  })
+}
+
+fn module_resolution_schedule(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>
+) -> RunnerSchedulePlan<RunnerOrderingResult> {
+  runner_schedule_plan_from_dependencies(
+    nodes: nodes,
+    dependencies: dependencies,
+    value: runner_ordering_only
+  )
+}

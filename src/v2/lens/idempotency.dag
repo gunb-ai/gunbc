@@ -1,5 +1,11 @@
 module v2.lens.idempotency
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.algebraic_composition {
+  AlgebraicIdempotenceProven,
+  IdempotencyVerdict,
+  RequiresAlgebraWitness,
+  idempotency_classifier
+}
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -14,7 +20,6 @@ import v2.std.collection {
 }
 import v2.std.dependency {
   ClassifiedDependencyView,
-  DependencyKindClassifier,
   DependencyView,
   classify_dependency_view,
   classified_dependency_view_eq
@@ -30,36 +35,12 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
 
-type IdempotencyVerdict
-  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
-  | RequiresAlgebraWitness
-
 type IdempotencyFact {
   dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>
 }
 
-fn idempotency_dependency_kind_classifier() -> DependencyKindClassifier<IdempotencyVerdict> {
-  DependencyKindClassifier {
-    contains: RequiresAlgebraWitness,
-    binds_to: RequiresAlgebraWitness,
-    type_depends_on: RequiresAlgebraWitness,
-    data_depends_on: RequiresAlgebraWitness,
-    effect_depends_on: RequiresAlgebraWitness,
-    resource_depends_on: RequiresAlgebraWitness,
-    module_depends_on: RequiresAlgebraWitness,
-    barrier_before: RequiresAlgebraWitness,
-    placement_depends_on: RequiresAlgebraWitness,
-    model_depends_on: RequiresAlgebraWitness,
-    projection_depends_on: RequiresAlgebraWitness,
-    generated_from: RequiresAlgebraWitness,
-    verified_by: RequiresAlgebraWitness,
-    promoted_by: RequiresAlgebraWitness,
-    bootstrap_depends_on: RequiresAlgebraWitness
-  }
-}
-
 fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<IdempotencyVerdict> {
-  classify_dependency_view(classifier: idempotency_dependency_kind_classifier(), view: view)
+  classify_dependency_view(classifier: idempotency_classifier, view: view)
 }
 
 fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {

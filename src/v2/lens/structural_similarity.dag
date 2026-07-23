@@ -3,20 +3,12 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.std.node { Node }
-import v2.std.algebra { FreeMonoid, length }
-import v2.std.anti_unification { ChainGeneralization, anti_unify_chain, fillings_all_leaves }
+import std.algebra { FreeMonoid }
+import v2.lens.common.chain_generalization { chain_collapses }
 import v2.std.logic { Bool }
 
-fn forest_collapses_to_generic(g: ChainGeneralization) -> Bool {
-  fillings_all_leaves(per_element: g.per_element)
-}
-
 fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
-  if length(xs: decls) < 2 {
-    false
-  } else {
-    forest_collapses_to_generic(g: anti_unify_chain(steps: decls))
-  }
+  chain_collapses(steps: decls, min_len: 2, require_hole: false)
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

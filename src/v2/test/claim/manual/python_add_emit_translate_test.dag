@@ -24,17 +24,17 @@ import v2.extdeps.languages.python {
   python_inhabitant_atom,
   python_int_inhabitant_node,
   python_integer_facts_node,
-  python_mvp1_binding_spellings,
-  python_mvp1_source_text,
-  python_mvp1_target_model,
-  python_mvp1_target_model_node,
-  python_wave1_lex
+  python_binding_spellings,
+  python_source_text,
+  python_target_model,
+  python_target_model_node,
+  python_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -78,6 +78,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data python_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data python_add_int_inhabitant: Node = python_int_inhabitant_node()
@@ -94,12 +97,12 @@ data python_add_emitted_root: Node = Node {
 
 data python_add_int_facts_node: Node = python_integer_facts_node(facts: python_facts_int)
 
-data python_add_target_model: TargetModel = python_mvp1_target_model()
+data python_add_target_model: TargetModel = python_target_model()
 
 data python_add_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: python_mvp1_target_model_node(),
-  lex: python_wave1_lex(),
-  binding_spellings: python_mvp1_binding_spellings(),
+  bundle: python_target_model_node(),
+  lex: python_lex(),
+  binding_spellings: python_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: python_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
@@ -113,7 +116,7 @@ data python_add_empty_translation_rules_bundle: Node = Node {
 
 data python_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: python_add_empty_translation_rules_bundle,
-  lex: python_wave1_lex(),
+  lex: python_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -269,7 +272,7 @@ data python_add_emit_receipt: Outcome<Medium<String>> = anchor_python_add_emit_a
 test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == python_mvp1_source_text) && (d == None)
+      (source.carried == python_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -279,7 +282,7 @@ data python_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_python
 fn python_add_emit_claim_outcome() -> Outcome<Node> {
   match python_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == python_mvp1_source_text) && (d == None) {
+      if (source.carried == python_source_text) && (d == None) {
         Accepted { value: python_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -301,7 +304,7 @@ fn python_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == python_mvp1_source_text) && (d == None) {
+          if (source.carried == python_source_text) && (d == None) {
             Accepted { value: python_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
@@ -330,7 +333,7 @@ fn python_add_compile_inferred_claim_outcome() -> Outcome<Node> {
 }
 
 data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_python_add_emit_accepts with canonical python_mvp1 add-fn source",
+  label: "manual/rust_add_emit: anchor_python_add_emit_accepts with canonical python_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_add_emitted_root,
   expected_value: python_add_emitted_root,
@@ -338,7 +341,7 @@ data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_python_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical python_mvp1 add-fn source through grammar inverse",
+  label: "manual/rust_add_emit: compile_inferred emits canonical python_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_add_emitted_root,
   expected_value: python_add_emitted_root,
@@ -351,7 +354,7 @@ data subject_python_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestCl
   tree: python_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -370,7 +373,7 @@ data subject_python_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<No
   tree: python_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -403,7 +406,7 @@ data subject_python_add_serialize_rejects_missing_translation_rules: TestClaimEv
   tree: python_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 

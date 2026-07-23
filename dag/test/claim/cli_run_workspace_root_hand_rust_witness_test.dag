@@ -1,0 +1,86 @@
+module test.claim.cli_run_workspace_root_hand_rust_witness
+
+
+test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match cli_run_workspace_root_discovery_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool {
+  string_contains(
+    s: cli_run_workspace_root_discovery_dissolve_trigger,
+    pattern: "workspace_root_from"
+  ) &&
+    string_contains(
+      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      pattern: "cli-run-reconcile-defork"
+    ) &&
+    string_contains(
+      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      pattern: "5-dissolve-patches"
+    )
+}
+
+test fn workspace_root_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
+  string_contains(
+    s: cli_run_workspace_root_hand_rust_receipt_plan_anchor,
+    pattern: "cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+  ) && cli_run_workspace_root_discovery_loc_delta_net > 0
+}
+
+test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
+  string_contains(
+    s: cli_run_workspace_root_discovery_test_discriminator_git_toplevel,
+    pattern: "git_toplevel"
+  ) &&
+    string_contains(
+      s: cli_run_workspace_root_discovery_test_discriminator_cwd_ascent,
+      pattern: "outside_git"
+    )
+}
+
+test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match cli_run_source_root_anchor_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
+  string_contains(
+    s: cli_run_source_root_anchor_dissolve_trigger,
+    pattern: "try_anchor_source_root"
+  ) &&
+    string_contains(
+      s: cli_run_source_root_anchor_dissolve_trigger,
+      pattern: "modeled-before-implemented"
+    ) &&
+    string_contains(
+      s: cli_run_source_root_anchor_dissolve_trigger,
+      pattern: "cli-run-reconcile-defork"
+    ) &&
+    string_contains(
+      s: cli_run_source_root_anchor_dissolve_trigger,
+      pattern: "5-dissolve-patches"
+    )
+}
+
+test fn source_root_anchor_receipt_plan_anchor_is_checkable() -> Bool {
+  string_contains(
+    s: cli_run_source_root_anchor_receipt_plan_anchor,
+    pattern: "cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+  ) && cli_run_source_root_anchor_loc_delta_net > 0
+}
+
+test fn source_root_anchor_discriminating_tests_named() -> Bool {
+  string_contains(
+    s: cli_run_source_root_anchor_test_discriminator_present_root,
+    pattern: "resolves_declared_present"
+  ) &&
+    string_contains(
+      s: cli_run_source_root_anchor_test_discriminator_absent_root,
+      pattern: "skips_declared_absent"
+    )
+}

@@ -1,0 +1,139 @@
+module extdeps.cloud.ubicloud
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ubicloud.com/docs/github-actions-integration/runner-types.md"
+  }
+}
+
+data ubicloud_runner_catalog_citation_note: String = "Cited 2026-07-11 from the runner-types page (the anchor above). Vendor prose kept as facts, not re-derived: x64 runners run on AMD Ryzen 9 7950X3D with every two vCPUs mapped to one physical core; arm64 runners run on Ampere Altra Q80-30 with each vCPU backed by a DEDICATED physical core (contrast: the gunbc fleet is Ampere Altra Q64-30, extdeps.cpu.ampere). Memory is the vendor's published figure per label - the vendor writes decimal-suffixed strings ('48GB'); memory_bytes records that figure read as decimal GB. The documented memory-per-vCPU ratio is 4GB on x64 and 3GB on arm64. A Q80-30 catalog row in extdeps/cpu/ampere is the grounding successor for the arm rows' cpu axis; until it lands the architecture field carries the load."
+
+data ubicloud_standard_16_arm_observed_memtotal_note: String = "Observed receipt, distinct from the catalog claim and NOT reconciled into it: a live ubicloud-standard-16-arm VM (gunbc run 29162064482, 2026-07-11) reported MemTotal host_ram=53570453504 bytes (~49.9GiB) with the runner cgroup memory.max=uncapped(RAM-bound) - the whole machine, no slot carve. That is ABOVE the catalog's 48GB decimal reading; the catalog figure and the kernel's MemTotal are different measurement frames and both are kept as-is."
+
+type UbicloudRunnerType
+  = Standard2
+  | Standard4
+  | Standard8
+  | Standard16
+  | Standard30
+  | Standard2Arm
+  | Standard4Arm
+  | Standard8Arm
+  | Standard16Arm
+  | Standard30Arm
+
+type UbicloudRunnerCatalogRow {
+  runner_type: UbicloudRunnerType
+  runs_on_label: NonEmptyStr
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  disk_bytes: ByteSize
+  cpu_architecture: Architecture
+}
+
+data ubicloud_standard_2_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard2,
+  runs_on_label: "ubicloud-standard-2",
+  vcpus: hardware_thread_count(2),
+  memory_bytes: byte_size(8000000000),
+  disk_bytes: byte_size(75000000000),
+  cpu_architecture: X86_64
+}
+
+data ubicloud_standard_4_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard4,
+  runs_on_label: "ubicloud-standard-4",
+  vcpus: hardware_thread_count(4),
+  memory_bytes: byte_size(16000000000),
+  disk_bytes: byte_size(150000000000),
+  cpu_architecture: X86_64
+}
+
+data ubicloud_standard_8_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard8,
+  runs_on_label: "ubicloud-standard-8",
+  vcpus: hardware_thread_count(8),
+  memory_bytes: byte_size(32000000000),
+  disk_bytes: byte_size(200000000000),
+  cpu_architecture: X86_64
+}
+
+data ubicloud_standard_16_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard16,
+  runs_on_label: "ubicloud-standard-16",
+  vcpus: hardware_thread_count(16),
+  memory_bytes: byte_size(64000000000),
+  disk_bytes: byte_size(300000000000),
+  cpu_architecture: X86_64
+}
+
+data ubicloud_standard_30_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard30,
+  runs_on_label: "ubicloud-standard-30",
+  vcpus: hardware_thread_count(30),
+  memory_bytes: byte_size(120000000000),
+  disk_bytes: byte_size(400000000000),
+  cpu_architecture: X86_64
+}
+
+data ubicloud_standard_2_arm_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard2Arm,
+  runs_on_label: "ubicloud-standard-2-arm",
+  vcpus: hardware_thread_count(2),
+  memory_bytes: byte_size(6000000000),
+  disk_bytes: byte_size(86000000000),
+  cpu_architecture: Aarch64
+}
+
+data ubicloud_standard_4_arm_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard4Arm,
+  runs_on_label: "ubicloud-standard-4-arm",
+  vcpus: hardware_thread_count(4),
+  memory_bytes: byte_size(12000000000),
+  disk_bytes: byte_size(150000000000),
+  cpu_architecture: Aarch64
+}
+
+data ubicloud_standard_8_arm_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard8Arm,
+  runs_on_label: "ubicloud-standard-8-arm",
+  vcpus: hardware_thread_count(8),
+  memory_bytes: byte_size(24000000000),
+  disk_bytes: byte_size(200000000000),
+  cpu_architecture: Aarch64
+}
+
+data ubicloud_standard_16_arm_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard16Arm,
+  runs_on_label: "ubicloud-standard-16-arm",
+  vcpus: hardware_thread_count(16),
+  memory_bytes: byte_size(48000000000),
+  disk_bytes: byte_size(300000000000),
+  cpu_architecture: Aarch64
+}
+
+data ubicloud_standard_30_arm_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {
+  runner_type: Standard30Arm,
+  runs_on_label: "ubicloud-standard-30-arm",
+  vcpus: hardware_thread_count(30),
+  memory_bytes: byte_size(90000000000),
+  disk_bytes: byte_size(400000000000),
+  cpu_architecture: Aarch64
+}
+
+fn ubicloud_runner_catalog() -> List<UbicloudRunnerCatalogRow> {
+  [
+    ubicloud_standard_2_catalog,
+    ubicloud_standard_4_catalog,
+    ubicloud_standard_8_catalog,
+    ubicloud_standard_16_catalog,
+    ubicloud_standard_30_catalog,
+    ubicloud_standard_2_arm_catalog,
+    ubicloud_standard_4_arm_catalog,
+    ubicloud_standard_8_arm_catalog,
+    ubicloud_standard_16_arm_catalog,
+    ubicloud_standard_30_arm_catalog
+  ]
+}

@@ -1,0 +1,119 @@
+module std.interface_summary
+
+import std.types { ContentHash, NonEmptyStr, List }
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+
+
+type InterfaceHash = ContentHash where brand("InterfaceHash")
+type ModuleKey = ContentHash where brand("ModuleKey")
+type SignatureFingerprint = ContentHash where brand("SignatureFingerprint")
+type TypedModuleKey = ContentHash where brand("TypedModuleKey")
+
+type InterfaceContract
+  = ContractAbsent
+  | SignatureContract { signature: SignatureFingerprint }
+
+type ExportKind
+  = ExportFn
+  | ExportType
+  | ExportData
+  | ExportService
+
+type ExportEntry {
+  name: NonEmptyStr
+  kind: ExportKind
+  contract: InterfaceContract
+}
+
+type InterfaceSummary {
+  module_path: NonEmptyStr
+  exports: List<ExportEntry>
+  interface_hash: InterfaceHash
+}
+
+data interface_summary_v0_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.interface_summary",
+    decl_name: "export_entry_fingerprint",
+    field: WholeDeclaration
+  }
+}
+
+fn signature_contract(signature: SignatureFingerprint) -> InterfaceContract {
+  SignatureContract { signature: signature }
+}
+
+fn contract_absent() -> InterfaceContract {
+  ContractAbsent
+}
+
+fn export_kind_tag(kind: ExportKind) -> NonEmptyStr {
+  match kind {
+    ExportFn => "fn"
+    ExportType => "type"
+    ExportData => "data"
+    ExportService => "service"
+  }
+}
+
+fn export_entry_fingerprint(entry: ExportEntry) -> ContentHash {
+  match entry.contract {
+    ContractAbsent =>
+      content_hash_tagged(
+        tag: "export",
+        payload: content_hash_combine(
+          left: content_hash_atom(value: entry.name),
+          right: content_hash_atom(value: export_kind_tag(kind: entry.kind))
+        )
+      )
+    SignatureContract { signature: signature } =>
+      content_hash_tagged(
+        tag: "export",
+        payload: content_hash_combine(
+          left: content_hash_combine(
+            left: content_hash_atom(value: entry.name),
+            right: content_hash_atom(value: export_kind_tag(kind: entry.kind))
+          ),
+          right: signature
+        )
+      )
+  }
+}
+
+fn interface_summary_rollup(exports: List<ExportEntry>) -> InterfaceHash {
+  fold(
+    exports,
+    init: content_hash_atom(value: "interface-summary-v0"),
+    f: fn(acc, entry) {
+      content_hash_combine(left: acc, right: export_entry_fingerprint(entry: entry))
+    }
+  )
+}
+
+fn module_key(source_hash: ContentHash, direct_import_interface_hashes: List<InterfaceHash>) -> ModuleKey {
+  fold(
+    direct_import_interface_hashes,
+    init: content_hash_tagged(tag: "module-key-source", payload: source_hash),
+    f: fn(acc, import_hash) {
+      content_hash_tagged(
+        tag: "module-key-import",
+        payload: content_hash_combine(left: acc, right: import_hash)
+      )
+    }
+  )
+}
+
+data typed_module_key_note: NonEmptyStr = "A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream."
+
+fn typed_module_key(interface_key: ModuleKey, compiler_identity: ContentHash) -> TypedModuleKey {
+  content_hash_tagged(
+    tag: "typed-module-compiler",
+    payload: content_hash_combine(left: interface_key, right: compiler_identity)
+  )
+}

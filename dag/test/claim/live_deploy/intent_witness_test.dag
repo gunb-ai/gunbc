@@ -1,0 +1,54 @@
+module test.claim.live_deploy.intent
+
+import gunbc.live_deploy.intent {
+  live_deploy_readback_for_spec,
+  live_deploy_health_url_for_port,
+  live_deploy_service_ready_gate_for_spec,
+}
+import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import std.types { NonEmptyStr }
+import gunbc.live_deploy.emit {
+  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+}
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { second_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_readback_requires_service_ready_gate() -> Bool {
+  let rb = live_deploy_readback_for_spec(spec: deployment_spec_srv1())
+  second_count(s: rb.after.timeout) == 120
+    && rb.after.probe.health_url == live_deploy_health_url_for_port(port: 8080)
+}
+
+fn witness_health_url_is_localhost_on_srv1() -> Bool {
+  let url = live_deploy_health_url_for_port(port: 8080)
+  starts_with(s: url as String, prefix: "http://127.0.0.1:8080")
+    && ends_with(s: url as String, suffix: roadmap_site_health_path)
+}
+
+fn witness_service_ready_gate_is_required_on_readback() -> Bool {
+  let gate = live_deploy_service_ready_gate_for_spec(spec: deployment_spec_srv1())
+  gate.probe.health_url != "" as NonEmptyStr
+}
+
+fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
+  match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn live_deploy_intent_witnesses() -> Bool {
+  witness_readback_requires_service_ready_gate()
+    && witness_health_url_is_localhost_on_srv1()
+    && witness_service_ready_gate_is_required_on_readback()
+    && witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline()
+}

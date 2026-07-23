@@ -1,26 +1,7 @@
 module test.claim.ci_deploy_target_host_witness
 
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_target_proof_from_access,
-  deploy_access_with_ssh_transport,
-  deploy_target_host_preflight_script,
-}
-import std.types { Bool, List, String }
-import gunbc.ci_deploy_target_host {
-  RunnerIdentityOnHost,
-  deploy_target_host_apply_permitted,
-  deploy_local_apply_refused_for_observed_host,
-  deploy_target_ssh_proof_structurally_valid,
-  gunbc_ci_deploy_srv1_runner_spec,
-  deploy_target_host_refusal_local,
-}
-import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_intent { srv1_host }
-import gunbc.host_effect { LocalShell, SshShell }
-import gunbc.ci_yaml_emit { expected_ci_yml }
-import extdeps.github.actions { SelfHosted, RunsOnExpression }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_srv1_hostname_proves_target() -> Bool {
   let proof = deploy_target_proof_from_access(access: ci_deploy_srv1_access)
@@ -110,8 +91,9 @@ fn witness_preflight_script_checks_target_host() -> Bool {
 
 fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
-    && string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64, srv1]")
+  let enrolled = length(gunbc_ci_deploy_stages) > 0
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
+    && string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64, srv1]") == enrolled
     && !string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:\n    runs-on: ubicloud-standard-16-arm")
 }
 

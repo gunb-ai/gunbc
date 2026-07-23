@@ -1,35 +1,7 @@
 module test.claim.temporal_effect_spine
 
-import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp }
-import std.temporal_effect {
-  EffectAttemptIntent,
-  EffectStepReceipt,
-  AppliedEffectRef,
-  NoEffectApplied,
-  EffectApplied,
-  HeldLease,
-  LeasePortForeign,
-  LeaseRunningStale,
-  LeaseRunningExpected,
-  LeaseAbsent,
-  DurableApprovalGrant,
-  GrantAbsent,
-  GrantActive,
-  GrantConsumed,
-  PriorStepReceipt,
-  NoPriorReceipt,
-  PriorReceipt,
-  NextStepPlan,
-  PlanRefuse,
-  PlanAwaitApproval,
-  PlanDrainThenStart,
-  PlanNoop,
-  PlanApply,
-  plan_next_step_from_prior_receipt_and_lease,
-  approval_grant_covers_intent,
-  derived_pending_step_id,
-  prior_receipt_for_step,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_intent_hash: ContentHash = "temporal-spine-witness-intent-v1"
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
@@ -331,5 +303,167 @@ test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
   ) {
     PlanApply { step_id: sid } => sid == witness_step_serve
     _ => false
+  }
+}
+
+test fn inaccessible_lease_refuses() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    intent: witness_intent,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    escalation_id: witness_escalation_id,
+    grant: GrantAbsent,
+    lease: HeldLease {
+      lease_key: witness_lease_key,
+      resource_fingerprint: "seeded-iso-fp" as ContentHash,
+      owner_fingerprint: "no-owner" as ContentHash,
+      generation: 0,
+      observed: LeaseInaccessible,
+    },
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "inaccessible")
+    _ => false
+  }
+}
+
+test fn held_lease_observed_verdict_is_a_5_element_bijection_onto_observation_verdict() -> Bool {
+  let absent = held_lease_observed_verdict(observed: LeaseAbsent)
+  let expected = held_lease_observed_verdict(observed: LeaseRunningExpected)
+  let stale = held_lease_observed_verdict(observed: LeaseRunningStale)
+  let foreign = held_lease_observed_verdict(observed: LeasePortForeign)
+  let inaccessible = held_lease_observed_verdict(observed: LeaseInaccessible)
+  match absent {
+    Absent => true
+    _ => false
+  }
+    && match expected {
+      Converged => true
+      _ => false
+    }
+    && match stale {
+      Drifted => true
+      _ => false
+    }
+    && match foreign {
+      Conflict => true
+      _ => false
+    }
+    && match inaccessible {
+      Inaccessible => true
+      _ => false
+    }
+}
+
+test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
+  let noop_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseRunningExpected),
+    lease: expected_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let apply_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseAbsent),
+    lease: absent_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let drain_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseRunningStale),
+    lease: stale_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let refuse_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeasePortForeign),
+    lease: foreign_lease,
+    pending_step_id: witness_step_serve,
+  )
+  match noop_decision {
+    Noop => true
+    _ => false
+  }
+    && match apply_decision {
+      Apply { plan: ApplyAtStep { step_id: s } } => s == witness_step_serve
+      _ => false
+    }
+    && match drain_decision {
+      Apply { plan: DrainThenStartAtStep { step_id: s, lease_key: k } } =>
+        s == witness_step_serve && k == witness_lease_key
+      _ => false
+    }
+    && match refuse_decision {
+      Refuse { reason: r } => string_contains(s: r, pattern: "foreign")
+      _ => false
+    }
+}
+
+test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: millisecond(count: 600000),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => true
+    StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanApply { step_id: sid } => sid == witness_step_serve
+      _ => false
+    }
+}
+
+test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } => sid == witness_step_serve
+    StallWithinBudget => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "stall budget exceeded")
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
+  match cause_fold_dominant_hang_stall(causes: [
+    HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
+    HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
+  ]) {
+    HangStallRouterLeaseAbsent { elapsed_ms: _ } => true
+    _ => false
+  }
+    && match cause_fold_dominant_hang_stall(causes: [HangStallWithinBudget]) {
+      HangStallWithinBudget => true
+      _ => false
+    }
+}
+
+test fn srv3_stall_budget_limits_match_runbook() -> Bool {
+  srv3_install_hang_no_installer_progress_ms == 900000
+    && srv3_install_hang_no_router_lease_ms == 4500000
+}
+
+test fn srv3_transition_budget_past_limit_is_exceeded_not_within() -> Bool {
+  let past = millisecond(
+    count: millisecond_count(
+      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    ) + 1,
+  )
+  let budget = srv3_os_install_to_host_identity_budget(elapsed: past)
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } =>
+      string_contains(s: sid, pattern: "os-install-actuated-to-host-identity")
+    StallWithinBudget => false
   }
 }

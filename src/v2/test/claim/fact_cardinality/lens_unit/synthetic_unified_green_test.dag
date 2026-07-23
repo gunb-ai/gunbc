@@ -2,10 +2,14 @@ module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
 
 import v2.lens.fact_cardinality {
   FactCardinalityDeclFact,
+  FactCardinalityTree,
   fact_cardinality_cross_tree_coexistence,
-  fact_cardinality_cross_tree_variant_mismatch
+  fact_cardinality_cross_tree_diverged_fork
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_unified_dag: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:Lattice",
@@ -24,7 +28,7 @@ test fn synthetic_unified_green_holds() -> Bool {
     left: synthetic_unified_dag,
     right: synthetic_unified_v2
   )
-    && !fact_cardinality_cross_tree_variant_mismatch(
+    && !fact_cardinality_cross_tree_diverged_fork(
       left: synthetic_unified_dag,
       right: synthetic_unified_v2
     )

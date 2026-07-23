@@ -1,0 +1,108 @@
+module v2.test.long.cross_tree_real_ingest_activation
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ct_real_v2_subject_source: Medium<String> = Medium {
+  carried: "module v2.ct_real_subject\n",
+  fidelity: Lossless
+}
+
+data ct_real_dag_target_source: Medium<String> = Medium {
+  carried: "module ct_real_target\n",
+  fidelity: Lossless
+}
+
+data ct_real_v2_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ct_real_v2_subject_artifact,
+  file_path: "src/v2/ct_real_subject.dag"
+}
+
+data ct_real_dag_target_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ct_real_dag_target_artifact,
+  file_path: "dag/ct_real_target.dag"
+}
+
+data ct_real_v2_to_dag_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_v2_subject_source,
+  artifact: ct_real_v2_subject_artifact,
+  compilation_unit: ^ct_real_subject_cu,
+  source_root: V2Tree
+}
+
+data ct_real_v2_to_dag_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dag_target_source,
+  artifact: ct_real_dag_target_artifact,
+  compilation_unit: ^ct_real_target_cu,
+  source_root: DagTree
+}
+
+data ct_real_v2_to_dag_ingest: SourceRootIngest = Cons {
+  head: ct_real_v2_to_dag_subject_read,
+  tail: Cons { head: ct_real_v2_to_dag_target_read, tail: Empty }
+}
+
+data ct_real_dag_to_v2_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_v2_subject_source,
+  artifact: ct_real_v2_subject_artifact,
+  compilation_unit: ^ct_real_subject_cu,
+  source_root: DagTree
+}
+
+data ct_real_dag_to_v2_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dag_target_source,
+  artifact: ct_real_dag_target_artifact,
+  compilation_unit: ^ct_real_target_cu,
+  source_root: V2Tree
+}
+
+data ct_real_dag_to_v2_ingest: SourceRootIngest = Cons {
+  head: ct_real_dag_to_v2_subject_read,
+  tail: Cons { head: ct_real_dag_to_v2_target_read, tail: Empty }
+}
+
+fn ct_real_subject_qn() -> QualifiedName {
+  Cons { head: ^v2, tail: Cons { head: ^ct_real_subject, tail: Empty } }
+}
+
+fn ct_real_target_qn() -> QualifiedName {
+  Cons { head: ^ct_real_target, tail: Empty }
+}
+
+fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
+  match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
+    ProgramAssemblyFoldFailed { diagnostics: _ } => EdgeCrossAmbiguous
+    ProgramAssemblyFoldOk { roots: _, index: idx } =>
+      cross_tree_edge_decision(
+        index: idx,
+        from_qn: ct_real_subject_qn(),
+        to_qn: ct_real_target_qn(),
+        active_roots: source_root_set_from_ingest(ingest: ingest)
+      )
+  }
+}
+
+fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
+  match ct_real_edge_decision(ingest: ct_real_v2_to_dag_ingest) {
+    EdgeCrossAdmitted => true
+    EdgeCrossDenied => false
+    EdgeNormalResolution => false
+    EdgeCrossAmbiguous => false
+  }
+}
+
+fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
+  match ct_real_edge_decision(ingest: ct_real_dag_to_v2_ingest) {
+    EdgeCrossDenied => true
+    EdgeCrossAdmitted => false
+    EdgeNormalResolution => false
+    EdgeCrossAmbiguous => false
+  }
+}
+
+test fn cross_tree_real_ingest_activation_witnesses() -> Bool {
+  cross_tree_real_ingest_v2_to_dag_admitted_holds()
+    && cross_tree_real_ingest_dag_to_v2_denied_holds()
+}

@@ -1,24 +1,8 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Unrealized,
-}
-import v2.lens.identical_variant_payload {
-  identical_variant_payload_fact_for_type
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 data ivp_witness_module: String = "v2.lens.identical_variant_payload"
 
@@ -48,24 +32,20 @@ fn witness_ivp_unrealized_red_on_holds() -> Bool {
 
 fn witness_ivp_locus_green_on_fact() -> Bool {
   match identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict {
-    Unrealized { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m == ivp_witness_module
-    }
+    Unrealized { diagnostic: d } =>
+      lens_verdict_diagnostic_locus_module(d: d) == ivp_witness_module
     _ => false
   }
 }
 
 fn witness_ivp_locus_red_on_perturbed_module() -> Bool {
-  let perturbed = Unrealized {
-    diagnostic: LensVerdictDiagnostic {
-      reason: "identical_variant_payload_perturbed",
-      at: ModuleWholeFile { module_name: "v2.lens.identical_variant_payload_wrong_module" }
-    }
-  }
+  let perturbed = lens_verdict_module_unrealized(
+    reason: ^identical_variant_payload_perturbed,
+    module_name: "v2.lens.identical_variant_payload_wrong_module"
+  )
   match perturbed {
-    Unrealized { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m != ivp_witness_module
-    }
+    Unrealized { diagnostic: d } =>
+      lens_verdict_diagnostic_locus_module(d: d) != ivp_witness_module
     _ => false
   }
 }

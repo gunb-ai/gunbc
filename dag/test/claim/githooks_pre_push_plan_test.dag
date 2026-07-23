@@ -1,0 +1,71 @@
+module test.claim.githooks_pre_push_plan
+
+import gunbc.githooks_pre_push_plan {
+  pre_push_all_bindings,
+  pre_push_active_kinds,
+  pre_push_zero_sha_authority,
+  pre_push_check_only_note,
+  pre_push_witness_corpus_plan_fn_authority,
+}
+import gunbc.local_tidy_spec { local_tidy_path_matches_glob }
+import tools.rust_stage0_gates { path_is_rust_monolith }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn witness_plan_roster_authority() -> Bool {
+  length(pre_push_all_bindings()) > 0
+    && any(
+      pre_push_all_bindings(),
+      b => match b.kind {
+        DocWitnessRun { entry: _, function: _ } => true
+        CargoFmtCheck { fail_recipe: _ } => true
+        WitnessCorpusRun { fail_recipe: _ } => true
+      }
+    )
+}
+
+fn witness_plan_fires_on_dag_path() -> Bool {
+  length(pre_push_active_kinds(changed_paths: ["dag/gunbc/foo.dag"])) > 0
+}
+
+fn witness_plan_skips_unrelated_path() -> Bool {
+  length(pre_push_active_kinds(changed_paths: ["README"])) == 0
+}
+
+fn witness_nested_rs_triggers_fmt() -> Bool {
+  path_is_rust_monolith(path: "src/v1/stage0/src/foo.rs")
+    && length(
+      pre_push_active_kinds(changed_paths: ["src/v1/stage0/src/foo.rs"])
+    ) > 0
+}
+
+fn witness_suffix_glob_matches_nested_rs() -> Bool {
+  local_tidy_path_matches_glob(path: "src/v1/stage0/src/foo.rs", glob: "*.rs")
+}
+
+fn witness_check_only_policy_documented() -> Bool {
+  string_contains(s: pre_push_check_only_note, pattern: "refuse")
+}
+
+fn witness_witness_corpus_plan_authority() -> Bool {
+  pre_push_witness_corpus_plan_fn_authority() == "gunbc_ci_witness_corpus_only_batches"
+}
+
+fn witness_witness_corpus_fires_on_v2_path() -> Bool {
+  length(
+    pre_push_active_kinds(changed_paths: ["src/v2/std/text.dag"])
+  ) > 0
+}
+
+test fn githooks_pre_push_plan_witnesses() -> Bool {
+  witness_plan_roster_authority()
+    && witness_plan_fires_on_dag_path()
+    && witness_plan_skips_unrelated_path()
+    && witness_nested_rs_triggers_fmt()
+    && witness_suffix_glob_matches_nested_rs()
+    && witness_check_only_policy_documented()
+    && witness_witness_corpus_plan_authority()
+    && witness_witness_corpus_fires_on_v2_path()
+    && pre_push_zero_sha_authority() == "0000000000000000000000000000000000000000"
+}

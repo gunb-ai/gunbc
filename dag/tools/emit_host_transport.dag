@@ -1,19 +1,39 @@
 module tools.emit_host_transport
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.python
+import extdeps.gunbc
+import extdeps.communication.medium { Lossless, Medium }
 import std.measure { byte_size_count }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Assign, Heredoc, EnvPrefixed, Pipe,
-  Lit, VarRef, Concat, CmdSubst,
-  lit, var_ref, command, assign, serialize_bash
+import std.render_repeat_string_bootstrap { repeat_string }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host,
+  run_host_process,
+  runtime_value_parse
 }
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.extdeps.languages.c {
+  c_inject_fault_runtime_row,
+  c_source_text,
+  c_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.host_transport {
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
 import tools.emit_host_fixtures {
-  rust_mvp2_stdout_fixture_source,
-  python_mvp2_stdout_fixture_source,
-  go_mvp2_stdout_fixture_source,
-  ts_mvp1_host_fixture_source,
-  mvp2_stdout_byte_count,
+  rust_stdout_fixture_source,
+  python_stdout_fixture_source,
+  go_stdout_fixture_source,
+  ts_host_fixture_source,
+  stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
@@ -21,82 +41,130 @@ import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-fn byte_count_assign(producer: ShellStmt) -> ShellStmt {
-  assign(name: "BYTES", value: CmdSubst { body: Pipe {
-    left: Pipe {
-      left: producer,
-      right: command(words: [lit(text: "wc"), lit(text: "-c")])
-    },
-    right: command(words: [lit(text: "tr"), lit(text: "-d"), lit(text: " ")])
-  } })
+data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide node install still pass emit_host_gate_passes."
+
+data emit_host_node_bootstrap_shell_dissolution_trigger: String = "🟡 dissolve-on: emit_host_node_bootstrap_script — concat-interpolated bash fragment (curl/tar nodejs.org linux tarball into WORKDIR/nodeboot) spliced into run_ts_smoke and run_node_http_serve_smoke via toolchain_provision_shell_exec; transport scaffold parallel to run_go_smoke's inline go.dev tarball provision. DISSOLVES WHEN emit_host TS/node smokes route through typed extdeps ops like run_rust_smoke/run_python_smoke (shell.Mktemp/Mkdir, modeled curl/tar or node runtime provision row) and this string carrier retires from dag/tools/emit_host_transport.dag."
+
+data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-$NODEARCH.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
+
+data emit_host_node_http_probe_script: String = "cat > \"$WORKDIR/probe.js\" <<'PROBE_EOF'\nconst http = require('http');\nconst port = process.env.PORT;\nconst deadline = Date.now() + 5000;\nfunction probe(cb) {\n  http.get('http://127.0.0.1:' + port + '/', (res) => {\n    res.resume();\n    cb(res.statusCode === 200);\n  }).on('error', () => cb(false));\n}\n(function wait() {\n  probe((ok) => {\n    if (ok) process.exit(0);\n    if (Date.now() >= deadline) process.exit(1);\n    setTimeout(wait, 300);\n  });\n})();\nPROBE_EOF\nPORT=$PORT node \"$WORKDIR/probe.js\"\n"
+
+fn expected_stdout_nul_run() -> String {
+  repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
 }
 
-fn assert_bytes_eq(expected: Int) -> ShellStmt {
-  command(words: [lit(text: "test"), var_ref(name: "BYTES"), lit(text: "-eq"), lit(text: to_string(expected))])
+fn run_rust_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let manifest = Filesystem.Write(path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml)
+  let main_rs = Filesystem.Write(path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source)
+  let build = cargo.Build.BuildManifest(
+    workdir: dir.path,
+    manifest_path: concat(dir.path, "/Cargo.toml"),
+    target_dir: concat(dir.path, "/target"),
+    extra_args: ["--quiet"]
+  )
+  let run = gunbc.WitnessBin.Run(workdir: dir.path, bin_path: concat(dir.path, "/target/debug/fixture"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && src_dir.success && manifest.success && main_rs.success
+    && build.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
 }
 
-fn rust_mvp2_program() -> ShellProgram {
-  let workdir = var_ref(name: "WORKDIR")
-  ShellProgram {
-    set_e: true,
-    statements: [
-      assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: [lit(text: "mkdir"), lit(text: "-p"), Concat { parts: [workdir, lit(text: "/src")] }]),
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/Cargo.toml")] }, delimiter: "EOF", body: fixture_cargo_toml },
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/src/main.rs")] }, delimiter: "EOF", body: rust_mvp2_stdout_fixture_source },
-      EnvPrefixed {
-        name: "CARGO_TARGET_DIR",
-        value: Concat { parts: [workdir, lit(text: "/target")] },
-        command: command(words: [
-          lit(text: "cargo"), lit(text: "build"), lit(text: "--quiet"),
-          lit(text: "--manifest-path"), Concat { parts: [workdir, lit(text: "/Cargo.toml")] }
-        ])
-      },
-      byte_count_assign(producer: command(words: [Concat { parts: [workdir, lit(text: "/target/debug/fixture")] }])),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(mvp2_stdout_byte_count))
-    ]
-  }
+fn run_python_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let script = Filesystem.Write(path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source)
+  let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && script.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
 }
 
-fn run_rust_mvp2_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: rust_mvp2_program()))
-  result.success
-}
-
-fn python_mvp2_program() -> ShellProgram {
-  let workdir = var_ref(name: "WORKDIR")
-  ShellProgram {
-    set_e: true,
-    statements: [
-      assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/fixture.py")] }, delimiter: "EOF", body: python_mvp2_stdout_fixture_source },
-      byte_count_assign(producer: command(words: [lit(text: "python3"), Concat { parts: [workdir, lit(text: "/fixture.py")] }])),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(mvp2_stdout_byte_count))
-    ]
-  }
-}
-
-fn run_python_mvp2_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: python_mvp2_program()))
-  result.success
-}
-
-fn run_go_mvp2_smoke() -> Bool {
-  let expected = byte_size_count(mvp2_stdout_byte_count)
-  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+fn run_go_smoke() -> Bool {
+  let expected = byte_size_count(stdout_byte_count)
+  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 
-fn run_ts_mvp1_smoke() -> Bool {
+fn run_ts_smoke() -> Bool {
   let expected = byte_size_count(ts_signed_i32_le_byte_count)
-  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 
 fn run_node_http_serve_smoke() -> Bool {
   let server_source = gunbhub_node_http_server_source()
-  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=$((19000 + ($$ % 1000)))\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\n{emit_host_node_http_probe_script}"
   toolchain_provision_shell_exec(script: script)
+}
+
+fn c_run_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_run_inputs() -> Inputs {
+  inputs_root_only(root: c_run_probe_node())
+}
+
+fn c_run_source() -> Medium<String> {
+  Medium { carried: c_source_text, fidelity: Lossless }
+}
+
+fn c_expected_add_stdout_octets() -> List<Int> {
+  [0, 5, 0, 0, 0]
+}
+
+fn c_emit_host_green_holds() -> Bool {
+  match run_emit_host(
+    target: c_target_model(),
+    source: c_run_source(),
+    fixture_inputs: c_run_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+            Accepted { value: _, diagnostics: _ } =>
+              stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn c_emit_host_inject_fault_refuses_holds() -> Bool {
+  match c_inject_fault_runtime_row() {
+    HostRuntimeRowAbsent => false
+    HostRuntimeRowPresent { row: row } =>
+      match run_host_process(
+        row: row,
+        target: c_target_model(),
+        source: c_run_source(),
+        fixture_inputs: c_run_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+                Rejected { diagnostics: _ } => true
+                Accepted { value: _, diagnostics: _ } =>
+                  stdout.bytes != emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+data c_emit_host_smoke_red_doc: String = "Discriminating control for run_c_smoke (wet — exercised by emit_host_gate_passes, not hermetic discovery): the inject-fault arm deliberately calls add(2,2) while the green oracle expects add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops the RED half goes RED here."
+
+fn run_c_smoke() -> Bool {
+  c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()
 }

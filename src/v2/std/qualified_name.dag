@@ -11,9 +11,12 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list_right, list_head }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, is_empty, list_head, list_init, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.text { String, string_is_empty }
@@ -143,7 +146,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
   }
 }
 
-fn qualified_name_from_segment_list(segments: List<String>) -> FreeMonoid<Symbol> {
+fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<Symbol> {
   fold_list_right(
     xs: segments,
     empty: Empty,
@@ -157,8 +160,50 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   if string_is_empty(s: dotted) {
     Empty
   } else {
-    qualified_name_from_segment_list(segments: dotted.split(delimiter: "."))
+    qualified_name_from_string_segments(segments: dotted.split(delimiter: "."))
   }
+}
+
+data qualified_name_from_dotted_string_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_from_dotted_string",
+    field: WholeDeclaration
+  }
+}
+
+fn qualified_name_to_dotted_string(qn: QualifiedName) -> String {
+  match qn {
+    Empty => ""
+    Cons { head: sym, tail: rest } =>
+      let segment = symbol_lexeme(sym: sym)
+      if is_empty(xs: rest) {
+        segment
+      } else {
+        concat(segment, ".", qualified_name_to_dotted_string(qn: rest))
+      }
+  }
+}
+
+fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
+  list_init(xs: qn)
+}
+
+fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
+  match qn {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if is_empty(xs: t) {
+        optional_present(value: h)
+      } else {
+        qualified_name_last_segment(qn: t)
+      }
+  }
+}
+
+fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
+  list_snoc_item(xs: qn, item: segment)
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {

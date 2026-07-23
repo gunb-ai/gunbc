@@ -1,34 +1,10 @@
 module v2.test.round_trip.source_authority_contract
 
-import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.compiler.source_authority { deterministic_dag_source_serializer_witness }
-import v2.compiler.target_carriers { decode_fidelity_from_target, target_source_medium }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_source_text,
-  dag_mvp1_target_model
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
-import v2.std.witness { Holds, Violates }
 
-data source_authority_contract_target_model: TargetModel = dag_mvp1_target_model()
+data source_authority_contract_target_model: TargetModel = dag_target_model()
 
 data source_authority_contract_source: Medium<String> = Medium {
-  carried: dag_mvp1_source_text,
+  carried: dag_source_text,
   fidelity: Lossy
 }
 
@@ -59,12 +35,12 @@ fn contract_target_advertises_declared_loss() -> Bool {
 
 fn contract_source_medium_matches_compose_up() -> Bool {
   match target_source_medium(
-    text: dag_mvp1_source_text,
+    text: dag_source_text,
     target: source_authority_contract_target_model
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
-        Lossy => medium.carried == dag_mvp1_source_text
+        Lossy => medium.carried == dag_source_text
         Lossless => false
       }
     Rejected { diagnostics: _ } => false
@@ -74,12 +50,12 @@ fn contract_source_medium_matches_compose_up() -> Bool {
 fn contract_serializer_section_law_holds() -> Bool {
   match target_serialize_source_from_model(
     target: source_authority_contract_target_model,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: first, diagnostics: _ } =>
       match target_serialize_source_from_model(
         target: source_authority_contract_target_model,
-        emitted: dag_mvp1_fixture_emitted_add_fn
+        emitted: dag_fixture_emitted_add_fn
       ) {
         Accepted { value: second, diagnostics: _ } =>
           match deterministic_dag_source_serializer_witness(first: first, second: second) {
@@ -99,7 +75,7 @@ fn contract_serializer_section_law_holds() -> Bool {
 fn contract_serializer_section_law_ignores_fidelity_mismatch() -> Bool {
   match target_serialize_source_from_model(
     target: source_authority_contract_target_model,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
       let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
@@ -116,7 +92,7 @@ fn contract_serializer_section_law_ignores_fidelity_mismatch() -> Bool {
 fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
   match target_serialize_source_from_model(
     target: source_authority_contract_target_model,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
       let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
@@ -133,7 +109,7 @@ fn medium_section_and_fidelity_equal<R>(left: Medium<R>, right: Medium<R>) -> Bo
 fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool {
   match target_serialize_source_from_model(
     target: source_authority_contract_target_model,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
       let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
@@ -149,7 +125,7 @@ data contract_carried_mismatch_probe: String = "fn add(x:Int, y:Int) -> Int { x 
 fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
   match target_serialize_source_from_model(
     target: source_authority_contract_target_model,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: canonical, diagnostics: _ } => {
       let perturbed = Medium {

@@ -1,53 +1,48 @@
 module tools.layering_imports_transport
 
-import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Lit, VarRef,
-  lit, var_ref, command, serialize_bash
-}
-import tools.host_prelude { ensure_gunbc_built }
+import tools.host_prelude { ClaimRun, run_gunbc_claims }
 
 data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
-data clean_tree_entry: String = "src/v2/test/claim/layering_imports/clean_tree_test.dag"
+data clean_tree_entry: String = "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
-fn source_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
-}
-
-fn gunbc_claim_run(entry: String, function: String) -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], source_root_flags()),
-    [lit(text: "--entry"), lit(text: entry), lit(text: "--function"), lit(text: function), lit(text: "--claim-run")]
-  ))
-}
-
-fn run_claims(stmts: List<ShellStmt>) -> Bool {
-  let prog = ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), stmts)
+fn scanner_claim(scenario: String, function: String) -> ClaimRun {
+  ClaimRun {
+    entry: concat(scanner_dir, concat(scenario, ".dag")),
+    function: function
   }
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
 }
 
 fn run_clean_tree_gate() -> Bool {
-  run_claims(stmts: [gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function)])
-}
-
-fn scanner_claim(scenario: String, function: String) -> ShellStmt {
-  gunbc_claim_run(entry: concat(scanner_dir, concat(scenario, ".dag")), function: function)
+  run_gunbc_claims(
+    source_roots: witness_layer_roots,
+    claims: [ClaimRun { entry: clean_tree_entry, function: clean_tree_function }]
+  )
 }
 
 fn run_scanner_perturb_receipts() -> Bool {
-  run_claims(stmts: [
-    scanner_claim(scenario: "std_v4_prefix", function: "scanner_std_v4_prefix_detects_holds"),
-    scanner_claim(scenario: "extdeps_v4_prefix", function: "scanner_extdeps_v4_prefix_detects_holds"),
-    scanner_claim(scenario: "dag_extdeps_v4_exact", function: "scanner_dag_extdeps_v4_exact_detects_holds"),
-    scanner_claim(scenario: "parse_level_pre_resolve", function: "scanner_parse_level_pre_resolve_detects_holds"),
-    scanner_claim(scenario: "std_imports_extdeps", function: "scanner_std_imports_extdeps_detects_holds")
-  ])
+  run_gunbc_claims(
+    source_roots: witness_layer_roots,
+    claims: [
+      scanner_claim(scenario: "std_v4_prefix", function: "scanner_std_v4_prefix_detects_holds"),
+      scanner_claim(scenario: "extdeps_v4_prefix", function: "scanner_extdeps_v4_prefix_detects_holds"),
+      scanner_claim(scenario: "dag_extdeps_v4_exact", function: "scanner_dag_extdeps_v4_exact_detects_holds"),
+      scanner_claim(scenario: "parse_level_pre_resolve", function: "scanner_parse_level_pre_resolve_detects_holds"),
+      scanner_claim(scenario: "std_imports_extdeps", function: "scanner_std_imports_extdeps_detects_holds")
+    ]
+  )
+}
+
+fn run_reference_only_perturb_receipt() -> Bool {
+  run_gunbc_claims(
+    source_roots: witness_layer_roots,
+    claims: [
+      ClaimRun {
+        entry: "src/v2/test/claim/layering_imports/lens_unit/reference_only_compiler_fixture.dag",
+        function: "detects_reference_only_compiler_import_holds"
+      }
+    ]
+  )
 }

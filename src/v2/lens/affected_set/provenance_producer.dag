@@ -2,12 +2,12 @@ module v2.test.lens_affected_set.provenance_producer
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority {
+  source_root_coverage_is_complete,
     DagSourceReadWitness,
   SourceRootIngest,
   node_artifact_provenance_from_source_root,
   source_root_provenance_coverage_receipt
 }
-import v2.extdeps.languages.dag { dag_mvp1_source_text }
 import v2.lens.edit_locus {
   GitDiffNameOnly,
   RepoPath,
@@ -16,7 +16,8 @@ import v2.lens.edit_locus {
 import v2.std.collection { List }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v2.std.algebra { Cons, Empty, contains, count_equal, for_all, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, count_equal, for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
@@ -40,10 +41,19 @@ data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
 data provenance_producer_path_root: RepoPath = "src/v2/lens/affected_set_examples.dag"
 data provenance_producer_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 
-data provenance_producer_fixture_source: Medium<String> = Medium { carried: dag_mvp1_source_text, fidelity: Lossless }
-data provenance_producer_malformed_source: Medium<String> = Medium { carried: "fn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
+data provenance_producer_fixture_source: Medium<String> = Medium {
+  carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }",
+  fidelity: Lossless
+}
+data provenance_producer_malformed_source: Medium<String> = Medium {
+  carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + ",
+  fidelity: Lossless
+}
 
-data provenance_producer_module_surface_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data provenance_producer_module_surface_source: Medium<String> = Medium {
+  carried: "fn add(x:Int, y:Int) -> Int { x + y }",
+  fidelity: Lossless
+}
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^provenance_producer_fixture_artifact,
@@ -83,6 +93,10 @@ data provenance_producer_fixture_git_diff: GitDiffNameOnly = GitDiffNameOnly {
 
 data provenance_producer_unknown_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [provenance_producer_path_unknown]
+}
+
+data provenance_producer_known_uncovered_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: [provenance_producer_path_mid]
 }
 
 data provenance_producer_mid_artifact: Artifact = Artifact {
@@ -147,7 +161,7 @@ fn provenance_producer_rejects_malformed_ingest_holds() -> Bool {
   }
 }
 
-fn provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
+fn provenance_producer_rejects_beyond_surface_ingest_holds() -> Bool {
   match node_artifact_provenance_from_source_root(ingest: provenance_producer_module_surface_ingest) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -155,17 +169,17 @@ fn provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
 }
 
 fn provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
-  match node_artifact_provenance_from_source_root(ingest: provenance_producer_module_surface_ingest) {
+  match node_artifact_provenance_from_source_root(ingest: provenance_producer_single_read_ingest) {
     Accepted { value: provenance, diagnostics: _ } =>
       match affected_set_reading_from_git_diff_provenance(
         graph: affected_set_claim_tree(),
-        git_diff: provenance_producer_fixture_git_diff,
+        git_diff: provenance_producer_known_uncovered_git_diff,
         provenance: provenance
       ) {
         Holds { value: _ } => false
         Violates { diagnostic: _ } => true
       }
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -176,7 +190,7 @@ fn provenance_producer_coverage_receipt_holds() -> Bool {
         ingest: provenance_producer_single_read_ingest,
         produced: provenance
       )
-      receipt.coverage_complete
+      source_root_coverage_is_complete(coverage: receipt.coverage)
         && (receipt.ingest_read_count == 1)
         && (receipt.produced_row_count == 1)
     Rejected { diagnostics: _ } => false

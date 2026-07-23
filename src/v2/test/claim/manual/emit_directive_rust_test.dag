@@ -3,7 +3,7 @@ module v2.test.manual.emit_directive_rust
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_emit_directive_emitted_call,
   rust_emit_directive_target_model
 }
@@ -27,6 +27,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {

@@ -1,11 +1,7 @@
 module v2.test.claim.byte_cardinality_grounding
 
-import v2.std.refinement { Refined, Validation, refine }
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Byte = Refined<List<Int>>
 

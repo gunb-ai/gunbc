@@ -9,7 +9,23 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_emitted,
   bash_stmt_env_prefixed_target_model,
   bash_stmt_env_unset_emitted,
-  bash_stmt_env_unset_target_model
+  bash_stmt_env_unset_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_assign_emitted
+}
+import v2.extdeps.languages.bash_orch_if {
+  bash_test_str_empty_emitted,
+  bash_test_str_empty_target_model,
+  bash_test_str_nonempty_emitted,
+  bash_test_str_nonempty_target_model,
+  bash_log_matches_grep_emitted,
+  bash_log_matches_grep_target_model
+}
+import v2.extdeps.languages.bash_orch_tier2 {
+  orch_cmdsubst_assign_target_model
 }
 import v2.std.collection { Map }
 import v2.std.compilers.target_model { TargetModel }
@@ -25,6 +41,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn orch_bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -98,6 +117,84 @@ test fn orch_run_env_unset_emits_env_u_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == "env -u RUSTC_WRAPPER cargo build -p v1-compiler --release --bins")
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_test_str_empty_row_holds() -> Bool {
+  match bash_test_str_empty_target_model(operand: "\"$1\"") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_test_str_empty_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "[ -z \"$1\" ]") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_test_str_nonempty_row_holds() -> Bool {
+  match bash_test_str_nonempty_target_model(operand: "\"$ctrl_pin\"") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_test_str_nonempty_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "[ -n \"$ctrl_pin\" ]") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_log_matches_grep_row_holds() -> Bool {
+  match bash_log_matches_grep_target_model(
+    pattern: "'EAGAIN|Resource temporarily unavailable'",
+    source: "\"$BUILD_LOG\""
+  ) {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_log_matches_grep_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "grep -qiE 'EAGAIN|Resource temporarily unavailable' \"$BUILD_LOG\"")
+            && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_stmt_if_row_holds() -> Bool {
+  match bash_stmt_if_target_model(cond: "[ -z \"$1\" ]", body: "verdict=absent") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_stmt_if_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_stmt_andor_row_holds() -> Bool {
+  match orch_emit_bash(
+    root: bash_stmt_andor_emitted,
+    target: bash_stmt_andor_target_model(left: "[ -z \"$1\" ]", op: "&&", right: "[ -n \"$2\" ]")
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "[ -z \"$1\" ] && [ -n \"$2\" ]") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_cmdsubst_assign_row_holds() -> Bool {
+  match orch_emit_bash(
+    root: bash_stmt_assign_emitted,
+    target: orch_cmdsubst_assign_target_model(
+      name: "dag_pin",
+      body: "converge_read_gunbc_host_pin \"$checkout\""
+    )
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\"")
         && (dg == None)
     Rejected { diagnostics: _ } => false
   }

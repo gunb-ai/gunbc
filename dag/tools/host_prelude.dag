@@ -1,97 +1,198 @@
 module tools.host_prelude
 
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import gunbc.cli_services
+import gunbc.cli_invoke { gunbc_run_transport_argv }
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord,
-  Command, If, Subshell, AndOr, WithRedir, Exit,
-  Lit, VarRef, Concat, CmdSubst,
-  AndThen, OrElse, StderrToNull,
-  lit, var_ref, command, assign, test_not_executable
-}
-import tools.build_step { BuildArtifact, emit_verifications }
 
-fn assign_root_stmt() -> ShellStmt {
-  assign(name: "ROOT", value: CmdSubst { body: AndOr {
-    left: WithRedir {
-      stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
-      redir: StderrToNull
-    },
-    op: OrElse,
-    right: command(words: [lit(text: "pwd")])
-  } })
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
+
+fn toolchain_provision_shell_exec(script: String) -> Bool {
+  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+  result.success
 }
 
-fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
-  If {
-    cond: test_not_executable(path: bin_path),
-    then: [
-      AndOr {
-        left: Subshell { body: [
-          AndOr {
-            left: command(words: [lit(text: "cd"), root]),
-            op: AndThen,
-            right: command(words: [
-              lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-              lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
-            ])
-          }
-        ] },
-        op: OrElse,
-        right: Exit { code: 1 }
-      }
-    ]
+type WitnessBin {
+  var_name: String
+  bin_name: String
+  features: String
+}
+
+fn witness_bin(var_name: String, bin_name: String) -> WitnessBin {
+  WitnessBin { var_name: var_name, bin_name: bin_name, features: "" }
+}
+
+fn witness_bin_release_path(root: String, bin_name: String) -> String {
+  concat(root, concat("/target/release/", bin_name))
+}
+
+fn witness_bin_build_args(bin: WitnessBin) -> List<String> {
+  if bin.features == "" {
+    ["-p", "v1-compiler", "--release", "--bin", bin.bin_name]
+  } else {
+    ["-p", "v1-compiler", "--release", "--features", bin.features, "--bin", bin.bin_name]
   }
 }
 
-fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let bin = var_ref(name: var_name)
-  concat(
-    [
-      assign_root_stmt(),
-      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
-      build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
-    ],
-    emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }]
-    )
+data witness_bin_readiness_note: String = "Witness-binary readiness is a TYPED, LOCATED verdict, not a Bool. Before this carrier existed every prerequisite failure collapsed to one false, so 'the binary was never built', 'the build failed', 'the build reported success but produced nothing', and 'the artifact is a zero-byte stub' were indistinguishable at every call site — a state-space conflation on the diagnostic (DESIGN section 5). Note precisely what it was NOT: the arm returned false and the gate failed, so the line STOPPED; a widen returns true. What was missing was the location, not the stop. The gate OUTCOME is unchanged by this typing — every non-Ready state still fails the gate — so this buys diagnosis, not permission.
+
+Each refusal names the bin and the path it was looked for at, because the two incidents that price this distinction are both invisible under a bare false. (1) The sccache exit-0-no-binary flake: cargo returns success and writes no artifact, so build_ok is true and the release path is absent — WitnessBinArtifactAbsent, which under the old shape read identically to a compile error. (2) ctrl-build silently routing to the remote builder: it compiles COMMITTED code only, so a local edit appears to have no effect and the artifact on disk is stale or missing rather than wrong. A zero-byte artifact gets its own arm for the same reason — an executable-but-empty file is a distinct failure from a missing one, and collapsing them hides which of the two occurred.
+
+The three-way probe is honest about what the shell can actually observe: shell.Test.IsFile separates absent from present, IsExecutable separates a present non-executable file from a runnable one, IsNonEmpty separates the zero-byte stub. No arm claims a distinction the probes cannot make."
+
+type WitnessBinRefusalReason
+  = WitnessBinBuildFailed
+  | WitnessBinArtifactAbsent
+  | WitnessBinArtifactNotExecutable
+  | WitnessBinArtifactEmpty
+
+type WitnessBinReadiness
+  = WitnessBinReady { path: String }
+  | WitnessBinRefused { bin_name: String, path: String, reason: WitnessBinRefusalReason }
+
+fn witness_bin_artifact_readiness(bin_name: String, path: String) -> WitnessBinReadiness {
+  let is_file = shell.Test.IsFile(path: path)
+  if is_file.is_file {
+    let exec = shell.Test.IsExecutable(path: path)
+    if exec.executable {
+      let nonempty = shell.Test.IsNonEmpty(path: path)
+      if nonempty.nonempty {
+        WitnessBinReady { path: path }
+      } else {
+        WitnessBinRefused { bin_name: bin_name, path: path, reason: WitnessBinArtifactEmpty }
+      }
+    } else {
+      WitnessBinRefused { bin_name: bin_name, path: path, reason: WitnessBinArtifactNotExecutable }
+    }
+  } else {
+    WitnessBinRefused { bin_name: bin_name, path: path, reason: WitnessBinArtifactAbsent }
+  }
+}
+
+fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
+  match readiness {
+    WitnessBinReady { path: _ } => true
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+  }
+}
+
+fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> WitnessBinReadiness {
+  let path = witness_bin_release_path(root: root, bin_name: bin.bin_name)
+  let present = shell.Test.IsExecutable(path: path)
+  if present.executable {
+    witness_bin_artifact_readiness(bin_name: bin.bin_name, path: path)
+  } else {
+    let built = cargo.Build.BuildInheritEnv(workdir: root, extra_args: witness_bin_build_args(bin: bin))
+    if built.success {
+      witness_bin_artifact_readiness(bin_name: bin.bin_name, path: path)
+    } else {
+      WitnessBinRefused { bin_name: bin.bin_name, path: path, reason: WitnessBinBuildFailed }
+    }
+  }
+}
+
+data witness_bin_ready_lossy_projection_note: String = "SCAFFOLD — witness_bin_ready is a LOSSY projection: it discards the located refusal and answers Bool. It exists so the seven dag/tools self-host harnesses (self_host_parse_engine_hooks / target_carriers / use_site_verdict / logic / discovery_enumeration behavioral transports, dag_compile_clean_transport, self_host_curated_seed_linked_harness) keep compiling across the carrier's shape change without each re-spelling the collapse.
+
+What it buys and what it does not: the collapse is now ONE named, greppable fn over ONE typed carrier, instead of eleven independent copies of a weak shape — so the loss is located in a single place and can be removed in a single place. It does NOT recover the diagnostic at those seven sites; a refusal there is still an undifferentiated false, exactly the state-space conflation the carrier exists to end. Call it what it is rather than let the Bool return read as a design choice.
+
+The five sites where diagnosis actually happens do NOT use this: the four gate transports and build_step_transport match the typed value directly.
+
+DISSOLVE-ON: convert the seven harnesses to typed matches — on the next touch of each harness, or as its own change — and delete this fn. It is not load-bearing for correctness (gate outcome is identical either way), only for how much a failure can tell you. Staged rather than done in one motion because the seven are load-bearing self-host harnesses and the carrier change was already an 11-file sweep; splitting keeps each reviewable. Parent-approved as staged, 2026-07-19."
+
+fn witness_bin_ready(root: String, bin: WitnessBin) -> Bool {
+  witness_bin_readiness_is_ready(readiness: witness_bin_ensure_built_typed(root: root, bin: bin))
+}
+
+data witness_bin_readiness_seed_note: String = "witness_bin_ready_seed is the fold IDENTITY for 'nothing has refused yet', not a claim that a binary at the empty path is ready. witness_bin_readiness_then only ever replaces it — the seed cannot escape a non-empty fold, and an empty prereq list falls straight through to the invoke bin's own check. The fold carries the FIRST refusal and stops probing after it: once a prerequisite has refused, checking the rest would build binaries for a run that cannot happen, and the first refusal is the one that located the fault."
+
+fn witness_bin_ready_seed() -> WitnessBinReadiness {
+  WitnessBinReady { path: "" }
+}
+
+fn witness_bin_readiness_then(acc: WitnessBinReadiness, root: String, bin: WitnessBin) -> WitnessBinReadiness {
+  match acc {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => acc
+    WitnessBinReady { path: _ } => witness_bin_ensure_built_typed(root: root, bin: bin)
+  }
+}
+
+fn witness_bin_program_readiness(root: String, prereqs: List<WitnessBin>, invoke: WitnessBin) -> WitnessBinReadiness {
+  let after_prereqs = fold(prereqs, init: witness_bin_ready_seed(), f: (acc, b) =>
+    witness_bin_readiness_then(acc: acc, root: root, bin: b))
+  witness_bin_readiness_then(acc: after_prereqs, root: root, bin: invoke)
+}
+
+fn run_witness_bin_ready_program(root: String, invoke: WitnessBin, args: List<String>) -> Bool {
+  let result = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: invoke.bin_name),
+    args: args
+  )
+  result.success
+}
+
+fn run_witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> Bool {
+  let root = git.Core.Toplevel()
+  match witness_bin_program_readiness(root: root.path, prereqs: prereqs, invoke: invoke) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } =>
+      run_witness_bin_ready_program(root: root.path, invoke: invoke, args: args)
+  }
+}
+
+fn run_witness_bin(var_name: String, bin_name: String, args: List<String>) -> Bool {
+  run_witness_bin_program(
+    invoke: witness_bin(var_name: var_name, bin_name: bin_name),
+    prereqs: [],
+    args: args
   )
 }
 
-fn ensure_gunbc_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "GUNBC", bin_name: "gunbc")
+type ClaimRun {
+  entry: String
+  function: String
 }
 
-fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+fn gunbc_claim_run_args(source_roots: List<String>, claim: ClaimRun) -> List<String> {
+  gunbc_run_transport_argv(
+    source_roots: source_roots,
+    entry: claim.entry,
+    function: claim.function,
+    claim_run: true
+  )
 }
 
-fn ensure_v1_src_dag_parse_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "V1_SRC_DAG_PARSE", bin_name: "v1_src_dag_parse")
+fn gunbc_claims_readiness() -> WitnessBinReadiness {
+  let root = git.Core.Toplevel()
+  witness_bin_ensure_built_typed(
+    root: root.path,
+    bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")
+  )
 }
 
-fn ensure_effects_rest_transport_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "EFFECTS_REST_TRANSPORT_WITNESS", bin_name: "effects_rest_transport_witness")
+fn run_gunbc_claims_ready(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
+  let root = git.Core.Toplevel()
+  fold(claims, init: true, f: (acc, c) => {
+    let result = gunbc.Cli.Run(
+      workdir: root.path,
+      bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+      source_roots: source_roots,
+      entry: c.entry,
+      function: c.function,
+      claim_run: true
+    )
+    acc && result.success
+  })
 }
 
-fn ensure_infer_semantics_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "INFER_SEMANTICS_WITNESS", bin_name: "infer_semantics_witness")
-}
-
-fn ensure_claim_batch_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
-}
-
-fn ensure_interp_recorded_fixture_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness")
-}
-
-fn ensure_regen_stage0_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
-}
-
-fn toolchain_provision_shell_exec(script: String) -> Bool {
-  let result = shell.Exec.Run(script: script)
-  result.success
+fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
+  match gunbc_claims_readiness() {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } =>
+      run_gunbc_claims_ready(source_roots: source_roots, claims: claims)
+  }
 }

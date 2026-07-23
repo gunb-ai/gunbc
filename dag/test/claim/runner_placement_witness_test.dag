@@ -1,72 +1,10 @@
 module test.claim.runner_placement_witness
 
-import gunbc.ci_runner_placement {
-  RunnerDeploymentPlan,
-  PlanDerived,
-  PlanUnsound,
-  RunnerHostDeployment,
-  runner_deployment_plan,
-  SessionSliceResolution,
-  SessionSliceResolved,
-  SessionSliceUnresolved,
-  resolve_session_slice,
-  SessionReservationPlan,
-  SessionReservationDerived,
-  SessionReservationUnsound,
-  session_reservation_plan,
-  SessionHostReservation,
-  RunnersPerHostResolution,
-  RunnersPerHostDerived,
-  RunnersPerHostUnsound,
-  effective_runners_per_host,
-  OperatingPointRow,
-  evaluate_operating_point,
-  operating_curve,
-  samples_covered,
-  WorkloadClass,
-  BatchLatencyTolerant,
-  InteractiveLatencySensitive,
-  workload_class_cpu_weight,
-}
-import gunbc.fleet_host_budget {
-  declared_runner_count,
-  gunbc_runner_pool_budget,
-}
-import gunbc.ci_floor_measurement {
-  gunbc_ci_runner_cgroup_memory_cap,
-}
-import gunbc.ci_floor_measurement {
-  SessionOperatingPointSet,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  OomdEnforced,
-  OomdUnverified,
-  Regime1WorstCase,
-  Regime2AggregateOomd,
-  SessionReservationModeUnset,
-}
-import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.runner_deploy_emit {
-  expected_runner_deploy_manifest,
-  expected_runner_deploy_manifest_json,
-  runner_deploy_drifted,
-  manifest_host_doc,
-  manifest_host_fields,
-  session_host_doc,
-  runner_deploy_protocol,
-}
-import std.languages { json_record_knobs }
-import std.serialize { serialize_record_doc }
-import std.layout { render }
-import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
-import std.types { Bool, Int, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan()
-}
-
-fn witness_declared_runner_count_is_ten() -> Bool {
-  declared_runner_count() == 10
 }
 
 fn witness_live_plan_is_conservation_sound() -> Bool {
@@ -102,7 +40,7 @@ fn witness_live_session_plan_fail_closed() -> Bool {
   }
 }
 
-fn witness_live_effective_runners_derives_ten() -> Bool {
+fn witness_live_effective_runners_derives_declared_count() -> Bool {
   match effective_runners_per_host() {
     RunnersPerHostDerived { count: c } => c == declared_runner_count()
     RunnersPerHostUnsound { reason: _ } => false
@@ -252,11 +190,10 @@ fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
 }
 
 test fn runner_placement_holds() -> Bool {
-  witness_declared_runner_count_is_ten()
-    && witness_live_plan_is_conservation_sound()
+  witness_live_plan_is_conservation_sound()
     && witness_per_runner_cap_within_runner_pool()
     && witness_live_session_plan_fail_closed()
-    && witness_live_effective_runners_derives_ten()
+    && witness_live_effective_runners_derives_declared_count()
     && witness_sound_manifest_line_is_populated()
     && witness_regime1_resolves_worst_case_slice()
     && witness_mode_unset_is_unresolved()

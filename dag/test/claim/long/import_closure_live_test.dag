@@ -1,0 +1,69 @@
+module test.claim.long.import_closure_live
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data expected_conformance_closure: FreeMonoid<String> = [
+  "dag/test/claim/module_graph/conformance_imports_only.dag",
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/primitives.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/witness.dag"
+]
+
+data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
+
+data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
+
+data no_paths: FreeMonoid<String> = []
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+}
+
+fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
+}
+
+fn declared_paths() -> FreeMonoid<String> {
+  expected_conformance_closure
+}
+
+fn declared_without_entry() -> FreeMonoid<String> {
+  fold_list(
+    xs: declared_paths(),
+    empty: no_paths,
+    cons: fn(acc, p) {
+      if string_eq(a: p, b: conformance_entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: p)
+      }
+    }
+  )
+}
+
+fn declared_with_bogus() -> FreeMonoid<String> {
+  list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
+}
+
+fn derived_conformance_closure() -> FreeMonoid<String> {
+  import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
+test fn dag_import_closure_live_witness_bundle_holds() -> Bool {
+  let derived = derived_conformance_closure()
+  set_equal(xs: derived, ys: declared_paths())
+    && set_equal(xs: derived, ys: declared_without_entry()) == false
+    && set_equal(xs: derived, ys: declared_with_bogus()) == false
+}

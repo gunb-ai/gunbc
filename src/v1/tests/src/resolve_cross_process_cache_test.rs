@@ -39,8 +39,9 @@ use v1_compiler::cli_run::{
     resolve_entry_with_index, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, derive_subject_digest, lookup, subject_digest_for_closure,
-    write_raw_artifact_for_test, CacheLookupResult, CacheRejectReason, KeyInputMaterials,
+    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup,
+    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheRejectReason,
+    KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -49,11 +50,13 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-rg-cache-{label}-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc-rg-cache-{label}-{}-{}",
+            std::process::id(),
+            nanos
+        ));
     fs::create_dir_all(&dir).expect("temp dir");
     dir
 }
@@ -454,4 +457,57 @@ fn key_is_deterministic_in_its_axes() {
         derive_subject_digest(&m2),
         "the key is a pure function of its axes: identical axes ⟹ identical key (no hidden input)"
     );
+}
+
+// The ladder's tier ordering at the resolve seam (store fills share — never
+// replaces it): the per-process share serves repeats by reference; the store
+// serves only the process's FIRST touch of a subject, and that hit is installed
+// into the share. Without the install-back, N same-subject resolves each
+// decoded and retained an independent graph — the eval-phase memory runaway
+// this test pins extinct (receipt: eager-ram-612 A/B, 2026-07-10).
+#[test]
+fn same_subject_resolves_share_one_graph_store_fills_share() {
+    let dir = temp_dir("share");
+    let (roots, a, _b, _c) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    with_cache_env(&cache_dir, || {
+        // First process: the first touch BUILDS (store miss), filling store and
+        // share through one seam; the repeat takes the reference. No decode
+        // happens anywhere on the build path.
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        let (g1, _) = resolve_entry_with_index(&index, &a).expect("build resolve");
+        let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
+        assert!(
+            std::rc::Rc::ptr_eq(&g1, &g2),
+            "repeat resolve must serve the shared reference, not a rebuild"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "the build path must not decode"
+        );
+
+        // Second process (fresh index, same thread): the store serves the first
+        // touch — exactly one decode — and the repeat takes the installed
+        // reference.
+        let index2 = build_multi_entry_index(&roots);
+        let (h1, _) = resolve_entry_with_index(&index2, &a).expect("store-hit resolve");
+        let (h2, _) = resolve_entry_with_index(&index2, &a).expect("repeat resolve");
+        assert!(
+            std::rc::Rc::ptr_eq(&h1, &h2),
+            "repeat after a store hit must serve the installed reference, not a second decode"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before + 1,
+            "store serves the first touch: exactly one decode per subject per process"
+        );
+        assert!(
+            !std::rc::Rc::ptr_eq(&g1, &h1),
+            "the share is per-process: a fresh index decodes its own reference"
+        );
+    });
 }

@@ -28,20 +28,20 @@ import v2.extdeps.languages.go {
   go_int_inhabitant_node,
   go_int_kind_node,
   go_integer_facts_node,
-  go_mvp1_binding_spellings,
-  go_mvp1_source_text,
-  go_mvp1_target_model,
-  go_mvp1_target_model_node,
+  go_binding_spellings,
+  go_source_text,
+  go_target_model,
+  go_target_model_node,
   go_named_edge,
   go_overflow_node,
   go_signed_int_width_node,
-  go_wave1_lex
+  go_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -85,11 +85,14 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data go_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data go_add_int_inhabitant: Node = go_int_inhabitant_node()
 
-data go_add_emitted_root: Node = go_mvp1_emitted_add_fn_node()
+data go_add_emitted_root: Node = go_emitted_add_fn_node()
 
 data go_add_int_facts_node: Node = go_integer_facts_node(facts: go_facts_int)
 
@@ -101,12 +104,12 @@ data go_add_int_overflow_node: Node = go_overflow_node(
   overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
 )
 
-data go_add_target_model: TargetModel = go_mvp1_target_model()
+data go_add_target_model: TargetModel = go_target_model()
 
 data go_add_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: go_mvp1_target_model_node(),
-  lex: go_wave1_lex(),
-  binding_spellings: go_mvp1_binding_spellings(),
+  bundle: go_target_model_node(),
+  lex: go_lex(),
+  binding_spellings: go_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: go_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
@@ -120,7 +123,7 @@ data go_add_empty_translation_rules_bundle: Node = Node {
 
 data go_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: go_add_empty_translation_rules_bundle,
-  lex: go_wave1_lex(),
+  lex: go_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -318,7 +321,7 @@ data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == go_mvp1_source_text) && (d == None)
+      (source.carried == go_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -328,7 +331,7 @@ data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_com
 fn go_add_emit_claim_outcome() -> Outcome<Node> {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == go_mvp1_source_text) && (d == None) {
+      if (source.carried == go_source_text) && (d == None) {
         Accepted { value: go_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -350,7 +353,7 @@ fn go_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == go_mvp1_source_text) && (d == None) {
+          if (source.carried == go_source_text) && (d == None) {
             Accepted { value: go_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
@@ -379,7 +382,7 @@ fn go_add_compile_inferred_claim_outcome() -> Outcome<Node> {
 }
 
 data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_go_add_emit_accepts with canonical go_mvp1 add-fn source",
+  label: "manual/rust_add_emit: anchor_go_add_emit_accepts with canonical go_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: go_add_emitted_root,
   expected_value: go_add_emitted_root,
@@ -387,7 +390,7 @@ data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_go_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical go_mvp1 add-fn source through grammar inverse",
+  label: "manual/rust_add_emit: compile_inferred emits canonical go_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: go_add_emitted_root,
   expected_value: go_add_emitted_root,
@@ -400,7 +403,7 @@ data subject_go_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimE
   tree: go_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: go_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -419,7 +422,7 @@ data subject_go_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> 
   tree: go_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: go_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -452,7 +455,7 @@ data subject_go_add_serialize_rejects_missing_translation_rules: TestClaimEvalSu
   tree: go_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: go_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 

@@ -1,18 +1,25 @@
 module tools.merge_admission_stamp
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, GitRef }
 import extdeps.git
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
-  stamp_floor_receipt,
+  merge_admission_merge_base_ref,
+  stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
-  ci_repo_root_shell,
   shell_stdout_line,
+  floor_exit_to_check_conclusion,
+  floor_disposition_to_check_conclusion,
+  observe_merge_target_tree_hash,
+  merge_target_tree_hash_refusal_reason,
+  MergeTargetTreeHashOk,
+  MergeTargetTreeHashRefused,
 }
-import gunbc.ci_spec { gunbc_ci_spec }
+import extdeps.github.checks { CheckConclusion }
 
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 
@@ -32,31 +39,18 @@ fn pr_number_from_event() -> Int? {
   let line = match env_var(name: "GITHUB_EVENT_PATH") {
     Present { value: event_path } =>
       let result = shell.Exec.Run(
-        script: concat(
+        script: transport_script_from_body(body: concat(
           concat("if [ -f \"", event_path),
           concat(
             "\" ]; then jq -r 'if (.pull_request.number | type) == \"number\" then .pull_request.number else empty end' \"",
             concat(event_path, "\" 2>/dev/null; else empty; fi")
           )
-        )
+        ))
       )
       result.stdout
     Absent => ""
   }
   parse_int(s: shell_stdout_line(raw: line))
-}
-
-fn merge_target_tree_hash() -> String {
-  let policy = gunbc_ci_spec.diff_policy
-  let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", policy.base)
-  )
-  shell_stdout_line(raw: result.stdout)
-}
-
-fn repo_root() -> String {
-  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  shell_stdout_line(raw: result.stdout)
 }
 
 fn floor_exit_code_from_env() -> Int {
@@ -67,25 +61,43 @@ fn floor_exit_code_from_env() -> Int {
   }
 }
 
+fn conclusion_from_env() -> CheckConclusion {
+  match env_var(name: "CI_FLOOR_DISPOSITION") {
+    Present { value: disposition } =>
+      match floor_disposition_to_check_conclusion(disposition: disposition) {
+        Present { value: conclusion } => conclusion
+        Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
+      }
+    Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
+  }
+}
+
 func main() -> ProcessExit {
   let head = git.Core.HeadCommit()
   if !head.success {
     return exit_failure(reason: "merge_admission_stamp: git rev-parse HEAD failed")
   }
-  let base_tree = merge_target_tree_hash()
-  if base_tree == "" {
-    return exit_failure(reason: "merge_admission_stamp: merge-target tree hash unavailable")
+  let base_tree = match observe_merge_target_tree_hash(ref: merge_admission_merge_base_ref as GitRef) {
+    MergeTargetTreeHashRefused { ref: ref, cause: cause } =>
+      return exit_failure(
+        reason: merge_target_tree_hash_refusal_reason(
+          prefix: "merge_admission_stamp",
+          ref: ref,
+          cause: cause
+        )
+      )
+    MergeTargetTreeHashOk { hash: hash } => hash
   }
-  let receipt = stamp_floor_receipt(
+  let receipt = stamp_floor_receipt_with_conclusion(
     pr_number: pr_number_from_event(),
     head_sha: head.sha,
     base_tree_hash: base_tree,
-    floor_exit_code: floor_exit_code_from_env(),
+    conclusion: conclusion_from_env(),
   )
-  let root = repo_root()
+  let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let dir = concat(root, "/.gunbc")
-  let mkdir = shell.Exec.Run(script: concat("mkdir -p \"", concat(dir, "\"")))
+  let mkdir = shell.Exec.Run(script: transport_script_from_body(body: concat("mkdir -p \"", concat(dir, "\""))))
   if !mkdir.success {
     return exit_failure(reason: concat("merge_admission_stamp: mkdir .gunbc failed: ", mkdir.stderr))
   }

@@ -1,31 +1,7 @@
 module gunbc.ci_budget_tree
 
-import std.measure { ByteSize, byte_size, Memory, One }
-import std.types { Int, List, String, Bool }
-import std.disposition { Disposition, Terminal }
-import std.realization_width { byte_size_saturating_sub }
-import extdeps.accounting.budget { Appropriation, LineItem }
-import product.budget_tree {
-  BudgetNode, BudgetClaim, Guaranteed,
-  BudgetChild,
-  budget_child_named
-}
-import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer, srv3_offer }
-import gunbc.fleet_intent { compute_host_ram_bytes_total }
-import gunbc.ci_floor_measurement {
-  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
-  gunbc_ci_host_fixed_overhead,
-  gunbc_ci_runner_cgroup_memory_cap,
-  gunbc_ci_dashboard_session_container_cap,
-  gunbc_ci_session_reservation_mode,
-}
-import gunbc.ci_runner_placement {
-  SessionSliceResolution, SessionSliceResolved, SessionSliceUnresolved,
-  resolve_session_slice
-}
-import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
 
-data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_cgroup_memory_cap (8 GiB, within-run OOM authority) -- the real binding constraint for within-run parallelism. gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
+data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of live MemoryHigh 15GiB and live MemoryMax 16GiB per the applied 2026-07-11 allocation ruling; see srv1_floor_memory_budget_live_note - within-run width packs to the throttle line, memory.max stays the kill authority). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
 
 fn host_overhead_bytes() -> ByteSize {
   match gunbc_ci_host_fixed_overhead {
@@ -57,7 +33,7 @@ fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
 }
 
-fn overhead_claim() -> BudgetClaim {
+fn ci_host_overhead_claim() -> BudgetClaim {
   BudgetClaim {
     item: LineItem { purpose: "host_fixed_overhead", amount: host_overhead_bytes() },
     priority: Guaranteed
@@ -68,7 +44,7 @@ fn host_budget_tree_at(name: String, offer: ComputeOffer, session_slice: ByteSiz
   BudgetNode {
     name: name,
     appropriation: appropriation_of(b: host_ram_of(offer: offer)),
-    claims: [overhead_claim()],
+    claims: [ci_host_overhead_claim()],
     children: [
       BudgetNode {
         name: "gha_runner_pool",
@@ -90,7 +66,7 @@ fn host_budget_tree(name: String, offer: ComputeOffer) -> BudgetNode {
   host_budget_tree_at(name: name, offer: offer, session_slice: session_pool_bytes_live(offer: offer))
 }
 
-fn session_pool_bytes(offer: ComputeOffer) -> ByteSize {
+fn ci_session_pool_bytes(offer: ComputeOffer) -> ByteSize {
   session_pool_bytes_live(offer: offer)
 }
 
@@ -117,7 +93,7 @@ fn srv1_gha_runner_pool_budget() -> ByteSize {
 }
 
 fn srv1_dashboard_session_pool_budget() -> ByteSize {
-  session_pool_bytes(offer: srv1_offer)
+  ci_session_pool_bytes(offer: srv1_offer)
 }
 
 fn srv1_host_ram() -> ByteSize {
@@ -128,8 +104,10 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   host_overhead_bytes()
 }
 
+data srv1_floor_memory_budget_live_note: String = "Floor width sizing reads the RAM-SPEED ceiling (gunbc_ci_runner_slot_ram_speed_ceiling = min(live MemoryHigh, live MemoryMax); 15GiB under the applied 2026-07-11 allocation ruling), not the kill line: between memory.high and memory.max the slot does not fail, it reclaim-throttles into swap (four floor_peak_post pins at exactly 16106127360+overshoot, runs 29137081535/29142398465/29159082043 - the 60m-timeout wedge signature), and a width budget denominated at the kill line buys its last GiB at swap speed (DESIGN 5: the widening arm; the 2026-07-10 24GiB-era wedges were this row reading the then-live 24GiB cap on slots already carved to 16/15). History: the 2026-07-09 discovery flip first forced the live-over-declared read (executor base ~8.3GiB could not fit the then-declared 8GiB slot); the 2026-07-10/11 ruling then converged declared to 16GiB max / 15GiB high and the apply landed. Dissolve-on: direct post-apply memory.max readback proves live == declared, collapse both live rows to the gunbc.runner_slot_allocation single authority (high stays a first-class axis there)."
+
 fn srv1_floor_memory_budget() -> ByteSize {
-  gunbc_ci_runner_cgroup_memory_cap
+  ci_runner_target_ram_speed_budget(target: selected_ci_runner_target())
 }
 
 fn srv1_ci_run_container_hard_cap() -> ByteSize {
@@ -140,6 +118,8 @@ fn srv1_dashboard_session_container_cap() -> ByteSize {
   gunbc_ci_dashboard_session_container_cap
 }
 
-fn witness_floor_budget_equals_runner_cgroup_cap() -> Bool {
-  byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+fn witness_floor_budget_equals_selected_target_budget() -> Bool {
+  let budget = byte_size_count(b: srv1_floor_memory_budget())
+  budget == byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
+    && byte_size_count(b: ci_runner_target_ram_speed_budget(target: FleetSelfHosted)) == byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling())
 }

@@ -1,12 +1,7 @@
 module v2.test.claim.gha_workflow_yaml_fold_structural
 
-import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
-import v2.extdeps.languages.gha_workflow_yaml_fold {
-  gha_fold_job_emitted_witness,
-  gha_fold_relation_row_witness
-}
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn gha_fold_relation_row_job_witness_holds() -> Bool {
   match gha_fold_job_emitted_witness(job: gha_fold_pilot_job) {

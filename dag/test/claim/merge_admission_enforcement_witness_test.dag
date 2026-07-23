@@ -1,33 +1,7 @@
 module test.claim.merge_admission_enforcement_witness
 
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  Success,
-  Failure,
-  current_gate_roster_hash,
-  classify_merge_admission_verdict,
-  merge_admission_would_block,
-  MergeAdmitted,
-  MergeDeniedStaleBase,
-  MergeDeniedStaleRoster,
-  MergeDeniedNotSuccess,
-}
-import gunbc.merge_admission_produce {
-  render_receipt_wire,
-  parse_receipt_wire,
-  stamp_floor_receipt,
-}
-import gunbc.ci_failure_class {
-  merge_admission_blocks_merge,
-  merge_freshness_gating_status,
-  gating_is_enforced,
-  GatingComputedDeferred,
-  merge_admission_enforcement_gating_scaffold,
-  merge_admission_gating_activation_trigger,
-}
-import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
-import std.disposition { Scaffold, SingleAuthority, Terminal }
-import std.types { ContentHash }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base_b0: ContentHash = "merge-admission-enforce-base-b0"
 data scenario_base_b1: ContentHash = "merge-admission-enforce-base-b1"
@@ -91,10 +65,10 @@ test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
 }
 
 test fn gating_activation_trigger_names_flip() -> Bool {
-  string_contains(
-    s: merge_admission_gating_activation_trigger,
-    pattern: "GatingComputedDeferred to GatingEnforced"
-  )
+  match merge_admission_enforcement_gating_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn would_block_stale_base() -> Bool {

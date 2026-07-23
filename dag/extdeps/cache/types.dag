@@ -19,15 +19,11 @@ import std.cache_interface {
   ManualPurge,
   DependencyChange,
   CacheEvidence,
-  OpaqueStringEncoding,
-  CasContentEncoding,
-  OpaqueStringKey,
-  CasContentDigest,
   ArtifactIdentity,
   ProducerReceipt,
 }
 import std.types { ContentHash, NonEmptyStr, Bool }
-import std.list { List }
+import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -43,15 +39,15 @@ type CatalogInputSurface
   | ToolchainSpec
 
 type CatalogProviderKeyEncoding
-  = OpaqueStringEncoding
-  | CasContentEncoding
+  = CatalogOpaqueStringEncoding
+  | CatalogCasContentEncoding
   | SccacheInternalEncoding
   | CargoFingerprintEncoding
 
 type CatalogProviderKey
-  = OpaqueStringKey { key: NonEmptyStr }
+  = CatalogOpaqueStringKey { key: NonEmptyStr }
   | SccacheInternalHash { digest: ContentHash }
-  | CasContentDigest { digest: ContentHash }
+  | CatalogCasContentDigest { digest: ContentHash }
   | CargoFingerprint { digest: ContentHash }
 
 type CatalogBackendCacheKey {
@@ -134,8 +130,8 @@ fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool
 
 fn catalog_transport_encoding_collapsed_in_std_projection(encoding: CatalogProviderKeyEncoding) -> Bool {
   match encoding {
-    OpaqueStringEncoding => false
-    CasContentEncoding => false
+    CatalogOpaqueStringEncoding => false
+    CatalogCasContentEncoding => false
     SccacheInternalEncoding => false
     CargoFingerprintEncoding => true
   }

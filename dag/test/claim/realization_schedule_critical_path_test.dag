@@ -1,15 +1,7 @@
 module test.claim.realization_schedule_critical_path
 
-import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
-import std.realization_measurement {
-  schedule_batch_critical_path,
-  schedule_critical_path_time,
-  cost_account_measured_from_schedule_critical_path,
-  time_measure_list_total,
-}
-import std.realization_schedule { CostBasis, cost_account_time_count }
-import std.nat { nat_compare, nat_max }
-import std.algebra { Greater, Equal }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_parallel_batch_takes_max_not_sum() -> Bool {
   let batch = [
@@ -50,7 +42,7 @@ fn witness_measured_total_uses_critical_path_basis() -> Bool {
 }
 
 fn witness_nat_ordering_supports_max() -> Bool {
-  match nat_compare(a: 7, b: 3) {
+  match std.nat.nat_compare(a: 7, b: 3) {
     Greater => nat_max(a: 7, b: 3) == 7
     _ => false
   }

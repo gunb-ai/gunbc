@@ -1,0 +1,558 @@
+module v2.test.claim.symbol_index.containment
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn si_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn si_module_root(
+  qn_spine: Node,
+  exports: List<Edge>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_named_edge(
+          name: ^dag_surface_module_header_qualified_name,
+          target: qn_spine
+        )
+      ],
+      exports
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
+  Edge {
+    label: Named { name: type_sym },
+    target: Node {
+      kind: TypeNode {
+        connective: Disj
+      },
+      children: fold(variants, init: [], f: fn(acc, variant_sym) {
+        concat(acc, [
+          Edge {
+            label: Named { name: variant_sym },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: variant_sym } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        ])
+      }),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data si_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_pilot"
+)
+
+data si_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_module_qn),
+  exports: [
+    si_type_with_variants(type_sym: ^Mood, variants: [^Yes, ^Meh]),
+    si_type_with_variants(type_sym: ^Classical, variants: [^Yes, ^No])
+  ]
+)
+
+data si_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_module_root_node
+)
+
+data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_unique"
+)
+
+data si_unique_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_unique_module_qn),
+  exports: [
+    si_type_with_variants(type_sym: ^Classical, variants: [^Yes, ^No])
+  ]
+)
+
+data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_unique_module_root_node
+)
+
+data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
+  index: empty_symbol_index(),
+  path: si_unique_module_qn,
+  node: si_unique_module_root_node
+)
+
+test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
+  match symbol_index_lookup(
+    index: si_index,
+    qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
+  ) {
+    Present { value: _ } =>
+      match symbol_index_lookup(
+        index: si_index,
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.No")
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn symbol_index_lexical_lookup_unique_variant_holds() -> Bool {
+  let type_position = qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical)
+  match symbol_index_lexical_lookup(
+    index: si_unique_index_containment_only,
+    position: type_position,
+    name: ^No
+  ) {
+    LexicalHit { node: _, path: _ } => true
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_lexical_lookup_variant_alias_shadow_refuses_holds() -> Bool {
+  let type_position = qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical)
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: type_position,
+    name: ^No
+  ) {
+    LexicalAmbiguous { candidates: cands } => length(xs: cands) == 2
+    LexicalHit { node: _, path: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_lexical_lookup_ambiguous_variant_absent_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_index,
+    position: si_module_qn,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => true
+  }
+}
+
+test fn symbol_index_position_disambiguates_same_bare_name_holds() -> Bool {
+  let classical_position = qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
+  let mood_position = qualified_name_snoc(qn: si_module_qn, segment: ^Mood)
+  match symbol_index_lexical_lookup(
+    index: si_index,
+    position: classical_position,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_index,
+        position: mood_position,
+        name: ^Yes
+      ) {
+        LexicalHit { node: _, path: _ } => true
+        LexicalAmbiguous { candidates: _ } => false
+        LexicalUnbound => false
+      }
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_flat_index_false_accept_discriminator_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_index,
+    position: si_module_qn,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound =>
+      match symbol_index_lookup(
+        index: si_index,
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
+      ) {
+        Present { value: _ } =>
+          match symbol_index_lookup(
+            index: si_index,
+            qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
+          ) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+test fn symbol_index_lookup_miss_red_control_holds() -> Bool {
+  match symbol_index_lookup(
+    index: si_index,
+    qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Missing")
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_unique_index,
+        position: si_unique_module_qn,
+        name: ^No
+      ) {
+        LexicalHit { node: _, path: _ } => true
+        LexicalAmbiguous { candidates: _ } => false
+        LexicalUnbound => false
+      }
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_unique_variant_without_alias_red_control_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index_containment_only,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => true
+  }
+}
+
+test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    LexicalHit { node: _, path: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_index,
+        position: si_module_qn,
+        name: ^Yes
+      ) {
+        LexicalHit { node: _, path: _ } => false
+        LexicalAmbiguous { candidates: _ } => false
+        LexicalUnbound => true
+      }
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+data si_shadow_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_shadow"
+)
+
+data si_shadow_outer_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data si_shadow_inner_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data si_shadow_nested_qn: FreeMonoid<Symbol> = qualified_name_snoc(
+  qn: si_shadow_module_qn,
+  segment: ^Nested
+)
+
+data si_shadow_index: SymbolIndex = symbol_index_insert(
+  index: symbol_index_insert(
+    index: empty_symbol_index(),
+    qualified_path: qualified_name_snoc(qn: si_shadow_module_qn, segment: ^ShadowDup),
+    resolved: si_shadow_outer_node
+  ),
+  qualified_path: qualified_name_snoc(qn: si_shadow_nested_qn, segment: ^ShadowDup),
+  resolved: si_shadow_inner_node
+)
+
+test fn symbol_index_lexical_lookup_chain_shadow_refuses_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_shadow_index,
+    position: si_shadow_nested_qn,
+    name: ^ShadowDup
+  ) {
+    LexicalAmbiguous { candidates: cands } => length(xs: cands) == 2
+    LexicalHit { node: _, path: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_lexical_lookup_chain_unique_hit_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_shadow_index,
+    position: si_shadow_module_qn,
+    name: ^ShadowDup
+  ) {
+    LexicalHit { node: hit, path: _ } => hit == si_shadow_outer_node
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+data si_orphan_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_orphan"
+)
+
+data si_orphan_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_orphan_module_qn),
+  exports: [
+    Edge {
+      label: Named { name: ^OrphanPilotOnly },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ]
+)
+
+data si_multi_root_index: SymbolIndex = symbol_index_fill_module_roots(
+  index: empty_symbol_index(),
+  roots: Cons {
+    head: si_module_root_node,
+    tail: Cons { head: si_orphan_module_root_node, tail: Empty }
+  }
+)
+
+test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bool {
+  match symbol_index_global_unique_lookup(
+    index: si_multi_root_index,
+    name: ^OrphanPilotOnly
+  ) {
+    GlobalBareHit { node: _ } => true
+    _ => false
+  }
+}
+
+test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
+  let yes_a = Node {
+    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let yes_b = Node {
+    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let mood_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
+  let classical_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
+  let idx = symbol_index_insert(
+    index: symbol_index_insert(
+      index: empty_symbol_index(),
+      qualified_path: mood_yes,
+      resolved: yes_a
+    ),
+    qualified_path: classical_yes,
+    resolved: yes_b
+  )
+  match symbol_index_global_unique_lookup(index: idx, name: ^Yes) {
+    GlobalBareLookupAmbiguous => true
+    _ => false
+  }
+}
+
+test fn symbol_index_global_unique_lookup_unbound_on_unknown_leaf_holds() -> Bool {
+  match symbol_index_global_unique_lookup(
+    index: si_multi_root_index,
+    name: ^NotInGlobalBareIndex
+  ) {
+    GlobalBareLookupUnbound => true
+    _ => false
+  }
+}
+
+test fn symbol_index_fill_marks_duplicate_leaf_ambiguous_holds() -> Bool {
+  match symbol_index_global_unique_lookup(index: si_index, name: ^Yes) {
+    GlobalBareLookupAmbiguous => true
+    _ => false
+  }
+}
+
+test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
+  let bound = Node {
+    kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let path = qualified_name_snoc(qn: si_orphan_module_qn, segment: ^OrphanPilotOnly)
+  let once = symbol_index_insert(index: empty_symbol_index(), qualified_path: path, resolved: bound)
+  let twice = symbol_index_insert(index: once, qualified_path: path, resolved: bound)
+  match symbol_index_global_unique_lookup(index: twice, name: ^OrphanPilotOnly) {
+    GlobalBareHit { node: hit } => hit == bound
+    _ => false
+  }
+}
+
+data si_alias_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_alias"
+)
+
+data si_alias_target_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^AliasTargetType } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_alias_decl,
+        target: dag_grammar_atom(id: ^dag_surface_alias_decl)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_binding,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: binding } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      dag_named_edge(
+        name: ^dag_surface_alias_decl_target,
+        target: si_qn_spine(segments: target_qn)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^grammar_production_identity_node_projection,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_surface_alias_decl } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      dag_named_edge(
+        name: ^grammar_production_captured_node_projection,
+        target: si_alias_decl_node(binding: binding, target_qn: target_qn)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data si_alias_target_qn: FreeMonoid<Symbol> = qualified_name_snoc(
+  qn: si_alias_module_qn,
+  segment: ^AliasTargetType
+)
+
+data si_alias_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_alias_module_qn),
+  exports: [
+    Edge {
+      label: Named { name: ^AliasTargetType },
+      target: si_alias_target_node
+    },
+    Edge {
+      label: Named { name: ^dag_surface_top_level_item },
+      target: si_alias_decl_wrapped(
+        binding: ^AliasBinding,
+        target_qn: si_alias_target_qn
+      )
+    }
+  ]
+)
+
+data si_alias_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_alias_module_root_node
+)
+
+test fn symbol_index_alias_binding_lexical_lookup_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_alias_index,
+    position: si_alias_module_qn,
+    name: ^AliasBinding
+  ) {
+    LexicalHit { node: hit, path: _ } => hit == si_alias_target_node
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
+  let orphan_target_qn = qualified_name_from_dotted_string(
+    dotted: "v2.test.symbol_index_alias.MissingTarget"
+  )
+  let root = si_module_root(
+    qn_spine: si_qn_spine(segments: si_alias_module_qn),
+    exports: [
+      Edge {
+        label: Named { name: ^dag_surface_top_level_item },
+        target: si_alias_decl_wrapped(
+          binding: ^OrphanAlias,
+          target_qn: orphan_target_qn
+        )
+      }
+    ]
+  )
+  let idx = symbol_index_fill_module_root(index: empty_symbol_index(), root: root)
+  match symbol_index_lexical_lookup(
+    index: idx,
+    position: si_alias_module_qn,
+    name: ^OrphanAlias
+  ) {
+    LexicalUnbound => true
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+  }
+}

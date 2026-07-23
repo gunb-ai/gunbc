@@ -1,6 +1,7 @@
 module v2.std.cross_tree.import_model
 
-import v2.std.algebra { FreeMonoid, contains, fold_list }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { contains, fold_list }
 import v2.std.layer { LayerPrefix, layer_prefix_ordinal }
 import v2.std.logic { Bool }
 import v2.std.text { String }

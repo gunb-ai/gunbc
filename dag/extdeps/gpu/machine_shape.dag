@@ -1,0 +1,111 @@
+module extdeps.gpu.machine_shape
+
+import std.machine_shape {
+  DomainId,
+  LevelId,
+  MachineShape,
+  ExecutionDomain,
+  MemoryLevel,
+  MemoryShape,
+  MachineShapeConstruction,
+  MachineShapeOk,
+  execution_shape_independent_lanes,
+}
+import extdeps.gpu.types { GpuModelCatalogRow, GpuSmCacheGeometry }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
+  }
+}
+
+type ShapeFromCatalogInput
+  = FromGpuModelCatalog {
+      domain: DomainId
+      register_level: LevelId
+      shared_level: LevelId
+      device_level: LevelId
+      row: GpuModelCatalogRow
+    }
+
+fn memory_level_from_gpu_device_dram(level_id: LevelId, row: GpuModelCatalogRow) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: row.memory.capacity
+    transfer_grain: none
+    bandwidth: Present { value: row.memory_bandwidth }
+    latency: none
+  }
+}
+
+fn memory_level_from_sm_register_file(level_id: LevelId, geometry: GpuSmCacheGeometry) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: geometry.register_file_per_sm
+    transfer_grain: none
+    bandwidth: none
+    latency: none
+  }
+}
+
+fn memory_level_from_sm_shared_memory(level_id: LevelId, geometry: GpuSmCacheGeometry) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: geometry.shared_memory_per_sm
+    transfer_grain: none
+    bandwidth: none
+    latency: none
+  }
+}
+
+fn memory_shape_from_gpu_catalog(
+  register_level: LevelId,
+  shared_level: LevelId,
+  device_level: LevelId,
+  row: GpuModelCatalogRow
+) -> MemoryShape {
+  let device_dram = memory_level_from_gpu_device_dram(level_id: device_level, row: row)
+  match row.sm_cache {
+    Present { value: geometry } =>
+      concat(
+        [
+          memory_level_from_sm_register_file(level_id: register_level, geometry: geometry),
+          memory_level_from_sm_shared_memory(level_id: shared_level, geometry: geometry),
+        ],
+        [device_dram]
+      )
+    Absent => [device_dram]
+  }
+}
+
+fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
+  match input {
+    FromGpuModelCatalog {
+      domain: domain,
+      register_level: register_level,
+      shared_level: shared_level,
+      device_level: device_level,
+      row: row,
+    } =>
+      MachineShapeOk {
+        shape: MachineShape {
+          domains: [
+            ExecutionDomain {
+              id: domain
+              execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
+              memory: memory_shape_from_gpu_catalog(
+                register_level: register_level,
+                shared_level: shared_level,
+                device_level: device_level,
+                row: row
+              )
+            }
+          ]
+          edges: []
+        }
+      }
+  }
+}

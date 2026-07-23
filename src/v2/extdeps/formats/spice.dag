@@ -1,6 +1,7 @@
 module v2.extdeps.formats.spice
 
-import v2.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Diagnostic,
@@ -193,7 +194,7 @@ fn spice_value_pattern() -> LexPattern {
   OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
 }
 
-fn spice_wave1_lex() -> LexRules {
+fn spice_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -218,7 +219,7 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
   )
 }
 
-fn spice_wave1_grammar() -> ParseGrammar {
+fn spice_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),
@@ -247,8 +248,8 @@ fn spice_resistor_statement_formal_production() -> FormalProduction {
 
 fn spice_format_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: spice_wave1_lex(),
-    grammar: spice_wave1_grammar()
+    lex: spice_lex(),
+    grammar: spice_grammar()
   }
 }
 
@@ -275,7 +276,7 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
   spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
 }
 
-fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
+fn spice_ident_spelling(ident: Symbol) -> Optional<String> {
   if ident == ^r1 {
     optional_present(value: "R1")
   } else if ident == ^c1 {
@@ -295,7 +296,7 @@ fn spice_emit_node_ref(node: NodeRef) -> Optional<String> {
   match node {
     Ground => Present { value: "0" }
     Named { node: named } =>
-      spice_wave1_ident_spelling(ident: named.name)
+      spice_ident_spelling(ident: named.name)
   }
 }
 
@@ -309,7 +310,7 @@ fn spice_emit_passive_line(
     Present { value: plus_spelling } =>
       match spice_emit_node_ref(node: n_minus) {
         Present { value: minus_spelling } =>
-          match spice_wave1_ident_spelling(ident: name) {
+          match spice_ident_spelling(ident: name) {
             Present { value: name_spelling } =>
               Present {
                 value: spice_text_concat4(
@@ -469,7 +470,7 @@ fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
   }
 }
 
-data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
+data spice_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
   title: "",
   body: Cons {
     head: DeckComponent {
@@ -484,29 +485,29 @@ data spice_wave1_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
   }
 }
 
-data spice_wave1_probe_resistor_line: String = "R1 n1 n2 1"
+data spice_probe_resistor_line: String = "R1 n1 n2 1"
 
 fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
   outcome_rejected(
     d: Diagnostic {
-      reason: ^spice_parse_wave1_unsupported,
-      at: Textual { file: ^spice_wave1_fixture_file, extent: WholeFile },
+      reason: ^spice_parse_unsupported,
+      at: Textual { file: ^spice_fixture_file, extent: WholeFile },
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   )
 }
 
-fn spice_parse_is_wave1_probe_line(text: String) -> Bool {
-  (text == spice_wave1_probe_resistor_line)
-    || (text == spice_emit(netlist: spice_wave1_probe_resistor_netlist))
+fn spice_parse_is_probe_line(text: String) -> Bool {
+  (text == spice_probe_resistor_line)
+    || (text == spice_emit(netlist: spice_probe_resistor_netlist))
 }
 
 fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
-  outcome_accepted(value: spice_wave1_probe_resistor_netlist)
+  outcome_accepted(value: spice_probe_resistor_netlist)
 }
 
 fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
-  if spice_parse_is_wave1_probe_line(text: text) {
+  if spice_parse_is_probe_line(text: text) {
     spice_parse_accept_probe()
   } else {
     spice_parse_reject_unsupported()

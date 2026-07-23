@@ -1,0 +1,117 @@
+module v2.lens.registry.completeness
+
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.lens.registry { Bound, LensModulePathV0, LensRegistryEntryV0, Unbound, lens_registry_v0 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { contains, count_where, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data lens_registry_completeness_pool_roots: List<String> = ["src/v2/lens"]
+
+data lens_registry_completeness_empty_paths: List<String> = []
+
+data lens_registry_infra_row_dissolve: String = "the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens; row deletes"
+
+fn infra_row(unit: String, reason: String) -> FrontierRow {
+  frontier_row(unit: unit, reason: reason, dissolve_on: lens_registry_infra_row_dissolve)
+}
+
+data lens_registry_completeness_known_infra_roster: List<FrontierRow> = [
+  infra_row(unit: "v2.lens.registry", reason: "the registry carrier itself, not an enforcing lens"),
+  infra_row(unit: "v2.lens.module_graph", reason: "module-graph fact producer shared by lenses, not an enforcing lens"),
+  infra_row(unit: "v2.lens.affected_set", reason: "affected-set machinery shared by the floor, not an enforcing lens"),
+  infra_row(unit: "v2.lens.affected_set_examples", reason: "affected-set worked examples, not an enforcing lens"),
+  infra_row(unit: "v2.lens.application", reason: "lens-application plumbing, not an enforcing lens"),
+  infra_row(unit: "v2.lens.application_serializer", reason: "lens-application serialization plumbing, not an enforcing lens"),
+  infra_row(unit: "v2.lens.edit_locus", reason: "edit-locus support machinery, not an enforcing lens"),
+  infra_row(unit: "v2.lens.reference_deps", reason: "reference-edge fact producer, not an enforcing lens"),
+  infra_row(unit: "v2.lens.testgen", reason: "test-generation machinery, not an enforcing lens")
+]
+
+data lens_registry_completeness_consolidated_roster_note: String = "Modules that are real, live v2.lens.* handlers but are DELIBERATELY not distinct LensIdV0 rows because they consolidate onto an already-enrolled invariant (mandate step 2 - same verdict + remedy is one id, not a miss): v2.lens.wiring_liveness_preflight shares WiringLiveness's graph_invariant reachability handler with v2.lens.wiring_liveness (only the corpus entry point differs, both consumers of v2.lens.common.graph_invariant); v2.lens.identity_captured_navigation explicitly projects its findings into v2.lens.dependency_fidelity's UnderClaimedEdge verdict rather than a bespoke verdict type (its own module doc: reports through the one verdict authority rather than a bespoke parallel verdict type); v2.lens.grounding_ledger is the vocabulary/support types consumed by v2.lens.grounding (GroundingVerdict, LedgerEntry), not a second checked invariant. v2.lens.structural_similarity and v2.lens.simulated_relationship are NOT folded here - both call the shared chain_generalization.chain_collapses kernel with different parameters and each independently self-declares dissolves_to: SingleAuthority (a pending W0-style dedup noted for a future wave), but as of this enrollment they remain two distinct call sites with no single module to bind one id to, so both are enrolled as distinct LensIdV0 rows (StructuralSimilarity, SimulatedRelationship)."
+
+data lens_registry_completeness_consolidated_roster: List<FrontierRow> = [
+  frontier_row(
+    unit: "v2.lens.wiring_liveness_preflight",
+    reason: "shares WiringLiveness's graph_invariant reachability handler with v2.lens.wiring_liveness (only the corpus entry point differs; see lens_registry_completeness_consolidated_roster_note)",
+    dissolve_on: "the module gains its own verdict authority (then it enrolls as a distinct LensIdV0 row) or folds entirely into v2.lens.wiring_liveness and deletes"
+  ),
+  frontier_row(
+    unit: "v2.lens.identity_captured_navigation",
+    reason: "projects its findings into v2.lens.dependency_fidelity's UnderClaimedEdge verdict rather than a bespoke parallel verdict type (see lens_registry_completeness_consolidated_roster_note)",
+    dissolve_on: "the module gains its own verdict authority (then it enrolls as a distinct LensIdV0 row) or folds entirely into its host lens and deletes"
+  ),
+  frontier_row(
+    unit: "v2.lens.grounding_ledger",
+    reason: "vocabulary/support types consumed by v2.lens.grounding (GroundingVerdict, LedgerEntry), not a second checked invariant (see lens_registry_completeness_consolidated_roster_note)",
+    dissolve_on: "the module gains its own verdict authority (then it enrolls as a distinct LensIdV0 row) or folds entirely into v2.lens.grounding and deletes"
+  )
+]
+
+fn string_member(xs: List<String>, x: String) -> Bool {
+  contains(xs: xs, item: x, eq: fn(a, b) { a == b })
+}
+
+fn lens_registry_completeness_under_nested_prefix(module_name: String) -> Bool {
+  length(xs: module_name.split(delimiter: ".")) > 3
+}
+
+fn lens_registry_completeness_excluded(module_name: String) -> Bool {
+  string_member(xs: frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
+    || string_member(xs: frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
+    || ends_with(s: module_name, suffix: "_test")
+    || lens_registry_completeness_under_nested_prefix(module_name)
+}
+
+fn lens_registry_completeness_is_candidate(module_name: String) -> Bool {
+  starts_with(s: module_name, prefix: "v2.lens.") && !lens_registry_completeness_excluded(module_name)
+}
+
+fn lens_registry_completeness_bound_module_paths() -> List<String> {
+  fold_list(
+    xs: lens_registry_v0,
+    empty: lens_registry_completeness_empty_paths,
+    cons: fn(acc, entry) {
+      match entry.module_path {
+        Bound { path: p } => list_snoc_item(xs: acc, item: p)
+        Unbound => acc
+      }
+    }
+  )
+}
+
+fn lens_registry_completeness_unenrolled_count_from_facts(
+  facts: List<ModuleDeclarationFact>,
+  bound_module_paths: List<String>
+) -> Int {
+  count_where(xs: facts, predicate: fn(fact) {
+    lens_registry_completeness_is_candidate(fact.module) && !string_member(xs: bound_module_paths, x: fact.module)
+  })
+}
+
+fn lens_registry_completeness_live_facts() -> List<ModuleDeclarationFact> {
+  module_declaration_facts_live(pool_roots: lens_registry_completeness_pool_roots)
+}
+
+fn lens_registry_completeness_unenrolled_count() -> Int {
+  lens_registry_completeness_unenrolled_count_from_facts(
+    facts: lens_registry_completeness_live_facts(),
+    bound_module_paths: lens_registry_completeness_bound_module_paths()
+  )
+}
+
+fn lens_registry_completeness_holds() -> Bool {
+  lens_registry_completeness_unenrolled_count() == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

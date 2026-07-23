@@ -1,30 +1,7 @@
 module test.claim.cache_key_completeness
 
-import extdeps.cache.key_completeness {
-  cache_key_derivation_complete,
-  cache_key_completeness_verdict,
-  cache_catalog_key_completeness_holds,
-}
-import extdeps.cache.types {
-  CatalogKeyDerivationFacts,
-  NativeInternal,
-  HandAuthored,
-  content_addressed_inputs,
-  catalog_inputs_considered,
-  catalog_has_vendor_only_key_inputs,
-  RustcInvocation,
-  ToolchainSpec,
-  UpsertSubject,
-}
-import extdeps.cache.cache { cache_catalog }
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
-import std.cache_interface {
-  ToolchainChange,
-  ManualPurge,
-  Org,
-}
-import std.lens_verdict { Holds, Violation }
-import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.cache_key_completeness"
 
@@ -96,14 +73,14 @@ fn witness_complete_red_on_undercited() -> Bool {
 }
 
 fn witness_verdict_holds_on_sound_cited() -> Bool {
-  match cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
+  match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
     Holds => true
     _ => false
   }
 }
 
 fn witness_verdict_violation_on_undercited() -> Bool {
-  match cache_key_completeness_verdict(facts: undercited_native_facts(), module_name: witness_module) {
+  match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: undercited_native_facts(), module_name: witness_module) {
     Violation { diagnostic: _ } => true
     _ => false
   }

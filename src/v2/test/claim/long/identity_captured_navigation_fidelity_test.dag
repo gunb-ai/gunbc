@@ -1,0 +1,45 @@
+module v2.test.long.identity_captured_navigation_fidelity
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data planted_identity_escape_snippet: String = "module identity_escape_probe\n\nfn leaky_identity_probe(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {\n    Accepted { value: id_node, diagnostics: _ } => Present { value: id_node }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
+
+data sanctioned_reader_probe_snippet: String = "module sanctioned_reader_probe\n\nfn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {\n  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {\n    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
+
+fn discrepancy_count(xs: List<FidelityDiscrepancy>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn is_under_claimed_edge(d: FidelityDiscrepancy) -> Bool {
+  match d {
+    UnderClaimedEdge { source: _, dependent: _ } => true
+    UnreachedDeclaredInput { declaration: _ } => false
+    UnreachedDeclaredOutput { arm: _ } => false
+    OverClaimedCoupling { left: _, right: _ } => false
+  }
+}
+
+fn first_is_under_claimed_edge(xs: List<FidelityDiscrepancy>) -> Bool {
+  match list_at_optional(xs: xs, index: 0) {
+    Absent => false
+    Present { value: d } => is_under_claimed_edge(d: d)
+  }
+}
+
+test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool {
+  match source_findings(source_text: planted_identity_escape_snippet) {
+    Absent => false
+    Present { value: fs } =>
+      let discrepancies = identity_captured_navigation_as_fidelity_discrepancies(findings: fs)
+      discrepancy_count(xs: discrepancies) == 1 && first_is_under_claimed_edge(xs: discrepancies)
+  }
+}
+
+test fn sanctioned_reader_projects_to_zero_discrepancies() -> Bool {
+  match source_findings(source_text: sanctioned_reader_probe_snippet) {
+    Absent => false
+    Present { value: fs } =>
+      discrepancy_count(xs: identity_captured_navigation_as_fidelity_discrepancies(findings: fs)) == 0
+  }
+}

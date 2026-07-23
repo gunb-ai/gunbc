@@ -3,6 +3,8 @@ module v2.test.no_dual_representation_test.lens_unit.controls
 import v2.std.algebra { length }
 import v2.lens.no_dual_representation_test.scan {
   dual_rep_clean_holds_for_scans,
+  dual_rep_coverage_honesty_holds,
+  dual_rep_eq_site_count_from_scans,
   dual_rep_violation_count_from_scans,
   dual_rep_violations_from_module,
   parse_path_helper_tautology_scan,
@@ -14,6 +16,9 @@ import v2.lens.no_dual_representation_test.scan {
   synthetic_same_symbol_scan
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn same_symbol_equality_is_red() -> Bool {
   dual_rep_violation_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
@@ -41,4 +46,20 @@ test fn body_mirror_is_red() -> Bool {
 
 test fn parse_path_helper_tautology_is_red() -> Bool {
   dual_rep_violation_count_from_scans(scans: [parse_path_helper_tautology_scan()]) == 1
+}
+
+test fn synthetic_same_symbol_eq_site_count_is_one() -> Bool {
+  dual_rep_eq_site_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
+}
+
+test fn body_blind_without_frontier_honesty_is_red() -> Bool {
+  dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: false) == false
+}
+
+test fn body_blind_with_frontier_honesty_is_green() -> Bool {
+  dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: true)
+}
+
+test fn body_covered_honesty_is_green() -> Bool {
+  dual_rep_coverage_honesty_holds(eq_site_count: 1, frontier_declared: false)
 }

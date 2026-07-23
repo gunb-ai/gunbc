@@ -1,96 +1,79 @@
 # Plan — v2 self-hosting
 
-**Status:** planning tracker · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`*. Related to but distinct from the de-fork audit ([dag-v2-defork-audit.md](dag-v2-defork-audit.md)): de-fork collapses duplication; self-hosting makes v2 compile itself. De-fork is a *prerequisite* (the compiler closure needs one std authority), not the goal.
+**Status:** planning tracker for the **Weak Self Host -> Strong Self Host** program (operator-signed 2026-07-11, manager: sharp-bee-290) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §1 *Get off v1*. The **typed self-host frontier carrier** (`src/v2/compiler/self_host/frontier.dag`) holds the live roster and per-module gap breakdown; this doc is the wave sequencer only. Related: [namespace-resolution-design.md](namespace-resolution-design.md) · [general-body-producer-design.md](general-body-producer-design.md) · [s2-v2-self-emit-direction.md](s2-v2-self-emit-direction.md) · [decl-emission-defork-design.md](decl-emission-defork-design.md) · [dag-v2-defork-audit.md](dag-v2-defork-audit.md) · [seed-shrink-census.md](seed-shrink-census.md) · [typescript-gap-census.md](typescript-gap-census.md) · [emitted-crate-partition-design.md](emitted-crate-partition-design.md) · [c-linkage-unit-realization-design.md](c-linkage-unit-realization-design.md) (the C realization of the same target-agnostic `CompilationUnit` shape self-host emission is built on — the 2nd realization, staffed to stress-test that the shape doesn't cement Rust's acyclic-linkage assumption).
 
-**Carrier facts below were cross-verified against `main @ 6164261490` (#5419) and branch `emitter/seed-green-integration @ 239ff284d5` by session merry-deer-374 (5 evidence-backed verifiers, 2026-06-21).** Re-check receipts before acting. **Δ refresh 2026-06-23** (bright-stag-194) folds in the #5639 seed-drift findings — see the *Δ since 2026-06-21* block below for what improved / changed / stayed untouched.
+> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §1, do not re-litigate).** `.dag` is the authority/truth; **v2 emits BOTH Rust AND TypeScript as first-class realizations** (not one-or-the-other). Rust is the active seed language today; TypeScript joins the fixed point **after Rust self-host lands** (ROADMAP `5-ts-first-class` — deferred, not dropped). Each realization is proven **by execution**: self-emitted modules compile cargo-green and are **behaviorally equivalent** to the v1 seed on a discriminating corpus (green-by-execution + a discriminating RED, DESIGN §5). **Byte-identity with the seed is explicitly NOT the goal** (operator, 2026-07-08). The seed shrinks across a **typed self-host frontier** (DESIGN §7): each of the 27 compiler modules is *self-emitted* or *seed-retained* with a reason + migration trigger — countable, prioritizable, never a silent escape hatch. **Terminal (Wave 4):** hand-written compiler logic -> 0; a pinned, content-addressed, v2-emitted bootstrap kernel survives (~8-15k LOC).
 
-> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §5 *Self-host*, do not re-litigate).** Three languages: **`.dag` is the authority/truth; v2 emits BOTH Rust AND TypeScript as first-class realizations** (not one-or-the-other). The fixed point is proven per realization (Rust bytes reproduce; TS bytes reproduce). **Purely self-hosting:** v2 emits its own seed — no stage0 hand-edits (enforced by the regen-lockstep gate, see Track A "Purity"). **Terminal goal: shrink the seed to zero** — the ~154k lines of hand-written Rust *compiler logic* go to zero; a minimal pinned, reproducible, v2-emitted bootstrap binary survives (it must still run the first `.dag`). Not a big-bang `rm src/v1` (see Track Z). Rust is furthest along (the seed language); TypeScript is proven only on the `add` slice today and needs target-completeness to join the fixed point.
+Historical receipts through 2026-06-23 (Track A/B/T/Z, session-era drift findings) live in git history; superseded by the four-wave structure below.
 
 ---
 
-## Δ since 2026-06-21 — improved / changed / untouched
+## 0. State of play
 
-The state-of-play below was verified 2026-06-21. What moved in the two days since:
+- **0/27 self-host-green — FIRM.** `compiler_frontier_self_emitted_baseline = 0` on the 27-row roster (#6445). No compiler module is self-emitted with a green behavioral-equivalence receipt today.
+- **Emit surface is the dominant blocker — FIRM (qualitative).** The long pole is Rust emit-surface completeness (body producer, value-expression wiring, decl emit), not front-end parse/resolve. Per-module class breakdown is **not** transcribed here — see §2.
+- **Wave 1 — IN FLIGHT.** Emit-surface + naming foundation; highest risk; no v1 deleted in this wave.
+- **Front-end + emit infrastructure — background facts (not active tracks).** `src/v2/` is 100% `.dag`; full pipeline present. Route-A cargo-green landed (#5777/#5873); CI `dag_compile_clean` + `regen --verify` (#5873). Multi-target emitter: one `fold_node` catamorphism, 14+ targets.
 
-- **CHANGED (the headline): the Purity enforcement gap is no longer a *risk* — it FIRED.** Per the #5639 findings (`v1-seed-self-host-drift-findings.md`, 2026-06-23, *by execution*): the committed stage0 seed is a frozen hand-maintained snapshot that has **diverged** from current `.dag`. The copy-lists (`regen_stage0.rs HAND_MAINTAINED_STAGE0_FILES`, `bootstrap.rs copy_stage0_support_modules`) are **stale** (omit #5566/#5616 modules), the seed is stale by ~4 emitted modules, all 89 committed generated files lack the `// Generated by` header, and a regen produces **~764 emitted↔hand-maintained API-drift errors** (e.g. emitted `policy_serde_tag_field → String` vs a hand caller expecting `Option`). The §7 fixpoint was **silently broken across multiple green-CI PRs** — exactly the "erosion one honest `patch_*` at a time" the *Purity* section below warned about, now realized. Root: `regen --verify` is not in the CI floor (roadmap `5-regen-verify`, the un-wired gate below).
-- **IMPROVED — the gap now has an owner and a construction-first fix.** The reconciliation endgame is **bright-stag-owned**: a model-first *single-authority* kill — **derive** the hand-maintained copy-lists FROM the emitted-module authority so the emitted↔hand drift becomes **unwritable** (the `invert-hand-maintained` move), with crisp-carp's `regen-verify` floor gate as the weaker post-hoc backstop layered on top. roadmap **`5-regen-verify` pulled forward**. cool-carp owns the *immediate* reconcile (fix the copy-lists + re-seed the 4 + verify clean) ahead of the construction fix.
-- **IMPROVED — sequencing crystallized (emitter-first).** Order is now fixed: emitter-correctness settles (jolly-cat's Route-A lane; the corpus-emit surface measured at **~12,600 `E0308`**) → **single regen cutover** (bright-stag reconciliation) → `regen-verify` green → §7 fixpoint provable. Cutting over mid-emitter-churn re-drifts immediately, so the cutover is the *closing* step, not concurrent. This refines *Forced precondition order* step 3 below (it now has an owner + an ordering).
-- **DECIDED — open question #1 (reopen direction).** Resolved to **(a)**: finish the Route-A green bootstrap (continue `emitter/seed-green-integration`, do **not** restart into a pure-`.dag` coherence reset). Anchored; do not re-litigate.
-- **LANDED — Route-A last mile (2026-06-25..28, #5777/#5873; re-verified cool-ant-875 2026-07-01).** `regen_stage0 --emit-fresh` → faithful assembled crate → `cargo build` debug+release is **0 errors** (`route_a_emit_fresh_cargo_green_test` witness). `dag_compile_clean` still only proves well-typed emit (not built); the execution witness is the receipt. **Still open:** Track B / Stage C (no real-digest match; comparison substrate operator-pending, merry-crab-687). Track T (TypeScript) proven only on the `add` slice. The 590s+ whole-tree resolve is still the practical wall.
-- **Tracked elsewhere (not a self-host milestone):** the CI-fleet resource problem (session over-allocation, CI-floor under-sharding, resolve-cache) → `compute-envelope-model.md`; the std fork census → `dag-v2-defork-audit.md`. The session-spawn cap *was* fixed operationally 2026-06-23 (per-session RAM reservation 31g→4g, ~30 sessions/host) — an infra fix, orthogonal to this track.
+## 1. The four-wave program
 
-## 0. State of play (what's done, what's open)
+Operator-signed 2026-07-11. Each wave is a **dependency-gated exit** (green-by-execution receipt); parallel width is **within** a wave, not across waves. ~**4 waves total** to delete `src/v1`; ~**3 remaining** from now. **`src/v1` deletion happens only at the END of Wave 4.**
 
-- **Front-end — DONE, proven at scale.** `src/v2/` is 100% `.dag` (698 modules, 0 `.rs`; all Rust is the `src/v1` seed, ~154k lines). Full pipeline present: `01_tokenize → 02_parse → 03_resolve/name_resolve/ingest → 04_infer → 05_emit/eval → 06_translate → 07_target_carriers`. The historical blockers are fixed and merged: parse-perf (#5093 ParseTable memo, #3661), resolve/infer cost (#5258 the O(2^depth) double-resolve fix, #5266, #5146), cross-file names (#5271 Route C Phase B, #5154 filepath→QualifiedName). gap-4 (let-stmt in match arm) merged #5369; whole-tree parse-regression scanner added #5406. *Nuance:* per-file parse is fast, but a **combined `dag`+`src/v2` whole-tree resolve is still heavy (590s+)** — "no perf wall" means the fixed blockers, not an instant full-tree resolve.
-- **Emit / Route A — whole-tree emit + faithful `--emit-fresh` crate builds green (#5777/#5873).** `gunbc compile --source-root … --target rust` exists and the CI `dag_compile_clean` gate runs it over `[src/v2, dag]`, gating batch-2 (well-typed emit only — writes `$OUT`, then `rm -rf $OUT`). The **cargo-green** receipt is `regen_stage0 --emit-fresh <dir>` → `cargo build` (debug+release), proven by `route_a_emit_fresh_cargo_green_test`.
-- **Fixed-point proof — fail-closed (not achieved).** `self_host.dag`'s `self_host_fixed_point_validate` **unconditionally returns `Rejected`** (`self_host_runner_not_realized`) — the honest contract until Stage C. `self_host_fixed_point_digests_match` (`==` over `content_hash`) is realized but de-risked only on fixture stages. The whole-compiler fixed point over real digests does not yet run.
-- **Emitter — genuinely multi-target.** One `fold_node` catamorphism in `06_translate.dag`; emit selects a target's `target_model_edge_translation_rules` and walks the same rows **backward** (`grammar_relation_row_reverse_parse_selection`). 14 targets in `src/v2/extdeps/languages/` (rust, python, go, bash, dag, cpp, typescript, kotlin, swift, java, lean, ptx, verilog, …), 5 in `dag`. A new target is **data rows, never a new emitter**.
+### Wave 1 — emit-surface + naming foundation (IN FLIGHT)
 
-## 1. The tracks
+The old 2-wave plan collapsed here: "Wave 2 = the sweep" hid the emit-surface keystone. Exit gate — **all** must be green-by-execution before Wave 2 opens:
 
-### Track A — Rust self-host bootstrap (the active path)
+1. **General body producer emits REAL ingested fn bodies** — RECEIPT LANDED (#6558 body producer + #6526/#6523 fast+long witnesses). Residual explicitly NOT proven by those witnesses: Stage D MVP subsumption, FLAG D binding-key re-grounding, frontier probe per-module receipts, FLAG E body_lowering_fold dissolution.
+2. **Namespace SymbolIndex / tree-resolution lands** — RECEIPT LANDED (#6523 gate-2 witnesses + #6538 scaling receipt). Residual: 03_name_resolve/03_resolve end-to-end ingest wire + frontier probe blocker_class rows.
+3. **FLAG D binder identity grounded** — RECEIPT LANDED (#6575). EnvironmentBindingKey re-grounding on identity; `bind_eval_occurrence_identity_defect` witnesses green; conform-now protocol closed ([general-body-producer-design.md](general-body-producer-design.md) §9).
+4. **Weak self-host behavioral receipt green** — RECEIPT LANDED (#6578). `dag/tools/self_host_logic_behavioral_transport.dag` emit→compile→run→equals-seed chain green-by-execution for `dag/std/logic.dag` (plain + `--inject-fault` RED control).
 
-Get the v2-emitted Rust compiler to build and reproduce itself.
+**NO v1 deleted in Wave 1.**
 
-1. Emit whole tree `--target rust` — **done** (well-typed under CI gate).
-2. `cargo build` the emitted crate green — **done** (#5777/#5873; `regen_stage0 --emit-fresh` witness).
-3. `regen_stage0` from the emitted crate; replace the hand-Rust seed.
-4. Flip the lockstep / fixed-point gate from fail-closed to asserting the real `content_hash` digest match (Stage C).
+### Wave 2 — first real flips
 
-**Route-A cargo-green landed on main** (#5777 emitter fixes → 0 rustc errors; #5873 two-generation regen cutover + `regen --verify` CI gate). Branch `emitter/seed-green-integration` content is absorbed — the branch is stale vs `main` and can be retired. PR **#5325** remains closed (superseded by #5873).
+The two big emit-surface tracks (~11 modules) **self-emit + behaviorally verify + REPLACE their v1 counterparts** -> **first v1 deletions**.
 
-### Purity: no stage0 hand-edits (the requirement, and the enforcement gap)
+### Wave 3 — remaining module drain
 
-> **UPDATE 2026-06-23 (#5639): this gap has now FIRED** — the seed has measurably drifted from the `.dag` (~764 regen errors, stale copy-lists). The "erosion" warned about below is no longer hypothetical. Owner + fix in the *Δ since 2026-06-21* block above.
+Remaining ~13 roster modules flip to self-emitted **or** are declared **pinned-kernel** rows with an honest reason + migration trigger. Exit: **27/27 self-emitted-or-declared-kernel** = **strong self-host** milestone.
 
-The requirement — **v2 emits its own seed; no human stage0 patches** — is *modeled, currently unmet, and un-enforced.* `src/v2/workflow/bootstrap.dag` is the authority and states it exactly ("seed→stage0→stage1→stage2, fixpt stage1==stage2 … seed used once; v2 is never in the loop again", DESIGN §7), including the trust machinery to retire the seed (`SeedHonestyDischarge`, `DiverseCompilationAgreement`/`IndependentCompilerPair` = Diverse Double-Compiling, the Thompson trusting-trust defense). But:
+### Wave 4 — collapse to kernel + delete v1
 
-- **The seed is hand-maintained today.** `regen_stage0.rs` carries `HAND_MAINTAINED_STAGE0_FILES` + `patch_*` (e.g. `patch_bootstrap_dag_collect`) that compensate for emitter gaps — each a "stage0 hand-edit standing in for a thing v2 should emit itself," honestly marked with a dissolve-on pointing at the emitter fix. (Gotcha: regen has pre-existing codegen drift, so focused PRs hand-edit the `.rs` seed mirror rather than commit a full regen — itself a symptom of the gap.)
-- **The no-drift gate is wired (#5873).** `regen_stage0 --verify` runs in the CI floor via `RegenVerifyGate` → `regen_verify_gate_passes` (`src/v2/workflow/ci_floor_plan.dag`). It enforces no drift on **generated** `GENERATED_STAGE0_FILES`; `HAND_MAINTAINED_STAGE0_FILES` are copied through by design. Closed #5325's `Stage0LockstepGate` was superseded by #5873. **Still open:** dissolve `patch_*` / hand-maintained copies so the emitter owns the whole seed (roadmap `5-dissolve-patches`).
-- **bootstrap.dag is 🟡 scaffold** — structural wiring only, placeholder hashes (dissolve-on T-15/T-20 `content_hash` supplying real per-stage merkle digests), so it does not yet *prove* convergence.
+1. Pipeline runs on **emitted Rust** (not v1 seed mirror).
+2. `src/v1` collapses to **~8-15k LOC pinned bootstrap kernel** ([seed-shrink-census.md](seed-shrink-census.md)).
+3. **Import grammar deleted** (import-deletion ladder B4 — see §3).
+4. **CI compile cone gone** — regen cutover complete; HAND queue drained ([invert-hand-maintained.md](invert-hand-maintained.md)).
+5. TypeScript fixed-point work **opens** post-Rust (END GOAL unchanged; [typescript-gap-census.md](typescript-gap-census.md)).
 
-**The regen-verify gate is the keystone for a trustworthy cutover** — it now runs in CI (#5873), but hand-maintained seed copies and `patch_*` remain until `5-dissolve-patches` lands.
+## 2. Census honesty — what is firm vs carrier-held
 
-### Track B — the fixed-point proof (Stage C)
+- **FIRM:** 0/27 self-emitted (`compiler_frontier_self_emitted_baseline`, census witnesses on `frontier.dag`).
+- **FIRM (qualitative):** emit surface is the dominant blocker class across the roster.
+- **Carrier-held (do not transcribe counts in this doc):** per-module gap classification lives on `src/v2/compiler/self_host/frontier.dag` as the 27-row roster's `SeedRetained { reason, migration_trigger }` dispositions plus `compiler_frontier_census_attribution: ExecutionMeasured` — **the carrier holds the numbers; this doc points at the carrier** (DESIGN §2/§6: no parallel-ledger doc).
+- **LANDED mechanism (#6464):** structural census + fail-closed classifier on `frontier.dag`; per-module `frontier_probe_emit_from_ingest` execution receipts bind via `frontier_probe_survey` host transport — overlay manifest must not append trailing imports post-namespace-wave (header-only import rule).
 
-`candidate_generation.dag` (`generate_stage_candidate_from_ingest`) drives `assemble_program_from_ingest → infer → translate`, capturing the emitted **Node** before `serialize_target` — the input Stage C needs. Comparison substrate (emitted Node vs emitted bytes) is operator-pending (merry-crab-687). When it lands, the fail-closed runner flips to `Accepted` + real-digest match. Proven **per realization** (Rust first; TypeScript once its target rows are complete).
+## 3. Import-deletion ladder (parallel track — NOT a wave gate)
 
-### Track T — TypeScript as a first-class realization
+Namespace resolution and import deletion are **separate timelines**. Tree-resolution can work while imports still exist.
 
-TS is 1 of 14 emit targets, proven only on the `add` slice (`cross_language_add_python_to_typescript_test.dag`, Python→core→TS). To join the fixed point it needs target-completeness over what the compiler actually uses (records, coproducts, folds, generics) — a gap census from `add` → full `src/v2`, then a TS regen + `node`-build green analogous to Track A's cargo path.
+1. **B1 merged + B2 (#6462)** — reference-deps + equivalence = Wave 1-era **resolution** (naming authority without deleting `import`).
+2. **B3** — ~1854-file migration; **parallel to Waves 2-3**.
+3. **B4** — delete `import` grammar = **Wave 4** terminal step.
 
-### Track Z — shrink the seed to zero (terminal)
+## 4. Retired framing
 
-Per-chunk collapse inventory (LOC receipts, HAND_MAINTAINED sign-off queue, test-migration sub-lane, terminal harness): [seed-shrink-census.md](seed-shrink-census.md) **(DRAFT — design-for-sign)**.
+The June 2026 **Track A/B/T/Z** structure, Purity/Forced-precondition-order as active sequencing, and byte-digest Stage C as the milestone oracle are **retired**. Absorbed facts: Route-A cargo-green DONE (background); byte-oracle superseded by behavioral-equivalence (2026-07-08); Track Z terminal -> **Wave 4**; Track T -> END GOAL **sequenced post-Rust**, not shelved. `regen --verify` (#5873) and #5639 drift receipts remain cautionary background for Wave 4 cutover.
 
-The clean cutover. **"Shrink to zero" = the ~154k lines of hand-written Rust *compiler logic* go to zero — not literally zero bytes.** Something must still execute the first `.dag` (the substrate is data; v1/Rust is the runner today). The honest end-state (rustc/GCC model; what `SeedHonestyDischarge`/DDC is for) is a **pinned, content-addressed, reproducible-from-`.dag`, v2-emitted bootstrap binary** — itself re-derivable, since v2 even models its own `V4EvaluatorRuntime`.
+## 5. Prerequisites (unchanged gates)
 
-So "delete stage0" decomposes — `src/v1` also provides the **CLI bins** (`claim_executor`, `regen_stage0`, `yaml_check`, …), the **CI floor runner**, the **host-effect transports**, and the **evaluator that runs `.dag`**. Each must be v2-emitted or pinned *before* it can go; a big-bang `rm -rf src/v1` after a green fixed point would take out the execution substrate, not just the redundant compiler.
+1. **De-fork / single std authority** — [dag-v2-defork-audit.md](dag-v2-defork-audit.md); cross-tree import wired (#5473).
+2. **Seed-only parallel representations** — [seed-debt-bundle-item-2.md](seed-debt-bundle-item-2.md).
+3. **HAND kernel D (interpreter pure-eval)** — [interpreter-kernel-d.md](interpreter-kernel-d.md).
+4. **Emit-on-demand execution** — parallel track (ROADMAP §1); not a Wave 1 blocker.
 
-**Forced precondition order (each gates the next):**
-
-1. Whole-tree emit → `cargo build` green — **done** (#5777/#5873; `regen_stage0 --emit-fresh` witness).
-2. Real fixed point: `self_host_fixed_point_digests_match` over real `content_hash` (Track B / Stage C; dissolve the placeholder hashes, T-15/T-20).
-3. `regen_stage0 --verify` wired into CI — **done** (#5873 `RegenVerifyGate`) + all `patch_*` / `HAND_MAINTAINED_STAGE0_FILES` dissolved (**open**, roadmap `5-dissolve-patches`) so the emitter emits the whole seed. **This is the step that actually retires "stage0 hand-edits"** and makes the cutover trustworthy. *(Owner + ordering, per #5639: the single regen **cutover** is bright-stag-owned — derive the copy-lists from the emitted-module authority so the drift is unwritable — and lands **after** the emitter largely settles, since each emitter fix shifts what a regen produces.)*
-4. Seed-honesty discharge (ideally via Diverse Double-Compiling).
-5. Then collapse `src/v1` to the pinned reproducible seed and delete its compiler logic **incrementally** — verify by execution, not assumption.
-
-## 2. Prerequisites / dependencies
-
-1. **Seed-only parallel representations (bundle item 2)** — [seed-debt-bundle-item-2.md](seed-debt-bundle-item-2.md): **#5894** lands CLI dep-pool authority (`gunbc.compile_source_model` + floor witness); parse cursor deferred to parse.rs emit-migration PR (`regen_stage0 --verify` witness).
-2. **HAND kernel D — interpreter pure-eval / pinned host-physics** — [interpreter-kernel-d.md](interpreter-kernel-d.md): model-and-witness slice partitioning `v1_interpreter.rs` dissolution (mirrors #5894 sequencing).
-3. **De-fork / cross-tree import** ([dag-v2-defork-audit.md](dag-v2-defork-audit.md) §1) — the compiler closure is only well-defined once v2 imports the single `dag/std` authority, not its mirror copies. Cross-tree import is wired but fail-closed (`03_name_resolve.dag:644`).
-4. **Whole-tree resolve cost** — the 590s+ combined-tree resolve is the practical wall for a fresh whole-tree green receipt; relevant to both the CI gate and Stage C.
-5. **TS-target completeness** — only needed if the end goal is Track-(b) TypeScript runtime; the `add` slice is proven, the compiler uses far more of the language.
-
-## 3. Open questions (for the operator)
-
-End goal is settled (Rust + TypeScript, `.dag` authority, delete v1 — see END GOAL). Remaining:
-
-1. ~~**Reopen direction**~~ — **RESOLVED 2026-06-23 to (a)**: finish the Route-A green bootstrap (continue `emitter/seed-green-integration` → green regen → flip the lockstep gate); do **not** restart into a pure-`.dag` coherence reset. Anchored; do not re-litigate.
-2. **Scope of the first fixed point** — whole `src/v2`, or a defined compiler-core subset first, before widening to the full bin set Track Z must replace?
-3. **TS sequencing** — pursue Track T in parallel with A, or after the Rust fixed point lands?
+Related: [S2 — v2 emits v2: strategic direction & decomposition](s2-v2-self-emit-direction.md) — the active lane decomposition toward the Track Z fixed point (B-rungs, whole-module harness lead).
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when Track Z lands: `self_host.dag` asserts the real-digest fixed point (Stage C) and `src/v1` is gone. At that point the self-host witness + the absent `src/v1` *are* the authority and this tracker is redundant.
+Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. The frontier carrier + absent v1 compiler logic are the authority; this tracker is redundant.

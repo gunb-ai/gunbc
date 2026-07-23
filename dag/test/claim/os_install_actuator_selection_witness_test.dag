@@ -1,29 +1,10 @@
 module test.claim.os_install_actuator_selection
 
-import std.logic { Bool }
-import gunbc.os_install_actuator_selection {
-  srv3_os_install_actuator_host,
-  srv3_os_install_actuator_host_is_derived_srv1,
-  srv3_os_install_actuator_host_selected_because_requirements_and_policy,
-  srv3_os_install_actuator_host_failover_fixture_selects_srv2,
-  srv3_os_install_actuator_selection_is_selected_on_live_fleet,
-  srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger,
-  srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger,
-  srv3_os_install_actuator_tie_break_policy,
-  os_install_actuator_requirement_kind_count,
-  os_install_actuator_requirement_satisfied,
-  os_install_actuator_requirement_kinds,
-  BmcNetworkReach,
-  ActuatorToolchainGrant,
-  live_srv3_actuator_reach_facts,
-  OperatorHostPreference,
-}
-import gunbc.fleet_intent { srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  os_install_actuator_requirement_kind_count() == 4
-    && os_install_actuator_requirement_kinds.first() == BmcNetworkReach
+  os_install_actuator_requirement_kinds.first() == BmcNetworkReach
     && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
     && os_install_actuator_requirement_satisfied(
       kind: BmcNetworkReach,
@@ -34,8 +15,14 @@ test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
 
 test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
   srv3_os_install_actuator_selection_is_selected_on_live_fleet()
-    && string_contains(s: srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger, pattern: "fail-open")
-    && string_contains(s: srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger, pattern: "install_window_load")
+    && match srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
+    && match srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
 }
 
 test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use im::HashMap;
 use std::process::Command;
 use std::rc::Rc;
 

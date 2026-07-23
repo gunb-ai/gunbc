@@ -1,16 +1,11 @@
 module v2.test.manual.witness_option_bridge
 
-import v2.std.collection { Map, Absent, Present, empty_map, map_get, map_insert }
-import v2.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
-import v2.std.logic { Bool }
-import v2.std.witness { Violates }
-import v2.test.lens_affected_set.excluded_propagation_proof { excluded_propagation_proof_claim_holds }
 
-data witness_option_bridge_provenance: String = "Floor witnesses migrated from src/v1/tests/src/witness_option_bridge_test.rs (5-test-migration lane): map_get bridges the Witness lookup into Present/Absent (hit and miss), a non-Absent lookup failure is Rejected (fail-closed, not coerced to a miss), and the affected_set excluded-propagation proof evaluates without a pattern-match crash."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_hit_bridges_witness_to_present() -> Bool {
   let m = empty_map() |> map_insert("k", 42)
-  match map_get(m, "k") {
+  match v2.std.collection.map_get(m, "k") {
     Accepted { value: Present { value: v }, diagnostics: _ } => v == 42
     Accepted { value: Absent, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
@@ -19,7 +14,7 @@ test fn map_get_hit_bridges_witness_to_present() -> Bool {
 
 test fn map_get_miss_bridges_witness_to_absent() -> Bool {
   let m = empty_map()
-  match map_get(m, "k") {
+  match v2.std.collection.map_get(m, "k") {
     Accepted { value: Present { value: _ }, diagnostics: _ } => false
     Accepted { value: Absent, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -43,7 +38,7 @@ fn malformed_map() -> Map<String, Int> {
 }
 
 test fn map_get_rejects_non_absent_lookup_failure() -> Bool {
-  match map_get(malformed_map(), "k") {
+  match v2.std.collection.map_get(malformed_map(), "k") {
     Accepted { value: Present { value: _ }, diagnostics: _ } => false
     Accepted { value: Absent, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

@@ -1,32 +1,7 @@
 module test.claim.markdown_roundtrip
 
-import std.markdown {
-  MarkdownDocument,
-  MarkdownListItem,
-  MarkdownTaskItem,
-  HeadingBlock,
-  ParagraphBlock,
-  UnorderedListBlock,
-  OrderedListBlock,
-  CodeBlock,
-  TaskListBlock,
-  TextInline,
-  EmphasisInline,
-  H1,
-  H2,
-  Checked,
-  Unchecked,
-}
-import extdeps.languages.markdown {
-  MarkdownSpellings,
-  commonmark_gfm_spellings,
-  serialize_markdown_source,
-  serialize_markdown_source_with,
-  ingest_markdown_source,
-  ingest_markdown_source_with,
-  markdown_medium_lossless,
-}
-import extdeps.communication.medium { Lossless, Lossy }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_doc() -> MarkdownDocument {
   MarkdownDocument {
@@ -93,6 +68,7 @@ fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
     blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
     list_indent: commonmark_gfm_spellings.list_indent,
     block_separator: separator,
+    thematic_break: commonmark_gfm_spellings.thematic_break,
   }
 }
 

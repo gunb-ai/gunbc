@@ -2,7 +2,8 @@ module std.realization
 
 import std.types { Bool, String, List }
 import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  KeySource,
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   key_source_eq, create_double_init_collapsible
 }
 import std.realization_schedule {
@@ -17,11 +18,9 @@ import std.realization_schedule {
   cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
-  schedule_lens_verdict_for_ci_floor,
   schedule_generates_same_batch_count,
   schedule_generates_identical_schedule,
   schedule_eq,
-  ScheduleLensViolation,
   runnable_step_label,
   schedule_batch_contains_label,
 }
@@ -62,7 +61,7 @@ import std.realization_width {
 
 type Independence = Independent | Dependent | Unknown
 
-fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Independence {
+fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectShape<KeySource>) -> Independence {
   match left {
     ReadEffect => match right {
       ReadEffect => Independent
@@ -70,6 +69,7 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
       DeleteEffect { key_source: _ } => Unknown
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     UpsertEffect { key_source: lk } => match right {
       ReadEffect => Unknown
@@ -79,6 +79,7 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     DeleteEffect { key_source: lk } => match right {
       ReadEffect => Unknown
@@ -88,9 +89,11 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
+      ExecuteEffect => Unknown
     }
     CreateEffect { cause: _ } => Unknown
     AppendEffect => Unknown
+    ExecuteEffect => Unknown
   }
 }
 
@@ -100,12 +103,10 @@ type Placement
   | RemoteNetwork
   | LocalAccelerator
 
-data local_accelerator_placement_dissolution_trigger: String = "dissolve-on: execution lane wires device identity from extdeps.gpu.AcceleratorFacts at the product/demo placement site; std keeps LocalAccelerator as placement-kind only (no device_model nickname on substrate — DESIGN §3)."
-
 type Materialization = Recompute | Memoize | Share
 
 type RealizedStep<S> {
-  shape: EffectShape
+  shape: EffectShape<KeySource>
   placement: Placement
   materialization: Materialization
   cost: CostAccount<S>
@@ -132,11 +133,11 @@ fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bo
 }
 
 fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
-  steps |> fold(init: [], f: (acc, s) =>
+  reverse(steps |> fold(init: [], f: fn(acc, s) {
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)
     } else {
-      concat(acc, [s])
+      concat([s], acc)
     }
-  )
+  }))
 }

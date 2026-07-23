@@ -1,20 +1,6 @@
 module test.claim.workflow_recursive_witness
 
-import std.logic { Bool }
-import std.types { NonEmptyStr, List }
-import std.reducible {
-  ReduceVerdict, Reduced, Irreducible, Unknown,
-  reduce_verdict_combine, verdict_eq,
-}
-import std.workflow_recursive {
-  VerdictTree, Leaf, Decomposed,
-  settle_verdict_tree, linearize_verdicts,
-}
-import gunbc.idea_pr_spine {
-  StageStep, IdeaInput, DagModel, Review, review_step,
-  settle, demo_spine_green, demo_spine_unknown,
-}
-import ctrl.review_verdict { Llm, Claude, RequestChanges }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
   linearize_verdicts(
@@ -24,30 +10,30 @@ fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
 
 fn deep_unknown_tree() -> VerdictTree {
   Decomposed { children: [
-    Leaf { verdict: Reduced { last_parts: 1 } },
+    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
     Decomposed { children: [
-      Leaf { verdict: Reduced { last_parts: 2 } },
-      Leaf { verdict: Unknown { missing: "deep-axis" } },
+      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 2 } },
+      std.workflow_recursive.Leaf { verdict: std.reducible.Unknown { missing: "deep-axis" } },
     ] },
-    Leaf { verdict: Reduced { last_parts: 3 } },
+    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 3 } },
   ] }
 }
 
 fn all_green_tree() -> VerdictTree {
   Decomposed { children: [
-    Leaf { verdict: Reduced { last_parts: 1 } },
+    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
     Decomposed { children: [
-      Leaf { verdict: Reduced { last_parts: 2 } },
-      Leaf { verdict: Reduced { last_parts: 3 } },
+      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 2 } },
+      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 3 } },
     ] },
   ] }
 }
 
 fn review_tree_blocks() -> VerdictTree {
   Decomposed { children: [
-    Leaf { verdict: Reduced { last_parts: 1 } },
-    Leaf { verdict: review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: RequestChanges }).verdict },
-    Leaf { verdict: Reduced { last_parts: 9 } },
+    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
+    std.workflow_recursive.Leaf { verdict: review_step(gunbc.idea_pr_spine.Review { subject: DagModel, reviewer: gunbc.review_verdict.Llm { provider: Claude }, verdict: gunbc.review_verdict.RequestChanges }).verdict },
+    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 9 } },
   ] }
 }
 
@@ -69,7 +55,7 @@ type WorkflowKernelWitnessed {
 
 fn witness_semigroup_associativity() -> WorkflowLawWitness {
   let a = Reduced { last_parts: 1 }
-  let b = Unknown { missing: "axis-b" }
+  let b = std.reducible.Unknown { missing: "axis-b" }
   let c = Irreducible { witness: "w" }
   WorkflowLawWitness {
     law_tag: "reduce_verdict:semigroup_associativity",
@@ -91,10 +77,10 @@ fn witness_semigroup_absorption_left() -> WorkflowLawWitness {
     law_tag: "reduce_verdict:unknown_absorbs_left",
     verified: verdict_eq(
       a: reduce_verdict_combine(
-        a: Unknown { missing: "latch-axis" },
+        a: std.reducible.Unknown { missing: "latch-axis" },
         b: Reduced { last_parts: 9 }
       ),
-      b: Unknown { missing: "latch-axis" }
+      b: std.reducible.Unknown { missing: "latch-axis" }
     ),
   }
 }
@@ -105,9 +91,9 @@ fn witness_semigroup_absorption_right() -> WorkflowLawWitness {
     verified: verdict_eq(
       a: reduce_verdict_combine(
         a: Reduced { last_parts: 9 },
-        b: Unknown { missing: "latch-axis" }
+        b: std.reducible.Unknown { missing: "latch-axis" }
       ),
-      b: Unknown { missing: "latch-axis" }
+      b: std.reducible.Unknown { missing: "latch-axis" }
     ),
   }
 }
@@ -117,7 +103,7 @@ fn witness_deep_unknown_latches_located() -> WorkflowLawWitness {
     law_tag: "workflow:deep_unknown_latches_located",
     verified: verdict_eq(
       a: settle_verdict_tree(deep_unknown_tree()),
-      b: Unknown { missing: "deep-axis" }
+      b: std.reducible.Unknown { missing: "deep-axis" }
     ),
   }
 }
@@ -137,7 +123,7 @@ fn witness_review_blocks_located_in_tree() -> WorkflowLawWitness {
     law_tag: "workflow:review_blocks_located_in_tree",
     verified: verdict_eq(
       a: settle_verdict_tree(review_tree_blocks()),
-      b: Unknown { missing: "idea-pr:review:dag-model:request-changes" }
+      b: std.reducible.Unknown { missing: "idea-pr:review:dag-model:request-changes" }
     ),
   }
 }

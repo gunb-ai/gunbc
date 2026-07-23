@@ -1,5 +1,6 @@
 module extdeps.gunbc
 
+import std.types { FilePath, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -87,6 +88,23 @@ data packages: List<WorkspacePackage> = [
     io_boundary: false },
 
 ]
+
+service gunbc.WitnessBin {
+  operation Run {
+    input { workdir: FilePath, bin_path: FilePath, args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "{bin_path}", args] }
+    exit {
+      0 => Unit
+      nonzero => String "Witness binary exited nonzero"
+    }
+  }
+}
 
 service shell.Codegen {
   operation Check {

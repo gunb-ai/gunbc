@@ -17,10 +17,10 @@ import v2.compiler.eval {
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.typescript {
   ts_inhabitant_atom,
-  ts_mvp1_binding_spellings,
+  ts_binding_spellings,
   ts_task_type_alias_source_text,
-  ts_wave2a_task_target_model_witness,
-  ts_wave2a_task_type_alias_emitted
+  ts_task_target_model_witness,
+  ts_task_type_alias_emitted
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -54,10 +54,13 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-data typescript_record_task_emitted_root: Node = ts_wave2a_task_type_alias_emitted()
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data typescript_record_task_emitted_root: Node = ts_task_type_alias_emitted()
 
 fn typescript_record_task_target_model_for_emit() -> Witness<TargetModel> {
-  ts_wave2a_task_target_model_witness()
+  ts_task_target_model_witness()
 }
 
 fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
@@ -208,7 +211,7 @@ fn typescript_record_task_compile_inferred_claim_outcome() -> Outcome<Node> {
 }
 
 data claim_typescript_record_task_type_alias_emit_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: wave2a Task type_alias emit round-trips via derive grammar-relation row",
+  label: "manual/rust_add_emit: Task type_alias emit round-trips via derive grammar-relation row",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_record_task_emitted_root,
   expected_value: typescript_record_task_emitted_root,
@@ -216,7 +219,7 @@ data claim_typescript_record_task_type_alias_emit_accepts: TestClaim = CompilesC
 }
 
 data claim_typescript_record_task_type_alias_compile_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1 G2: compile_inferred emits canonical Task type_alias source through grammar inverse production ts_production_wave2a_type_alias_decl and type_annotation family",
+  label: "manual/G2: compile_inferred emits canonical Task type_alias source through grammar inverse production ts_production_type_alias_decl and type_annotation family",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_record_task_emitted_root,
   expected_value: typescript_record_task_emitted_root,

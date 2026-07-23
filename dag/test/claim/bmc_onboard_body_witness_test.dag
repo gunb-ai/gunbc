@@ -1,13 +1,7 @@
 module test.claim.bmc_onboard_body_witness
 
-import std.logic { Bool }
-import gunbc.tools.bmc_onboard {
-  netrc_content,
-  account_password_body,
-  boot_override_body,
-  reset_body,
-  gcp_secret_full_name,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn netrc_content_shape_holds() -> Bool {
   let got = netrc_content(host: "192.168.1.192", account: "root", password: "s3cr3t")
@@ -20,8 +14,8 @@ test fn account_password_body_shape_holds() -> Bool {
 }
 
 test fn boot_override_body_shape_holds() -> Bool {
-  let got = boot_override_body(target: "Pxe", enabled: "Once")
-  got == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Pxe\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+  let got = boot_override_body(target: "Pxe", enabled: "Once", mode: "Legacy")
+  got == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Pxe\", \"BootSourceOverrideEnabled\": \"Once\", \"BootSourceOverrideMode\": \"Legacy\"}}"
 }
 
 test fn reset_body_shape_holds() -> Bool {

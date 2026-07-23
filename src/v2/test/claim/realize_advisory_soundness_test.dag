@@ -1,0 +1,77 @@
+module v2.test.claim.realize_advisory_soundness_test
+
+import v2.workflow.realize_advisory_soundness {
+  AdvisoryObservation,
+  AdvisorySoundness,
+  BoundSound,
+  BoundUnsound,
+  BoundUnknown,
+  advisory_soundness_for,
+  advisory_observation_is_sound,
+  advisory_window_all_sound
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn obs(known: Bool, derived: Int, observed: Int) -> AdvisoryObservation {
+  AdvisoryObservation {
+    entry: "synthetic_entry.dag",
+    subject_function: "synthetic_fn",
+    derived_bytes_known: known,
+    derived_bytes: derived,
+    observed_peak_bytes: observed
+  }
+}
+
+fn witness_sound_bound_carries_margin() -> Bool {
+  match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 800)) {
+    BoundSound { margin_bytes: m } => m == 200
+    BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
+    BoundUnknown { entry: _, subject_function: _ } => false
+  }
+}
+
+fn witness_exceedance_is_unsound() -> Bool {
+  match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 1001)) {
+    BoundUnsound { derived_bytes: d, observed_peak_bytes: p } => d == 1000 && p == 1001
+    BoundSound { margin_bytes: _ } => false
+    BoundUnknown { entry: _, subject_function: _ } => false
+  }
+}
+
+fn witness_unknown_bound_is_not_sound() -> Bool {
+  advisory_observation_is_sound(o: obs(known: false, derived: 0, observed: 500)) == false
+}
+
+fn witness_exact_bound_is_sound() -> Bool {
+  advisory_observation_is_sound(o: obs(known: true, derived: 500, observed: 500))
+}
+
+fn witness_window_reds_on_one_unsound() -> Bool {
+  let all_sound = advisory_window_all_sound(
+    observations: [
+      obs(known: true, derived: 1000, observed: 900),
+      obs(known: true, derived: 1000, observed: 1200),
+      obs(known: true, derived: 1000, observed: 100)
+    ]
+  )
+  all_sound == false
+}
+
+fn witness_window_green_when_all_sound() -> Bool {
+  advisory_window_all_sound(
+    observations: [
+      obs(known: true, derived: 1000, observed: 900),
+      obs(known: true, derived: 2000, observed: 1)
+    ]
+  )
+}
+
+test fn realize_advisory_soundness_witnesses() -> Bool {
+  witness_sound_bound_carries_margin()
+    && witness_exceedance_is_unsound()
+    && witness_unknown_bound_is_not_sound()
+    && witness_exact_bound_is_sound()
+    && witness_window_reds_on_one_unsound()
+    && witness_window_green_when_all_sound()
+}

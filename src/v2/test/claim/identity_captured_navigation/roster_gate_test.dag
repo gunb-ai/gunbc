@@ -1,0 +1,66 @@
+module v2.test.claim.identity_captured_navigation.roster_gate
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn roster_dag_language_model_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/dag.dag", refusal_ceiling: 0)
+}
+
+test fn roster_body_lowering_fold_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/compiler/body_lowering_fold.dag", refusal_ceiling: 0)
+}
+
+test fn roster_ingest_stage_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/compiler/03_ingest.dag", refusal_ceiling: 0)
+}
+
+test fn roster_parse_stage_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/compiler/02_parse.dag", refusal_ceiling: 0)
+}
+
+test fn roster_accumulator_copy_analyze_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 0)
+}
+
+data planted_identity_escape_snippet: String = "module identity_escape_probe\n\nfn leaky_identity_probe(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {\n    Accepted { value: id_node, diagnostics: _ } => Present { value: id_node }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
+
+test fn red_control_planted_identity_escape_still_alarms() -> Bool {
+  source_has_suspect(source_text: planted_identity_escape_snippet)
+}
+
+test fn red_control_planted_identity_escape_finding_count_is_one() -> Bool {
+  match source_findings(source_text: planted_identity_escape_snippet) {
+    Absent => false
+    Present { value: fs } => finding_list_length(fs: fs) == 1
+  }
+}
+
+data sanctioned_reader_probe_snippet: String = "module sanctioned_reader_probe\n\nfn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {\n  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {\n    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
+
+test fn green_control_sanctioned_reader_body_not_flagged() -> Bool {
+  source_has_suspect(source_text: sanctioned_reader_probe_snippet) == false
+}
+
+data green_control_note: String = "Beyond source_has_suspect (no Suspect), this control additionally pins the sanctioned reader's own body to ZERO findings of any kind (no Suspect, no Unclassifiable refusal either) - the canonical safe shape must classify cleanly, not merely avoid the Suspect bucket."
+
+fn finding_list_length(fs: List<Finding>) -> Int {
+  fold_list(xs: fs, empty: 0, cons: fn(acc, f) { acc + 1 })
+}
+
+test fn green_control_sanctioned_reader_body_has_no_findings_at_all() -> Bool {
+  match source_findings(source_text: sanctioned_reader_probe_snippet) {
+    Absent => false
+    Present { value: fs } => finding_list_length(fs: fs) == 0
+  }
+}
+
+data unrelated_caret_literal_snippet: String = "module unrelated_caret_literal_probe\n\nfn other_named_lookup(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {\n    Accepted { value: v, diagnostics: _ } => Present { value: v }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
+
+data unrelated_caret_literal_note: String = "Pins the caret-literal text-recovery fix (node_source_symbol) against a false positive: a find_named_child(name: ^grammar_production_captured_node_projection) call - a DIFFERENT caret literal, same StampClass token shape as the identity-edge name - must not be misclassified as the identity-escape shape this lens targets."
+
+test fn unrelated_caret_literal_call_not_flagged() -> Bool {
+  source_has_suspect(source_text: unrelated_caret_literal_snippet) == false
+}
+
+data corpus_sweep_covers_ratchet_note: String = "roster_dag_language_model_zero_suspects_within_ratchet (and its siblings above) already exercise file_gate end-to-end on src/v2/extdeps/languages/dag.dag and the other corpus-sweep targets - a separate file_suspect_count/file_refusal_count pin on the same file would be a redundant second read of the identical fact (DESIGN.md S2), not an added control."

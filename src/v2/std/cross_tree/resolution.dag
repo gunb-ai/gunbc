@@ -1,33 +1,4 @@
 module v2.std.cross_tree.resolution
-
-import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list, list_head }
-import v2.std.cross_tree.import_model {
-  CoFundamental,
-  CrossTreeAdmitted,
-  CrossTreeDenied,
-  CrossTreeImport,
-  DagTree,
-  LessFundamental,
-  MoreFundamental,
-  SourceRootRef,
-  SourceRootSet,
-  TreeFundamentalityOrder,
-  V2Tree,
-  cross_tree_import_admitted,
-  source_root_ref_eq,
-  source_root_set_contains
-}
-import v2.std.layer {
-  LayerPrefix,
-  LayerPrefixCompiler,
-  LayerPrefixExtdeps,
-  LayerPrefixStd,
-  LayerPrefixWorkflow
-}
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import v2.std.text { String }
-
 type SourceRootBinding {
   module: QualifiedName
   root: SourceRootRef
@@ -96,54 +67,54 @@ fn tree_fundamentality_order(
   }
 }
 
-fn layer_prefix_from_dotted_qualified_name(qn: String) -> LayerPrefix {
+fn layer_prefix_from_dotted_qualified_name(qn: String) -> v2.std.layer.LayerPrefix {
   layer_prefix_from_qualified_name(
     qn: qualified_name_from_dotted_string(dotted: qn)
   )
 }
 
-fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
+fn layer_prefix_from_qualified_name(qn: QualifiedName) -> v2.std.layer.LayerPrefix {
   match qn {
-    Empty => LayerPrefixStd
+    Empty => v2.std.layer.LayerPrefixStd
     Cons { head: h, tail: t } =>
       if h == ^v2 {
         match list_head(xs: t) {
-          HeadAbsent => LayerPrefixStd
+          HeadAbsent => v2.std.layer.LayerPrefixStd
           HeadFound { value: h2 } =>
             if h2 == ^std {
-              LayerPrefixStd
+              v2.std.layer.LayerPrefixStd
             } else if h2 == ^extdeps {
-              LayerPrefixExtdeps
+              v2.std.layer.LayerPrefixExtdeps
             } else if h2 == ^compiler {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else if h2 == ^workflow {
-              LayerPrefixWorkflow
+              v2.std.layer.LayerPrefixWorkflow
             } else if h2 == ^lens {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else if h2 == ^test {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             }
         }
       } else if h == ^extdeps {
-        LayerPrefixExtdeps
+        v2.std.layer.LayerPrefixExtdeps
       } else if h == ^std {
-        LayerPrefixStd
+        v2.std.layer.LayerPrefixStd
       } else if h == ^compiler {
-        LayerPrefixCompiler
+        v2.std.layer.LayerPrefixCompiler
       } else if h == ^lens {
-        LayerPrefixCompiler
+        v2.std.layer.LayerPrefixCompiler
       } else if h == ^test {
-        LayerPrefixCompiler
+        v2.std.layer.LayerPrefixCompiler
       } else if h == ^workflow {
-        LayerPrefixWorkflow
+        v2.std.layer.LayerPrefixWorkflow
       } else if h == ^gunbc {
-        LayerPrefixWorkflow
+        v2.std.layer.LayerPrefixWorkflow
       } else if h == ^tools {
-        LayerPrefixWorkflow
+        v2.std.layer.LayerPrefixWorkflow
       } else {
-        LayerPrefixStd
+        v2.std.layer.LayerPrefixStd
       }
   }
 }

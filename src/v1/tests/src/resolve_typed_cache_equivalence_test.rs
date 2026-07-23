@@ -1,5 +1,5 @@
+use crate::helpers::workspace_root;
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
     self, build_multi_entry_index, make_eval_context, resolve_entry_graph,
@@ -30,15 +30,14 @@ fn cached(index: &cli_run::MultiEntryIndex, entry: &str, function: &str) -> Stri
 
 #[test]
 fn typed_module_cache_matches_cold_oracle_in_every_order() {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-typed-cache-eq-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    // Workspace-relative fixture root (target/ is gitignored + ephemeral):
+    // build_module_path_index fails closed on paths outside the workspace, so
+    // std::env::temp_dir() fixtures cannot resolve (same precedent as
+    // union_resolve_receipts_test).
+    let dir = workspace_root()
+        .join("target")
+        .join(format!("gunbc-typed-cache-eq-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("temp dir");
 
     let common = "module test.common\n\

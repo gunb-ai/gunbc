@@ -1,0 +1,712 @@
+module v2.workflow.rust_crate_partition
+
+import std.algebra { Empty }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.graph {
+  CallGraph,
+  GraphEdge,
+  graph_has_multi_node_scc
+}
+import std.disposition { RealizationDispatch }
+import std.types { ContentHash, List, String, Bool, Int, NonEmptyStr }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { Absent, Optional, Present, empty_map, map_get, map_insert, optional_present }
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  CompilationUnitId,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionFoldRefused,
+  PartitionProvenance,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  SccSplit,
+  UnitGraphCycle,
+  PartitionFoldOutcome,
+  PartitionFoldRefusalCause,
+  partition_fold_outcome,
+  partition_provenance_hand_explicit
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol }
+
+type PartitionPolicy {
+  target_crate_count: Int
+}
+
+type ExplicitPartition {
+  assignment: Map<ModuleId, CompilationUnitId>
+}
+
+type PartitionParameter
+  = ExplicitPartitionParam { partition: ExplicitPartition }
+  | PolicyPartitionParam { policy: PartitionPolicy }
+
+type PolicyResolverUnimplemented {
+  policy: PartitionPolicy
+}
+
+type ResolvePartitionRefusalCause
+  = PolicyResolverUnimplemented { policy: PartitionPolicy }
+
+type ResolvePartitionOutcome
+  = ResolvePartitionOk { assignment: Map<ModuleId, CompilationUnitId> }
+  | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
+
+type Stage0PartitionReceiptOutcome
+  = Stage0PartitionReceiptOk { units: List<CompilationUnit> }
+  | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
+  | Stage0PartitionReceiptFoldRefused { cause: PartitionFoldRefusalCause }
+
+type Stage0PartitionCrateKind
+  = Stage0FoundationCrate
+  | Stage0LayeredCoreCrate
+  | Stage0EmitCoreCrate
+
+type Stage0PartitionCrateRow {
+  unit_id: CompilationUnitId
+  package_name: String
+  crate_dir: String
+  kind: Stage0PartitionCrateKind
+  modules: List<String>
+  reexport_packages: List<String>
+  carries_non_empty_wrappers: Bool
+}
+
+data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
+
+data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
+
+data rust_crate_partition_declared_core_target: Int = 8
+
+data rust_crate_partition_module_bearing_unit_target: Int = 7
+
+data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (7) + emit_shell (1) = declared_core_target (8)."
+
+data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as ContentHash
+data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as ContentHash
+data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as ContentHash
+data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as ContentHash
+data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as ContentHash
+data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as ContentHash
+data stage0_unit_extdeps_base: CompilationUnitId = "stage0-unit-extdeps-base" as ContentHash
+data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as ContentHash
+data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as ContentHash
+data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as ContentHash
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
+
+type Stage0ModuleDagInterfaceGrounding
+  = Stage0ModuleDagInterfaceFrontierGrounded
+  | Stage0ModuleDagInterfaceUngrounded {
+      exports_map: ExportsMapNotFrontierGrounded
+      type_definitions_map: TypeDefinitionsMapNotFrontierGrounded
+    }
+
+type ExportsMapNotFrontierGrounded {
+  dissolve_target: DeclarationRef
+}
+
+type TypeDefinitionsMapNotFrontierGrounded {
+  dissolve_target: DeclarationRef
+}
+
+data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes)."
+
+data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest (frontier-grounding dependency)."
+
+data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
+
+fn stage0_frontier_grounding_target() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.compiler.self_host.frontier" as NonEmptyStr,
+    decl_name: "compiler_frontier_roster" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
+  Stage0ModuleDagInterfaceUngrounded {
+    exports_map: ExportsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    },
+    type_definitions_map: TypeDefinitionsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    }
+  }
+}
+
+fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
+  match stage0_module_dag_interface_grounding() {
+    Stage0ModuleDagInterfaceFrontierGrounded => false
+    Stage0ModuleDagInterfaceUngrounded { exports_map: _, type_definitions_map: _ } => true
+  }
+}
+
+fn stage0_module_dag_exports_map() -> Map<ModuleId, List<Node>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
+}
+
+fn stage0_module_dag_type_definitions_map() -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
+}
+
+fn stage0_module_id(basename: String) -> ModuleId {
+  basename as NonEmptyStr
+}
+
+fn stage0_runtime_modules() -> List<String> {
+  ["v1_rt"]
+}
+
+fn stage0_std_primitive_modules() -> List<String> {
+  [
+    "std_content_hash",
+    "std_coercion",
+    "std_decl_ref",
+    "std_disposition",
+    "std_error_primitives",
+    "std_http_path",
+    "std_emit_model",
+    "std_magnitude",
+    "std_measure",
+    "std_types",
+    "std_lens_verdict"
+  ]
+}
+
+fn stage0_std_core_modules() -> List<String> {
+  stage0_std_primitive_modules()
+    |> concat([
+      "std_algebra",
+      "std_nat",
+      "std_node",
+      "std_syntax",
+      "std_computation",
+      "std_termination",
+      "std_induction",
+      "std_iteration",
+      "std_graph",
+      "v1_std_core"
+    ])
+}
+
+fn stage0_std_surface_modules() -> List<String> {
+  [
+    "std_effects",
+    "std_execution_mode",
+    "std_interface_summary",
+    "std_pareto",
+    "std_realization_schedule"
+  ]
+}
+
+fn stage0_extdeps_base_modules() -> List<String> {
+  ["extdeps_external_authority", "extdeps_uri"]
+}
+
+fn stage0_extdeps_language_modules() -> List<String> {
+  [
+    "extdeps_languages_dag_emit",
+    "extdeps_languages_dag_syntax",
+    "extdeps_languages_dag_types",
+    "extdeps_languages_go_emit",
+    "extdeps_languages_go_syntax",
+    "extdeps_languages_go_types",
+    "extdeps_languages_python_emit",
+    "extdeps_languages_python_syntax",
+    "extdeps_languages_python_types",
+    "extdeps_languages_rust_emit",
+    "extdeps_languages_rust_syntax",
+    "extdeps_languages_rust_types"
+  ]
+}
+
+fn stage0_extdeps_modules() -> List<String> {
+  stage0_extdeps_base_modules()
+    |> concat(stage0_extdeps_language_modules())
+}
+
+fn stage0_v1_infer_modules() -> List<String> {
+  [
+    "v1_compiler_infer_emit_info",
+    "v1_compiler_infer_env",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_sigs",
+    "v1_compiler_infer_types"
+  ]
+}
+
+fn stage0_v1_artifact_modules() -> List<String> {
+  ["v1_compiler_artifact", "v1_compiler_languages"]
+}
+
+fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
+  [
+    "v1_compiler_artifact",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_types",
+    "v1_compiler_languages",
+    "v1_rt",
+    "v1_std_core"
+  ]
+}
+
+fn stage0_all_partitioned_modules() -> List<String> {
+  stage0_runtime_modules()
+    |> concat(stage0_std_core_modules())
+    |> concat(stage0_std_surface_modules())
+    |> concat(stage0_extdeps_modules())
+    |> concat(stage0_v1_infer_modules())
+    |> concat(stage0_v1_artifact_modules())
+}
+
+fn stage0_assign_modules_to_unit(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  modules: List<String>,
+  unit_id: CompilationUnitId
+) -> Map<ModuleId, CompilationUnitId> {
+  modules
+    |> fold(init: assignment, f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), unit_id)
+    })
+}
+
+fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  stage0_assign_modules_to_unit(
+    assignment: stage0_assign_modules_to_unit(
+      assignment: stage0_assign_modules_to_unit(
+        assignment: stage0_assign_modules_to_unit(
+          assignment: stage0_assign_modules_to_unit(
+            assignment: stage0_assign_modules_to_unit(
+              assignment: stage0_assign_modules_to_unit(
+                assignment: empty_map(),
+                modules: stage0_runtime_modules(),
+                unit_id: stage0_unit_runtime
+              ),
+              modules: stage0_std_core_modules(),
+              unit_id: stage0_unit_std_core
+            ),
+            modules: stage0_std_surface_modules(),
+            unit_id: stage0_unit_std_surface
+          ),
+          modules: stage0_extdeps_base_modules(),
+          unit_id: stage0_unit_extdeps_base
+        ),
+        modules: stage0_extdeps_language_modules(),
+        unit_id: stage0_unit_extdeps_languages
+      ),
+      modules: stage0_v1_infer_modules(),
+      unit_id: stage0_unit_v1_infer
+    ),
+    modules: stage0_v1_artifact_modules(),
+    unit_id: stage0_unit_v1_artifact
+  )
+}
+
+fn stage0_interim_explicit_partition() -> ExplicitPartition {
+  ExplicitPartition { assignment: stage0_interim_explicit_assignment() }
+}
+
+fn stage0_partition_parameter() -> PartitionParameter {
+  ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
+}
+
+fn stage0_partition_provenance() -> PartitionProvenance {
+  partition_provenance_hand_explicit()
+}
+
+fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
+  ModuleDagEdge {
+    from: stage0_module_id(basename: from),
+    to: stage0_module_id(basename: to),
+  }
+}
+
+fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
+  [
+    stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_nat", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_node", to: "std_induction"),
+    stage0_module_dag_edge(from: "std_syntax", to: "std_node"),
+    stage0_module_dag_edge(from: "std_computation", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_computation", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_termination", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_induction", to: "std_computation"),
+    stage0_module_dag_edge(from: "std_induction", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_graph", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_effects", to: "std_types"),
+    stage0_module_dag_edge(from: "std_execution_mode", to: "std_types"),
+    stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_interface_summary", to: "std_disposition"),
+    stage0_module_dag_edge(from: "std_pareto", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_realization_schedule", to: "std_execution_mode"),
+    stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
+    stage0_module_dag_edge(from: "std_realization_schedule", to: "std_pareto"),
+    stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
+    stage0_module_dag_edge(from: "extdeps_languages_dag_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_go_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_rust_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "v1_rt"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "std_induction"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_service", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_types", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_artifact", to: "v1_compiler_languages"),
+  ]
+}
+
+fn stage0_module_dag() -> ModuleDag {
+  ModuleDag {
+    modules: stage0_all_partitioned_modules()
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges(),
+    exports: stage0_module_dag_exports_map(),
+    type_definitions: stage0_module_dag_type_definitions_map(),
+  }
+}
+
+fn resolve_partition_outcome(
+  parameter: PartitionParameter,
+  module_dag: ModuleDag
+) -> ResolvePartitionOutcome {
+  match parameter {
+    ExplicitPartitionParam { partition: explicit } =>
+      ResolvePartitionOk { assignment: explicit.assignment }
+    PolicyPartitionParam { policy: policy } =>
+      ResolvePartitionRefused {
+        cause: PolicyResolverUnimplemented { policy: policy }
+      }
+  }
+}
+
+fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(
+    parameter: stage0_partition_parameter(),
+    module_dag: dag
+  ) {
+    ResolvePartitionOk { assignment: assignment } =>
+      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        PartitionFoldOk { units: units } =>
+          Stage0PartitionReceiptOk { units: units }
+        PartitionFoldRefused { cause: cause } =>
+          Stage0PartitionReceiptFoldRefused { cause: cause }
+      }
+    ResolvePartitionRefused { cause: cause } =>
+      Stage0PartitionReceiptResolveRefused { cause: cause }
+  }
+}
+
+fn module_dag_reaches(
+  edges: List<ModuleDagEdge>,
+  from: ModuleId,
+  to: ModuleId
+) -> Bool {
+  if from == to {
+    true
+  } else {
+    edges
+      |> filter(edge => edge.from == from)
+      |> any(edge => module_dag_reaches(edges: edges, from: edge.to, to: to))
+  }
+}
+
+fn module_pair_in_same_scc(
+  edges: List<ModuleDagEdge>,
+  left: ModuleId,
+  right: ModuleId
+) -> Bool {
+  (left != right)
+    && module_dag_reaches(edges: edges, from: left, to: right)
+    && module_dag_reaches(edges: edges, from: right, to: left)
+}
+
+fn assignment_has_scc_split(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  module_dag.modules |> any(left =>
+    module_dag.modules |> any(right => {
+      if !module_pair_in_same_scc(edges: module_dag.edges, left: left, right: right) {
+        false
+      } else {
+        match v2.std.collection.map_get(assignment, left) {
+          Accepted { value: Present { value: left_unit }, diagnostics: _ } =>
+            match v2.std.collection.map_get(assignment, right) {
+              Accepted { value: Present { value: right_unit }, diagnostics: _ } =>
+                left_unit != right_unit
+              Rejected { diagnostics: _ } => false
+              Accepted { value: Absent, diagnostics: _ } => false
+            }
+          Rejected { diagnostics: _ } => false
+          Accepted { value: Absent, diagnostics: _ } => false
+        }
+      }
+    })
+  )
+}
+
+fn unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
+  let unit_names = units |> map(unit => unit.id as String)
+  let edges = units
+    |> flat_map(unit =>
+      unit.deps
+        |> map(dep => GraphEdge { caller: unit.id as String, callee: dep as String })
+    )
+  graph_has_multi_node_scc(
+    names: unit_names,
+    graph: CallGraph { edges: edges }
+  )
+}
+
+fn validate_partition_r4(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  units: List<CompilationUnit>
+) -> PartitionR4ValidityVerdict {
+  if assignment_has_scc_split(module_dag: module_dag, assignment: assignment) {
+    PartitionR4Refused {
+      cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
+    }
+  } else if unit_graph_has_cycle(units: units) {
+    PartitionR4Refused {
+      cause: UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
+    }
+  } else {
+    PartitionR4Valid
+  }
+}
+
+data stage0_compilation_units_list_wrapper_dissolve_on: String = "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only."
+
+fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
+  stage0_assign_modules_to_unit(
+    assignment: empty_map(),
+    modules: stage0_all_partitioned_modules(),
+    unit_id: stage0_unit_runtime
+  )
+}
+
+fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
+  let dag = stage0_module_dag()
+  partition_fold_outcome(
+    module_dag: dag,
+    assignment: stage0_single_crate_assignment()
+  )
+}
+
+fn compilation_unit_member_count(units: List<CompilationUnit>) -> Int {
+  units |> flat_map(unit => unit.members) |> count
+}
+
+fn stage0_partition_member_coverage_consistent(
+  left: PartitionFoldOutcome,
+  right: Stage0PartitionReceiptOutcome
+) -> Bool {
+  match left {
+    PartitionFoldOk { units: left_units } =>
+      match right {
+        Stage0PartitionReceiptOk { units: right_units } => {
+          let left_count = compilation_unit_member_count(units: left_units)
+          let right_count = compilation_unit_member_count(units: right_units)
+          left_count == right_count
+        }
+        Stage0PartitionReceiptResolveRefused { cause: _ } => false
+        Stage0PartitionReceiptFoldRefused { cause: _ } => false
+      }
+    PartitionFoldRefused { cause: _ } => false
+  }
+}
+
+fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
+  [
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_runtime,
+      package_name: "v1-stage0-runtime",
+      crate_dir: "src/v1/stage0_runtime",
+      kind: Stage0FoundationCrate,
+      modules: stage0_runtime_modules(),
+      reexport_packages: [],
+      carries_non_empty_wrappers: true
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_std_core,
+      package_name: "v1-stage0-std-core",
+      crate_dir: "src/v1/stage0_std_core",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_core_modules(),
+      reexport_packages: ["v1-stage0-runtime"],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_std_surface,
+      package_name: "v1-stage0-std-surface",
+      crate_dir: "src/v1/stage0_std_surface",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_surface_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_extdeps_base,
+      package_name: "v1-stage0-extdeps-base",
+      crate_dir: "src/v1/stage0_extdeps_base",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_extdeps_base_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_extdeps_languages,
+      package_name: "v1-stage0-extdeps-languages",
+      crate_dir: "src/v1/stage0_extdeps_languages",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_extdeps_language_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-base"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_infer,
+      package_name: "v1-stage0-v1-infer",
+      crate_dir: "src/v1/stage0_v1_infer",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_infer_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-base",
+        "v1-stage0-extdeps-languages"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_artifact,
+      package_name: "v1-stage0-v1-artifact",
+      crate_dir: "src/v1/stage0_v1_artifact",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_artifact_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-base",
+        "v1-stage0-extdeps-languages",
+        "v1-stage0-v1-infer"
+      ],
+      carries_non_empty_wrappers: false
+    }
+  ]
+}
+
+fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: stage0_unit_emit_core,
+    package_name: "v1-stage0-emit-core",
+    crate_dir: "src/v1/stage0_emit_core",
+    kind: Stage0EmitCoreCrate,
+    modules: stage0_r3_emit_reexport_surface_modules(),
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
+  stage0_module_bearing_crate_rows()
+    |> concat([stage0_r3_emit_shell_crate_row()])
+}
+
+fn stage0_physical_crate_count() -> Int {
+  stage0_partition_crate_rows() |> count
+}
+
+fn stage0_module_bearing_unit_count() -> Int {
+  stage0_module_bearing_crate_rows() |> count
+}
+
+fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
+  stage0_module_bearing_crate_rows()
+    |> any(row => row.modules |> any(m => m == module_basename))
+}
+
+fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
+  stage0_partition_crate_rows()
+    |> any(row => row.package_name == package_name)
+}
+
+fn stage0_partition_row_lookups_resolved() -> Bool {
+  let layered_ok = stage0_module_bearing_crate_rows()
+    |> fold(init: true, f: fn(ok, row) {
+      ok && row.reexport_packages
+        |> fold(init: true, f: fn(p_ok, pkg) {
+          p_ok && stage0_package_resolved_in_partition_rows(package_name: pkg)
+        })
+    })
+  let emit_shell_ok = stage0_r3_emit_reexport_surface_modules()
+    |> fold(init: true, f: fn(m_ok, module_basename) {
+      m_ok && stage0_module_owner_resolved_in_module_bearing_rows(module_basename: module_basename)
+    })
+  layered_ok && emit_shell_ok
+}
+
+fn stage0_partition_r4_valid() -> Bool {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(
+    parameter: stage0_partition_parameter(),
+    module_dag: dag
+  ) {
+    ResolvePartitionOk { assignment: assignment } =>
+      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        PartitionFoldOk { units: units } =>
+          match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+            PartitionR4Valid => true
+            PartitionR4Refused { cause: _ } => false
+          }
+        PartitionFoldRefused { cause: _ } => false
+      }
+    ResolvePartitionRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_fold_ok() -> Bool {
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      (units |> count) == stage0_module_bearing_unit_count()
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  }
+}

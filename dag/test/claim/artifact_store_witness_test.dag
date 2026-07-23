@@ -1,0 +1,105 @@
+module test.claim.artifact_store_witness
+
+import std.logic { Bool }
+import std.types { ContentHash, List, Int }
+import std.content_hash { content_hash_atom }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.materialization_ladder {
+  CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
+  ScopeExit, SpacePacked, provider_row,
+}
+import std.artifact_store {
+  ArtifactKey, artifact_key_hash,
+  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider,
+  StoreHit, StoreMiss, store_get,
+  StorePutReceipt, store_put, store_bytes_used,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
+
+data spacepacked_provider: CacheProvider = provider_row(
+  id: "artifact-store-test",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ArtifactTier { keying: ContentKeyed },
+  eviction: SpacePacked { budget: "test budget label" }
+)
+
+data scopeexit_provider: CacheProvider = provider_row(
+  id: "scoped-provider-test",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ReferenceTier,
+  eviction: ScopeExit
+)
+
+fn test_store() -> ArtifactStore {
+  match store_over_provider(provider: spacepacked_provider, budget: byte_size(count: 100)) {
+    StoreReady { store: s } => s
+    StoreRefusedEviction { provider_id: _, declared: _ } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+  }
+}
+
+fn key_of(toolchain: String) -> ContentHash {
+  artifact_key_hash(key: ArtifactKey {
+    closure_digest: content_hash_atom(value: "closure-digest-fixture"),
+    emitter_identity: "v1-seed",
+    target_language: "rust",
+    toolchain: toolchain
+  })
+}
+
+test fn store_construction_reads_eviction_holds() -> Bool {
+  let ok = match store_over_provider(provider: spacepacked_provider, budget: byte_size(count: 100)) {
+    StoreReady { store: _ } => true
+    StoreRefusedEviction { provider_id: _, declared: _ } => false
+  }
+  let refused = match store_over_provider(provider: scopeexit_provider, budget: byte_size(count: 100)) {
+    StoreReady { store: _ } => false
+    StoreRefusedEviction { provider_id: pid, declared: _ } => pid == "scoped-provider-test"
+  }
+  ok && refused
+}
+
+test fn store_hit_and_stale_never_served_holds() -> Bool {
+  let k1 = key_of(toolchain: "1.93.0")
+  let k2 = key_of(toolchain: "1.94.0")
+  let put1 = store_put(store: test_store(), key: k1, artifact_bytes: byte_size(count: 40))
+  let hit = match store_get(store: put1.store, key: k1) {
+    StoreHit { store: _, row: r } => r.key == k1
+    StoreMiss { store: _ } => false
+  }
+  let mutated_input_misses = match store_get(store: put1.store, key: k2) {
+    StoreHit { store: _, row: _ } => false
+    StoreMiss { store: _ } => true
+  }
+  hit && mutated_input_misses && (k1 == k2) == false
+}
+
+test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
+  let ka = key_of(toolchain: "a")
+  let kb = key_of(toolchain: "b")
+  let kc = key_of(toolchain: "c")
+  let s1 = store_put(store: test_store(), key: ka, artifact_bytes: byte_size(count: 40)).store
+  let s2 = store_put(store: s1, key: kb, artifact_bytes: byte_size(count: 40)).store
+  let touched = match store_get(store: s2, key: ka) {
+    StoreHit { store: s, row: _ } => s
+    StoreMiss { store: s } => s
+  }
+  let receipt = store_put(store: touched, key: kc, artifact_bytes: byte_size(count: 40))
+  let evicted_is_least_recent = receipt.evicted == [kb]
+  let within_budget = store_bytes_used(store: receipt.store) <= measure_count(m: receipt.store.budget)
+  let survivors_hit = match store_get(store: receipt.store, key: ka) {
+    StoreHit { store: _, row: _ } => true
+    StoreMiss { store: _ } => false
+  }
+  evicted_is_least_recent && within_budget && survivors_hit
+}
+
+test fn store_no_eviction_under_budget_holds() -> Bool {
+  let receipt = store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: byte_size(count: 40))
+  receipt.evicted == []
+}

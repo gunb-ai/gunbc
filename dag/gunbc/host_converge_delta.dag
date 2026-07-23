@@ -1,26 +1,5 @@
 module gunbc.host_converge_delta
 
-import std.types { String, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.change {
-  KeyedRow,
-  KeyedPatch,
-  KeyedThreeWayPatch,
-  KeyedLeafVerdict,
-  keyed_two_way_diff,
-  keyed_three_way_fold,
-  keyed_apply_patch,
-  keyed_invert_patch,
-  keyed_patch_hunk_count,
-  keyed_three_way_entry_count,
-}
-import gunbc.host_converge {
-  ConvergeKnob,
-  ConvergeSlice,
-  ConvergeTarget,
-  HostConverge,
-}
 
 data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -30,8 +9,6 @@ data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data converge_target_byte_normalization_trigger: String = "🟡 dissolve-on: converge_knob_values_equal compares ConvergeTarget structurally, so byte axes (PerSlotMemoryCap.bytes_value / SliceProperty.expected_effective) still compare their canonical decimal String fields verbatim; DISSOLVES WHEN a std ByteSize parse grounds live-read sentinels (empty/infinity/unit-suffixed) into a canonical magnitude, so a live 'infinity' read where bytes are expected folds to drift rather than a String mismatch alone."
 
 type ConvergeKnobKey {
   slice: ConvergeSlice

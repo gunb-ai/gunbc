@@ -1,0 +1,6 @@
+# Gate-A flip-wave 6-module re-probe post-#6888+#6886+#6883
+# main_head=42a6fcbe3000  probed_at=2026-07-20T19:39:48Z  CSSL_STD_SEED_LINK=1  shim=empty
+# gunbc_sha256_prefix=1d34a05a1a0c0d1a  cssl_assemble_sha256_prefix=008667e7c2a5b613
+# probe: scripts/curated_cargo_probe_one.sh (calm-boar invocation contract)
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/00_compile.dag	42a6fcbe3000	1		emit_fail	emit_fail	indexed 2261 modules from 2 source roots resolved 110 sources (transitive import closure) [census] 2151 indexed modules outside the closure enter the name census only (not compiled) 	EMIT_REFUSE	

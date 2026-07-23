@@ -1,17 +1,7 @@
 module test.claim.html_emit_witness
 
-import std.markup {
-  ElementNode,
-  TextNode,
-  MarkupAttr,
-  MarkupNode,
-}
-import extdeps.languages.html {
-  EmitOk,
-  EmitRejected,
-  try_serialize_html_source,
-  serialize_markup_node,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_button() -> MarkupNode {
   ElementNode {
@@ -65,7 +55,7 @@ fn witness_data_reject_discriminates_from_char_escape() -> Bool {
   match try_serialize_html_source(node: hostile_data_href()) {
     EmitRejected { reason: _ } => {
       let unchecked = serialize_markup_node(node: hostile_data_href())
-      starts_with(s: unchecked, prefix: "<a href=\"data:")
+      unchecked.starts_with(prefix: "<a href=\"data:")
     }
     EmitOk { html: _ } => false
   }
@@ -82,7 +72,7 @@ fn witness_serialize_rejects_javascript_href() -> Bool {
 fn witness_serialize_rejects_data_href() -> Bool {
   match try_serialize_html_source(node: hostile_data_href()) {
     EmitRejected { reason: u } =>
-      starts_with(s: u, prefix: "data:")
+      u.starts_with(prefix: "data:")
     EmitOk { html: _ } => false
   }
 }

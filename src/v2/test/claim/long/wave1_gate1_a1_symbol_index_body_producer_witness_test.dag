@@ -1,0 +1,22 @@
+module v2.test.long.wave1_gate1_a1_symbol_index_body_producer_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wave1_gate1_a1_long_witness_note: String = "Wave 1 Gate 1 A1 execution witnesses (long lane): tokenize→parse_module→normalize ingest paths exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Proven here by execution: ingest param-domain parity, SymbolIndex frontend parity, param-list-walk domain bindings, real-ingest lowering. Fast frontier receipts (disposition marker, wrapper-retained RED) live in self_host/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag. NOT discovery- or roster-enrolled — local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag --function <name>."
+
+test fn wave1_gate1_a1_ingest_param_domain_parity_witness_holds() -> Bool {
+  wave1_gate1_a1_ingest_param_domain_parity_holds()
+}
+
+test fn wave1_gate1_a1_domain_param_list_walk_witness_holds() -> Bool {
+  wave1_gate1_a1_domain_param_list_walk_holds()
+}
+
+test fn wave1_gate1_a1_symbol_index_frontend_parity_witness_holds() -> Bool {
+  wave1_gate1_a1_symbol_index_frontend_parity_holds()
+}
+
+test fn wave1_gate1_a1_real_ingest_lowers_witness_holds() -> Bool {
+  wave1_gate1_a1_real_ingest_lowers_holds()
+}

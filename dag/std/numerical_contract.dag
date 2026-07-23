@@ -1,14 +1,5 @@
 module std.numerical_contract
 
-import std.approximate_field {
-  RoundingMode,
-  ToNearestEven,
-}
-import std.types { Bool }
-
-data numerical_contract_approximate_field_reuse_note: String = "NumericalContract.FloatApproximate.rounding reuses std.approximate_field.RoundingMode; new axes are integer|float domain split + FmaContractionPolicy only (reuse-first vs minting a parallel rounding authority)."
-
-data numerical_contract_dissolution_trigger: String = "dissolve-on: resolve accelerator-demo-roundtrip.md open thread — fold FmaContractionPolicy into std.approximate_field when float-numerics authority lands there; until then NumericalContract is the declared sum for DecodeFidelity coupling."
 
 type FmaContractionPolicy
   = FmaContractionPermitted
@@ -17,7 +8,7 @@ type FmaContractionPolicy
 type NumericalContract
   = IntegerExact
   | FloatApproximate {
-      rounding: RoundingMode
+      rounding: std.approximate_field.RoundingMode
       fma_contraction: FmaContractionPolicy
     }
 
@@ -26,7 +17,7 @@ fn integer_exact_contract() -> NumericalContract {
 }
 
 fn float_contract(
-  rounding: RoundingMode,
+  rounding: std.approximate_field.RoundingMode,
   fma: FmaContractionPolicy
 ) -> NumericalContract {
   FloatApproximate {

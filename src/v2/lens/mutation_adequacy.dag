@@ -1,0 +1,51 @@
+module v2.lens.mutation_adequacy
+
+
+data law_note: String = "dependency-fidelity §4: coverage of a relationship R = the minimal witness set such that every single-edit mutation of R's declared structure is KILLED (some witness goes red). This is the coverage side of the §7 engine. 'Killed' is grounded on the ONE authority for it, v2.lens.discrimination: a mutation's discriminating_unit is killed iff unit_is_discriminating holds (a green plus a perturbed red separating R from that one-step mutant), so 'killed' is not re-minted here. adequacy = every enumerated one-step mutation has a discriminating witness; a SURVIVING mutation is a located coverage hole. Mutation enumeration from a declared structure (DependencyView one-step neighbors, bounded by the type geometry) is the staged producer (docs/plans/dependency-fidelity-design.md §4, §7); this module is the adequacy verdict it feeds."
+
+type StructureMutation {
+  mutated: Symbol
+}
+
+type MutationCoverage {
+  mutation: StructureMutation
+  discriminating_unit: List<TestClaim>
+}
+
+type AdequacyVerdict
+  = MutationAdequate
+  | Inadequate { survivors: List<StructureMutation> }
+
+fn mutation_is_killed(mc: MutationCoverage) -> Bool {
+  unit_is_discriminating(unit: mc.discriminating_unit)
+}
+
+fn adequacy_survivors(coverage: List<MutationCoverage>) -> List<StructureMutation> {
+  fold(coverage, init: Empty, f: fn(acc, mc) {
+    if mutation_is_killed(mc: mc) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: mc.mutation)
+    }
+  })
+}
+
+fn adequacy_verdict(coverage: List<MutationCoverage>) -> AdequacyVerdict {
+  let survivors = adequacy_survivors(coverage: coverage)
+  if is_empty(xs: survivors) {
+    MutationAdequate
+  } else {
+    Inadequate { survivors: survivors }
+  }
+}
+
+fn is_adequate(coverage: List<MutationCoverage>) -> Bool {
+  match adequacy_verdict(coverage: coverage) {
+    MutationAdequate => true
+    Inadequate { survivors: _ } => false
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

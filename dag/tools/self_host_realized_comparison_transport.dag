@@ -1,46 +1,53 @@
 module tools.self_host_realized_comparison_transport
 
-import extdeps.shell
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt,
-  lit, var_ref, command, serialize_bash
-}
-import tools.host_prelude { ensure_regen_stage0_built }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.git
+import tools.host_prelude { WitnessBin, run_witness_bin_program, witness_bin }
 
-data realized_comparison_stable_dir: String = "target/v2-emit-fresh-realize"
-data realized_comparison_emitted_src_root: String = "target/v2-emit-fresh-realize/src"
-data realized_comparison_committed_src_root: String = "src/v1/stage0/src"
-data realized_comparison_roster_manifest_path: String = "target/v2-emit-fresh-realize/roster_manifest.txt"
+data realized_comparison_stable_dir_rel: String = "target/v2-emit-fresh-realize"
+data realized_comparison_emitted_src_root_rel: String = "target/v2-emit-fresh-realize/src"
+data realized_comparison_committed_src_root_rel: String = "src/v1/stage0/src"
+data realized_comparison_roster_manifest_rel: String = "target/v2-emit-fresh-realize/roster_manifest.txt"
 
-data realized_comparison_ci_subset_roster: List<String> = ["lib.rs", "v1_rt.rs"]
-
-fn realized_comparison_program() -> ShellProgram {
-  let regen = var_ref(name: "REGEN_STAGE0")
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_regen_stage0_built(), [
-      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-      command(words: [
-        regen,
-        lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
-        lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path)
-      ])
-    ])
-  }
+fn realized_comparison_repo_path(rel: String) -> String {
+  let root = git.Core.Toplevel()
+  concat(root.path, concat("/", rel))
 }
 
-data self_host_realized_comparison_transport_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
-  }
+fn realized_comparison_stable_dir() -> String {
+  realized_comparison_repo_path(rel: realized_comparison_stable_dir_rel)
+}
+
+fn realized_comparison_emitted_src_root() -> String {
+  realized_comparison_repo_path(rel: realized_comparison_emitted_src_root_rel)
+}
+
+fn realized_comparison_committed_src_root() -> String {
+  realized_comparison_repo_path(rel: realized_comparison_committed_src_root_rel)
+}
+
+fn realized_comparison_roster_manifest_path() -> String {
+  realized_comparison_repo_path(rel: realized_comparison_roster_manifest_rel)
+}
+
+fn realized_comparison_invoke() -> WitnessBin {
+  witness_bin(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
+}
+
+fn realized_comparison_args() -> List<String> {
+  [
+    "--emit-fresh", realized_comparison_stable_dir(),
+    "--write-manifest", realized_comparison_roster_manifest_path()
+  ]
+}
+
+fn realized_comparison_verify_args() -> List<String> {
+  concat(realized_comparison_args(), ["--verify"])
 }
 
 fn run_self_host_realized_comparison_emit() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: realized_comparison_program()))
-  result.success
+  run_witness_bin_program(
+    invoke: realized_comparison_invoke(),
+    prereqs: [],
+    args: realized_comparison_args()
+  )
 }

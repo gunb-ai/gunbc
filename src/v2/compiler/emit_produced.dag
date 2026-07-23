@@ -1,0 +1,125 @@
+module v2.compiler.emit_produced
+
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
+import v2.compiler.target_carriers { target_source_medium }
+import v2.extdeps.languages.rust {
+  rust_produced_decl_target,
+  rust_signature_with_open_from_decl
+}
+import v2.std.compilers.target_model { TargetModel, render_target_text }
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.algebra { fold_list, list_append }
+import std.algebra { Empty }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.node { Conj, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.text { String }
+
+fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: edge } =>
+          match edge.label {
+            Named { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            Positional =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
+          }
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_empty, node: decl)
+            )
+          }
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+  }
+}
+
+fn emit_produced_decl_rust_with_target(
+  decl: Node,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: emit_produced_decl_inner_arrow(decl: decl),
+    f: fn(arrow) {
+      bind_outcome(
+        o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow),
+        f: fn(text) {
+          target_source_medium(text: render_target_text(t: text), target: target)
+        }
+      )
+    }
+  )
+}
+
+fn emit_produced_decl_rust(decl: Node) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_signature_with_open_from_decl(decl: decl),
+    f: fn(signature) {
+      emit_produced_decl_rust_with_target(
+        decl: decl,
+        target: rust_produced_decl_target(signature_with_open: signature)
+      )
+    }
+  )
+}
+
+fn emit_produced_module_append(partial: String, decl: Node) -> Outcome<String> {
+  bind_outcome(
+    o: emit_produced_decl_rust(decl: decl),
+    f: fn(medium) {
+      Accepted {
+        value: list_append(
+          left: list_append(left: partial, right: medium.carried),
+          right: emit_module_decl_separator
+        ),
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn emit_produced_module_step(acc: Outcome<String>, decl: Node) -> Outcome<String> {
+  bind_outcome(o: acc, f: fn(partial) { emit_produced_module_append(partial: partial, decl: decl) })
+}
+
+fn emit_produced_module_rust(decls: List<Node>, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: fold_list(
+      xs: decls,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, decl) { emit_produced_module_step(acc: acc, decl: decl) }
+    ),
+    f: fn(joined) { target_source_medium(text: joined, target: target) }
+  )
+}

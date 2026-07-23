@@ -1,0 +1,198 @@
+module v2.lens.common.graph_invariant
+
+import v2.lens.application { apply_edit }
+import v2.std.lens_verdict { Holds, LensVerdict, Violation }
+import v2.std.algebra { contains, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Suggested,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Edge,
+  Edit,
+  Node,
+  Path,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data graph_invariant_repair_contract: String = "Reachability handler repair contract (mark-on-carrier, §3): an unreachable node is fixed by exactly one of — (1) AddReachEdge: add a structural Positional dependency so the target enters the reach fixpoint; (2) EnrollInExceptionRoster: declare deliberately unwired staged-ahead modeling; (3) Delete: remove the unreachable subject. Handlers emit the chosen arm ONLY via Correction.Suggested { node: Node } on v2.std.diagnostic — no separate Repair type, no code-string generator (§3 dual representation). Apply at the diagnostic locus with v2.lens.application apply_edit / substitute_at; re-run graph_invariant_reaches to verify Satisfied. Repair grain today: root-replacement first-inhabitant via graph_reach_root_replacement_edit (see graph_reach_root_replacement_repair_frontier)."
+
+data graph_reach_root_replacement_repair_frontier: String = "repair grain = root-replacement first-inhabitant: graph_reach_root_replacement_edit uses Path { steps: [] } and swaps the whole subject root for a synthetic Conj stapling old-root + unreachable target — valid proof that Correction.Suggested + apply_edit closes the law, NOT the final repair shape. DISSOLVES-ON surgical edit-at-locus repair: Edit.at must target the unreachable node's path within the subject tree (param binding / usage site), not a root swap."
+
+type GraphReachState {
+  reached: List<Node>
+  stable: Bool
+}
+
+type GraphReachProjection {
+  edges: List<DependencyView>
+  roots: List<Node>
+}
+
+type GraphInvariant<Projection> {
+  projection: Projection
+  universe_size: Int
+}
+
+fn graph_node_eq(a: Node, b: Node) -> Bool {
+  a == b
+}
+
+fn graph_reach_contains(reached: List<Node>, n: Node) -> Bool {
+  contains(xs: reached, item: n, eq: fn(a, b) { graph_node_eq(a: a, b: b) })
+}
+
+fn graph_reach_step(reached: List<Node>, dep: DependencyView) -> List<Node> {
+  if graph_reach_contains(reached: reached, n: dep.source)
+    && (graph_reach_contains(reached: reached, n: dep.dependent) == false) {
+    list_snoc_item(xs: reached, item: dep.dependent)
+  } else {
+    reached
+  }
+}
+
+fn graph_reach_pass(dependence: List<DependencyView>, reached: List<Node>) -> List<Node> {
+  fold(dependence, init: reached, f: fn(acc, dep) {
+    graph_reach_step(reached: acc, dep: dep)
+  })
+}
+
+fn graph_reach_fixpoint_step(dependence: List<DependencyView>, state: GraphReachState) -> GraphReachState {
+  if state.stable {
+    state
+  } else {
+    let next = graph_reach_pass(dependence: dependence, reached: state.reached)
+    GraphReachState {
+      reached: next,
+      stable: length(xs: next) == length(xs: state.reached)
+    }
+  }
+}
+
+fn graph_reach_saturate(dependence: List<DependencyView>, reached: List<Node>) -> List<Node> {
+  fold(
+    dependence,
+    init: GraphReachState { reached: reached, stable: false },
+    f: fn(acc, ignored) {
+      graph_reach_fixpoint_step(dependence: dependence, state: acc)
+    }
+  ).reached
+}
+
+fn graph_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Bool {
+  graph_reach_contains(
+    reached: graph_reach_saturate(dependence: dependence, reached: [from]),
+    n: to
+  )
+}
+
+fn graph_invariant_reaches(projection: GraphReachProjection, target: Node) -> Bool {
+  fold(projection.roots, init: false, f: fn(acc, root) {
+    acc || graph_reaches(dependence: projection.edges, from: root, to: target)
+  })
+}
+
+fn graph_invariant_universe_nonempty<P>(inv: GraphInvariant<P>) -> Bool {
+  inv.universe_size > 0
+}
+
+fn graph_invariant_reach_verdict(
+  reason: Symbol,
+  root: Node,
+  unreachable: Node,
+  projection: GraphReachProjection
+) -> LensVerdict {
+  if graph_invariant_reaches(projection: projection, target: unreachable) {
+    Holds
+  } else {
+    Violation {
+      diagnostic: graph_reach_unreachable_diagnostic(
+        reason: reason,
+        root: root,
+        unreachable: unreachable,
+        projection: projection
+      )
+    }
+  }
+}
+
+fn graph_reach_add_edge_repair(root: Node, edge_target: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: root },
+      Edge { label: Positional, target: edge_target }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn graph_reach_suggested_add_edge_repair(root: Node, edge_target: Node) -> Outcome<Node> {
+  outcome_accepted(value: graph_reach_add_edge_repair(root: root, edge_target: edge_target))
+}
+
+fn graph_reach_unreachable_diagnostic(
+  reason: Symbol,
+  root: Node,
+  unreachable: Node,
+  projection: GraphReachProjection
+) -> Diagnostic {
+  if graph_invariant_reaches(projection: projection, target: unreachable) {
+    Diagnostic {
+      reason: reason,
+      at: node_locus(node: root),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  } else {
+    match graph_reach_suggested_add_edge_repair(root: root, edge_target: unreachable) {
+      Accepted { value: repaired, diagnostics: _ } =>
+        Diagnostic {
+          reason: reason,
+          at: node_locus(node: root),
+          correction: Suggested { node: repaired }
+        }
+      Rejected { diagnostics: _ } =>
+        Diagnostic {
+          reason: reason,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+    }
+  }
+}
+
+fn graph_reach_root_replacement_edit(repaired: Node) -> Edit {
+  Edit {
+    at: Path { steps: [] },
+    replacement: repaired
+  }
+}
+
+fn graph_reach_apply_suggested_correction(root: Node, repaired: Node) -> Outcome<Node> {
+  apply_edit(root: root, edit: graph_reach_root_replacement_edit(repaired: repaired))
+}
+
+fn graph_reach_apply_diagnostic_correction(root: Node, d: Diagnostic) -> Outcome<Node> {
+  match d.correction {
+    Suggested { node: repaired } => graph_reach_apply_suggested_correction(root: root, repaired: repaired)
+    Unavailable { reason: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: d)
+      }
+  }
+}

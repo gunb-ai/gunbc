@@ -10,10 +10,10 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_mvp1_fixture_emitted_match_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_match_target_model,
-  dag_mvp1_type_atom_node
+  dag_fixture_emitted_match_fn,
+  dag_fixture_int_inhabitant,
+  dag_match_target_model,
+  dag_type_atom_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
@@ -42,9 +42,12 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data match_bool_emitted_root: Node = dag_mvp1_fixture_emitted_match_fn
-data match_bool_target_model: TargetModel = dag_mvp1_match_target_model()
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data match_bool_emitted_root: Node = dag_fixture_emitted_match_fn
+data match_bool_target_model: TargetModel = dag_match_target_model()
 
 fn match_bool_canonical_grounding(
   node: Node,
@@ -66,11 +69,11 @@ fn match_bool_canonical_grounding(
 }
 
 fn match_bool_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_fixture_emitted_match_fn {
+  if node == dag_fixture_emitted_match_fn {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_fixture_int_inhabitant {
+  } else if node == dag_fixture_int_inhabitant {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
@@ -78,36 +81,36 @@ fn match_bool_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
     Holds {
       value: match_bool_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
     Holds {
       value: match_bool_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
     Holds {
       value: match_bool_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_token_kw_true) {
+  } else if node == dag_type_atom_node(identity: ^dag_token_kw_true) {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_token_kw_false) {
+  } else if node == dag_type_atom_node(identity: ^dag_token_kw_false) {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_one) {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_two) {
     Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
@@ -196,7 +199,7 @@ fn match_bool_ingest_via_coerce_matches_canonical() -> Bool {
     target: match_bool_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_match_fn)
+      (result.target == dag_fixture_emitted_match_fn)
         && match_bool_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false

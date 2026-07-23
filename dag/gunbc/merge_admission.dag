@@ -11,11 +11,16 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
+import std.realization_schedule {
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams,
+}
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate,
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate,
 }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -66,7 +71,6 @@ data gate_content_hash_variant_tag_scaffold: Disposition = Scaffold {
 
 fn gate_content_hash(g: Gate) -> ContentHash {
   match g {
-    RustMonolithGate => content_hash_atom(value: "RustMonolithGate")
     EmitHostGate => content_hash_atom(value: "EmitHostGate")
     LayeringImportsGate => content_hash_atom(value: "LayeringImportsGate")
     ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
@@ -74,8 +78,8 @@ fn gate_content_hash(g: Gate) -> ContentHash {
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
     SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
     RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
-    SelfHostRealizedComparisonGate => content_hash_atom(value: "SelfHostRealizedComparisonGate")
-    EmitDeterminismGate => content_hash_atom(value: "EmitDeterminismGate")
+    SelfHostReadsRealBytesGate => content_hash_atom(value: "SelfHostReadsRealBytesGate")
+    SelfHostStalenessGate => content_hash_atom(value: "SelfHostStalenessGate")
   }
 }
 
@@ -85,14 +89,44 @@ fn witness_fn_list_hash(fns: List<String>) -> ContentHash {
   })
 }
 
+fn witness_kind_content_hash(kind: WitnessKind) -> ContentHash {
+  match kind {
+    CorpusWitnessKind => content_hash_atom(value: "CorpusWitnessKind")
+    ExecutionWitnessKind => content_hash_atom(value: "ExecutionWitnessKind")
+  }
+}
+
+fn witness_seam_content_hash(seam: WitnessSeam) -> ContentHash {
+  content_hash_combine(
+    content_hash_atom(value: seam.producer),
+    content_hash_atom(value: seam.consumer)
+  )
+}
+
+fn witness_span_content_hash(span: WitnessSpan) -> ContentHash {
+  match span {
+    SpanUndeclared => content_hash_atom(value: "SpanUndeclared")
+    SpanSeams { seams } =>
+      fold(seams, init: content_hash_atom(value: "SpanSeams"), f: fn(acc, seam) {
+        content_hash_combine(acc, witness_seam_content_hash(seam: seam))
+      })
+  }
+}
+
 fn check_kind_content_hash(check: CommitCheckKind) -> ContentHash {
   match check {
     CommitSpecGate { gate: g } =>
       content_hash_tagged(tag: "CommitSpecGate", payload: gate_content_hash(g: g))
-    CommitWitnessClaim { entry, check_fns } =>
+    CommitWitnessClaim { entry, check_fns, kind, span } =>
       content_hash_combine(
-        content_hash_tagged(tag: "CommitWitnessClaim", payload: content_hash_atom(value: entry)),
-        witness_fn_list_hash(fns: check_fns)
+        content_hash_combine(
+          content_hash_tagged(tag: "CommitWitnessClaim", payload: content_hash_atom(value: entry)),
+          witness_fn_list_hash(fns: check_fns)
+        ),
+        content_hash_combine(
+          witness_kind_content_hash(kind: kind),
+          witness_span_content_hash(span: span)
+        )
       )
     CommitCargoFmtCheck =>
       content_hash_atom(value: "CommitCargoFmtCheck")
@@ -135,12 +169,27 @@ type MergeAdmissionVerdict
 
 data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
+data merge_admission_documentation_only_skipped_admit_policy: String = "Merge-admission receipt conclusion Skipped is admissible when stamped via CI_FLOOR_DISPOSITION=documentation_only_skipped — floor-not-run (docs-only shortcut), not a failed floor. Pre-wires admission before GatingEnforced so docs-only PRs are not denied by MergeDeniedNotSuccess."
+
+fn check_conclusion_admits_merge_admission_floor(c: CheckConclusion) -> Bool {
+  match c {
+    Success => true
+    Skipped => true
+    ActionRequired => false
+    Cancelled => false
+    Failure => false
+    Neutral => false
+    Stale => false
+    TimedOut => false
+  }
+}
+
 fn classify_merge_admission_verdict(
   receipt: MergeAdmissionReceipt,
   merge_target_tree_hash: ContentHash,
   current_roster_hash: ContentHash,
 ) -> MergeAdmissionVerdict {
-  if !check_conclusion_is_success(c: receipt.conclusion) {
+  if !check_conclusion_admits_merge_admission_floor(c: receipt.conclusion) {
     MergeDeniedNotSuccess
   } else if receipt.base_tree_hash != merge_target_tree_hash {
     MergeDeniedStaleBase

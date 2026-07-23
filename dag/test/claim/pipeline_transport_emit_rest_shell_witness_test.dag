@@ -1,0 +1,166 @@
+module test.claim.pipeline_transport_emit_rest_shell_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_rest_uses_transport_method() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n",
+    "src/re1a.rs",
+    ["client.get("],
+    []
+  )
+}
+
+fn w_rest_substitutes_path_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/repos/\{owner\}/\{repo\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "src/re1b.rs",
+    ["format!(\"{}", "self.base_url"],
+    []
+  )
+}
+
+fn w_rest_includes_query_params() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n",
+    "src/re1c.rs",
+    [".query("],
+    []
+  )
+}
+
+fn w_rest_uses_bearer_auth() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
+    "src/re1d.rs",
+    ["Authorization", "Bearer"],
+    []
+  )
+}
+
+fn w_rest_maps_response_codes() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "src/re1e.rs",
+    ["status", "200"],
+    []
+  )
+}
+
+fn w_shell_uses_transport_argv() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1f\n\nservice shell.Run {\n  operation Exec {\n    input { script: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",
+    "src/re1f.rs",
+    ["Command::new(\"sh\")", ".arg(\"-lc\")"],
+    []
+  )
+}
+
+fn w_shell_checks_exit_code() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1h\n\nservice shell.Run {\n  operation Exec {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"command failed\"\n    }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",
+    "src/re1h.rs",
+    ["exit_code"],
+    []
+  )
+}
+
+fn w_shell_pipes_stdin() -> Bool {
+  compile_dag_rust_emit_check(
+    "module stdin_test\n\nservice test.Shell {\n  config {\n    endpoint: \"local\"\n  }\n  operation Run {\n    input { prompt: String }\n    output { result: String }\n    transport shell { argv: [\"cat\"], stdin: prompt }\n  }\n}\n",
+    "src/stdin_test.rs",
+    ["stdin"],
+    []
+  )
+}
+
+fn w_shell_optional_param_in_interp() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1i\n\nservice cron.Tab {\n  operation Upsert {\n    input {\n      tag: String\n      log_path: String?\n    }\n    output { success: Bool }\n    transport shell {\n      argv: [\"sh\", \"-c\", \"echo \{tag\} >> \{log_path\}\"]\n    }\n    mock_response {\n      0 => { success: true } \"ok\"\n    }\n  }\n}\n",
+    "src/re1i.rs",
+    ["log_path.as_deref().unwrap_or"],
+    []
+  )
+}
+
+fn w_shell_stdin_pipes_and_writes() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1g\n\nservice shell.Pipe {\n  operation Send {\n    input { data: String }\n    output { result: String }\n    transport shell {\n      argv: [\"cat\"]\n      stdin: data\n    }\n    mock_response {\n      0 => \"echoed\" \"result\"\n    }\n  }\n}\n",
+    "src/re1g.rs",
+    ["Stdio::piped()", "stdin.write_all", "stdout(std::process::Stdio::piped())"],
+    []
+  )
+}
+
+fn w_rest_post_body_single_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1_body1\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
+    "src/re1_body1.rs",
+    ["serde_json::json!", "\"name\""],
+    []
+  )
+}
+
+fn w_rest_post_body_multiple_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1_body2\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateReview {\n    input { body: String, event: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/reviews\", body: { body: body, event: event } }\n    response {\n      200 => Json\n    }\n    mock_response {\n      200 => { id: 1 } \"review\"\n    }\n  }\n}\n",
+    "src/re1_body2.rs",
+    ["serde_json::json!", "\"body\"", "\"event\""],
+    []
+  )
+}
+
+fn w_rest_uses_header_auth() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re1d_header\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
+    "src/re1d_header.rs",
+    ["x-api-key"],
+    ["Bearer"]
+  )
+}
+
+fn w_rest_post_with_auth_source() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re3b\n\nimport std.types { AuthScheme }\nimport std.credentials { CredentialSource }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_source: EnvVar { name: \"TEST_TOKEN\" }\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
+    "src/re3b.rs",
+    ["serde_json::json!", "self.auth_token"],
+    []
+  )
+}
+
+fn w_shell_captures_stdout() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n",
+    "src/re3c.rs",
+    ["from_utf8_lossy", "stdout"],
+    []
+  )
+}
+
+fn w_shell_cron_upsert_script() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re3d\n\nservice test.Cron {\n  config {}\n  operation Upsert {\n    input { tag: String, schedule: String, command: String }\n    output { success: Bool }\n    transport shell {\n      argv: [\"sh\", \"-c\", \"TAG='\{tag\}'; ENTRY='\{schedule\} \{command\}'; crontab -l | grep -v $TAG; echo $ENTRY\"]\n    }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true } \"ok\"\n    }\n  }\n}\n",
+    "src/re3d.rs",
+    ["crontab"],
+    []
+  )
+}
+
+test fn rest_emit_uses_transport_method() -> Bool { w_rest_uses_transport_method() }
+test fn rest_emit_substitutes_path_template() -> Bool { w_rest_substitutes_path_template() }
+test fn rest_emit_includes_query_params() -> Bool { w_rest_includes_query_params() }
+test fn rest_emit_uses_bearer_auth() -> Bool { w_rest_uses_bearer_auth() }
+test fn rest_emit_maps_response_codes() -> Bool { w_rest_maps_response_codes() }
+test fn shell_emit_uses_transport_argv() -> Bool { w_shell_uses_transport_argv() }
+test fn shell_emit_checks_exit_code() -> Bool { w_shell_checks_exit_code() }
+test fn shell_emit_pipes_stdin() -> Bool { w_shell_pipes_stdin() }
+test fn shell_emit_optional_param_in_interp() -> Bool { w_shell_optional_param_in_interp() }
+test fn shell_emit_stdin_pipes_and_writes() -> Bool { w_shell_stdin_pipes_and_writes() }
+test fn rest_emit_post_body_single_field() -> Bool { w_rest_post_body_single_field() }
+test fn rest_emit_post_body_multiple_fields() -> Bool { w_rest_post_body_multiple_fields() }
+test fn rest_emit_uses_header_auth() -> Bool { w_rest_uses_header_auth() }
+test fn rest_emit_post_with_auth_source() -> Bool { w_rest_post_with_auth_source() }
+test fn shell_emit_captures_stdout() -> Bool { w_shell_captures_stdout() }
+test fn shell_emit_cron_upsert_script() -> Bool { w_shell_cron_upsert_script() }

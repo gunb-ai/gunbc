@@ -1,0 +1,39 @@
+module gunbc.host_build_cache_catalog_gate
+
+import std.cache_identity { CacheInterfaceId }
+import std.types { NonEmptyStr }
+import extdeps.cache.sccache { sccache_local_id }
+import extdeps.cache.cache { cache_catalog }
+
+data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId = "gunbc-test-unknown-cache-interface-id"
+
+type ProvisionBuildCacheCatalogGateVerdict
+  = ProvisionBuildCacheCatalogRealizable
+  | ProvisionBuildCacheCatalogRefused { reason: NonEmptyStr }
+
+fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
+  fold(
+    cache_catalog,
+    init: false,
+    f: (acc, row) => acc || row.identity == catalog_id,
+  )
+}
+
+fn provision_build_cache_catalog_gate_verdict(
+  catalog_id: CacheInterfaceId,
+) -> ProvisionBuildCacheCatalogGateVerdict {
+  if !catalog_id_is_known(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused {
+      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id) as NonEmptyStr,
+    }
+  } else if catalog_id != sccache_local_id {
+    ProvisionBuildCacheCatalogRefused {
+      reason: concat(
+        concat("host_build_cache_provision: catalog_id ", catalog_id),
+        concat(" not yet realized; only ", sccache_local_id),
+      ) as NonEmptyStr,
+    }
+  } else {
+    ProvisionBuildCacheCatalogRealizable
+  }
+}

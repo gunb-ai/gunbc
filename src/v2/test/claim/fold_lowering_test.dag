@@ -1,0 +1,13 @@
+module v2.test.claim.fold_lowering
+
+import v2.compiler.fold_lowering { fold_family_head }
+import std.types { Bool }
+
+test fn fold_family_head_recognizes_fold_variants() -> Bool {
+  fold_family_head(sym: ^fold)
+    && fold_family_head(sym: ^fold_list)
+    && fold_family_head(sym: ^fold_list_right)
+    && fold_family_head(sym: ^fold_node)
+    && !fold_family_head(sym: ^map)
+    && !fold_family_head(sym: ^g)
+}

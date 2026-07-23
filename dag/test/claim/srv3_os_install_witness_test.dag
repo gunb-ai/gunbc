@@ -1,35 +1,7 @@
 module test.claim.srv3_os_install
 
-import std.logic { Bool }
-import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
-import extdeps.toolchain.types { X86_64, Riscv64 }
-import extdeps.provisioning.network_boot {
-  network_uefi_bootloader_artifact,
-  NativeDhcpBootOptions,
-  ProxyDhcp,
-  UefiHttpBoot,
-  LegacyBiosPxe,
-  UefiPxe,
-}
-import extdeps.os.ubuntu_autoinstall {
-  NoCloudNet,
-  NoCloudLocal,
-}
-import gunbc.os_install {
-  LanInstallInfraSurvey,
-  survey_implied_dhcp_direction,
-  srv3_pxe_network_boot_chain,
-  srv3_os_install_plan,
-  NetworkBoot,
-  VirtualMediaIso,
-  srv3_os_install_plan_autoinstall,
-  fleet_install_server_specs,
-}
-import gunbc.os_install_mechanism { NbdProxyVirtualMediaInstall, srv3_install_mechanism }
-import extdeps.bmc.types {
-  redfish_boot_target_wire,
-  redfish_boot_override_enabled_wire,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
   match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {

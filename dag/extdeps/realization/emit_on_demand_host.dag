@@ -1,0 +1,25 @@
+module extdeps.realization.emit_on_demand_host
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { ContentHash, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/"
+  }
+}
+
+data emit_on_demand_host_note: String = "P3 host-transport helpers (witness-realization kernel): cache path derivation keyed by emit_on_demand_key(NativeArtifact). Callers compose workspace_dir via native_cache_workspace_root(cache_root, key); run_emit_host_cached / emit_host_run_transport_cached take that pre-composed workspace_dir (not the cache parent). Warm hits skip cargo build via extdeps.cargo and set compile_skipped. Eviction routes through the emit_host_native_cache_evict intrinsic — NOT raw shell.Remove — because the durable-cache rebase (GUNBC_NATIVE_CACHE_ROOT, extdeps.realization.native_artifact_cache) must be read by BOTH sides of the lifecycle: a shell rm on the .dag-composed /tmp path would miss a rebased workspace and falsely leave it warm (the transport and the evictor share one rebase authority in the seed transport)."
+
+data emit_on_demand_host_concurrent_same_key_note: String = "Concurrent same-key story for persistent /tmp workspaces: workspace path = cache_root / emit_on_demand_key(...). Two runners with identical declared inputs share the same key and therefore the same workspace — benign-by-identity (same closure_digest -> same emitted source + build argv -> cargo produces equivalent artifacts; concurrent cold builds may race on .native_ready but cannot serve stale content from a different closure because the key is content-derived, not runner-id-derived). No atomic claim in the seed HAND-RUST transport yet; dissolve-on: self-emitted transport rows may add flock/claim when witness_family_fanout needs it."
+
+fn native_cache_workspace_root(cache_root: String, key: ContentHash) -> String {
+  concat(cache_root, "/", key as String)
+}
+
+fn emit_on_demand_evict_native_cache(cache_root: String, key: ContentHash) -> Bool {
+  let workspace = native_cache_workspace_root(cache_root: cache_root, key: key)
+  emit_host_native_cache_evict(workspace_dir: workspace)
+}

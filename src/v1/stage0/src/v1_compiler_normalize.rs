@@ -6,6 +6,7 @@ pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::ArityMismatch;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
@@ -16,8 +17,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -42,7 +42,7 @@ pub fn check_bare_containers(
             _ => true,
         };
         let nname = authored_name_at(source_indices.clone(), n.clone());
-        let self_diags = if is_expr {
+        let self_diags = if is_expr.clone() {
             Rc::new(vec![])
         } else {
             match container_expected_arity(nname.clone()) {
@@ -50,7 +50,7 @@ pub fn check_bare_containers(
                     if (((((n.children.clone().len() as i64) == 0)
                         && ((n.params.clone().len() as i64) == 0))
                         && (n.connective.clone() == Connective::NoConnective))
-                        && !has_structure)
+                        && !has_structure.clone())
                     {
                         Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
@@ -158,14 +158,14 @@ pub fn check_bare_containers(
         Rc::new({
             let mut __result = Vec::new();
             for d in Rc::new(vec![
-                self_diags,
-                child_diags,
-                param_diags,
-                type_ann_diags,
-                inferred_diags,
-                body_diags,
-                uses_diags,
-                prop_diags,
+                self_diags.clone(),
+                child_diags.clone(),
+                param_diags.clone(),
+                type_ann_diags.clone(),
+                inferred_diags.clone(),
+                body_diags.clone(),
+                uses_diags.clone(),
+                prop_diags.clone(),
             ])
             .iter()
             .cloned()
@@ -177,6 +177,30 @@ pub fn check_bare_containers(
     })
 }
 
+pub fn normalize_module_diagnostics(
+    m: Rc<ResolvedModule>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let items = module_items(m.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*check_bare_containers(
+                        item.clone(),
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 pub fn normalize_graph(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -186,33 +210,16 @@ pub fn normalize_graph(
             let mut __result = Vec::new();
             for m in graph.modules.clone().iter().cloned() {
                 __result.extend(
-                    (*{
-                        let items = module_items(m.module.clone());
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for item in items.clone().iter().cloned() {
-                                __result.extend(
-                                    (*check_bare_containers(
-                                        item.clone(),
-                                        authored_name_at(source_indices.clone(), m.module.clone()),
-                                        source_indices.clone(),
-                                    ))
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        })
-                    })
-                    .iter()
-                    .cloned(),
+                    (*normalize_module_diagnostics(m.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
                 );
             }
             __result
         });
         Rc::new(NormalizeResult {
             graph: graph.clone(),
-            diagnostics: diags,
+            diagnostics: diags.clone(),
         })
     }
 }

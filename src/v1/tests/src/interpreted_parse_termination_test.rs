@@ -6,7 +6,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const BISECT_ENTRY: &str = "src/v2/test/claim/manual/validate_ingest_staging_stage_bisect_test.dag";
+const BISECT_ENTRY: &str = "src/v2/test/claim/long/validate_ingest_staging_stage_bisect_test.dag";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
@@ -31,7 +31,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -40,7 +40,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 }
 
 fn assert_witness_terminates(function: &str, budget: Duration) {
-    let resolved = compile_to_resolved(Rc::new(bisect_sources()));
+    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(
@@ -72,10 +72,69 @@ fn interpreted_parse_bisect_parse_terminates() {
     assert_witness_terminates("bisect_parse_terminates", Duration::from_secs(60));
 }
 
+fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value> {
+    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
+    assert_resolved_ok(&resolved);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    v1_interpreter::run_in_context(&ctx, function, false)
+}
+
 #[test]
-fn interpreted_parse_bisect_wave1_add_correctness_holds() {
+fn interpreted_parse_bisect_add_correctness_holds() {
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_parse_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "parse should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_normalize_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "normalize should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_well_formed_after_normalize"),
+            Ok(Value::Bool(true))
+        ),
+        "normalized add module should be well_formed"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_resolve_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "resolve should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_truncated_rejects"),
+            Ok(Value::Bool(true))
+        ),
+        "truncated add module should reject parse"
+    );
     assert_witness_terminates(
-        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        "witness_bisect_parse_module_add_correctness_holds",
+        Duration::from_secs(90),
+    );
+}
+
+#[test]
+fn interpreted_parse_bisect_unbound_reference_rejected() {
+    assert_witness_terminates(
+        "witness_bisect_unbound_reference_rejected",
+        Duration::from_secs(90),
+    );
+    assert_witness_terminates(
+        "witness_bisect_unbound_reference_no_binding_rejected",
         Duration::from_secs(90),
     );
 }

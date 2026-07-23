@@ -1,0 +1,165 @@
+module v2.workflow.bash_emit
+
+import v2.extdeps.languages.bash {
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_source_text,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_heredoc_source_text,
+  bash_stmt_heredoc_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_word_pass_emitted,
+  bash_word_pass_target_model
+}
+import v2.extdeps.languages.bash_build { bash_build_negation }
+import v2.workflow.bash_command_fold_serialize {
+  bash_fold_serialize_emit_from_node,
+  bash_fold_serialize_node,
+  bash_fold_serialize_program
+}
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+
+type BashEmitStmt {
+  node: Node
+  production_binding: Symbol
+  rule_name: Symbol
+}
+
+type BashEmitSpecial
+  = BashEmitTagged { stmt: BashEmitStmt }
+
+data bash_emit_empty_nodes: List<Node> = []
+
+data bash_emit_authority_note: String = "Node-tree shell emission via bash_build constructors + bash_command_fold_serialize (grammar-row emit). Replaces extdeps.languages.bash.program serialize_bash and v2.workflow.bash_program_sidecar_fold (sidecar FULL DELETE PR-C)."
+
+fn bash_emit_from_target(emitted: Node, target: TargetModel) -> Outcome<String> {
+  bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
+}
+
+fn bash_emit_tagged(stmt: BashEmitStmt) -> Outcome<String> {
+  bash_fold_serialize_node(stmt: stmt.node)
+}
+
+fn bash_emit_special_nodes(specials: List<BashEmitSpecial>) -> List<Node> {
+  fold_list(
+    xs: specials,
+    empty: bash_emit_empty_nodes,
+    cons: fn(acc, item) {
+      match item {
+        BashEmitTagged { stmt: s } =>
+          list_snoc_item(xs: acc, item: s.node)
+      }
+    }
+  )
+}
+
+fn bash_emit_program(statements: List<BashEmitSpecial>, set_e: Bool) -> Outcome<String> {
+  bash_fold_serialize_program(
+    stmts: bash_emit_special_nodes(specials: statements),
+    set_e: set_e
+  )
+}
+
+fn bash_emit_stmts(statements: List<Node>, set_e: Bool) -> Outcome<String> {
+  bash_fold_serialize_program(stmts: statements, set_e: set_e)
+}
+
+fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
+  match bash_fold_serialize_node(stmt: stmt.node) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_raw_line_matches_golden(text: String, golden: String) -> Bool {
+  match bash_emit_from_target(
+    emitted: bash_word_pass_emitted,
+    target: bash_word_pass_target_model(spelling: text)
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_program_matches_golden(
+  statements: List<BashEmitSpecial>,
+  set_e: Bool,
+  golden: String
+) -> Bool {
+  match bash_emit_program(statements: statements, set_e: set_e) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> Outcome<String> {
+  Accepted {
+    value: bash_stmt_heredoc_source_text(
+      path: path_spelling,
+      delimiter: delimiter,
+      body: body
+    ),
+    diagnostics: None
+  }
+}
+
+fn bash_emit_negation_spelling(inner_spelling: String) -> Outcome<String> {
+  bash_emit_from_target(
+    emitted: bash_stmt_negation_emitted,
+    target: bash_stmt_negation_target_model(inner: inner_spelling)
+  )
+}
+
+fn bash_emit_negation(inner: Node) -> Outcome<String> {
+  bash_fold_serialize_node(stmt: bash_build_negation(inner: inner))
+}
+
+fn bash_emit_env_prefixed(
+  name: String,
+  value_spelling: String,
+  command_spelling: String
+) -> Outcome<String> {
+  Accepted {
+    value: bash_stmt_env_prefixed_source_text(
+      name: name,
+      value: value_spelling,
+      command: command_spelling
+    ),
+    diagnostics: None
+  }
+}
+
+fn bash_emit_wrong_target_oracle_holds(
+  emitted: Node,
+  golden: String,
+  wrong_target_witness: Witness<TargetModel>
+) -> Bool {
+  match wrong_target_witness {
+    Holds { value: target } =>
+      match bash_emit_from_target(emitted: emitted, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != golden
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String) -> Bool {
+  match emit_o {
+    Accepted { value: folded, diagnostics: _ } => folded != golden
+    Rejected { diagnostics: _ } => true
+  }
+}

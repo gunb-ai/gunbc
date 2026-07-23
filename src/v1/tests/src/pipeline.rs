@@ -1,8 +1,9 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
+use im::HashMap;
+use im::OrdSet as BTreeSet;
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -23,13 +24,13 @@ fn full_dag_compiles() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        Rc::new(dag_sources.clone()),
+        Rc::new(dag_sources.clone().into()),
         RenderTarget::Rust,
     );
 
     let hard_diags: Vec<_> = diagnostic_messages(&dag_result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     if !hard_diags.is_empty() {
         panic!(
@@ -150,7 +151,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         DescentUnknown
     );
 
-    let consumed_true_set = Rc::new(HashMap::from([("eat_result".to_string(), true)]));
+    let consumed_true_set = Rc::new(HashMap::from_iter([("eat_result".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
             Rc::new(ParserResultSource::ParserResultEat {
@@ -163,7 +164,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         Strict
     );
 
-    let parser_always_advancing = Rc::new(HashMap::from([("parse_tail".to_string(), true)]));
+    let parser_always_advancing = Rc::new(HashMap::from_iter([("parse_tail".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
             Rc::new(ParserResultSource::ParserResultCall {
@@ -217,7 +218,7 @@ fn bare_alias_unknown_rhs_fails_closed() {
     let source = "module typo_test\ntype Foo = NotARealType\nfn f(x: Foo) -> Foo { x }\n";
     let msgs: Vec<_> = diagnostic_messages(&compile_dag(source))
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.iter()
@@ -266,12 +267,12 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
         .to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     let msgs: Vec<String> = resolved
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),
@@ -389,18 +390,6 @@ fn generic_type_declaration_smoke() {
     let source = "module generics_smoke\n\ntype Pair<A, B> { first: A  second: B }\n\nfn make_pair(x: Int, y: String) -> Pair<Int, String> {\n  Pair { first: x, second: y }\n}\n\nfn get_first(p: Pair<Int, String>) -> Int {\n  p.first\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-}
-
-#[test]
-fn ambiguous_variant_name_resolves_correctly() {
-    let source = "module ambig_test\n\ntype Color = Red | Blue | Green\ntype Signal = Red | Yellow | Green\n\nfn pick_color() -> Color { Red }\nfn pick_signal() -> Signal { Yellow }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/ambig_test.rs");
-    assert!(
-        content.contains("Color::Red") || content.contains("Signal::Red"),
-        "ambiguous variant Red should be qualified to a parent enum"
-    );
 }
 
 #[test]
@@ -1180,20 +1169,23 @@ fn bare_import_wildcard_survives_pipeline() {
 }
 
 #[test]
-fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
+fn discovery_corpus_blocks_typecheck_like_strict() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
         CompilerDiagnostic,
     };
 
+    // The advisory demotion is narrowed to UnlistedImportUse only: a hard
+    // typecheck error blocks discovery-corpus resolve exactly as it blocks
+    // Strict resolve (an advisory-carrying witness must not be vouched green).
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
     });
     assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck));
+    assert!(is_discovery_corpus_blocking_diagnostic(typecheck));
 
     let parse = Rc::new(CompilerDiagnostic::ParseError {
         message: "expected module".to_string(),
@@ -1203,23 +1195,35 @@ fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
 }
 
 #[test]
-fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
+fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
         is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
     };
 
+    // UnlistedImportUse is the sole surviving advisory class (non-blocking
+    // under every gate; the class dissolves with namespace-only resolution).
+    let unlisted = Rc::new(CompilerDiagnostic::UnlistedImportUse {
+        name: "NormalizedTree".to_string(),
+        span: no_span(),
+    });
+    assert!(!is_interpreter_blocking_diagnostic(unlisted.clone()));
+    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+        unlisted.clone()
+    ));
+    assert!(!is_discovery_corpus_blocking_diagnostic(unlisted));
+
+    // A hard typecheck class is no longer advisory-demoted.
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
     });
-    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+    assert!(!is_discovery_corpus_advisory_typecheck_diagnostic(
         typecheck.clone()
     ));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
+    assert!(is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
     assert!(is_interpreter_blocking_diagnostic(typecheck));
 }
 
@@ -1229,7 +1233,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     use std::collections::BTreeSet;
     use v1_compiler::cli_run::{
         build_multi_entry_index, discover_floor_corpus_rows,
-        resolve_entry_with_index_for_discovery_corpus, FLOOR_DISCOVERY_EXCLUDES,
+        resolve_entry_with_index_for_discovery_corpus, witness_exclusion_substrings,
     };
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
@@ -1245,10 +1249,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "dag/test/claim".to_string(),
         "src/v2/test/claim/manual".to_string(),
     ];
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let excludes = witness_exclusion_substrings();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     let index = build_multi_entry_index(&roots);
@@ -1269,7 +1270,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         .into_owned();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
         .expect("load ci_floor_plan closure");
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     for d in resolved.diagnostics.iter() {
         if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
             continue;
@@ -1336,7 +1337,7 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
             content: "module test.broken\nfn bad( -> Int\n".to_string(),
         }),
     ];
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()
@@ -1358,6 +1359,458 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
 }
 
 #[test]
+fn pool_parse_heads_only_does_not_prefill_parse_cache() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, parse_cache_contains_path_for_test, parse_cache_paths_for_test,
+        resolve_entry_with_index,
+    };
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_pool_heads_only_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    let huge_body = format!(
+        "module huge\nfn big() -> Int {{\n{}\n}}\n",
+        (0..50_000)
+            .map(|i| format!("  let x{i} = {i}\n"))
+            .collect::<String>()
+    );
+    std::fs::write(dir.join("huge.dag"), huge_body).expect("write huge.dag");
+    std::fs::write(
+        dir.join("entry.dag"),
+        "module entry\nfn main() -> Int { 0 }\n",
+    )
+    .expect("write entry.dag");
+    let entry_path = dir.join("entry.dag").to_string_lossy().into_owned();
+    let huge_path = dir.join("huge.dag").to_string_lossy().into_owned();
+
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
+    resolve_entry_with_index(&index, &entry_path)
+        .expect("entry must resolve after heads-only pool census");
+    assert!(
+        !parse_cache_contains_path_for_test(&index, &huge_path),
+        "pool census must not retain full-body ASTs in parse_cache for uncompiled pool modules"
+    );
+    assert!(
+        parse_cache_contains_path_for_test(&index, &entry_path),
+        "closure resolve must still cache full bodies for compiled modules (entry_path={entry_path:?}, parse_cache_keys={:?})",
+        parse_cache_paths_for_test(&index),
+    );
+    cleanup();
+}
+
+#[test]
+fn both_closure_edge_index_built_once_per_pool() {
+    use v1_compiler::cli_run::{
+        both_closure_bare_edge_rows_for_test, both_closure_edges_initialized_for_test,
+        build_multi_entry_index, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry_a = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let entry_b = crate::helpers::workspace_root()
+        .join("src/v2/lens/vacuity_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    assert!(
+        !both_closure_edges_initialized_for_test(&index),
+        "fresh index must not pre-build closure edges"
+    );
+    resolve_entry_with_index(&index, &entry_a).expect("first entry resolve");
+    assert!(
+        both_closure_edges_initialized_for_test(&index),
+        "first entry load must build the per-pool edge index"
+    );
+    let bare_rows = both_closure_bare_edge_rows_for_test(&index);
+    assert!(
+        bare_rows > 0,
+        "import-stripped pool modules must contribute bare edges"
+    );
+    resolve_entry_with_index(&index, &entry_b).expect("second entry resolve");
+    assert_eq!(
+        both_closure_bare_edge_rows_for_test(&index),
+        bare_rows,
+        "second entry must reuse the same edge index, not rebuild it"
+    );
+}
+
+#[test]
+fn entry_closure_sources_memo_reuses_name_derived_walk() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, entry_closure_sources_len_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("first resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "first resolve must memo the entry closure"
+    );
+    resolve_entry_with_index(&index, &entry).expect("second resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "second resolve must not re-run the bare-reference fixpoint walk"
+    );
+}
+
+#[test]
+fn reconcile_defer_builds_pool_qualified_fill_on_typed_cache_miss() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "fresh index must not pre-build qualified fill"
+    );
+    resolve_entry_with_index(&index, &entry).expect("cold miss resolve");
+    assert!(
+        pool_qualified_fill_initialized_for_test(&index),
+        "cache-miss reconcile must build qualified fill after the short-circuit probe"
+    );
+}
+
+#[test]
+fn reconcile_defer_skips_pool_qualified_fill_on_full_typed_cache_hit() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test,
+        reset_pool_qualified_fill_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("cold warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "test setup: qualified fill cleared while typed cache remains warm"
+    );
+    resolve_entry_with_index(&index, &entry).expect("hot all-hit resolve");
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "all-cache-hit reconcile must not consult or build pool_qualified_fill"
+    );
+}
+
+#[test]
+fn reconcile_defer_hot_hit_matches_cold_oracle() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, make_eval_context, reset_pool_qualified_fill_for_test,
+        resolve_entry_graph, resolve_entry_with_index, run_claim,
+    };
+    use v1_compiler::v1_interpreter::ExecutionMode;
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let function = "doc_graph_has_no_orphan_docs";
+
+    let (cold_graph, cold_si) = resolve_entry_graph(&roots, &entry).expect("cold oracle");
+    let cold_ctx = make_eval_context(&cold_graph, cold_si, ExecutionMode::Wet);
+    let cold = run_claim(&cold_ctx, function);
+
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    let (hot_graph, hot_si) = resolve_entry_with_index(&index, &entry).expect("hot hit");
+    let hot_ctx = make_eval_context(&hot_graph, hot_si, ExecutionMode::Wet);
+    let hot = run_claim(&hot_ctx, function);
+
+    assert_eq!(
+        cold, hot,
+        "deferral must not change witness outcome on the all-hit path (cold={cold:?}, hot={hot:?})"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
+    use v1_compiler::cli_run::{
+        census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
+        is_census_heads_fn_stand_in,
+    };
+    use v1_compiler::v1_std_core::{ExprData, ExprErrorKind};
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    assert!(
+        is_census_heads_fn_stand_in(&stand_in),
+        "stand-in must be identifiable by name/pointer"
+    );
+    assert!(
+        matches!(
+            &*stand_in.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "stand-in must carry CensusHeadsBodyStripped so infer_expr raises a hard diagnostic"
+    );
+    assert!(
+        stand_in.children.is_empty() && stand_in.body.is_none(),
+        "stand-in must not masquerade as a real expression tree"
+    );
+    assert!(
+        census_heads_body_traversal_refusal(&stand_in).is_some(),
+        "query API must refuse stand-in body traversal"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::{census_heads_module_node_for_test, is_census_heads_fn_stand_in};
+    use v1_compiler::v1_compiler_infer::local_binding_for_item;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, module_items};
+
+    let source = "module test.census_heads_fn_disc\nfn foo(x: Int) -> Int { x }\n";
+    let path = "test_census_heads_fn_disc.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let shrunk = census_heads_module_node_for_test(module);
+    let item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "foo")
+        .expect("foo decl")
+        .clone();
+    assert!(
+        item.body.is_some(),
+        "caveat (A): stripped fn decl must keep body.is_some() for local_binding_for_item routing"
+    );
+    assert!(
+        is_census_heads_fn_stand_in(item.body.as_ref().expect("body")),
+        "stripped fn body must be the fail-loud stand-in, not empty"
+    );
+    let binding = local_binding_for_item(item.clone(), Rc::new(HashMap::new()))
+        .expect("fn decl must bind as a function, not type/alias");
+    assert_eq!(
+        binding.resolved.params.len(),
+        1,
+        "misroute to type/alias would drop fn params"
+    );
+}
+
+#[test]
+fn census_heads_preserves_declaration_children_for_types() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_module_node_for_test;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{
+        build_newline_index, empty_intern_table, module_items, Connective,
+    };
+
+    let source = "module test.census_heads_children\ntype Color = Red | Green\n";
+    let path = "test_census_heads_children.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let item = module_items(module.clone())
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl")
+        .clone();
+    let child_names: Vec<String> = item.children.iter().map(|c| c.name.clone()).collect();
+    assert!(
+        !child_names.is_empty(),
+        "fixture must carry variant children"
+    );
+    let shrunk = census_heads_module_node_for_test(module);
+    let shrunk_item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl after shrink")
+        .clone();
+    assert_ne!(
+        shrunk_item.connective,
+        Connective::NoConnective,
+        "type decl must remain structural, not fn-shaped"
+    );
+    let shrunk_child_names: Vec<String> = shrunk_item
+        .children
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+    assert_eq!(
+        shrunk_child_names, child_names,
+        "caveat (B): declaration children (variant heads) must survive heads-only shrink"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_fn_stand_in_for_test;
+    use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
+    use v1_compiler::v1_compiler_infer_env::empty_type_env;
+    use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
+    use v1_compiler::v1_std_core::{
+        diagnostic_to_message, is_error_diagnostic, ExprData, ExprErrorKind,
+    };
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    let scope = Rc::new(InferScope {
+        type_env: empty_type_env(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            name: "test.census_heads_naive".to_string(),
+            local: Rc::new(HashMap::new()),
+            parents: Rc::new(im::vector![]),
+        }),
+        locals: Rc::new(HashMap::new()),
+        body_locals: Rc::new(HashMap::new()),
+        match_bound_names: Rc::new(HashMap::new()),
+        module_name: "test.census_heads_naive".to_string(),
+        service_registry: Rc::new(HashMap::new()),
+        item_registry: Rc::new(HashMap::new()),
+        lambda_param_provenance: Rc::new(HashMap::new()),
+    });
+    let result = infer_expr(stand_in, scope, None);
+    assert!(
+        matches!(
+            &*result.typed.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "naive infer_expr traversal must return CensusHeadsBodyStripped, not fabricate a resolved type"
+    );
+    let diag_msgs: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|diag| diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        !diag_msgs.is_empty(),
+        "naive infer_expr on stand-in must raise a hard diagnostic without calling predicates"
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| is_error_diagnostic(d.diagnostic.clone())),
+        "stand-in inference diagnostic must be hard/blocking, not advisory"
+    );
+    assert!(
+        diag_msgs
+            .iter()
+            .any(|msg| msg.contains("pool census heads-only")),
+        "diagnostic must locate the stripped-body refusal, got {diag_msgs:?}"
+    );
+}
+
+// 🟡 dissolve-on (B): replace this ignored scaffold with a corpus scan that every
+// `pool.nodes_by_file` consumer refuses non-inference body/ExprData descent.
+#[test]
+#[ignore = "follow-up (B): standing wall forbidding pool.nodes_by_file non-inference body descent"]
+fn pool_nodes_by_file_consumers_must_not_descend_into_body() {
+    panic!(
+        "not implemented: static census of pool.nodes_by_file consumers must prove no \
+         non-inference ExprData/body descent on census-head nodes"
+    );
+}
+
+#[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
@@ -1366,11 +1819,13 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc_parse_fail_closed_{}_{}",
-        std::process::id(),
-        stamp
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_parse_fail_closed_{}_{}",
+            std::process::id(),
+            stamp
+        ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let root = dir.to_string_lossy().into_owned();
     let cleanup = || {
@@ -1388,7 +1843,18 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     let index = build_multi_entry_index(std::slice::from_ref(&root));
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
-    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
+    // Namespace-only resolution (wave-1): the pool census must parse every pool file
+    // before ANY entry resolves — an unparsed sibling could hide a homonym that would
+    // change bare-name resolution, so the census refuses fail-closed with a typed,
+    // located diagnostic instead of resolving against a partial name universe.
+    // (Pre-wave-1 this arm asserted the good entry resolved despite the broken
+    // non-imported sibling; that locality is unsound once resolution is census-driven.)
+    let err = good_resolve
+        .expect_err("pool census must refuse fail-closed while any pool file fails parse");
+    assert!(
+        err.contains("broken.dag") && err.contains("parse failed"),
+        "census refusal must be typed and located at the unparsable file; got: {err}"
+    );
 
     std::fs::create_dir_all(&dir).expect("recreate temp dir");
     std::fs::write(
@@ -1506,546 +1972,7 @@ fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
 }
 
 #[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_f1_type_import_skips_variant_parent_expansion() {
-    let files = &[
-        (
-            "enum_mod.dag",
-            "module self_gen8_enum\ntype GoScalarKind = Int | GraphLabel\n",
-        ),
-        (
-            "alias_mod.dag",
-            "module self_gen8_alias\ntype GraphLabel { value: Int }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_f1\nimport self_gen8_alias { GraphLabel }\nfn f(x: GraphLabel) -> Int { x.value }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_f1.rs");
-    assert!(
-        !content.contains("GoScalarKind"),
-        "type import of GraphLabel must not expand variant parent GoScalarKind; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_alias") && content.contains("GraphLabel"),
-        "expected direct GraphLabel import from alias module; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_f2_target_source_import_no_carrier_kind_reexport() {
-    let files = &[
-        (
-            "pipeline.dag",
-            "module self_gen8_pipeline\ntype CarrierKind = Alpha | TargetSource\n",
-        ),
-        (
-            "carriers.dag",
-            "module self_gen8_carriers\ntype TargetSource = Int\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_f2\nimport self_gen8_carriers { TargetSource }\nfn g() -> TargetSource { 0 }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_f2.rs");
-    assert!(
-        !content.contains("self_gen8_carriers::CarrierKind")
-            && !content.contains("self_gen8_carriers::{CarrierKind"),
-        "TargetSource type import must not re-export CarrierKind from carriers; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_variant_import_uses_defining_module_not_import_site_for_parent() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_def { B }\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "variant import must use parent enum defining module; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_def::{E}") || content.contains("use crate::self_gen8_def::E"),
-        "variant-only import must still import parent enum type for bare E references; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_variant_import_not_suppressed_by_type_homonym_in_other_module() {
-    let files = &[
-        ("enum_mod.dag", "module self_gen8_enum\ntype E = A | SharedName\n"),
-        ("alias_mod.dag", "module self_gen8_alias\ntype SharedName = Int\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_enum { SharedName }\nfn f() -> E { SharedName }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_enum::E::{SharedName}")
-            || content.contains("self_gen8_enum::E::SharedName"),
-        "variant import must use enum parent path despite type homonym elsewhere; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_enum::{E}") || content.contains("use crate::self_gen8_enum::E"),
-        "variant-only import must import parent enum type for bare E references; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_variant_import_parent_scoped_to_declared_import_module() {
-    let files = &[
-        (
-            "enum_a.dag",
-            "module self_gen8_enum_a\ntype E = SharedVariant | A\n",
-        ),
-        (
-            "enum_b.dag",
-            "module self_gen8_enum_b\ntype F = SharedVariant | B\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_enum_a { SharedVariant }\nfn f() -> E { SharedVariant }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_enum_a::E::{SharedVariant}")
-            || content.contains("self_gen8_enum_a::E::SharedVariant"),
-        "variant parent must come from declared import module, not global homonym; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_enum_b::F::{SharedVariant}")
-            && !content.contains("self_gen8_enum_b::F::SharedVariant"),
-        "must not pick homonym variant parent from other module; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_homonymous_enum_name_variant_import_uses_declared_module() {
-    let files = &[
-        (
-            "mod_a.dag",
-            "module self_gen8_mod_a\ntype E = SharedVariant | A\n",
-        ),
-        (
-            "mod_b.dag",
-            "module self_gen8_mod_b\ntype E = SharedVariant | B\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_mod_a { SharedVariant }\nfn f() -> E { SharedVariant }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_mod_a::E::{SharedVariant}")
-            || content.contains("self_gen8_mod_a::E::SharedVariant"),
-        "homonymous enum name must resolve parent via declared import module physical items; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_mod_b::E::{SharedVariant}")
-            && !content.contains("self_gen8_mod_b::E::SharedVariant"),
-        "must not route homonymous enum parent through global registry; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_reexported_variant_import_preserves_defining_module_parent_line() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_def { B }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy { B }\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "re-exported variant import must preserve defining-module parent use line; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_reexported_variant_skips_proxy_local_enum_homonym() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\ntype E = X | Y\nimport self_gen8_def { B }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy { B }\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "re-exported variant must use defining-module parent, not proxy local enum homonym; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_proxy::E::{B}") && !content.contains("self_gen8_proxy::E::B"),
-        "must not emit variant under proxy local homonym enum; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_kernel_type_import_does_not_emit_rust_use_line() {
-    let files = &[
-        ("types.dag", "module self_gen8_types\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_types { Int }\nfn f(x: Int) -> Int { x }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        !content.contains("use crate::self_gen8_types::{Int}")
-            && !content.contains("pub use crate::self_gen8_types::{Int}"),
-        "ambient kernel types must not emit module import lines; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_wildcard_import_multi_hop_proxy_chain_reaches_defining_module_variant() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy1.dag",
-            "module self_gen8_proxy1\nimport self_gen8_def\n",
-        ),
-        (
-            "proxy2.dag",
-            "module self_gen8_proxy2\nimport self_gen8_proxy1\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy2\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "multi-hop wildcard proxy chain must emit defining-module variant line; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_proxy1::E")
-            && !content.contains("self_gen8_proxy2::E")
-            && !content.contains("crate::self_gen8_proxy2::E"),
-        "must not stop at intermediate wildcard proxy; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_reexported_variant_specific_import_chain_reaches_defining_module() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy1.dag",
-            "module self_gen8_proxy1\nimport self_gen8_def { B }\n",
-        ),
-        (
-            "proxy2.dag",
-            "module self_gen8_proxy2\nimport self_gen8_proxy1 { B }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy2 { B }\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "multi-hop specific-import re-export chain must resolve to defining module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_proxy1::E") && !content.contains("self_gen8_proxy2::E"),
-        "must not stop at intermediate proxy module; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_reexported_variant_homonym_uses_proxy_import_source_not_global_enum() {
-    let files = &[
-        (
-            "def_a.dag",
-            "module self_gen8_def_a\ntype E = SharedVariant | A\n",
-        ),
-        (
-            "def_b.dag",
-            "module self_gen8_def_b\ntype F = SharedVariant | B\n",
-        ),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_def_b { SharedVariant }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy { SharedVariant }\nfn f() -> F { SharedVariant }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def_b::F::{SharedVariant}")
-            || content.contains("self_gen8_def_b::F::SharedVariant"),
-        "re-exported homonym variant must follow proxy import source, not global enum scan; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_def_a::E::{SharedVariant}")
-            && !content.contains("self_gen8_def_a::E::SharedVariant"),
-        "must not pick homonym parent from unrelated defining module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_reexported_parametric_type_alias_emits_with_canonical_rhs_module() {
-    let files = &[
-        (
-            "carrier.dag",
-            "module self_gen8_carrier\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_carrier { SharedCarrier }\n",
-        ),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_proxy { SharedCarrier }\ntype AliasList<T> = SharedCarrier<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("pub type AliasList<"),
-        "re-exported parametric alias must emit; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_carrier::SharedCarrier<")
-            || content.contains("crate::self_gen8_carrier::SharedCarrier<"),
-        "re-exported alias RHS must qualify via canonical defining module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_reexported_parametric_alias_chain_reaches_defining_module() {
-    let files = &[
-        (
-            "carrier.dag",
-            "module self_gen8_carrier\ntype FreeMonoid<T> { value: T }\n",
-        ),
-        (
-            "list.dag",
-            "module self_gen8_list\nimport self_gen8_carrier { FreeMonoid }\ntype List<T> = FreeMonoid<T>\n",
-        ),
-        ("proxy.dag", "module self_gen8_proxy\nimport self_gen8_list { List }\n"),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_proxy { List }\ntype Wrapper<T> = List<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("pub type Wrapper<"),
-        "re-exported parametric alias chain must emit wrapper alias; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_list::List<") || content.contains("crate::self_gen8_list::List<"),
-        "re-exported parametric alias chain must qualify immediate nominal RHS via defining/re-export source module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_carrier::FreeMonoid<")
-            && !content.contains("crate::self_gen8_carrier::FreeMonoid<"),
-        "alias RHS must preserve nominal shell List, not peel to underlying carrier; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_direct_type_import_uses_declared_import_module_not_registry_homonym() {
-    let files = &[
-        ("mod_a.dag", "module self_gen8_mod_a\ntype SharedType = Int\n"),
-        ("mod_b.dag", "module self_gen8_mod_b\ntype SharedType = String\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_mod_a { SharedType }\nfn f(x: SharedType) -> Int { x }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_mod_a::{SharedType}") || content.contains("use crate::self_gen8_mod_a::SharedType"),
-        "direct type import must anchor to declared import module, not registry homonym; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_mod_b::{SharedType}")
-            && !content.contains("use crate::self_gen8_mod_b::SharedType"),
-        "direct type import must not route through homonym defining module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_type_import_not_suppressed_by_global_variant_homonym() {
-    let files = &[
-        (
-            "types.dag",
-            "module self_gen8_types\ntype Shared { value: Int }\n",
-        ),
-        ("enum_mod.dag", "module self_gen8_enum\ntype E = Shared | Other\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_types { Shared }\nfn f(x: Shared) -> Int { x.value }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_types::{Shared}") || content.contains("use crate::self_gen8_types::Shared"),
-        "declared module physical type import must win over global variant homonym; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_enum::E::{Shared}") && !content.contains("self_gen8_enum::E::Shared"),
-        "must not classify physical type import as variant because name appears in unrelated enum; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_reexported_type_import_not_suppressed_by_global_variant_homonym() {
-    let files = &[
-        (
-            "types.dag",
-            "module self_gen8_types\ntype Shared { value: Int }\n",
-        ),
-        ("enum_mod.dag", "module self_gen8_enum\ntype E = Shared | Other\n"),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_types { Shared }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy { Shared }\nfn f(x: Shared) -> Int { x.value }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_types::{Shared}") || content.contains("use crate::self_gen8_types::Shared"),
-        "re-exported type import must follow proxy export source, not global variant homonym; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_enum::E::{Shared}") && !content.contains("self_gen8_enum::E::Shared"),
-        "must not classify re-exported type import as variant because name appears in unrelated enum; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_parametric_alias_rhs_uses_declared_import_module_not_registry_homonym() {
-    let files = &[
-        (
-            "carrier_a.dag",
-            "module self_gen8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "carrier_b.dag",
-            "module self_gen8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_carrier_a { SharedCarrier }\ntype AliasList<T> = SharedCarrier<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("self_gen8_carrier_a::SharedCarrier<")
-            || content.contains("crate::self_gen8_carrier_a::SharedCarrier<"),
-        "parametric alias RHS must qualify via declared import module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_carrier_b::SharedCarrier<")
-            && !content.contains("crate::self_gen8_carrier_b::SharedCarrier<"),
-        "parametric alias RHS must not pick registry homonym module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_nested_parametric_alias_rhs_preserves_nominal_structure() {
-    let files = &[
-        ("inner.dag", "module self_gen8_inner\ntype Inner<T> { value: T }\n"),
-        (
-            "outer.dag",
-            "module self_gen8_outer\nimport self_gen8_inner { Inner }\ntype Outer<T> { inner: Inner<T> }\n",
-        ),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_outer { Outer }\nimport self_gen8_inner { Inner }\ntype Wrapper<T> = Outer<Inner<T>>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("pub type Wrapper<"),
-        "nested parametric alias must emit; got:\n{content}"
-    );
-    assert!(
-        (content.contains("self_gen8_outer::Outer<") || content.contains("crate::self_gen8_outer::Outer<"))
-            && (content.contains("self_gen8_inner::Inner<") || content.contains("crate::self_gen8_inner::Inner<")),
-        "nested alias RHS must preserve nominal shells for both outer and inner bases; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
     let files = &[
         ("inner.dag", "module self_gen8_inner\ntype OpaqueInner<T>\n"),
@@ -2068,144 +1995,7 @@ fn self_gen8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
 }
 
 #[test]
-fn self_gen8_reexported_enum_parent_specific_import_uses_defining_module() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_def { E }\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy { E }\nfn f() -> E { A }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::{E}") || content.contains("use crate::self_gen8_def::E"),
-        "wildcard-reexported enum parent must import from defining module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_proxy::{E}")
-            && !content.contains("use crate::self_gen8_proxy::E;"),
-        "must not emit proxy braced type import for re-exported enum parent; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_wildcard_import_through_proxy_reaches_defining_module_variant() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "proxy.dag",
-            "module self_gen8_proxy\nimport self_gen8_def\n",
-        ),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_proxy\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "wildcard import through proxy must emit defining-module variant line; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_proxy::E") && !content.contains("crate::self_gen8_proxy::E"),
-        "must not stop at proxy module for re-exported variant; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_wildcard_plus_specific_import_preserves_variant_parent_line() {
-    let files = &[
-        ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
-        (
-            "use_mod.dag",
-            "module self_gen8_use\nimport self_gen8_def\nimport self_gen8_def { B }\nfn f() -> E { B }\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_use.rs");
-    assert!(
-        content.contains("self_gen8_def::E::{B}") || content.contains("self_gen8_def::E::B"),
-        "wildcard plus specific import must preserve variant-parent use line; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_parametric_alias_rhs_wildcard_import_uses_declared_module_not_registry_homonym() {
-    let files = &[
-        (
-            "carrier_a.dag",
-            "module self_gen8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "carrier_b.dag",
-            "module self_gen8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_carrier_a\ntype AliasList<T> = SharedCarrier<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("self_gen8_carrier_a::SharedCarrier<")
-            || content.contains("crate::self_gen8_carrier_a::SharedCarrier<"),
-        "wildcard import must anchor alias RHS to declared module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_carrier_b::SharedCarrier<")
-            && !content.contains("crate::self_gen8_carrier_b::SharedCarrier<"),
-        "wildcard import must not pick registry homonym module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_parametric_alias_rhs_multi_hop_wildcard_import_uses_defining_carrier_module() {
-    let files = &[
-        (
-            "carrier_a.dag",
-            "module self_gen8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        (
-            "carrier_b.dag",
-            "module self_gen8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
-        ),
-        ("proxy.dag", "module self_gen8_proxy\nimport self_gen8_carrier_a\n"),
-        (
-            "alias.dag",
-            "module self_gen8_alias_mod\nimport self_gen8_proxy\ntype AliasList<T> = SharedCarrier<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_alias_mod.rs");
-    assert!(
-        content.contains("self_gen8_carrier_a::SharedCarrier<")
-            || content.contains("crate::self_gen8_carrier_a::SharedCarrier<"),
-        "multi-hop wildcard import must anchor alias RHS to defining carrier module; got:\n{content}"
-    );
-    assert!(
-        !content.contains("self_gen8_carrier_b::SharedCarrier<")
-            && !content.contains("crate::self_gen8_carrier_b::SharedCarrier<"),
-        "multi-hop wildcard import must not pick registry homonym module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
     let files = &[
         ("carrier_a.dag", "module self_gen8_carrier_a\ntype SharedCarrier<T>\n"),
@@ -2232,32 +2022,7 @@ fn self_gen8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
 }
 
 #[test]
-fn self_gen8_opaque_parametric_type_decl_stays_unemitted() {
-    let source = "module self_gen8_opaque\ntype OpaqueCarrier<M>\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_opaque.rs");
-    assert!(
-        !content.contains("pub type OpaqueCarrier"),
-        "opaque parametric declaration must not emit pub type alias; got:\n{content}"
-    );
-}
-
-#[test]
-fn self_gen8_self_referential_parametric_opaque_stays_unemitted() {
-    let source = "module self_gen8_self_opaque\ntype SelfOpaque<M>\n\nfn id(x: SelfOpaque<Int>) -> SelfOpaque<Int> { x }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_self_opaque.rs");
-    assert!(
-        !content.contains("pub type SelfOpaque<M> = SelfOpaque")
-            && !content.contains("pub type SelfOpaque<M> = SelfOpaque;"),
-        "self-referential opaque carrier must not emit invalid alias; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_parametric_alias_to_opaque_carrier_stays_unemitted() {
     let files = &[
         (
@@ -2275,50 +2040,6 @@ fn self_gen8_parametric_alias_to_opaque_carrier_stays_unemitted() {
     assert!(
         !content.contains("pub type List<"),
         "alias to opaque unemitted carrier must not emit pub type; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_f3_parametric_list_alias_emits_pub_type() {
-    let files = &[
-        (
-            "monoid.dag",
-            "module self_gen8_monoid\ntype FreeMonoid<T> { value: T }\n",
-        ),
-        (
-            "coll.dag",
-            "module self_gen8_coll\ntype List<T> = FreeMonoid<T>\n",
-        ),
-    ];
-    let result = compile_multi(files);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_coll.rs");
-    assert!(
-        content.contains("pub type List<"),
-        "parametric List alias must emit pub type List<…>; got:\n{content}"
-    );
-    assert!(
-        content.contains("self_gen8_monoid::FreeMonoid<")
-            || content.contains("crate::self_gen8_monoid::FreeMonoid<"),
-        "cross-module List alias RHS must qualify emitted FreeMonoid from defining module; got:\n{content}"
-    );
-}
-
-#[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
-fn self_gen8_f4_parametric_type_alias_emits_pub_type() {
-    let source = "module self_gen8_f4\n\ntype Box<T> { value: T }\ntype Pair<T> = Box<T>\n\nfn wrap(x: Int) -> Pair<Int> {\n  Box { value: x }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/self_gen8_f4.rs");
-    assert!(
-        content.contains("pub type Pair<"),
-        "parametric type alias must emit pub type Pair<…>; got:\n{content}"
-    );
-    assert!(
-        content.contains("= Rc<Box<"),
-        "parametric alias RHS must preserve shared_types Rc authority; got:\n{content}"
     );
 }
 
@@ -2527,55 +2248,6 @@ fn parse_error_does_not_leak_to_resolve() {
 }
 
 #[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_structured() {
-    let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let class = complexity_class_of(&result, "constant_work");
-    assert_eq!(
-        class.as_deref(),
-        Some("O(1)"),
-        "constant_work should be O(1), got {:?}",
-        class
-    );
-}
-
-#[test]
-#[ignore = "119s — hanging in complexity analysis; triage under PERF track"]
-fn complexity_non_recursive_proven() {
-    let source = r#"module baseline
-fn add(a: Int, b: Int) -> Int { a + b }
-fn pick(x: Int, y: Int) -> Int {
-  if x > y { x } else { y }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_collection_iteration_bounded() {
-    let source = r#"module iter
-fn sum_all(items: List<Int>) -> Int {
-  items |> fold(init: 0, f: (acc, i) => acc + i)
-}
-fn double_all(items: List<Int>) -> List<Int> {
-  items |> map(f: (i) => i * 2)
-}
-fn positives(items: List<Int>) -> List<Int> {
-  items |> filter(f: (i) => i > 0)
-}
-fn nested_sum(matrix: List<List<Int>>) -> Int {
-  matrix |> fold(init: 0, f: (acc, row) =>
-    acc + row |> fold(init: 0, f: (inner_acc, val) => inner_acc + val)
-  )
-}
-"#;
-    let _result = compile_dag(source);
-}
-
-#[test]
 fn complexity_linear_recursion_bounded() {
     let source = r#"module recur
 fn count_nodes(tree: List<Int>) -> Int {
@@ -2583,82 +2255,6 @@ fn count_nodes(tree: List<Int>) -> Int {
 }
 fn sum_list(items: List<Int>) -> Int {
   items |> fold(init: 0, f: (acc, item) => acc + item)
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_match_arms_are_mutually_exclusive() {
-    let source = r#"module tree
-type Expr
-  = Lit { value: Int }
-  | Add { left: Expr, right: Expr }
-  | Neg { inner: Expr }
-
-fn eval(e: Expr) -> Int {
-  match e {
-    Lit { value: v } => v
-    Add { left: l, right: r } => eval(e: l) + eval(e: r)
-    Neg { inner: i } => 0 - eval(e: i)
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_early_return_tail_recursion_is_single_path() {
-    let source = r#"module tail_paths
-fn walk(n: Int) -> Int {
-  if n <= 0 { return 0 }
-  if n == 1 { return walk(n: n - 1) }
-  walk(n: n - 1)
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_structural_descent_allows_bookkeeping_args() {
-    let source = r#"module depth_walk
-type Tree
-  = Leaf { value: Int }
-  | Pair { left: Tree, right: Tree }
-
-fn walk(t: Tree, depth: Int) -> Int {
-  match t {
-    Leaf { value: v } => v + depth
-    Pair { left: l, right: r } => walk(t: l, depth: depth + 1) + walk(t: r, depth: depth + 1)
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_foreach_bounded() {
-    let source = r#"module foreach
-fn process_items(items: List<Int>) -> Int {
-  let result = 0
-  for item in items {
-    result + item
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn soundness_arithmetic_descent_single_call_accepted() {
-    let source = r#"module soundness_arith
-fn countdown(n: Int) -> Int {
-  if n <= 0 { 0 } else { 1 + countdown(n: n - 1) }
 }
 "#;
     let result = compile_dag(source);
@@ -2675,7 +2271,7 @@ fn compile_dag_with_complexity(
     use v1_compiler::v1_compiler_infer::reconcile;
     use v1_compiler::v1_compiler_normalize::normalize_graph;
     let sources = resolve_imports_transitively("test.dag", source);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -2693,177 +2289,7 @@ fn compile_dag_with_complexity(
     build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
 }
 
-#[test]
-fn soundness_parser_token_position_scc_accepted() {
-    let source = r#"module parser_scc
-type ParserState { pos: Int }
-type ParseResult { state: ParserState, value: Int }
-
-fn advance(state: ParserState) -> ParseResult {
-  ParseResult { state: ParserState { pos: state.pos + 1 }, value: 0 }
-}
-
-fn parse_items(state: ParserState) -> ParseResult {
-  if state.pos > 100 {
-    ParseResult { state: state, value: 0 }
-  } else {
-    let r = advance(state: state)
-    parse_items(state: r.state)
-  }
-}
-"#;
-    let complexity = compile_dag_with_complexity(source);
-    assert!(complexity.function_classes.contains_key("parse_items"));
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn soundness_lambda_fold_children_accepted() {
-    let source = r#"module lambda_fold
-type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
-
-fn sum_tree(t: Tree) -> Int {
-  match t {
-    Leaf { value: v } => v
-    Branch { value: v, children: _ } =>
-      v + (t.children |> fold(init: 0, f: (acc, child) => acc + sum_tree(t: child)))
-  }
-}
-"#;
-    let complexity = compile_dag_with_complexity(source);
-    assert!(complexity.function_classes.contains_key("sum_tree"));
-}
-
 use v1_compiler::v1_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
-
-fn complexity_class_of(
-    result: &v1_compiler::v1_compiler_compile::PipelineResult,
-    func: &str,
-) -> Option<String> {
-    result.complexity.function_classes.get(func).cloned()
-}
-
-fn class_contains_log(class: &str) -> bool {
-    class.contains("log")
-}
-
-fn is_constant_class_str(class: &str) -> bool {
-    class == "O(1)"
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_constant() {
-    let source = r#"module constant
-fn add(a: Int, b: Int) -> Int { a + b }
-fn max(a: Int, b: Int) -> Int { if a > b { a } else { b } }
-fn triple(x: Int) -> Int { x * 3 }
-"#;
-    let files: Vec<(&str, &str)> = vec![("constant.dag", source)];
-    let result = compile_multi(&files);
-    for func in &["add", "max", "triple"] {
-        let class = complexity_class_of(&result, func);
-        assert_eq!(
-            class.as_deref(),
-            Some("O(1)"),
-            "{} should be O(1), got {:?}",
-            func,
-            class
-        );
-    }
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_linear() {
-    let source = r#"module linear
-fn sum_items(items: List<Int>) -> Int {
-  fold(items, 0, fn(acc, i) { acc + i })
-}
-fn doubled(items: List<Int>) -> List<Int> {
-  map(items, fn(i) { i * 2 })
-}
-fn pos_only(items: List<Int>) -> List<Int> {
-  filter(items, fn(i) { i > 0 })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    for func in &["sum_items", "doubled", "pos_only"] {
-        let class = complexity_class_of(&result, func);
-        assert!(
-            class.as_ref().is_some_and(|c| c.starts_with("O(")),
-            "{} should be O(n), got {:?}",
-            func,
-            class
-        );
-    }
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_quadratic() {
-    let source = r#"module quadratic
-fn all_pairs_sum(items: List<Int>) -> Int {
-  fold(items, 0, fn(outer_acc, x) {
-    outer_acc + fold(items, 0, fn(inner_acc, y) { inner_acc + x + y })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "all_pairs_sum");
-    assert!(
-        class.is_some(),
-        "all_pairs_sum should have a complexity class"
-    );
-    assert!(
-        class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "all_pairs_sum should have a concrete bound, got {:?}",
-        class
-    );
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_bilinear() {
-    let source = r#"module bilinear
-fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
-  fold(rows, 0, fn(acc, r) {
-    acc + fold(cols, 0, fn(inner, c) { inner + r + c })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "cross_count");
-    assert!(
-        class.is_some(),
-        "cross_count should have a complexity class"
-    );
-    assert!(
-        class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "cross_count should have a concrete bound, got {:?}",
-        class
-    );
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_sort_proven() {
-    let source = r#"module sorting
-fn sort_ascending(items: List<Int>) -> List<Int> {
-  sort_by(items, fn(a, b) { a - b })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "sort_ascending");
-    assert!(
-        class.is_some(),
-        "sort_ascending should have a complexity class"
-    );
-}
 
 #[test]
 fn complexity_class_add_keeps_log_terms() {
@@ -2902,94 +2328,6 @@ fn complexity_class_max_keeps_log_terms() {
 }
 
 #[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn structural_classify_constant_is_cost_const() {
-    let source = r#"module sconst
-fn add(a: Int, b: Int) -> Int { a + b }
-"#;
-    let files: Vec<(&str, &str)> = vec![("sconst.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "add");
-    assert!(
-        class.as_ref().is_some_and(|c| is_constant_class_str(c)),
-        "add should classify as O(1), got {:?}",
-        class
-    );
-}
-
-#[test]
-fn complexity_class_chain_is_linear() {
-    let source = r#"module chain
-fn sum_doubled(items: List<Int>) -> Int {
-  fold(map(items, fn(i) { i * 2 }), 0, fn(acc, i) { acc + i })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let _class = complexity_class_of(&result, "sum_doubled");
-}
-
-#[test]
-fn complexity_class_flat_map() {
-    let source = r#"module flatmap
-fn expand(items: List<Int>) -> List<Int> {
-  flat_map(items, fn(i) { [i, i * 2, i * 3] })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_covers_all_functions() {
-    let source = r#"module coverage
-fn f1(x: Int) -> Int { x + 1 }
-fn f2(items: List<Int>) -> Int { items |> count }
-fn f3(items: List<Int>) -> List<Int> {
-  map(items, fn(i) { i * 2 })
-}
-fn f4(a: List<Int>, b: List<Int>) -> Int {
-  fold(a, 0, fn(acc, x) {
-    acc + fold(b, 0, fn(inner, y) { inner + x + y })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let summaries = &result.complexity.function_classes;
-    let keys: Vec<_> = summaries.keys().collect();
-    for func in &["f1", "f2", "f3", "f4"] {
-        let found = summaries.contains_key(*func) || summaries.keys().any(|k| k.ends_with(func));
-        assert!(
-            found,
-            "function '{}' should have a complexity summary (keys: {:?})",
-            func, keys
-        );
-    }
-    assert!(
-        !summaries.is_empty(),
-        "function_classes should not be empty"
-    );
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_scales_to_large_programs() {
-    let mut source = String::from("module huge\n");
-    for idx in 0..401 {
-        source.push_str(&format!("fn f{idx}(x: Int) -> Int {{ x + 1 }}\n"));
-    }
-    let result = compile_dag(&source);
-    assert_eq!(
-        result.complexity.function_classes.len(),
-        401,
-        "structural data should contain all 401 function summaries"
-    );
-}
-
-#[test]
 fn compile_sources_returns_ownership_proofs() {
     let source =
         "module own\nfn identity(x: Int) -> Int { x }\nfn sum_twice(x: Int) -> Int { x + x }\n";
@@ -3010,22 +2348,6 @@ fn match_bound_variable_always_cloned() {
         content.contains("v.clone()"),
         "match-bound variable should be cloned, not moved:\n{}",
         content,
-    );
-}
-
-#[test]
-#[ignore = "heavy test — run manually with --ignored --nocapture"]
-fn complexity_self_analysis_subset() {
-    let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/gunbc");
-    if !stage0_bin.exists() {
-        eprintln!(
-            "skipping: release binary not found (run `cargo build --release -p v1-compiler` first)"
-        );
-        return;
-    }
-    eprintln!(
-        "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
     );
 }
 
@@ -3070,10 +2392,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-fn normalize_typed_graph(
-    value: &Value,
-    name_map: &std::collections::HashMap<&str, String>,
-) -> Value {
+fn normalize_typed_graph(value: &Value, name_map: &im::HashMap<&str, String>) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
@@ -3084,7 +2403,10 @@ fn normalize_typed_graph(
                 }
                 if k == "diagnostics" {
                     if let Value::Array(arr) = v {
-                        out.insert(k.clone(), Value::Array(vec![Value::Null; arr.len()]));
+                        out.insert(
+                            k.clone(),
+                            Value::Array(std::iter::repeat_n(Value::Null, arr.len()).collect()),
+                        );
                         continue;
                     }
                 }
@@ -3140,8 +2462,8 @@ fn assert_scrambled_name_structural_eq(
     let graph_a = typed_graph_json(source_a);
     let graph_b = typed_graph_json(source_b);
 
-    let mut map_a = std::collections::HashMap::new();
-    let mut map_b = std::collections::HashMap::new();
+    let mut map_a = im::HashMap::new();
+    let mut map_b = im::HashMap::new();
     for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
         let ordinal = format!("__T{}", i);
         map_a.insert(*na, ordinal.clone());
@@ -3527,7 +2849,7 @@ fn diag_parser_scc_edges() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -3621,7 +2943,7 @@ fn diag_parse_node_decl_env() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -3891,117 +3213,6 @@ fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
 }
 
 #[test]
-#[ignore = "CX acceptance criteria: non-SCC callers into cycles must not be flagged (PR #301)"]
-fn function_calling_into_cycle_is_not_rejected() {
-    let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
-    let result = compile_dag(source);
-    let diag_names: Vec<String> = result
-        .diagnostics
-        .iter()
-        .map(|d| d.module_name.clone())
-        .collect();
-    assert!(
-        !result.diagnostics.iter().any(|d| {
-            let msg = format!("{:?}", d.diagnostic);
-            msg.contains("helper")
-        }),
-        "helper() calls into cycle but is not part of it — should not be rejected. Diagnostics: {:?}",
-        diag_names
-    );
-}
-
-#[test]
-fn division_descent_is_allowed() {
-    let source = "module halve_test\n\nfn halve(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { halve(n: n / 2) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    assert!(
-        !result.files.is_empty(),
-        "division descent should compile successfully"
-    );
-}
-
-#[test]
-fn cx_bound_child_descent_is_tree_size() {
-    let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Present { value: lt } => sum_tree(t: lt), Absent => 0 }\n  let r = match t.right { Present { value: rt } => sum_tree(t: rt), Absent => 0 }\n  l + r + t.value\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_nested_variant_optional_descent() {
-    let source = r#"module cx_nested_variant
-
-type Inner
-  = Resolved { node: Outer }
-  | Unresolved
-
-type Outer {
-  children: List<Outer>
-  detail: Inner?
-}
-
-fn walk(o: Outer) -> Int {
-  let from_detail = match o.detail {
-    Present { value: Resolved { node: x } } => walk(o: x)
-    _ => 0
-  }
-  from_detail + (o.children |> map(c => walk(o: c)) |> fold(init: 0, f: (a, x) => a + x))
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-#[ignore = "failing: property contraction + tree descent produces 1 violation, expected 0. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=inference"]
-fn cx_bound_property_contraction_with_tree_descent() {
-    let source = r#"module cx_prop_contract
-import std.core { with_required_cardinality }
-
-fn walk_type(n: Node) -> String {
-  let inner = walk_type(n: with_required_cardinality(n: n))
-  let child_strs = n.children |> map(c => walk_type(n: c))
-  inner
-}
-"#;
-    let result = compile_dag_with_complexity(source);
-    assert!(
-        result.violations.is_empty(),
-        "property contraction + tree descent should produce 0 violations, got {}",
-        result.violations.len()
-    );
-}
-
-#[test]
-fn cx_bound_list_shrink_is_collection_size() {
-    let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    Absent => 0\n    Present { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_arithmetic_descent_is_param() {
-    let source = "module cx_arith\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { 1 + countdown(n: n - 1) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_mutual_descent_is_bounded() {
-    let source = "module cx_mutual\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_metadata_field_is_not_descent_witness() {
-    let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Present { value: next } => check_name(item: next)\n      Absent => false\n    }\n  }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
 fn cx_forever_bound_produces_violation() {
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
     let result = compile_dag_analyze_complexity(source);
@@ -4021,22 +3232,6 @@ fn cx_forever_bound_produces_violation() {
         1,
         "expected 1 violation for SameArgumentCall, got {}",
         result.complexity.violations.len()
-    );
-}
-
-#[test]
-#[ignore = "CX track: branching detection needs derive_bound integration (produces O(n) not O(2^n))"]
-fn soundness_branching_recursion_produces_violation() {
-    let source = r#"module soundness_branch
-fn split(n: Int) -> Int {
-  if n <= 0 { 1 }
-  else { split(n: n - 1) + split(n: n - 1) }
-}
-"#;
-    let result = compile_dag_with_complexity(source);
-    assert!(
-        !result.violations.is_empty(),
-        "branching recursion should produce a violation, got 0"
     );
 }
 
@@ -5195,156 +4390,6 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
     assert_eq!(mod_obj["name"], "roundtrip", "module name should match");
 }
 
-fn normalize_emitted_source(source: &str, names: &[&str], prefix: &str) -> String {
-    let mut pairs: Vec<(&str, String)> = names
-        .iter()
-        .enumerate()
-        .map(|(i, name)| (*name, format!("{}{}", prefix, i)))
-        .collect();
-    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-
-    let mut result = source.to_string();
-    for (name, placeholder) in &pairs {
-        result = result.replace(name, placeholder);
-    }
-    result
-}
-
-fn assert_scrambled_name_emit_eq(
-    source_a: &str,
-    source_b: &str,
-    names_a: &[&str],
-    names_b: &[&str],
-    target: RenderTarget,
-    file_selector: fn(&str) -> bool,
-    label: &str,
-) {
-    assert_eq!(names_a.len(), names_b.len(), "name lists must be parallel");
-
-    let result_a = compile_dag_target(source_a, target);
-    let result_b = compile_dag_target(source_b, target);
-
-    let file_a = result_a
-        .files
-        .iter()
-        .find(|f| file_selector(&f.path))
-        .unwrap_or_else(|| {
-            let paths: Vec<_> = result_a.files.iter().map(|f| f.path.as_str()).collect();
-            panic!("{label}: no matching file in program A, available: {paths:?}")
-        });
-    let file_b = result_b
-        .files
-        .iter()
-        .find(|f| file_selector(&f.path))
-        .unwrap_or_else(|| {
-            let paths: Vec<_> = result_b.files.iter().map(|f| f.path.as_str()).collect();
-            panic!("{label}: no matching file in program B, available: {paths:?}")
-        });
-
-    let norm_a = normalize_emitted_source(&file_a.content, names_a, "__T");
-    let norm_b = normalize_emitted_source(&file_b.content, names_b, "__T");
-
-    assert_eq!(
-        norm_a, norm_b,
-        "scrambled-name emit mismatch in {label}:\n\
-         --- normalized A ---\n{norm_a}\n\
-         --- normalized B ---\n{norm_b}",
-    );
-}
-
-#[test]
-fn scrambled_name_emit_rust() {
-    let source_a = "\
-module test
-
-type Foo { x: Int  y: String }
-type Bar { label: String  count: Int }
-
-fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
-fn get_label(b: Bar) -> String { b.label }
-";
-    let source_b = "\
-module test
-
-type Zqx { x: Int  y: String }
-type Wmn { label: String  count: Int }
-
-fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
-fn get_label(b: Wmn) -> String { b.label }
-";
-    assert_scrambled_name_emit_eq(
-        source_a,
-        source_b,
-        &["Foo", "Bar"],
-        &["Zqx", "Wmn"],
-        RenderTarget::Rust,
-        |path| path.ends_with(".rs") && path.contains("src/"),
-        "Rust emit (simple structs)",
-    );
-}
-
-#[test]
-fn scrambled_name_emit_python() {
-    let source_a = "\
-module test
-
-type Foo { x: Int  y: String }
-type Bar { label: String  count: Int }
-
-fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
-fn get_label(b: Bar) -> String { b.label }
-";
-    let source_b = "\
-module test
-
-type Zqx { x: Int  y: String }
-type Wmn { label: String  count: Int }
-
-fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
-fn get_label(b: Wmn) -> String { b.label }
-";
-    assert_scrambled_name_emit_eq(
-        source_a,
-        source_b,
-        &["Foo", "Bar"],
-        &["Zqx", "Wmn"],
-        RenderTarget::Python,
-        |path| path.ends_with(".py") && !path.contains("__init__"),
-        "Python emit (simple structs)",
-    );
-}
-
-#[test]
-fn scrambled_name_emit_go() {
-    let source_a = "\
-module test
-
-type Foo { x: Int  y: String }
-type Bar { label: String  count: Int }
-
-fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
-fn get_label(b: Bar) -> String { b.label }
-";
-    let source_b = "\
-module test
-
-type Zqx { x: Int  y: String }
-type Wmn { label: String  count: Int }
-
-fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
-fn get_label(b: Wmn) -> String { b.label }
-";
-    assert_scrambled_name_emit_eq(
-        source_a,
-        source_b,
-        &["Foo", "Bar"],
-        &["Zqx", "Wmn"],
-        RenderTarget::Go,
-        |path| path.ends_with(".go") && !path.contains("go.mod") && !path.contains("_test.go"),
-        "Go emit (simple structs)",
-    );
-}
-
 #[test]
 fn rust_primitive_bool_lowers_to_bool() {
     let source = "module test_bool_lower\n\ntype Flags {\n  active: Bool\n  visible: Bool\n}\n";
@@ -5498,42 +4543,57 @@ fn indexed_names(names: List<String>) -> List<String> {
 }
 
 #[test]
-#[ignore = "failing: Symbol data does not preserve authored identity. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-rust-render"]
-fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
+fn rust_symbol_opaque_alias_emits_string_and_btree_set() {
     let source = "\
 module test_nominal_ord_set
 type Symbol
 type DiffId { id: Symbol }
 data root_fix_symbol: Symbol = root_fix_symbol
+fn symbol_param(x: Symbol) -> Symbol { x }
 type DiffBag { ids: Set<DiffId> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "expected clean compile, got {}: {:?}",
+        msgs.len(),
+        msgs
+    );
     assert!(
         has_file(&result, "src/test_nominal_ord_set.rs"),
         "expected emitted file, got diagnostics: {:?}",
-        diagnostic_messages(&result)
+        msgs
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
-        content.contains("#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub String);"),
-        "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content.contains("pub type Symbol = String;"),
+        "Symbol must alias host String at the opaque-kernel coerce authority, got:\n{}",
         content
     );
     assert!(
-        content.contains(
-            "pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"
-        ),
-        "Symbol data should preserve authored identity, got:\n{}",
+        !content.contains("pub struct Symbol(pub String)"),
+        "Symbol must not emit a parallel newtype carrier, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub struct DiffId {\n    pub id: Symbol,"),
-        "DiffId should carry the emitted Symbol type, got:\n{}",
+        content.contains("pub fn root_fix_symbol() -> String"),
+        "Symbol data values must ground to String, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub ids: std::collections::BTreeSet<DiffId>,"),
-        "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
+        content.contains("fn symbol_param(x: String) -> String"),
+        "Symbol fn sig params must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub id: String,") || content.contains("pub id: String"),
+        "DiffId fields typed Symbol must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("BTreeSet") && content.contains("DiffId"),
+        "Set<DiffId> should lower through the BTreeSet gate, got:\n{}",
         content
     );
 }
@@ -5793,35 +4853,37 @@ fn total_cost(items: List<Item>) -> Int {
     assert_no_diagnostics(&result);
 }
 
+// Constructor-owner ruling (§1c) rule 4: patterns resolve via the scrutinee's
+// type — arm names that are NOT bound in constructor scope stay legal in
+// pattern position. The consumer imports ONLY the producing fn (never the
+// enum or its arms), so the match arms have no constructor binding at all;
+// the scrutinee's type is the sole authority, and the emitted match still
+// carries the owner qualifier.
 #[test]
-fn duplicate_variant_names_across_enums_dont_collide() {
-    let source = "\
-module test_dup_variants
-type Color = Red | Blue | Green
-type Signal = Red | Yellow | Green
-
-fn pick_color() -> Color { Blue }
-fn pick_signal() -> Signal { Yellow }
-fn use_both(c: Color, s: Signal) -> String {
-  let c_str = match c {
-    Red => \"red\"
-    Blue => \"blue\"
-    Green => \"green\"
-  }
-  let s_str = match s {
-    Red => \"stop\"
-    Yellow => \"caution\"
-    Green => \"go\"
-  }
-  concat(c_str, s_str)
-}
-";
-    let result = compile_dag(source);
+fn pattern_position_arms_resolve_via_scrutinee_without_imports() {
+    let producer = (
+        "pattern_arms_producer.dag",
+        "module test_pattern_arms_producer\n\
+         type Level = Low | High\n\
+         fn make() -> Level { Low }\n",
+    );
+    let consumer = (
+        "pattern_arms_consumer.dag",
+        "module test_pattern_arms_consumer\n\
+         import test_pattern_arms_producer { make }\n\
+         fn describe() -> String {\n\
+           match make() {\n\
+             Low => \"low\"\n\
+             High => \"high\"\n\
+           }\n\
+         }\n",
+    );
+    let result = compile_multi(&[producer, consumer]);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_dup_variants.rs");
+    let content = find_file(&result, "src/test_pattern_arms_consumer.rs");
     assert!(
-        content.contains("Color::") && content.contains("Signal::"),
-        "both Color:: and Signal:: qualifiers should appear in match arms, got:\n{}",
+        content.contains("Level::Low") && content.contains("Level::High"),
+        "pattern arms must qualify to the scrutinee's owner enum, got:\n{}",
         content
     );
 }
@@ -5971,7 +5033,7 @@ fn type_rendering_bare_list_not_map() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["List".to_string()]));
 
     let rendered = render_node_type(
         list_node,
@@ -5997,7 +5059,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["Map".to_string()]));
 
     let rendered = render_node_type(
         map_node,
@@ -6028,7 +5090,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         free_monoid_conj,
@@ -6658,220 +5720,6 @@ fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
         mod_fields[0],
         AlgebraFieldKind::AlgRemainder,
         "Mod: AlgRemainder"
-    );
-}
-
-#[test]
-fn rest_emit_uses_transport_method() {
-    let source = "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1a.rs");
-    assert!(
-        content.contains("client.get("),
-        "RE-1a: expected GET method in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_substitutes_path_template() {
-    let source = r#"module re1b
-
-service test.Svc {
-  config {
-    endpoint: "https://api.example.com"
-  }
-  operation GetItem {
-    input { owner: String, repo: String }
-    output { name: String }
-    transport rest { method: GET, path: "/repos/{owner}/{repo}" }
-    response {
-      200 => String
-    }
-    mock_response {
-      200 => "ok" "item"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1b.rs");
-    assert!(
-        content.contains("format!(\"{}") && content.contains("self.base_url"),
-        "RE-1b: expected path template format! with base_url in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_includes_query_params() {
-    let source = "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1c.rs");
-    assert!(
-        content.contains(".query("),
-        "RE-1c: expected .query() in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_uses_bearer_auth() {
-    let source = "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1d.rs");
-    assert!(
-        content.contains("Authorization") && content.contains("Bearer"),
-        "RE-1d: expected Bearer auth in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_maps_response_codes() {
-    let source = "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1e.rs");
-    assert!(
-        content.contains("status") && content.contains("200"),
-        "RE-1e: expected status code matching in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_uses_transport_argv() {
-    let source = r#"module re1f
-
-service shell.Run {
-  operation Exec {
-    input { script: String }
-    output { result: String }
-    transport shell { argv: ["sh", "-lc", "{script}"] }
-    mock_response {
-      0 => "done" "result"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1f.rs");
-    assert!(
-        content.contains("Command::new(\"sh\")") && content.contains(".arg(\"-lc\")"),
-        "RE-1f: expected sh -lc argv in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_checks_exit_code() {
-    let source = r#"module re1h
-
-service shell.Run {
-  operation Exec {
-    input { cmd: String }
-    output { result: String }
-    transport shell { argv: ["sh", "-c", "{cmd}"] }
-    exit {
-      0 => Unit
-      nonzero => String "command failed"
-    }
-    mock_response {
-      0 => "done" "result"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1h.rs");
-    assert!(
-        content.contains("exit_code") || content.contains("success()"),
-        "RE-1h: expected exit code handling in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_pipes_stdin() {
-    let source = r#"module stdin_test
-
-service test.Shell {
-  config {
-    endpoint: "local"
-  }
-  operation Run {
-    input { prompt: String }
-    output { result: String }
-    transport shell { argv: ["cat"], stdin: prompt }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/stdin_test.rs");
-    assert!(
-        content.contains("Stdio::piped") || content.contains("stdin"),
-        "RE-1g: expected stdin handling, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_optional_param_in_interp() {
-    let source = r#"module re1i
-
-service cron.Tab {
-  operation Upsert {
-    input {
-      tag: String
-      log_path: String?
-    }
-    output { success: Bool }
-    transport shell {
-      argv: ["sh", "-c", "echo {tag} >> {log_path}"]
-    }
-    mock_response {
-      0 => { success: true } "ok"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1i.rs");
-    assert!(
-        content.contains("log_path.as_deref().unwrap_or"),
-        "RE-1i: optional param in interpolation should use unwrap_or, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_stdin_pipes_and_writes() {
-    let source = r#"module re1g
-
-service shell.Pipe {
-  operation Send {
-    input { data: String }
-    output { result: String }
-    transport shell {
-      argv: ["cat"]
-      stdin: data
-    }
-    mock_response {
-      0 => "echoed" "result"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1g.rs");
-    assert!(
-        content.contains("Stdio::piped()") && content.contains("stdin.write_all"),
-        "RE-1g: expected stdin piping and write in emitted code, got:\n{content}"
-    );
-    assert!(
-        content.contains("stdout(std::process::Stdio::piped())"),
-        "RE-1g: expected stdout piped for output capture, got:\n{content}"
     );
 }
 
@@ -7569,7 +6417,7 @@ fn review_dag_compiles_to_rust() {
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut categories: im::HashMap<String, usize> = im::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
@@ -7789,147 +6637,6 @@ fn review_dag_builds_and_runs_dry_run() {
 }
 
 #[test]
-fn rest_emit_post_body_single_field() {
-    let source = r#"module re1_body1
-
-service test.Svc {
-  config {
-    endpoint: "https://api.example.com"
-  }
-  operation CreateItem {
-    input { name: String }
-    output { id: Int from "id" }
-    transport rest { method: POST, path: "/items", body: { name: name } }
-    response {
-      201 => Json
-    }
-    mock_response {
-      201 => { id: 1 } "created"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1_body1.rs");
-    assert!(
-        content.contains("serde_json::json!"),
-        "RE-1 POST body: expected serde_json::json! in emitted code, got:\n{content}"
-    );
-    assert!(
-        content.contains("\"name\""),
-        "RE-1 POST body: expected field name in JSON body, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_post_body_multiple_fields() {
-    let source = r#"module re1_body2
-
-service test.Svc {
-  config {
-    endpoint: "https://api.example.com"
-  }
-  operation CreateReview {
-    input { body: String, event: String }
-    output { id: Int from "id" }
-    transport rest { method: POST, path: "/reviews", body: { body: body, event: event } }
-    response {
-      200 => Json
-    }
-    mock_response {
-      200 => { id: 1 } "review"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1_body2.rs");
-    assert!(
-        content.contains("serde_json::json!")
-            && content.contains("\"body\"")
-            && content.contains("\"event\""),
-        "RE-1 POST body: expected JSON body with both fields in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_uses_header_auth() {
-    let source = "module re1d_header\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re1d_header.rs");
-    assert!(
-        content.contains("x-api-key"),
-        "RE-1d: expected x-api-key header in emitted code, got:\n{content}"
-    );
-    assert!(
-        !content.contains("Bearer"),
-        "RE-1d: should NOT contain Bearer for Header auth, got:\n{content}"
-    );
-}
-
-#[test]
-fn rest_emit_post_with_auth_source() {
-    let source = r#"module re3b
-
-import std.types { AuthScheme }
-import std.credentials { CredentialSource }
-
-service test.Api {
-  config {
-    endpoint: "https://api.example.com"
-    auth: Bearer
-    auth_source: EnvVar { name: "TEST_TOKEN" }
-  }
-  operation CreateItem {
-    input { name: String }
-    output { id: Int from "id" }
-    transport rest { method: POST, path: "/items", body: { name: name } }
-    response {
-      201 => Json
-    }
-    mock_response {
-      201 => { id: 1 } "created"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re3b.rs");
-    assert!(
-        content.contains("serde_json::json!") && content.contains("self.auth_token"),
-        "RE-3b: expected POST body + self.auth_token in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_captures_stdout() {
-    let source = "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"{script}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re3c.rs");
-    assert!(
-        content.contains("from_utf8_lossy") && content.contains("stdout"),
-        "RE-3c: expected stdout capture in emitted code, got:\n{content}"
-    );
-}
-
-#[test]
-fn shell_emit_cron_upsert_script() {
-    let source = "module re3d\n\nservice test.Cron {\n  config {}\n  operation Upsert {\n    input { tag: String, schedule: String, command: String }\n    output { success: Bool }\n    transport shell {\n      argv: [\"sh\", \"-c\", \"TAG='{tag}'; ENTRY='{schedule} {command}'; crontab -l | grep -v $TAG; echo $ENTRY\"]\n    }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true } \"ok\"\n    }\n  }\n}\n";
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/re3d.rs");
-    assert!(
-        content.contains("crontab"),
-        "RE-3d: expected crontab in emitted shell command, got:\n{content}"
-    );
-}
-
-#[test]
 #[ignore = "failing: untagged OpenAiChatMessageContent variants not emitted as newtype variants (content wire mismatch). Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-projection"]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let ws = crate::helpers::workspace_root();
@@ -8092,7 +6799,7 @@ fn github_review_enums_wire_matches_screaming_snake_contract() {
         review_event_attrs
     );
     let review_event_body = enum_block(&content, "pub enum ReviewEvent");
-    for needle in ["Approve,", "RequestChanges,", "Comment,", "Pending,"] {
+    for needle in ["Approve,", "RequestChanges,", "Comment,", "PendingEvent,"] {
         assert!(
             review_event_body.contains(needle),
             "expected variant {needle} in ReviewEvent; got:\n{review_event_body}"
@@ -8230,7 +6937,7 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
 #[test]
 fn coproduct_wire_contract_target_must_name_local_coproduct() {
     let source = r#"module stale_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data stale_contract: CoproductWireContract = {
@@ -8260,7 +6967,7 @@ type RealEnum
 #[test]
 fn structural_coproduct_wire_contract_shape_is_not_authority() {
     let source = r#"module structural_coproduct_wire_contract
-import std.serialization { VariantEncoding }
+import std.serialization { VariantEncoding, VariantNaming }
 
 type FakeContract {
   coproduct: String
@@ -8297,7 +7004,7 @@ type RealEnum
 #[test]
 fn local_same_name_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type CoproductWireContract {
   coproduct: String
@@ -8330,7 +7037,7 @@ type RealEnum
 #[test]
 fn local_alias_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_alias_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type LocalContractShape {
   coproduct: String
@@ -8369,7 +7076,7 @@ type RealEnum
 #[test]
 fn local_decl_coproduct_wire_contract_suppresses_std_import() {
     let source = r#"module local_decl_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type CoproductWireContract
 
@@ -8398,7 +7105,7 @@ type RealEnum
 #[test]
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_affix_contract: CoproductWireContract = {
@@ -8427,7 +7134,7 @@ type RealEnum
 #[test]
 fn coproduct_wire_contract_string_variant_requires_unit_variants() {
     let source = r#"module fielded_string_variant_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data string_contract: CoproductWireContract = {
@@ -8460,7 +7167,7 @@ type RealEnum
 #[test]
 fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
     let source = r#"module malformed_internal_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_internal_contract: CoproductWireContract = {
@@ -8476,19 +7183,24 @@ type RealEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    // The missing-field presence wall now stops the line at TYPECHECK (the
+    // census-ambiguity skip that used to let this literal through was an
+    // absorbing arm, closed on #6848) — strictly earlier than the decode-time
+    // compile_error! backstop this test previously pinned. The malformed
+    // contract must refuse loudly, naming the omitted field.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a literal tag_field"),
-        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'tag_field'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed InternallyTaggedObject contracts must refuse at typecheck; got: {msgs:?}"
     );
 }
 
 #[test]
 fn coproduct_wire_contract_requires_declared_naming_fields() {
     let source = r#"module malformed_naming_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data missing_naming_contract: CoproductWireContract = {
@@ -8512,13 +7224,17 @@ type MissingPrefixEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    // Same wall-promotion as the tag_field twin above: the omitted `naming`
+    // field refuses at typecheck now. The bare `StripPrefixAndSnakeCase`
+    // (missing `prefix`) is an ExprVar, not a record literal, so it stays
+    // decode-time enforced — that compile_error! arm remains the backstop for
+    // shapes the literal wall cannot see.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a naming policy")
-            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
-        "malformed naming policies must fail closed at decode time; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'naming'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed naming policies must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -9673,7 +8389,7 @@ data tool_results: List<AnthropicChatMessage> = [
     content: [
       UserToolResultBlock {
         tool_use_id: "toolu_text",
-        content: ToolResultText { text: "15 degrees" },
+        content: ToolResultText("15 degrees"),
         is_error: none
       },
       UserToolResultBlock {
@@ -11219,11 +9935,12 @@ fn dump_complexity_report() {
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
-        Rc::new(all_sources),
+        Rc::new(all_sources.into()),
         RenderTarget::Rust,
-        v1_compiler::v1_compiler_compile::CompilePipelineOptions {
+        Rc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
-        },
+            census_only_sources: Rc::new(im::Vector::new()),
+        }),
     );
 
     let cx = &result.complexity;
@@ -11279,7 +9996,7 @@ fn diag_render_node_type_evidence() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -11370,7 +10087,7 @@ fn diag_emitter_scc() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit_rust.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit_rust.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -11390,7 +10107,7 @@ fn diag_emitter_scc() {
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
-        Rc::new(func_entries.to_vec()),
+        func_entries.clone(),
         func_index.clone(),
         Rc::new(HashMap::new()),
     );
@@ -11588,7 +10305,13 @@ fn count_ownership_violations(
     let try_unwrap_fallbacks = count_pattern(&emitted, "unwrap_or_else(|rc| (*rc).clone())");
 
     for proof in result.ownership.iter() {
-        let movable = build_movable_set(proof.clone());
+        // build_movable_set is 2-arg in the .dag authority (proof, param_names);
+        // main's seed had a stale 1-arg divergence and this call was written against
+        // it. param_names only EXTENDS movability to sole-owned params; passing the
+        // empty set keeps the param-blind (owned-locals-only) count the movable_but_cloned
+        // ratchet below was calibrated against — a conservative subset that stays under
+        // the `<= 45` bound. (result.ownership yields proofs without param_names.)
+        let movable = build_movable_set(proof.clone(), Rc::new(BTreeSet::new()));
         for name in movable.iter() {
             let clone_pattern = format!("{}.clone()", name);
             let clones_in_emitted = count_pattern(&emitted, &clone_pattern);

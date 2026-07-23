@@ -1,23 +1,12 @@
 module v2.test.host_language_transport_script.lens_unit.transport_script_position
 
-import v2.lens.host_language_transport_script {
-  BareStringLiteral,
-  ComputedApplication,
-  LetBoundStringLiteral,
-  StringInterpLiteralsOnly,
-  TransportScriptPositionFact,
-  transport_script_literal_ban_holds,
-  transport_script_literal_violation_count,
-  transport_script_lens_verdict,
-}
-import std.lens_verdict { Holds, Violation, NotApplicable, Unrealized }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data path_dag: String = "dag/tools/dag_compile_clean_transport.dag"
 data path_emit: String = "dag/tools/emit_host_transport.dag"
 data fn_clean: String = "run_clean_tree_compile"
-data fn_go: String = "run_go_mvp2_smoke"
+data fn_go: String = "run_go_smoke"
 data fn_bad: String = "run_bad_literal_smoke"
 
 data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {

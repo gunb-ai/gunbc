@@ -1,0 +1,23 @@
+module test.claim.emit_host_typed_smoke_test
+
+
+data emit_host_typed_smoke_red_doc: String = "Discriminating controls for the typed emit-host smokes (tools.emit_host_transport). The smokes assert CONTENT equality against the in-substrate NUL golden; the control below emits five SPACES - byte-count-identical to the golden - and asserts inequality, so a regression of the mechanism back to count comparison (the old wc -c check) or an equality that fabricates true goes RED here. The pure shape tests pin the golden itself so repeat_string/from_code_point cannot silently degenerate to the empty string (which trailing-whitespace trims would then match)."
+
+data five_space_python_fixture: String = "import sys\nsys.stdout.write(' ' * 5)\n"
+
+test fn emit_host_golden_is_nonempty_holds() -> Bool {
+  expected_stdout_nul_run() != ""
+}
+
+test fn emit_host_golden_length_matches_declared_count_holds() -> Bool {
+  string_length(expected_stdout_nul_run()) == 5
+}
+
+test fn emit_host_content_equality_discriminates_count_identical_bytes_holds() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let script = Filesystem.Write(path: concat(dir.path, "/fixture.py"), content: five_space_python_fixture)
+  let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && script.success && run.success && cleanup.success
+    && (run.stdout != expected_stdout_nul_run())
+}

@@ -1,0 +1,152 @@
+module v2.workflow.ci_workflow_run_emit
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import gunbc.ci_materialization { ci_sccache_provider_shell_injection }
+import gunbc.ci_spec { ci_repo_root_shell }
+import gunbc.merge_admission_produce { ci_documentation_only_gate_skip_prefix }
+import v2.std.orchestration {
+  Do,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+
+data ci_isolate_rm_rustup_cargo_command: String = "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\""
+
+data ci_isolate_echo_home_command: String = "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_cargo_home_command: String = "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
+
+data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. R2 (computation-identity census, 2026-07-22): the KEY carries only the nominal grain-toolchain string, so real toolchain identity enters via the root path — a rustc-version segment derived at prelude time makes a toolchain upgrade land in a fresh root and cold-rebuild everything (realization-side backstop; folding true toolchain identity into emit_on_demand_key is the construction end-state, deferred to avoid churning every family call site). Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
+
+data ci_native_cache_root_toolchain_segment_command: String = "GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z \"$GUNBC_TOOLCHAIN_SEG\" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi"
+
+data ci_native_cache_root_mkdir_command: String = "mkdir -p \"$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG\""
+
+data ci_native_cache_root_echo_command: String = "echo \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG\" >> \"$GITHUB_ENV\""
+
+data ci_selection_control_witness_invoke_command: String = "\"$ROOT/target/release/floor_skip_discovery_witness\""
+
+fn ci_pin_rustup_default_command() -> String {
+  concat(
+    "rustup default \"$(rustup show active-toolchain | awk '",
+    concat(concat("{", "print $1; exit"), concat("}", "')\""))
+  )
+}
+
+data ci_pin_rustup_cargo_bin_resolve_command: String = "if [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi"
+
+data ci_pin_rustup_cargo_bin_missing_command: String = "if [ -z \"$CARGO_BIN\" ]; then echo \"::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one\"; exit 1; fi"
+
+data ci_pin_rustup_echo_cargo_bin_command: String = "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
+
+fn ci_workflow_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn ci_workflow_do(command: String) -> PipelineStep {
+  Do { run: ci_workflow_run(command: command) }
+}
+
+fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+  }
+}
+
+fn ci_isolate_cargo_build_jobs_command(build_jobs_count: Int) -> String {
+  concat(
+    "echo \"CARGO_BUILD_JOBS=",
+    concat(to_string(build_jobs_count), "\" >> \"$GITHUB_ENV\"")
+  )
+}
+
+fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_isolate_rm_rustup_cargo_command),
+      ci_workflow_do(command: ci_isolate_echo_home_command),
+      ci_workflow_do(command: ci_isolate_echo_cargo_home_command),
+      ci_workflow_do(command: ci_isolate_echo_rustup_home_command),
+      ci_workflow_do(command: ci_isolate_echo_makeflags_command),
+      ci_workflow_do(command: ci_isolate_cargo_build_jobs_command(build_jobs_count: build_jobs_count)),
+      ci_workflow_do(command: ci_native_cache_root_toolchain_segment_command),
+      ci_workflow_do(command: ci_native_cache_root_mkdir_command),
+      ci_workflow_do(command: ci_native_cache_root_echo_command),
+      ci_workflow_do(command: ci_sccache_provider_shell_injection())
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
+  ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
+}
+
+fn ci_pin_rustup_default_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_pin_rustup_default_command()),
+      ci_workflow_do(command: ci_pin_rustup_cargo_bin_resolve_command),
+      ci_workflow_do(command: ci_pin_rustup_cargo_bin_missing_command),
+      ci_workflow_do(command: ci_pin_rustup_echo_cargo_bin_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_pin_rustup_default_script() -> String {
+  ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+}
+
+fn ci_selection_control_root_command() -> String {
+  concat("ROOT=", gunbc.ci_spec.ci_repo_root_shell())
+}
+
+fn ci_selection_control_skip_prefix_command() -> String {
+  ci_documentation_only_gate_skip_prefix(
+    gate_name: "Affected-set selection control",
+    skip_reason: "floor not run; hermetic selection suite requires full floor context"
+  )
+}
+
+fn ci_selection_control_tail_command() -> String {
+  concat(
+    ci_selection_control_skip_prefix_command(),
+    ci_selection_control_witness_invoke_command
+  )
+}
+
+fn ci_selection_control_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_selection_control_root_command()),
+      ci_workflow_do(command: ci_selection_control_tail_command())
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_selection_control_script() -> String {
+  ci_workflow_run_emit_pipeline(p: ci_selection_control_intent())
+}

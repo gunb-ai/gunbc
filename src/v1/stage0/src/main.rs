@@ -4,14 +4,14 @@
 
 use clap::{Parser, Subcommand};
 
-use std::collections::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
+use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
-    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at,
-    CompilerDiagnostic, NewlineIndex,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
 
 #[derive(Parser)]
@@ -45,6 +45,11 @@ enum Commands {
         target: String,
         #[arg(long = "dependency-pool-index", default_value = "strict")]
         dependency_pool_index: String,
+        /// Entry `.dag` file: compile only this module and its transitive imports
+        /// (not every `.dag` file under the first --source-root). Scopes the compile
+        /// to a subtree so a small closure can be emitted without a whole-tree pass.
+        #[arg(long)]
+        entry: Option<String>,
     },
     Ci,
 
@@ -63,6 +68,34 @@ enum Commands {
         /// TestClaim / witness run: Bool false → exit 1; requires --entry
         #[arg(long)]
         claim_run: bool,
+    },
+
+    /// Apply a host's typed converge policy in-process
+    /// (`gunbc.fleet_converge_cli.converge_cli_run`) and print a
+    /// `converge-receipt` line on the byte-locked receipt grammar.
+    Converge {
+        /// Fleet host identity (e.g. "srv1") to converge
+        #[arg(long)]
+        host: String,
+    },
+
+    /// Long-running HTTP server: compile once, then answer each request by
+    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
+    /// The seam is parse/write only — routing and handlers live in .dag.
+    Serve {
+        /// Source root directories (searched recursively for .dag files)
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// Entry `.dag` file: load only this module and its transitive imports
+        #[arg(long)]
+        entry: String,
+        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
+        #[arg(long)]
+        function: String,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "8080")]
+        port: u16,
     },
 }
 
@@ -218,8 +251,13 @@ fn resolve_transitively_with_seen(
     let mut queue: Vec<(String, String)> = entry_sources;
 
     while let Some((_path, content)) = queue.pop() {
-        let imports = extract_import_paths(&content);
-        for module_path in imports {
+        // Compile scope stays the IMPORT closure: widening it to reference-derived
+        // deps was measured to pull cross-tree modules into this pool-precedence
+        // view where their own bare names do not resolve (344 diagnostics — the
+        // Empty/Cons poisoning class). References instead widen the CENSUS
+        // (fill = whole tree; policy gates lookup, never fill): see
+        // census_only_sources below.
+        for module_path in extract_import_paths(&content) {
             if seen.contains_key(&module_path) {
                 continue;
             }
@@ -242,7 +280,7 @@ fn resolve_transitively_with_seen(
         }
     }
 
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -299,15 +337,6 @@ fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compil
     }
 }
 
-fn hard_errors(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> bool {
-    result.diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
-}
-
 fn main() {
     let cli = Cli::parse();
     let _result = match cli.command {
@@ -317,10 +346,36 @@ fn main() {
             output_dir,
             target,
             dependency_pool_index,
+            entry,
         } => {
+            // #6967/§13 silent-pick piggyback: drain resolution silent-pick
+            // telemetry over this same compile. This is NOT the shared
+            // resolution_divergence_silent_pick_refusal authority (cli_run.rs)
+            // — that requires the full whole-tree census join against
+            // containment_ambiguous_rows/diverge_rows, too costly to run on
+            // every `gunbc compile` (measured >90s/3GB+ RSS whole-tree, per
+            // ci_layer_roots.dag's falsifier_silent_pick_gate_note). This is a
+            // deliberately narrower, cost-motivated proxy, asymmetric in both
+            // directions from the shared authority (review 41032):
+            //   - fn_parent_first_hit: red-on-any raw count here, on the
+            //     construction-proven corpus invariant (with v2.test.* roster
+            //     exclusion) that every in-roster fn_parent_first_hit fire is
+            //     containment_ambiguous — verified by
+            //     resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus
+            //     and the nightly falsifier's subset refusal arm.
+            //   - global_bare_lcp: skipped entirely here (fires on whole-pool
+            //     name overlap alone — ~483 benign corpus sites, not genuine
+            //     under §13 unique-on-chain) — under-strict; a future genuine
+            //     global_bare_lcp pick is caught only by the nightly full-join
+            //     falsifier backstop, not at compile time.
+            // Tracked fast-follow, not a single authority today.
+            v1_rt::resolution_silent_pick_enable();
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
+            // Indexed modules outside the compile closure, included in the name
+            // census only (fill = whole tree; the compile scope stays the closure).
+            let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if !source_roots.is_empty() {
                 let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
@@ -329,51 +384,131 @@ fn main() {
                     source_roots.len()
                 );
 
-                // Entry modules: all .dag files in the FIRST source root.
-                // Additional roots are dependency pools resolved via imports.
-                // This is intentional: --source-root src/v1 --source-root dag
-                // means 'compile src/v1, using dag as a dependency pool.'
-                let first_root = std::path::Path::new(&source_roots[0]);
+                // Entry modules. With --entry: exactly the one named file (its
+                // transitive imports are resolved from the index below), so a small
+                // subtree compiles without a whole-tree pass. Without --entry: all
+                // .dag files in the FIRST source root (additional roots are dependency
+                // pools resolved via imports — `--source-root src/v1 --source-root dag`
+                // means 'compile src/v1, using dag as a dependency pool').
                 let mut entry_files = Vec::new();
-                if first_root.is_dir() {
-                    let mut dag_paths = Vec::new();
-                    collect_dag_files(first_root, &mut dag_paths);
-                    for path in dag_paths {
-                        let content = std::fs::read_to_string(&path)
-                            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                        entry_files.push((path.to_string_lossy().to_string(), content));
+                if let Some(entry_path) = &entry {
+                    let content = std::fs::read_to_string(entry_path)
+                        .unwrap_or_else(|e| panic!("failed to read entry {:?}: {}", entry_path, e));
+                    entry_files.push((entry_path.clone(), content));
+                } else {
+                    let first_root = std::path::Path::new(&source_roots[0]);
+                    if first_root.is_dir() {
+                        let mut dag_paths = Vec::new();
+                        collect_dag_files(first_root, &mut dag_paths);
+                        for path in dag_paths {
+                            let content = std::fs::read_to_string(&path)
+                                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                            entry_files.push((path.to_string_lossy().to_string(), content));
+                        }
                     }
                 }
                 let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
                 cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
 
-                let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-                let mut entry_for_queue = Vec::new();
-                for (path, content) in &entry_files {
-                    if let Some(mod_path) = extract_module_path(content) {
-                        let source = Rc::new(v1_compiler_compile::SourceFile {
-                            path: path.clone(),
-                            content: content.clone(),
-                        });
-                        seen.insert(mod_path, source);
-                        entry_for_queue.push((path.clone(), content.clone()));
+                // Namespace Rule-1 (emit_import_closure_root): with imports
+                // stripped, a namespace-only module's cross-module deps are
+                // derivable ONLY from its references, not import edges. For a
+                // single --entry compile use the reference-derived closure (the
+                // SAME authority the witness loaders use — load_sources_for_entry
+                // → extend_with_bare_reference_closure + extend_with_reference_
+                // closure) so referenced PROVIDER modules enter the COMPILED +
+                // EMITTED set (emit needs their type/fn defs, not just a census
+                // name-lookup). This unifies compile with the witness closure and
+                // kills the import-only-vs-reference §3 fork that let a bare
+                // cross-module type ref (e.g. materialization_carriers →
+                // std.realization.Materialization) fall silently to census-only
+                // and render invalid dotted Rust. Without --entry (whole first
+                // root) the import-edge walk stays the authority — every module
+                // is already an entry, so reference derivation would only over-
+                // pull. Fill (whole-tree name census) is unchanged below.
+                let resolved = if let Some(entry_path) = &entry {
+                    // §3: build the reference-derived closure under the SAME
+                    // dependency-pool policy as the census pool above (line ~338,
+                    // `build_module_index(&source_roots, pool_index)`), so closure
+                    // and census cannot fork on a cross-root homonym module.
+                    cli_run::load_sources_for_entry_with_pool_index(
+                        &source_roots,
+                        entry_path,
+                        matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("error: reference-derived closure load failed: {e}");
+                        std::process::exit(1);
+                    })
+                } else {
+                    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+                        HashMap::new();
+                    let mut entry_for_queue = Vec::new();
+                    for (path, content) in &entry_files {
+                        if let Some(mod_path) = extract_module_path(content) {
+                            let source = Rc::new(v1_compiler_compile::SourceFile {
+                                path: path.clone(),
+                                content: content.clone(),
+                            });
+                            seen.insert(mod_path, source);
+                            entry_for_queue.push((path.clone(), content.clone()));
+                        }
                     }
-                }
-
-                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
-                for (path, content) in entry_files {
-                    if extract_module_path(&content).is_none() {
-                        continue;
+                    let mut resolved =
+                        resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                    for (path, content) in entry_files {
+                        if extract_module_path(&content).is_none() {
+                            continue;
+                        }
+                        let already_there = resolved.iter().any(|s| s.path == path);
+                        if !already_there {
+                            resolved
+                                .push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+                        }
                     }
-                    let already_there = resolved.iter().any(|s| s.path == path);
-                    if !already_there {
-                        resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
-                    }
-                }
+                    resolved
+                };
                 eprintln!(
                     "resolved {} sources (transitive import closure)",
                     resolved.len()
                 );
+                // Everything indexed but outside the closure enters the census only.
+                {
+                    // Key closure membership on MODULE PATH, not file path: the
+                    // reference-derived loader (cli_run) normalizes paths
+                    // differently from this handler's index, so a file-path
+                    // compare would fail to exclude closure modules and double-
+                    // load them into the census. Module path is the format-
+                    // independent identity.
+                    let closure_modules: std::collections::HashSet<String> = resolved
+                        .iter()
+                        .filter_map(|s| extract_module_path(&s.content))
+                        .collect();
+                    let mut pool_rest: Vec<(String, std::path::PathBuf)> = index
+                        .iter()
+                        .filter(|(m, _)| !closure_modules.contains(*m))
+                        .map(|(m, p)| (m.clone(), p.clone()))
+                        .collect();
+                    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
+                    for (module_path, file_path) in pool_rest {
+                        let content = std::fs::read_to_string(&file_path).unwrap_or_else(|e| {
+                            panic!(
+                                "failed to read indexed module '{}' at {:?}: {}",
+                                module_path, file_path, e
+                            )
+                        });
+                        census_only_sources.push(Rc::new(v1_compiler_compile::SourceFile {
+                            path: file_path.to_string_lossy().to_string(),
+                            content,
+                        }));
+                    }
+                    if !census_only_sources.is_empty() {
+                        eprintln!(
+                            "[census] {} indexed modules outside the closure enter the name census only (not compiled)",
+                            census_only_sources.len()
+                        );
+                    }
+                }
                 resolved
             } else if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
@@ -401,11 +536,22 @@ fn main() {
                 std::process::exit(1);
             };
 
+            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+                analyze_complexity: false,
+                census_only_sources: Rc::new(census_only_sources.into()),
+            });
             if render_targets.len() == 1 {
-                let result = v1_compiler_compile::compile_sources(
-                    Rc::new(sources),
+                let result = v1_compiler_compile::compile_sources_with_options(
+                    Rc::new(sources.into()),
                     render_targets[0].1.clone(),
+                    pipeline_options.clone(),
                 );
+                if let Some(message) =
+                    v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
+                {
+                    eprintln!("{message}");
+                    std::process::exit(1);
+                }
                 write_output_files(&output_dir, &result);
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
@@ -413,17 +559,11 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
-                if hard_errors(&result) {
-                    std::process::exit(1);
-                }
-                if result.files.is_empty() {
-                    eprintln!("error: no files emitted");
-                    std::process::exit(1);
-                }
             } else {
-                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
-                let mut any_hard_errors = false;
-                let mut any_empty = false;
+                let resolved = v1_compiler_compile::compile_to_resolved_with_options(
+                    Rc::new(sources.into()),
+                    pipeline_options.clone(),
+                );
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {
@@ -431,6 +571,12 @@ fn main() {
                         resolved.clone(),
                         render_target,
                     );
+                    if let Some(message) =
+                        v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
+                    {
+                        eprintln!("{message}");
+                        std::process::exit(1);
+                    }
                     let target_output_dir = format!("{}/{}", output_dir, name);
                     write_output_files(&target_output_dir, &result);
                     eprintln!(
@@ -440,8 +586,6 @@ fn main() {
                         result.diagnostics.len()
                     );
                     render_diagnostics(&result);
-                    any_hard_errors |= hard_errors(&result);
-                    any_empty |= result.files.is_empty();
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
                 }
@@ -449,13 +593,24 @@ fn main() {
                     "compiled: {} files emitted, {} diagnostics",
                     total_files, total_diagnostics
                 );
-                if any_hard_errors {
-                    std::process::exit(1);
+            }
+
+            let silent_pick = v1_rt::resolution_silent_pick_disable();
+            if !silent_pick.fn_parent_first_hits.is_empty() {
+                eprintln!(
+                    "SILENT-PICK-GATE: {} fn_parent_first_hit silent pick(s) in this compile (raw-count proxy gate, not the join-filtered resolution_divergence_silent_pick_refusal authority — §13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
+                    silent_pick.fn_parent_first_hits.len()
+                );
+                for site in &silent_pick.fn_parent_first_hits {
+                    eprintln!(
+                        "  SILENT-PICK-GATE fn_parent_first_hit module={} name={} parent_match_count={} chosen_parent_module={}",
+                        site.env_module_path,
+                        site.name,
+                        site.parent_match_count,
+                        site.chosen_parent_module
+                    );
                 }
-                if any_empty {
-                    eprintln!("error: no files emitted for at least one target");
-                    std::process::exit(1);
-                }
+                std::process::exit(1);
             }
         }
 
@@ -470,6 +625,20 @@ fn main() {
             claim_run,
         } => {
             cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);
+        }
+
+        Commands::Converge { host } => {
+            cli_run::handle_converge(host);
+        }
+
+        Commands::Serve {
+            source_roots,
+            entry,
+            function,
+            host,
+            port,
+        } => {
+            cli_run::handle_serve(source_roots, entry, function, host, port);
         }
     };
 }

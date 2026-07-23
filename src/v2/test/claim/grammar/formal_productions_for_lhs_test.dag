@@ -1,16 +1,7 @@
 module v2.test.claim.grammar.formal_productions_for_lhs
 
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.grammar {
-  FormalProduction,
-  formal_production_lhs_matches,
-  formal_productions_for_lhs,
-  grammar_formal_production,
-  grammar_formal_terminal
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data formal_productions_for_lhs_fixture_a: Symbol = ^formal_productions_for_lhs_fixture_a
 data formal_productions_for_lhs_fixture_b: Symbol = ^formal_productions_for_lhs_fixture_b

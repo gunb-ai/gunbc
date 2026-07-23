@@ -12,7 +12,7 @@ import v2.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisWidth,
-  model_core_wave1_bool_fact_lookup
+  model_core_bool_fact_lookup
 }
 
 import v2.std.verification {
@@ -20,6 +20,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn bool_lookup_width_ok(vw: Node) -> Bool {
   content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
 }
@@ -40,15 +43,15 @@ fn bool_lookup_signed_fails_closed(w: Witness<Node>) -> Bool {
 }
 
 test fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
-  let w_width = model_core_wave1_bool_fact_lookup(
+  let w_width = model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisWidth {})
   )
-  let w_enc = model_core_wave1_bool_fact_lookup(
+  let w_enc = model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisEncoding {})
   )
-  let w_signed = model_core_wave1_bool_fact_lookup(
+  let w_signed = model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisSignedness {})
   )

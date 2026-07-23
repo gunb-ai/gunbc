@@ -1,5 +1,20 @@
 module gunbc.hand_lens_host_bridge_scaffold_index
 
-import std.types { String }
 
-data transport_script_position_host_bridge_dissolution_trigger: String = "dissolve-on: gunbc#5364 — host-fed transport_script_position_facts_for_path (cli_run.rs TransportScriptArgShape classify_*) folds into pure Node-tree reader; verdict authority is v2.lens.host_language_transport_script.dag"
+data transport_script_position_host_bridge_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.host_language_transport_script",
+    decl_name: "TransportScriptPositionFact",
+    field: WholeDeclaration
+  }
+}
+
+data extdeps_external_authority_host_bridge_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.mandatory_tag.corpus_scan",
+    decl_name: "ExtdepsExternalAuthorityModuleFacts",
+    field: WholeDeclaration
+  }
+}

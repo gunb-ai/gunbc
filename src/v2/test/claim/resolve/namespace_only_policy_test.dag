@@ -1,0 +1,172 @@
+module v2.test.resolve.namespace_only_policy
+
+import v2.compiler.resolve {
+  ResolveContext,
+  Namespace,
+  empty_canonical_symbol_set,
+  resolve_atom,
+  scope_from_namespace
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_snoc
+}
+import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY }
+import v2.std.symbol_index { SymbolIndex }
+import v2.test.claim.symbol_index.containment {
+  si_index,
+  si_module_qn,
+  si_shadow_index,
+  si_shadow_nested_qn,
+  si_unique_index,
+  si_unique_module_qn
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn policy_pilot_namespace() -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: si_index,
+    module_qn: si_module_qn
+  }
+}
+
+fn policy_pilot_namespace_with_index(
+  symbol_index: SymbolIndex,
+  module_qn: QualifiedName
+) -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: symbol_index,
+    module_qn: module_qn
+  }
+}
+
+fn policy_pilot_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn policy_pilot_resolve(
+  policy: NameResolutionPolicy,
+  position: QualifiedName,
+  symbol_index: SymbolIndex,
+  module_qn: QualifiedName,
+  identity: Symbol
+) -> Bool {
+  let namespace = policy_pilot_namespace_with_index(
+    symbol_index: symbol_index,
+    module_qn: module_qn
+  )
+  match resolve_atom(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: policy,
+      position: position,
+      lm: dag_language_model(),
+      under_module_root: true
+    },
+    n: policy_pilot_atom(identity: identity),
+    identity: identity
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn policy_pilot_resolve_yes(
+  policy: NameResolutionPolicy,
+  position: QualifiedName
+) -> Bool {
+  policy_pilot_resolve(
+    policy: policy,
+    position: position,
+    symbol_index: si_index,
+    module_qn: si_module_qn,
+    identity: ^Yes
+  )
+}
+
+fn policy_pilot_resolve_rejects_with_reason(
+  policy: NameResolutionPolicy,
+  position: QualifiedName,
+  symbol_index: SymbolIndex,
+  module_qn: QualifiedName,
+  identity: Symbol,
+  reason: Symbol
+) -> Bool {
+  let namespace = policy_pilot_namespace_with_index(
+    symbol_index: symbol_index,
+    module_qn: module_qn
+  )
+  match resolve_atom(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: policy,
+      position: position,
+      lm: dag_language_model(),
+      under_module_root: true
+    },
+    n: policy_pilot_atom(identity: identity),
+    identity: identity
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool {
+  policy_pilot_resolve_yes(
+    policy: NamespaceOnlyY,
+    position: qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
+  )
+}
+
+test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> Bool {
+  !policy_pilot_resolve_yes(
+    policy: ImportScoped,
+    position: si_module_qn
+  )
+}
+
+test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
+  policy_pilot_resolve_rejects_with_reason(
+    policy: NamespaceOnlyY,
+    position: si_shadow_nested_qn,
+    symbol_index: si_shadow_index,
+    module_qn: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_shadow"),
+    identity: ^ShadowDup,
+    reason: ^resolve_reason_ambiguous_symbol
+  )
+}
+
+test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> Bool {
+  policy_pilot_resolve_rejects_with_reason(
+    policy: NamespaceOnlyY,
+    position: qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical),
+    symbol_index: si_unique_index,
+    module_qn: si_unique_module_qn,
+    identity: ^No,
+    reason: ^resolve_reason_ambiguous_symbol
+  )
+}

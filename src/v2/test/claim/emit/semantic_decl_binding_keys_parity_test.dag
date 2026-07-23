@@ -1,0 +1,45 @@
+module v2.test.emit.semantic_decl_binding_keys_parity
+
+import v2.extdeps.languages.rust { rust_decl_derive_binding_spellings, rust_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  semantic_decl_profile_binding_spellings
+}
+import v2.std.compilers.target_model { bound_spelling_from_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+fn binding_pair_matches(binding: Symbol) -> Bool {
+  match semantic_decl_emission_from_target(target: rust_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
+        Accepted { value: decoded_bindings, diagnostics: _ } =>
+          match bound_spelling_from_map(
+            binding_spellings: decoded_bindings,
+            binding: binding
+          ) {
+            Accepted { value: decoded, diagnostics: _ } =>
+              match bound_spelling_from_map(
+                binding_spellings: rust_decl_derive_binding_spellings(),
+                binding: binding
+              ) {
+                Accepted { value: live, diagnostics: _ } => decoded == live
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn all_bool_emit_bindings_match() -> Bool {
+  binding_pair_matches(binding: ^rust_decl_derive_enum_copy_binding)
+    && binding_pair_matches(binding: ^Bool)
+    && binding_pair_matches(binding: ^True)
+    && binding_pair_matches(binding: ^False)
+    && binding_pair_matches(binding: ^rust_decl_derive_enum_binding)
+    && binding_pair_matches(binding: ^rust_decl_derive_struct_binding)
+}

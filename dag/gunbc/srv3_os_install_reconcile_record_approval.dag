@@ -1,5 +1,6 @@
 module gunbc.srv3_os_install_reconcile_record_approval
 
+<<<<<<< HEAD
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -11,17 +12,25 @@ import gunbc.srv3_os_install_reconcile_types {
 import gunbc.srv3_os_install_reconcile_receipt {
   srv3_install_record_boot_once_approval_script,
 }
+=======
+>>>>>>> origin/main
 
 data srv3_os_install_reconcile_record_approval_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
+<<<<<<< HEAD
     module_path: "gunbc.srv3_os_install_reconcile",
     decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+=======
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
+>>>>>>> origin/main
     field: WholeDeclaration,
   }
 }
 
 func srv3_os_install_record_boot_once_approval() -> ProcessExit {
+<<<<<<< HEAD
   let script = srv3_install_record_boot_once_approval_script()
   let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
   if run.success {
@@ -29,4 +38,10 @@ func srv3_os_install_record_boot_once_approval() -> ProcessExit {
   } else {
     return exit_failure(reason: concat("srv3-install-record-approval: ", run.stderr))
   }
+=======
+  srv3_reconciliation_to_process_exit(
+    r: srv3_durable_approval_grant_record_apply(),
+    failure_prefix: "srv3-install-record-approval: ",
+  )
+>>>>>>> origin/main
 }

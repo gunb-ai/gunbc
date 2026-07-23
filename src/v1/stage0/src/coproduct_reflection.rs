@@ -1,16 +1,19 @@
-use std::collections::HashMap;
+use crate::v1_rt::VecCompat;
+use im::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::cli_run::{collect_dag_files_tolerant, is_test_dag, repo_rel, workspace_root};
-use crate::module_path_index::medium_structure_census::parse_dag_file;
+use crate::cli_run::{
+    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
+};
+use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -62,6 +65,14 @@ pub fn eval_symbol_intern_lexeme(
 ) -> InterpResult<Value> {
     let spelling = expect_string_lexeme(args.first().map(|(_, v)| v), "symbol_intern_lexeme")?;
     Ok(Value::Str(spelling))
+}
+
+pub fn eval_symbol_lexeme(
+    _ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let sym = expect_symbol(args.first().map(|(_, v)| v), "symbol_lexeme")?;
+    Ok(Value::Str(sym.to_string()))
 }
 
 pub(crate) fn type_item_by_name<'a>(
@@ -279,6 +290,8 @@ pub fn eval_resolve_type_node(
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
+    // Concept-index reflection keeps the authored module path (including `v2.`).
+    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
     if module_name.is_empty() {
         name.to_string()
     } else {
@@ -592,11 +605,52 @@ fn marshal_skeleton(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     match node.expr_data.as_ref() {
-        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
+        ExprData::ExprBlock => marshal_stmt_sequence(
+            ctx,
+            &node.children.iter().cloned().collect::<std::vec::Vec<_>>(),
+            param_names,
+            si,
+        ),
         ExprData::ExprLet => {
             marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
         }
         _ => marshal_generic(ctx, node, param_names, si),
+    }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
+// (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
+// `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
+// Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
+// Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
+// `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
+fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<Value> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                Some(edge_positional(ctx, atom_identity_node(ctx, s)))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn hoist_call_arg_string_literal_edges(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    edges: &mut Vec<Value>,
+) {
+    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
+        edges.push(literal_edge);
+        return;
+    }
+    if let Some(child0) = node.children.first() {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+            edges.push(literal_edge);
+        } else {
+            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+        }
     }
 }
 
@@ -611,6 +665,13 @@ fn marshal_generic(
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
+        // G2 live-read call reachability: callee atoms make cross-fn carrier chains
+        // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    }
+    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
+        edges.push(literal_edge);
     }
     if let Some(ref_name) = node_local_reference_name(node, &name) {
         refs.insert(ref_name);
@@ -619,6 +680,11 @@ fn marshal_generic(
         let (child_skel, child_refs) = marshal_skeleton(ctx, child, param_names, si);
         edges.push(edge_positional(ctx, child_skel));
         refs.extend(child_refs);
+    }
+    if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+        for child in node.children.iter() {
+            hoist_call_arg_string_literal_edges(ctx, child, &mut edges);
+        }
     }
     if let Some(inner) = node.body.as_ref() {
         let (inner_skel, inner_refs) = marshal_skeleton(ctx, inner, param_names, si);
@@ -737,6 +803,16 @@ fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
     param_names
 }
 
+fn fn_arrow_output_skeleton(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let param_names = fn_item_param_names(item, si);
+    Some(marshal_fn_body_skeleton(ctx, body, &param_names, si))
+}
+
 fn fn_arrow_decl_record(
     ctx: &InterpContext,
     si: &SourceIndices,
@@ -744,9 +820,8 @@ fn fn_arrow_decl_record(
     name: &str,
     item: &Rc<Node>,
 ) -> Option<Value> {
-    let body = item.body.as_ref()?;
+    let output = fn_arrow_output_skeleton(ctx, si, item)?;
     let param_names = fn_item_param_names(item, si);
-    let output = marshal_fn_body_skeleton(ctx, body, &param_names, si);
     let params: Vec<Value> = param_names
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
@@ -788,6 +863,25 @@ pub fn eval_fn_arrow_decl_facts_live(
         },
     )?;
     Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
+pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Ok(Value::Bool(
+        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
+    ))
+}
+
+pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
+    _ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Err(InterpError::TypeError {
+        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
+    })
 }
 
 fn literal_source_lexeme(
@@ -886,6 +980,9 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
+/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
+/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
+/// full module path including `v2.` for `concept_index` consumers).
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
     if logical.is_empty() {
@@ -893,19 +990,6 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     } else {
         format!("{logical}.{name}")
     }
-}
-
-fn extract_module_path_from_content(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("module ") {
-            return Some(trimmed["module ".len()..].trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
 }
 
 fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
@@ -948,7 +1032,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         let content = std::fs::read_to_string(&file).ok();
         let module_path = content
             .as_ref()
-            .and_then(|c| extract_module_path_from_content(c))
+            .and_then(|c| extract_module_path(c))
             .unwrap_or_default();
         let Some(parsed) = parse_dag_file(&file) else {
             continue;
@@ -1023,12 +1107,7 @@ fn marshal_decl_fact_node(
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
         ItemKind::FnItem | ItemKind::FuncItem => {
-            if let Some(body) = item.body.as_ref() {
-                let param_names = fn_item_param_names(item, si);
-                Ok(marshal_fn_body_skeleton(ctx, body, &param_names, si))
-            } else {
-                Ok(unit_type_node(ctx))
-            }
+            Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
             if let Some(body) = item.body.as_ref() {
@@ -1039,6 +1118,88 @@ fn marshal_decl_fact_node(
         }
         _ => Ok(unit_type_node(ctx)),
     }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): see
+// `v2.std.decl_index::export_signature_facts_host_scaffold_dissolution_trigger`.
+// Host SOURCE half for `export_signature_facts`; strict sibling of `marshal_decl_fact_node` /
+// `eval_decl_facts`. Reuses `decl_facts_for_roots` (#5966 neat-fox-279) — no new corpus walk.
+// Dissolves per `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger`.
+fn marshal_fn_export_signature_node(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut edges = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let ty = param_node_type_expr(p.clone());
+        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+    }
+    let ret_val = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
+        .transpose()?
+        .unwrap_or_else(|| unit_type_node(ctx));
+    edges.push(edge_positional(ctx, ret_val));
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
+        edges,
+    ))
+}
+
+fn marshal_export_signature_node(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    kind: ItemKind,
+    si: &SourceIndices,
+) -> InterpResult<Value> {
+    match kind {
+        ItemKind::TypeItem => concept_decl_node(ctx, si, item),
+        ItemKind::FnItem | ItemKind::FuncItem => marshal_fn_export_signature_node(ctx, si, item),
+        ItemKind::DataItem => match item
+            .inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+        {
+            Some(ty) => marshal_type_expr_ref(ctx, si, &ty),
+            None => Ok(unit_type_node(ctx)),
+        },
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+pub fn eval_export_signature_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let facts = decl_facts_for_roots(pool_roots);
+    let mut rows = Vec::with_capacity(facts.len());
+    for fact in facts {
+        let node = marshal_export_signature_node(ctx, &fact.node, fact.kind, &fact.source_indices)
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "export_signature_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                    fact.qualified_name, fact.kind, fact.rel_path
+                ),
+            })?;
+        rows.push(Value::Record {
+            type_name: ctx.sym("DeclFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
+                (ctx.sym("name"), Value::Str(fact.name)),
+                (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
+                (ctx.sym("node"), node),
+                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+            ])),
+        });
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
 }
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {

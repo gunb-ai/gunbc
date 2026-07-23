@@ -1,0 +1,151 @@
+module v2.test.long.cwc_resolution_probe
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
+data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
+data cwc_src_type_review: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
+
+data cwc_src_type_scalar: String = "module probe\ntype T = Int\n"
+
+data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int } | B | C\n"
+
+data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+
+fn cwc_norm_of(src: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
+    f: fn(toks) {
+      bind_outcome(o: parse(tokens: toks, grammar: lm.grammar), f: fn(ptree) {
+        normalize(parse_tree: ptree)
+      })
+    }
+  )
+}
+
+fn cwc_norm_accepts(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_norm_two_variant_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_two)
+}
+
+test fn cwc_norm_three_variant_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_three)
+}
+
+fn cwc_tree_has_disj(n: Node) -> Bool {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } => true
+          _ => false
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        if acc {
+          true
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
+}
+
+fn cwc_disj_arm_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } => count(node.children)
+          _ => 0
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        if acc > 0 {
+          acc
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
+}
+
+fn cwc_norm_rejects(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_scalar) {
+    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
+
+  cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
+}
+
+fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
+  !cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
+}
+
+test fn cwc_norm_review_event_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_review)
+}
+
+fn cwc_resolve_accepts(src: String) -> Bool {
+  let lm = dag_language_model()
+  match cwc_norm_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match resolve(tree: tree, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_cwc_module_resolve_accepts() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_cwc_module)
+}
+
+test fn cwc_review_normalized_has_disj() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_review) {
+    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_review_disj_has_four_arms() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_review) {
+    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root) == 4
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
+  cwc_norm_two_variant_accepts()
+    && cwc_norm_three_variant_accepts()
+    && cwc_review_normalized_has_disj()
+    && cwc_review_disj_has_four_arms()
+    && cwc_cwc_module_resolve_accepts()
+    && cwc_non_coproduct_rhs_passes_through()
+    && cwc_malformed_nary_coproduct_normalize_rejects()
+    && !cwc_malformed_nary_coproduct_fail_open_control()
+}

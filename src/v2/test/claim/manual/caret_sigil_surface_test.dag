@@ -1,10 +1,7 @@
 module v2.test.manual.caret_sigil_surface
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type CaretProbeShape
   = CaretAlpha { x: Int }
   | CaretBeta { y: Int }

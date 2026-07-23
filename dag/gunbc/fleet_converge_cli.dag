@@ -1,0 +1,302 @@
+module gunbc.fleet_converge_cli
+
+
+data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
+  reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
+}
+
+type ConvergeCliRefusalCause
+  = PolicyUnsound { reason: String }
+  | UnknownHost { host: String }
+  | ComputeInventoryAbsent { host: String }
+  | KnobFrontier { reason: String }
+
+fn converge_cli_unknown_host_reason(host: String) -> String {
+  concat("gunbc converge: unknown fleet host identity ", host)
+}
+
+fn converge_cli_compute_inventory_absent_reason(host: String) -> String {
+  concat("gunbc converge: host resolved by fleet converge policy but absent from compute inventory ", host)
+}
+
+fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
+  match cause {
+    PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
+    UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
+    KnobFrontier { reason: why } => why
+  }
+}
+
+type ConvergeCliReceipt {
+  host: String
+  applied: Int
+  drifted: Int
+  verdict: ConvergeVerdict
+  reason: ConvergeCliRefusalCause?
+}
+
+fn converge_cli_receipt_line(r: ConvergeCliReceipt) -> String {
+  concat(
+    concat(concat("converge-receipt host=", r.host), concat(" applied=", to_string(r.applied))),
+    concat(concat(" drifted=", to_string(r.drifted)), concat(" verdict=", converge_verdict_label(v: r.verdict)))
+  )
+}
+
+fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
+  r.verdict == VerdictConverged
+}
+
+fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
+  find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
+}
+
+fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> Int {
+  match intent.effect {
+    ConvergePlan { policy: p } => p.knobs.length()
+    ShellCommand { script: _ } => fallback
+    RedfishAction { action: _ } => fallback
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
+    ReadEffectivePosixPrincipal { read: _ } => fallback
+    SudoNopasswdExecuteProbe { probe: _ } => fallback
+    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
+    OsInstallActuatorToolchainEnsure {} => fallback
+    ProvisionBuildCache { catalog_id: _ } => fallback
+    Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
+    DurableApprovalGrantRecord => fallback
+    DurableApprovalGrantRead => fallback
+    Srv3InstallMediaFetch => fallback
+    Srv3SeededInstallMediaRemaster => fallback
+    Srv3SeededInstallMediaToolchainEnsure => fallback
+    Srv3SolConsoleCapture => fallback
+    Srv3BmcwebSessionLogin => fallback
+    Srv3BmcwebTokenExtract => fallback
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
+    Srv3BootOnceReadBackSleep => fallback
+    Srv3ReceiptEmit { lines: _ } => fallback
+    HostIdentityShortHostnameRead => fallback
+    LiveDeployApply { spec: _ } => fallback
+    LiveDeployRetract { spec: _ } => fallback
+    LiveDeployEnsureDependency { dep: _ } => fallback
+    LiveDeployDigestReadback { port: _ } => fallback
+    DeployAccessPreflight {} => fallback
+  }
+}
+
+fn converge_cli_routes_to_slice1(host: String) -> Bool {
+  host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
+}
+
+fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
+  let result = host_converge_slice1_converge_srv3()
+  if host_converge_slice1_host_result_all_valid(result: result) {
+    ConvergeCliReceipt {
+      host: operator_host_srv3 as String,
+      applied: host_converge_slice1_host_result_applied_count(result: result),
+      drifted: 0,
+      verdict: VerdictConverged,
+      reason: none,
+    }
+  } else {
+    ConvergeCliReceipt {
+      host: operator_host_srv3 as String,
+      applied: host_converge_slice1_host_result_applied_count(result: result),
+      drifted: 0,
+      verdict: Absent,
+      reason: Present {
+        value: KnobFrontier {
+          reason: match host_converge_slice1_host_result_refusal_reason(result: result) {
+            Present { value: why } => why
+            Absent => "host_converge_slice1: srv3 multi-unit convergence receipt validity gate failed"
+          },
+        },
+      },
+    }
+  }
+}
+
+fn converge_cli_slice1_receipt(host: String) -> ConvergeCliReceipt {
+  if host == (operator_host_srv3 as String) {
+    converge_cli_slice1_srv3_receipt()
+  } else {
+    converge_cli_slice1_srv1_receipt()
+  }
+}
+
+fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
+  match host_converge_slice1_converge_loop() {
+    HostConvergeSlice1Converged { applied_knobs: n, receipt: r } =>
+      if host_converge_slice1_receipt_is_valid(receipt: r) {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: n,
+          drifted: 0,
+          verdict: VerdictConverged,
+          reason: none,
+        }
+      } else {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: "host_converge_slice1: receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
+            },
+          },
+        }
+      }
+    HostConvergeSlice1Refused { reason: why } =>
+      ConvergeCliReceipt {
+        host: operator_host_srv1 as String,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: KnobFrontier { reason: why } },
+      }
+  }
+}
+
+fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliReceipt {
+  match converge_apply_for_host(host_converge: host_converge, transport: LocalShell) {
+    Present { value: r } =>
+      match r {
+        Converged { evidence: _, applied: intent } =>
+          ConvergeCliReceipt {
+            host: host_converge.identity as String,
+            applied: converge_cli_applied_knob_count(intent: intent, fallback: host_converge.knobs.length()),
+            drifted: 0,
+            verdict: VerdictConverged,
+            reason: none,
+          }
+        NotConverged { reason: why, applied: _ } =>
+          ConvergeCliReceipt {
+            host: host_converge.identity as String,
+            applied: 0,
+            drifted: 0,
+            verdict: Absent,
+            reason: Present { value: KnobFrontier { reason: why } },
+          }
+      }
+    Absent =>
+      ConvergeCliReceipt {
+        host: host_converge.identity as String,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: ComputeInventoryAbsent { host: host_converge.identity as String } },
+      }
+  }
+}
+
+type ConvergeCliOutput {
+  line: String
+  converged: Bool
+  reason: String?
+}
+
+fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
+  match result {
+    RunnerMemoryCapVerifyObserved { receipt: r } =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: r.tally.converged,
+        drifted: r.tally.drifted,
+        verdict: r.verdict,
+        reason: none,
+      }
+    RunnerMemoryCapVerifyRefused { host: _, reason: why } =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: KnobFrontier { reason: why } },
+      }
+  }
+}
+
+fn converge_cli_routes_to_memory_cap_verify(host: String) -> Bool {
+  match runner_memory_host_converge(host: host as HostIdentity) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
+  if converge_cli_routes_to_memory_cap_verify(host: host) {
+    converge_cli_receipt_from_memory_cap_verify(
+      host: host,
+      result: runner_memory_cap_verify_run(host: host as HostIdentity)
+    )
+  } else {
+    ConvergeCliReceipt {
+      host: host,
+      applied: 0,
+      drifted: 0,
+      verdict: Absent,
+      reason: Present {
+        value: KnobFrontier {
+          reason: concat(
+            "host_runner_memory_cap_verify: no memory-cap converge knobs in fleet_converge_policy for ",
+            host
+          ),
+        },
+      },
+    }
+  }
+}
+
+fn converge_cli_output(host: String) -> ConvergeCliOutput {
+  converge_cli_output_with_verify(host: host, verify_only: false)
+}
+
+fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
+  converge_cli_output_with_verify(host: host, verify_only: true)
+}
+
+fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
+  let r = if verify_only {
+    converge_cli_verify_run(host: host)
+  } else {
+    converge_cli_run(host: host)
+  }
+  ConvergeCliOutput {
+    line: converge_cli_receipt_line(r: r),
+    converged: converge_cli_receipt_converged(r: r),
+    reason: match r.reason {
+      Present { value: cause } => Present { value: converge_cli_refusal_message(cause: cause) }
+      Absent => none
+    },
+  }
+}
+
+fn converge_cli_run(host: String) -> ConvergeCliReceipt {
+  match fleet_converge_policy() {
+    ConvergePolicyUnsound { reason: why } =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: PolicyUnsound { reason: why } },
+      }
+    ConvergePolicyDerived { hosts: hosts } =>
+      if converge_cli_routes_to_slice1(host: host) {
+        converge_cli_slice1_receipt(host: host)
+      } else {
+        match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+        Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+        Absent =>
+          ConvergeCliReceipt {
+            host: host,
+            applied: 0,
+            drifted: 0,
+            verdict: Absent,
+            reason: Present { value: UnknownHost { host: host } },
+          }
+        }
+      }
+  }
+}

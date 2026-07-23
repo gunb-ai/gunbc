@@ -1,24 +1,11 @@
 module test.claim.srv3_boot_once_cd
 
-import std.logic { Bool }
-import extdeps.bmc.types {
-  BootTargetCd,
-  BootOverrideOnce,
-  ResetForceRestart,
-  redfish_boot_target_wire,
-  redfish_boot_override_enabled_wire,
-  redfish_reset_type_wire,
-}
-import gunbc.tools.bmc_onboard { boot_override_body, reset_body }
-import gunbc.srv3_boot_once_cd {
-  srv3_boot_cd_target,
-  srv3_boot_cd_enabled,
-  srv3_boot_cd_reset_type,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn boot_cd_once_body_wires_correctly() -> Bool {
-  let body = boot_override_body(target: "Cd", enabled: "Once")
-  body == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+  let body = boot_override_body(target: "Cd", enabled: "Once", mode: "UEFI")
+  body == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\", \"BootSourceOverrideMode\": \"UEFI\"}}"
 }
 
 test fn force_restart_body_wires_correctly() -> Bool {
@@ -29,5 +16,17 @@ test fn force_restart_body_wires_correctly() -> Bool {
 test fn cd_once_and_restart_redfish_wire_labels_are_grounded() -> Bool {
   redfish_boot_target_wire(t: srv3_boot_cd_target) == "Cd"
     && redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled) == "Once"
+    && redfish_boot_override_mode_wire(m: srv3_boot_cd_mode) == "UEFI"
+    && srv3_boot_cd_mode == BootOverrideModeUefi
+    && srv3_boot_cd_override_mode_valid_for_arm64(mode: BootOverrideModeUefi)
+    && !srv3_boot_cd_override_mode_valid_for_arm64(mode: BootOverrideModeLegacy)
+    && match srv3_boot_cd_override_mode_refusal(mode: BootOverrideModeLegacy) {
+      Present { value: r } => string_contains(s: r, pattern: "Legacy refused")
+      Absent => false
+    }
+    && match srv3_boot_cd_override_mode_refusal(mode: BootOverrideModeUefi) {
+      Absent => true
+      Present { value: _ } => false
+    }
     && redfish_reset_type_wire(r: srv3_boot_cd_reset_type) == "ForceRestart"
 }

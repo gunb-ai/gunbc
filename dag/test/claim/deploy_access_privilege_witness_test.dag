@@ -1,31 +1,7 @@
 module test.claim.deploy_access_privilege_witness
 
-import std.logic { Bool }
-import std.types { NonEmptyStr }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_access_refusal_prefix,
-  deploy_access_privileged_fixture_actor,
-  deploy_access_unprivileged_fixture_actor,
-  deploy_access_check,
-  Permit,
-  Deny,
-  deploy_access_decision_reason,
-}
-import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  NodeControlPlane,
-  OneShotIdempotent,
-  LocalShell,
-}
-import gunbc.host_effect_realize {
-  host_effect_apply_gated,
-  host_effect_policy_directive,
-  Refused,
-}
-import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
-import gunbc.fleet_intent { srv1_host }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 
@@ -55,7 +31,7 @@ fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
     effect: ShellCommand {
       script: concat("echo ", privilege_mutation_marker, " && exit 99")
     },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   ) {
@@ -78,11 +54,11 @@ fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
     access: ci_deploy_srv1_access,
     target: host_os_target(),
     effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   )
-  match host_effect_policy_directive(r: r) {
+  match host_effect_drive_directive(r: r) {
     Refused { reason: _ } =>
       match r {
         NotConverged { reason: _, applied: intent } =>
@@ -101,7 +77,7 @@ fn witness_privileged_fixture_mutation_applies() -> Bool {
     access: ci_deploy_srv1_access,
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
@@ -116,7 +92,7 @@ fn witness_privileged_fixture_surfaces_stdout() -> Bool {
     effect: ShellCommand {
       script: concat("echo ", privilege_mutation_marker)
     },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)

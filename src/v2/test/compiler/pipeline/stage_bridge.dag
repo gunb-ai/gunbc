@@ -1,0 +1,319 @@
+module v2.test.compiler.pipeline.stage_bridge
+
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  dag_node_is_int_literal_atom,
+  parse_production_captured_child_optional
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.collection { Absent, Optional, Present, list_at_optional, optional_present }
+import v2.std.compilers.lexing { TokenStream, token_stream_all }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Behavior,
+  Branch,
+  ComputationNode,
+  Edge,
+  Match,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child, find_named_child }
+import v2.std.text { String }
+import v2.test.compiler.pipeline.corpus {
+  pipeline_corpus_add_source,
+  pipeline_corpus_match_source,
+  pipeline_corpus_pick_source
+}
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
+
+fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => pipeline_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
+  match pipeline_find_arrow_in_module(root: root) {
+    Absent => false
+    Present { value: arrow } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: b } => b == wanted
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn pipeline_token_stream_has_lexeme(stream: TokenStream, lexeme: String) -> Bool {
+  fold(
+    token_stream_all(stream: stream),
+    init: false,
+    f: fn(found, t) {
+      if found { true } else { t.lexeme == lexeme }
+    }
+  )
+}
+
+fn pipeline_tokenize_source(source: String, file: Symbol) -> Outcome<TokenStream> {
+  let lm = dag_language_model()
+  tokenize(text: source, file: file, rules: lm.lex)
+}
+
+fn pipeline_parse_tree_from_tokens(tokens: TokenStream) -> Outcome<Node> {
+  match parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
+    Accepted { value: artifact, diagnostics: d } =>
+      outcome_with_diagnostics(value: artifact.tree, diagnostics: d)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn pipeline_parse_source(source: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: pipeline_tokenize_source(source: source, file: file),
+    f: fn(tokens) {
+      pipeline_parse_tree_from_tokens(tokens: tokens)
+    }
+  )
+}
+
+fn pipeline_normalize_source(source: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: pipeline_parse_source(source: source, file: file),
+    f: fn(parse_tree) {
+      normalize(parse_tree: parse_tree)
+    }
+  )
+}
+
+fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: pipeline_normalize_source(source: source, file: file),
+    f: fn(normalized) {
+      resolve(tree: normalized, lm: dag_language_model())
+    }
+  )
+}
+
+fn pipeline_inferred_arrow_from_resolved(resolved: Node) -> Outcome<InferredTree> {
+  match pipeline_find_arrow_in_module(root: resolved) {
+    Present { value: arrow } => infer(tree: arrow)
+    Absent => infer(tree: resolved)
+  }
+}
+
+fn pipeline_inferred_source(source: String, file: Symbol) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: pipeline_resolved_source(source: source, file: file),
+    f: fn(resolved) {
+      pipeline_inferred_arrow_from_resolved(resolved: resolved)
+    }
+  )
+}
+
+fn pipeline_outcome_is_accepted(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_inferred_outcome_is_accepted(o: Outcome<InferredTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_pick_deep_unwrap(node: Node) -> Node {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: captured } => pipeline_pick_deep_unwrap(node: captured)
+    Absent =>
+      match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+        Accepted { value: child, diagnostics: _ } => pipeline_pick_deep_unwrap(node: child)
+        Rejected { diagnostics: _ } => node
+      }
+  }
+}
+
+fn pipeline_pick_int_literal_in_node_optional(node: Node) -> Optional<Node> {
+  let unwrapped = pipeline_pick_deep_unwrap(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    optional_present(value: unwrapped)
+  } else {
+    fold(unwrapped.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => pipeline_pick_int_literal_in_node_optional(node: e.target)
+      }
+    })
+  }
+}
+
+fn pipeline_int_literal_has_magnitude_child_holds(literal: Node) -> Bool {
+  if dag_node_is_int_literal_atom(node: literal) {
+    fold(literal.children, init: false, f: fn(_acc, _edge) { true })
+  } else {
+    false
+  }
+}
+
+fn pipeline_branch_arm_int_literal_has_magnitude_child_holds(body: Node, arm_index: Int) -> Bool {
+  match list_at_optional(xs: body.children, index: arm_index) {
+    Present { value: edge } =>
+      match edge {
+        Edge { label: _, target: arm } =>
+          match pipeline_pick_int_literal_in_node_optional(node: arm) {
+            Present { value: literal } =>
+              pipeline_int_literal_has_magnitude_child_holds(literal: literal)
+            Absent => false
+          }
+      }
+    Absent => false
+  }
+}
+
+fn pipeline_normalize_pick_then_arm_magnitude_relationship_holds() -> Bool {
+  match pipeline_normalize_source(
+    source: pipeline_corpus_pick_source,
+    file: ^pipeline_corpus_pick_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match pipeline_find_arrow_in_module(root: tree) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              pipeline_branch_arm_int_literal_has_magnitude_child_holds(
+                body: body,
+                arm_index: 1
+              )
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_tokenize_add_relationship_holds() -> Bool {
+  match pipeline_tokenize_source(
+    source: pipeline_corpus_add_source,
+    file: ^pipeline_corpus_add_file
+  ) {
+    Accepted { value: stream, diagnostics: _ } =>
+      pipeline_token_stream_has_lexeme(stream: stream, lexeme: "fn")
+        && pipeline_token_stream_has_lexeme(stream: stream, lexeme: "add")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_tokenize_pick_relationship_holds() -> Bool {
+  match pipeline_tokenize_source(
+    source: pipeline_corpus_pick_source,
+    file: ^pipeline_corpus_pick_file
+  ) {
+    Accepted { value: stream, diagnostics: _ } =>
+      pipeline_token_stream_has_lexeme(stream: stream, lexeme: "fn")
+        && pipeline_token_stream_has_lexeme(stream: stream, lexeme: "if")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_parse_add_relationship_holds() -> Bool {
+  match pipeline_parse_source(
+    source: pipeline_corpus_add_source,
+    file: ^pipeline_corpus_add_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } => well_formed(n: tree)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_normalize_add_relationship_holds() -> Bool {
+  match pipeline_normalize_source(
+    source: pipeline_corpus_add_source,
+    file: ^pipeline_corpus_add_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } =>
+      pipeline_arrow_body_has_behavior(root: tree, wanted: Transform)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_infer_add_fixture_relationship_holds() -> Bool {
+  pipeline_inferred_outcome_is_accepted(o: infer(tree: fixture_add_resolved_tree()))
+}
+
+fn pipeline_lower_add_fixture_relationship_holds() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+    Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_match_corpus_normalize_relationship_holds() -> Bool {
+  match pipeline_normalize_source(
+    source: pipeline_corpus_match_source,
+    file: ^pipeline_corpus_match_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } =>
+      pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_match_corpus_resolve_relationship_holds() -> Bool {
+  match pipeline_resolved_source(
+    source: pipeline_corpus_match_source,
+    file: ^pipeline_corpus_match_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } =>
+      pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pipeline_match_corpus_infer_relationship_holds() -> Bool {
+  pipeline_inferred_outcome_is_accepted(
+    o: pipeline_inferred_source(
+      source: pipeline_corpus_match_source,
+      file: ^pipeline_corpus_match_file
+    )
+  )
+}
+
+fn pipeline_match_corpus_lower_relationship_holds() -> Bool {
+  match pipeline_inferred_source(
+    source: pipeline_corpus_match_source,
+    file: ^pipeline_corpus_match_file
+  ) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: rust_target_model()) {
+        Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

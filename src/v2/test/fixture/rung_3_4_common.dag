@@ -1,61 +1,44 @@
 module v2.test.rung_3_4_common
 
-import v2.compiler.emit_host {
-  run_test_claim_emit_vs_eval
-}
-import v2.extdeps.languages.rust { rust_mvp1_runtime_row, rust_mvp1_source_text_authority }
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_test_claim_subject,
-  run_test_claim
-}
-import v2.std.runtime { RuntimeValue }
-import v2.compiler.infer { InferredTree }
-import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.verification { TestClaim }
-import v2.test.lens_common.infer_fixture {
-  claim_inferred_facts,
-  claim_inferred_tree
-}
-import v2.test.manual.eval_runtime_mvp {
-  eval_mvp2_context
-}
-data rung34_emit_host_target_bundle: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [],
-  occurrence_id: SyntheticOccurrence
+data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
+
+fn rung34_algebra_evidence_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^rung34_algebra_evidence_axis },
+        target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
 }
 
-data rung34_emit_host_rust_target_model: TargetModel = TargetModel {
-  bundle: rung34_emit_host_target_bundle,
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: rust_mvp1_source_text_authority(),
-  runtime_row: rust_mvp1_runtime_row()
+fn rung34_descent_witness() -> Witness<TerminationProof> {
+  Holds {
+    value: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: ^rung34_inferred_descent_symbol }
+    }
+  }
 }
 
 fn rung34_inferred_tree(root: Node) -> InferredTree {
-  claim_inferred_tree(
+  InferredTree {
     root: root,
-    facts: claim_inferred_facts(
-      type_symbol: ^rung34_inferred_type_symbol,
-      algebra_symbol: ^rung34_inferred_algebra_symbol,
-      descent_symbol: ^rung34_inferred_descent_symbol
-    )
-  )
+    facts: Map {
+      lookup: fn(n) {
+        Holds {
+          value: claim_inferred_facts_from_nodes(
+            resolved: n,
+            algebra: rung34_algebra_evidence_node(),
+            descent: rung34_descent_witness()
+          )
+        }
+      }
+    }
+  }
 }
 
 fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
@@ -74,9 +57,9 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
 fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: claim,
-    context: eval_mvp2_context(),
+    context: eval_context(),
     tree: rung34_inferred_tree(root: evaluator_input),
-    evaluator_pin: ^eval_mvp2_evaluator_pin
+    evaluator_pin: ^eval_evaluator_pin
   )
 }
 

@@ -15,7 +15,7 @@ import v2.compiler.compile {
 import v2.compiler.infer { InferredTree }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
-import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -25,7 +25,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { empty_map }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
@@ -40,6 +40,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Witness }
+
 data rust_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
@@ -116,17 +117,17 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 }
 
 data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/wave-5-a: validate_then_compile public terminal module compiles",
+  label: "manual/validate_then_compile: validate_then_compile public terminal module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ^claim_validate_then_compile_module,
-  expected_value: ^claim_validate_then_compile_module,
+  input: claim_symbol_node(s: ^claim_validate_then_compile_module),
+  expected_value: claim_symbol_node(s: ^claim_validate_then_compile_module),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
-  label: "manual/wave-5-a: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
+  label: "manual/validate_then_compile: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ^claim_validate_then_compile_module,
+  lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_validate_then_compile_skips_gate_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -146,9 +147,9 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
 }
 
 data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
-  label: "manual/wave-5-a: required lens Rejected blocks before compile-core",
+  label: "manual/validate_then_compile: required lens Rejected blocks before compile-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ^claim_validate_then_compile_module,
+  lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_rejecting_lens_blocks_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

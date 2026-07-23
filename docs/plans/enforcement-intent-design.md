@@ -1,6 +1,6 @@
 # Enforcement intent — ask once, compile forever
 
-*Status: draft for operator review (2026-07-02). Extends the standing threads "model §1's axioms + enforce the syllogism" and the intent-linearity draft; does not supersede either.*
+*Status: draft for operator review (2026-07-02). Extends the standing threads "model §1's axioms + enforce the syllogism" and the intent-linearity draft; does not supersede either. Quantitative companion: [dependency-fidelity design](dependency-fidelity-design.md) — the same "ask once, compile forever" spine turned into a measured coverage law (CI-green ⟺ declared ≡ witnessed across an affected-set-scoped, mutation-adequate coverage set).*
 
 ## 1. The displaced cost (why this is on-dial)
 

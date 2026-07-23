@@ -1,0 +1,29 @@
+module v2.workflow.ci_release_build_emit
+
+import gunbc.ci_spec {
+  CiSpec,
+  ci_floor_build_verify_script,
+  ci_release_build_line,
+  ci_repo_root_shell,
+  gunbc_ci_floor_only_script
+}
+import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
+
+data ci_release_build_emit_authority_note: String = "Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so gunbc.ci_materialization can import ci_release_build_script without a module cycle (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection)."
+
+fn ci_release_build_script() -> String {
+  concat(
+    concat("ROOT=", gunbc.ci_spec.ci_repo_root_shell(), "\n"),
+    concat(
+      ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+      concat(
+        ci_floor_build_verify_script(),
+        "sccache --show-stats 2>/dev/null || true"
+      )
+    )
+  )
+}
+
+fn gunbc_ci_run_script(spec: CiSpec) -> String {
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
+}

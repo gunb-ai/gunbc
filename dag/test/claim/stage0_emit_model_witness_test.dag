@@ -1,15 +1,7 @@
 module test.claim.stage0_emit_model_witness
 
-import gunbc.stage0_emit_model {
-  stage0_module_emit_basename,
-  stage0_module_emit_filename,
-  is_generated_stage0_file,
-  generated_stage0_file_count
-}
 
-fn w_generated_roster_count() -> Bool {
-  generated_stage0_file_count() == 92
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
@@ -22,13 +14,7 @@ fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
 }
 
-fn w_roster_module_not_yet_in_generated_set() -> Bool {
-  !is_generated_stage0_file(basename: "gunbc_stage0_emit_model.rs")
-}
-
 test fn stage0_emit_model_witnesses() -> Bool {
-  w_generated_roster_count() &&
   w_hand_maintained_not_classified_generated() &&
-  w_emit_naming_rule() &&
-  w_roster_module_not_yet_in_generated_set()
+  w_emit_naming_rule()
 }

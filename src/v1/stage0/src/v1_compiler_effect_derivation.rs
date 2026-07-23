@@ -7,7 +7,7 @@ use crate::extdeps_uri_path::PathTemplateParseResult::{MalformedPathTemplate, Pa
 use crate::std_effects::CompositionVerdict::{BrokenBy, IdempotentComposition};
 use crate::std_effects::DeriveOpEffectResult::{DerivedEffect, MalformedPathInput};
 use crate::std_effects::EffectShape::{
-    AppendEffect, CreateEffect, DeleteEffect, ReadEffect, UpsertEffect,
+    AppendEffect, CreateEffect, DeleteEffect, ExecuteEffect, ReadEffect, UpsertEffect,
 };
 use crate::std_effects::IdempotencyEvidence::{IdentityEffect, LatticeEffect, NonIdempotent};
 use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
@@ -29,10 +29,10 @@ use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT}
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn re_export_derive_op_effect(
@@ -40,7 +40,7 @@ pub fn re_export_derive_op_effect(
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(operation_name, method, path)
+    derive_op_effect(operation_name.clone(), method.clone(), path.clone())
 }
 
 pub fn re_export_check_modifier(
@@ -48,13 +48,17 @@ pub fn re_export_check_modifier(
     declared_idempotent: bool,
     declared_readonly: bool,
 ) -> Rc<ModifierCheck> {
-    check_modifier_vs_derivation(op, declared_idempotent, declared_readonly)
+    check_modifier_vs_derivation(
+        op.clone(),
+        declared_idempotent.clone(),
+        declared_readonly.clone(),
+    )
 }
 
 pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
-    parse_path_template(raw)
+    parse_path_template(raw.clone())
 }
 
 pub fn re_export_has_path_params(template: Rc<PathTemplate>) -> bool {
-    has_path_params(template)
+    has_path_params(template.clone())
 }

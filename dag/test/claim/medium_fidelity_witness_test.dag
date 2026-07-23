@@ -1,8 +1,7 @@
 module test.claim.medium_fidelity
 
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
-import std.types { String }
-import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type ProbeVerdict = Dominates | Incomparable
 
@@ -13,26 +12,26 @@ fn is_lossless(f: DecodeFidelity) -> Bool {
   }
 }
 
-fn text_medium_lossless() -> Medium<String> {
-  Medium {
+fn text_medium_lossless() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
     carried: "fn add(x: Int, y: Int) -> Int { x + y }",
     fidelity: Lossless
   }
 }
 
-fn probe_medium_lossless() -> Medium<ProbeVerdict> {
-  Medium { carried: Dominates, fidelity: Lossless }
+fn probe_medium_lossless() -> extdeps.communication.medium.Medium<ProbeVerdict> {
+  extdeps.communication.medium.Medium { carried: Dominates, fidelity: Lossless }
 }
 
-fn prose_medium() -> Medium<String> {
-  Medium {
+fn prose_medium() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
     carried: "roughly linear time, details omitted",
     fidelity: Lossy
   }
 }
 
-fn mis_tagged_prose_medium() -> Medium<String> {
-  Medium {
+fn mis_tagged_prose_medium() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
     carried: "roughly linear time, details omitted",
     fidelity: Lossless
   }

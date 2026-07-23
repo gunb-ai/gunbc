@@ -1,0 +1,1242 @@
+module v2.compiler.self_host.frontier
+
+import v2.compiler.self_host.frontier_band_a_emit_readiness {
+  BandAEmitReadinessRow,
+  compiler_frontier_band_a_emit_readiness_core_holds,
+  compiler_frontier_band_a_emit_readiness_roster
+}
+import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
+  FrontierBlockerClass,
+  FrontierProbeReceipt,
+  FrontierProbeStage,
+  NameResolutionGap,
+  ProbeStageAssemble,
+  ProbeStageEmit,
+  RealizationGap,
+  SelfEmitReady,
+  UnknownProbeCause,
+  FixtureCemented,
+  curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  curated_cargo_probe_import_closure_cargo_refuse_reason,
+  curated_cargo_probe_emit_assemble_refuse_reason,
+  curated_cargo_probe_generic_type_render_reason,
+  curated_cargo_probe_type_ref_import_missing_reason,
+  curated_cargo_probe_emit_shape_reason,
+  curated_cargo_probe_struct_literal_body_reason,
+  frontier_blocker_class_matches,
+  frontier_probe_blocker_rank
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.compiler.source_authority {
+  ModuleStorageIndex,
+  module_storage_module_for_path
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import extdeps.languages.rust.emit { rust_qualified_module_mod_basename }
+
+type FrontierQualifiedModuleBinding {
+  module_path: String
+  qualified_module: String
+}
+
+type CompilerFrontierAttributedDebt {
+  dissolution_trigger: Symbol
+}
+
+type CompilerFrontierCensusAttribution
+  = KnowledgeAttributed { dissolution_trigger: Symbol }
+  | ExecutionMeasured {
+      probe_kernel_receipt: Symbol,
+      wave_label: Symbol,
+      blocker_class_distribution: CompilerFrontierAttributedDebt,
+      gap_clustering: CompilerFrontierAttributedDebt
+    }
+
+data compiler_frontier_blocker_class_distribution_attribution: CompilerFrontierAttributedDebt = CompilerFrontierAttributedDebt {
+  dissolution_trigger: ^migrate_when_frontier_per_module_probe_receipt_binds
+}
+
+data compiler_frontier_gap_clustering_attribution: CompilerFrontierAttributedDebt = CompilerFrontierAttributedDebt {
+  dissolution_trigger: ^migrate_when_frontier_located_reason_survey_binds
+}
+
+data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = ExecutionMeasured {
+  probe_kernel_receipt: ^frontier_classify_unlisted_reason_refuses_holds,
+  wave_label: ^wave2_post_resolver_6451_body_stage_a_6443,
+  blocker_class_distribution: compiler_frontier_blocker_class_distribution_attribution,
+  gap_clustering: compiler_frontier_gap_clustering_attribution
+}
+
+data compiler_frontier_probe_kernel_receipt_note: String = "probe_kernel_receipt binds the fail-closed classifier RED control (frontier_classify_unlisted_reason_refuses_holds), not per-module frontier_probe_emit_from_ingest execution. Structural census invariants are compiler_frontier_structural_census_invariants_holds; per-module receipts deferred via CompilerFrontierAttributedDebt dissolution triggers."
+
+type SelfHostFrontierDisposition
+  = SelfEmitted
+  | SeedRetained { reason: Symbol, migration_trigger: Symbol }
+
+type CompilerModuleFrontierRow {
+  module_path: String
+  disposition: SelfHostFrontierDisposition
+  measured_probe: FrontierProbeReceipt
+  tractability_rank: Int
+}
+
+data compiler_frontier_module_count_expected: Int = 27
+
+data compiler_frontier_self_emitted_baseline: Int = 6
+
+data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
+
+So two representations of the path⇄module fact are live at once, which §3 forbids in general. What makes this an honest interim rather than a fork is that they are PARITY-GATED: transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from one-time transition receipt, parent ruling 2026-07-19) asserting that the derived index and these rows answer identically for every path the rows name. If they ever drift, that witness REDS.
+
+That promotion is the point. As a one-time switchover check it would have proven the two agreed at a moment and said nothing afterwards, leaving a silent fork behind it. As a standing check it IS the §3 protection for as long as the duality lives — the mechanism that makes 'both exist' safe rather than merely admitted.
+
+It still catches both original failures — a projection bug (derivation disagrees with a known-good table) and hand-row drift (the table went stale and the derivation is right) — told apart by inspecting which side is wrong.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary. At that point this block, FrontierQualifiedModuleBinding, the _hand_rows fn family, and the parity witness are DELETED together — keeping any of them 'just in case' would restore the fork the parity gate exists to police."
+
+data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/01_tokenize.dag", qualified_module: "v2.compiler.tokenize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/02_parse.dag", qualified_module: "v2.compiler.parse" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_body_producer.dag", qualified_module: "v2.compiler.body_producer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_ingest.dag", qualified_module: "v2.compiler.ingest" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_name_resolve.dag", qualified_module: "v2.compiler.name_resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_normalize.dag", qualified_module: "v2.compiler.normalize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_resolve.dag", qualified_module: "v2.compiler.resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/04_infer.dag", qualified_module: "v2.compiler.infer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit.dag", qualified_module: "v2.compiler.emit" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit_orchestration.dag", qualified_module: "v2.compiler.emit_orchestration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_eval.dag", qualified_module: "v2.compiler.eval" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/06_translate.dag", qualified_module: "v2.compiler.translate" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/07_target_carriers.dag", qualified_module: "v2.compiler.target_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/discovery_enumeration.dag", qualified_module: "v2.compiler.discovery_enumeration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_host.dag", qualified_module: "v2.compiler.emit_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_module.dag", qualified_module: "v2.compiler.emit_module" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_produced.dag", qualified_module: "v2.compiler.emit_produced" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_semantic_decl.dag", qualified_module: "v2.compiler.emit_semantic_decl" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/fold_lowering.dag", qualified_module: "v2.compiler.fold_lowering" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/materialization_carriers.dag", qualified_module: "v2.compiler.materialization_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/parse_engine_hooks.dag", qualified_module: "v2.compiler.parse_engine_hooks" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_assembly.dag", qualified_module: "v2.compiler.program_assembly" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_partition.dag", qualified_module: "v2.compiler.program_partition" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/self_host.dag", qualified_module: "v2.compiler.self_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/source_authority.dag", qualified_module: "v2.compiler.source_authority" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/use_site_verdict.dag", qualified_module: "v2.compiler.use_site_verdict" }
+]
+
+data compiler_frontier_crate_layout_note: String = "Single crate-organization authority (Wave 2 derived layout): self-emitted stage0 mod basenames derive from compiler_frontier_roster SelfEmitted rows via qualified_module bindings + rust_qualified_module_mod_basename (extdeps.languages.rust.emit). Seed-retained intrinsic kernel + pilot scaffolds compose via hand_maintained_pub_mod_basenames derived from SeedRetainedIntrinsicRegistration rows (single row per intrinsic; pub_mod / stage0_file / dir projections). v1 consumers read gunbc.stage0_crate_layout_generated (frontier-derived committed artifact; regen via generated_artifact_gate main_wet; drift wall = byte-identical gate + crate_layout_witness_test RED controls). Dissolve-on: layer boundary lifts and v1 regen closure imports frontier directly."
+
+data compiler_frontier_crate_linkage_unit_generalization_trigger: String = "Rust realization of the agnostic linkage-unit / unit-of-separate-compilation concept (crate = C translation-unit = Go package = .NET assembly). Kept Rust-specific until a 2nd target realization staffs (full-C-target frontier row, eager-ferret lane, anti-fork constraint recorded there). GENERALIZES-WHEN: a 2nd realization exists — factor the agnostic CompilationUnit/TargetLinkageUnit shape then, with per-realization axes (acyclicity, monomorphization-boundary) NOT averaged away; partition POLICY is workflow-derived, not baked here."
+
+data compiler_frontier_rust_linkage_unit_axis_acyclic_crates: String = "Rust-specific axis (not universal): crate graph must be acyclic; separate-compilation unit = one Cargo crate."
+
+data compiler_frontier_rust_linkage_unit_axis_monomorphization_boundary: String = "Rust-specific axis (not universal): crate boundary = monomorphization / codegen partition boundary (generics instantiated per crate)."
+
+fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
+  match blocker {
+    NameResolutionGap => ProbeStageAssemble
+    UnknownProbeCause { reason: _ } => ProbeStageAssemble
+    FixtureCemented => ProbeStageEmit
+    SelfEmitReady => ProbeStageEmit
+    EmitSurfaceGap => ProbeStageEmit
+    RealizationGap => ProbeStageEmit
+  }
+}
+
+fn tractability_rank_for(closure_reads: Int, blocker: FrontierBlockerClass) -> Int {
+  let base = frontier_probe_blocker_rank(blocker: blocker) * 1000
+  base + closure_reads
+}
+
+data compiler_frontier_self_emitted_tractability_rank_note: String = "At SelfEmitted flip, tractability_rank retains the pre-flip blocker band (not recomputed from measured_probe.blocker_class SelfEmitReady) so compiler_frontier_sweep_order rank monotonicity is unchanged. SelfEmitReady rank would be closure_reads alone (e.g. 9), breaking sweep order vs neighboring EmitSurfaceGap rows (e.g. 1002, 1012)."
+
+fn self_emitted_tractability_rank_at_flip(closure_reads: Int, pre_flip_blocker: FrontierBlockerClass) -> Int {
+  tractability_rank_for(closure_reads: closure_reads, blocker: pre_flip_blocker)
+}
+
+fn execution_measured_seed_retained_row(
+  module_path: String,
+  closure_reads: Int,
+  measured_blocker: FrontierBlockerClass,
+  located_stage: FrontierProbeStage,
+  located_reason: Symbol,
+  migration_trigger: Symbol
+) -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: module_path,
+    disposition: SeedRetained {
+      reason: located_reason,
+      migration_trigger: migration_trigger
+    },
+    measured_probe: FrontierProbeReceipt {
+      module_path: module_path,
+      blocker_class: measured_blocker,
+      located_stage: located_stage,
+      located_reason: located_reason
+    },
+    tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
+  }
+}
+
+fn execution_measured_seed_retained_row_from_probe_receipt(
+  closure_reads: Int,
+  receipt: FrontierProbeReceipt,
+  migration_trigger: Symbol
+) -> CompilerModuleFrontierRow {
+  execution_measured_seed_retained_row(
+    module_path: receipt.module_path,
+    closure_reads: closure_reads,
+    measured_blocker: receipt.blocker_class,
+    located_stage: receipt.located_stage,
+    located_reason: receipt.located_reason,
+    migration_trigger: migration_trigger
+  )
+}
+
+fn execution_measured_self_emitted_row(
+  module_path: String,
+  closure_reads: Int,
+  measured_probe: FrontierProbeReceipt,
+  tractability_rank: Int
+) -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: module_path,
+    disposition: SelfEmitted,
+    measured_probe: measured_probe,
+    tractability_rank: tractability_rank
+  }
+}
+
+fn knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: String,
+  closure_reads: Int,
+  measured_blocker: FrontierBlockerClass,
+  migration_trigger: Symbol
+) -> CompilerModuleFrontierRow {
+  execution_measured_seed_retained_row(
+    module_path: module_path,
+    closure_reads: closure_reads,
+    measured_blocker: measured_blocker,
+    located_stage: measured_stage_for_blocker(blocker: measured_blocker),
+    located_reason: ^frontier_located_reason_execution_unbound,
+    migration_trigger: migration_trigger
+  )
+}
+
+data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/00_compile.dag",
+  closure_reads: 102,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_emit_shape_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/01_tokenize.dag",
+  closure_reads: 17,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_struct_literal_body_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/02_parse.dag",
+  closure_reads: 65,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/03_body_producer.dag",
+  closure_reads: 36,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/03_body_producer.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
+)
+
+data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/03_ingest.dag",
+  closure_reads: 104,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_emit_shape_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/03_name_resolve.dag",
+  closure_reads: 44,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: curated_cargo_probe_emit_assemble_refuse_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/03_normalize.dag",
+  closure_reads: 37,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/03_normalize.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 37, pre_flip_blocker: EmitSurfaceGap)
+)
+
+data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/03_resolve.dag",
+  closure_reads: 39,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/04_infer.dag",
+  closure_reads: 44,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/05_emit.dag",
+  closure_reads: 52,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/05_emit_orchestration.dag",
+  closure_reads: 55,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/05_eval.dag",
+  closure_reads: 51,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/06_translate.dag",
+  closure_reads: 51,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/07_target_carriers.dag",
+  closure_reads: 36,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/07_target_carriers.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: EmitSurfaceGap)
+)
+
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/discovery_enumeration.dag",
+  closure_reads: 12,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/discovery_enumeration.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 12, pre_flip_blocker: EmitSurfaceGap)
+)
+
+data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/emit_host.dag",
+  closure_reads: 61,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_emit_host_modules_self_emit
+)
+
+data compiler_frontier_row_emit_module: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/emit_module.dag",
+  closure_reads: 53,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_emit_produced: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/emit_produced.dag",
+  closure_reads: 61,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/emit_semantic_decl.dag",
+  closure_reads: 59,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_semantic_decl_pipeline_wired
+)
+
+data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/fold_lowering.dag",
+  closure_reads: 36,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_body_lowering_generalizes
+)
+
+data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/materialization_carriers.dag",
+  closure_reads: 35,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/parse_engine_hooks.dag",
+  closure_reads: 2,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/parse_engine_hooks.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 2, pre_flip_blocker: EmitSurfaceGap)
+)
+
+data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/program_assembly.dag",
+  closure_reads: 90,
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: curated_cargo_probe_emit_assemble_refuse_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/program_partition.dag",
+  closure_reads: 58,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_self_host: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+  module_path: "src/v2/compiler/self_host.dag",
+  closure_reads: 28,
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_frontier_harness_repurposed
+)
+
+data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/source_authority.dag",
+  closure_reads: 87,
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  closure_reads: 9,
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 9, pre_flip_blocker: EmitSurfaceGap)
+)
+
+data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
+  compiler_frontier_row_00_compile,
+  compiler_frontier_row_01_tokenize,
+  compiler_frontier_row_02_parse,
+  compiler_frontier_row_03_body_producer,
+  compiler_frontier_row_03_ingest,
+  compiler_frontier_row_03_name_resolve,
+  compiler_frontier_row_03_normalize,
+  compiler_frontier_row_03_resolve,
+  compiler_frontier_row_04_infer,
+  compiler_frontier_row_05_emit,
+  compiler_frontier_row_05_emit_orchestration,
+  compiler_frontier_row_05_eval,
+  compiler_frontier_row_06_translate,
+  compiler_frontier_row_07_target_carriers,
+  compiler_frontier_row_discovery_enumeration,
+  compiler_frontier_row_emit_host,
+  compiler_frontier_row_emit_module,
+  compiler_frontier_row_emit_produced,
+  compiler_frontier_row_emit_semantic_decl,
+  compiler_frontier_row_fold_lowering,
+  compiler_frontier_row_materialization_carriers,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_row_program_assembly,
+  compiler_frontier_row_program_partition,
+  compiler_frontier_row_self_host,
+  compiler_frontier_row_source_authority,
+  compiler_frontier_row_use_site_verdict
+]
+
+data compiler_frontier_sweep_order: List<String> = [
+  "src/v2/compiler/parse_engine_hooks.dag",
+  "src/v2/compiler/use_site_verdict.dag",
+  "src/v2/compiler/discovery_enumeration.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/compiler/self_host.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+  "src/v2/compiler/07_target_carriers.dag",
+  "src/v2/compiler/fold_lowering.dag",
+  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/03_resolve.dag",
+  "src/v2/compiler/03_name_resolve.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/emit_module.dag",
+  "src/v2/compiler/05_emit_orchestration.dag",
+  "src/v2/compiler/program_partition.dag",
+  "src/v2/compiler/emit_semantic_decl.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/compiler/emit_produced.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/source_authority.dag",
+  "src/v2/compiler/00_compile.dag",
+  "src/v2/compiler/03_ingest.dag",
+  "src/v2/compiler/03_body_producer.dag",
+  "src/v2/compiler/program_assembly.dag"
+]
+
+fn compiler_frontier_roster_count() -> Int {
+  length(xs: compiler_frontier_roster)
+}
+
+fn count_rows_with_module_path(xs: List<CompilerModuleFrontierRow>, target: String) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target { count + 1 } else { count }
+    }
+  )
+}
+
+fn compiler_frontier_roster_paths_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn count_self_emitted_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.disposition {
+        SelfEmitted => count + 1
+        SeedRetained { reason: _, migration_trigger: _ } => count
+      }
+    }
+  )
+}
+
+fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.disposition {
+        SelfEmitted => count
+        SeedRetained { reason: _, migration_trigger: _ } => count + 1
+      }
+    }
+  )
+}
+
+fn compiler_frontier_self_emitted_count() -> Int {
+  count_self_emitted_frontier_rows(xs: compiler_frontier_roster)
+}
+
+fn compiler_frontier_seed_retained_count() -> Int {
+  count_seed_retained_frontier_rows(xs: compiler_frontier_roster)
+}
+
+fn compiler_frontier_roster_complete_holds() -> Bool {
+  compiler_frontier_roster_count() == compiler_frontier_module_count_expected
+}
+
+fn compiler_frontier_known_module_path_exactly_once_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/00_compile.dag"
+  ) == 1
+}
+
+fn compiler_frontier_phantom_module_path_absent_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/not_a_real_module.dag"
+  ) == 0
+}
+
+fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
+  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
+}
+
+fn frontier_located_reason_is_class_projection(reason: Symbol) -> Bool {
+  reason == ^measured_probe_self_emit_ready
+    || reason == ^measured_probe_name_resolution_gap
+    || reason == ^measured_probe_emit_surface_gap
+    || reason == ^measured_probe_realization_gap
+}
+
+fn compiler_frontier_roster_all_classified_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.measured_probe.blocker_class {
+        UnknownProbeCause { reason: _ } => false
+        FixtureCemented => false
+        SelfEmitReady => true
+        NameResolutionGap => true
+        EmitSurfaceGap => true
+        RealizationGap => true
+      }
+    }
+  )
+}
+
+fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        SelfEmitted => true
+        SeedRetained { reason: _, migration_trigger: _ } =>
+          !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
+      }
+    }
+  )
+}
+
+fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        SelfEmitted =>
+          frontier_blocker_class_matches(
+            blocker: row.measured_probe.blocker_class,
+            target: SelfEmitReady
+          )
+            && (row.measured_probe.located_reason == ^measured_probe_self_emit_ready)
+        SeedRetained { reason: _, migration_trigger: _ } => true
+      }
+    }
+  )
+}
+
+fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (row.module_path == row.measured_probe.module_path)
+    }
+  )
+}
+
+fn compiler_frontier_blocker_class_distribution_knowledge_attributed_holds() -> Bool {
+  match compiler_frontier_census_attribution {
+    ExecutionMeasured {
+      probe_kernel_receipt: _,
+      wave_label: _,
+      blocker_class_distribution: blocker_class_distribution,
+      gap_clustering: _
+    } =>
+      blocker_class_distribution.dissolution_trigger == ^migrate_when_frontier_per_module_probe_receipt_binds
+    KnowledgeAttributed { dissolution_trigger: _ } => false
+  }
+}
+
+fn compiler_frontier_gap_clustering_knowledge_attributed_holds() -> Bool {
+  match compiler_frontier_census_attribution {
+    ExecutionMeasured {
+      probe_kernel_receipt: _,
+      wave_label: _,
+      blocker_class_distribution: _,
+      gap_clustering: gap_clustering
+    } =>
+      gap_clustering.dissolution_trigger == ^migrate_when_frontier_located_reason_survey_binds
+    KnowledgeAttributed { dissolution_trigger: _ } => false
+  }
+}
+
+fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
+  match compiler_frontier_census_attribution {
+    ExecutionMeasured {
+      probe_kernel_receipt: probe_kernel_receipt,
+      wave_label: wave_label,
+      blocker_class_distribution: _,
+      gap_clustering: _
+    } =>
+      probe_kernel_receipt == ^frontier_classify_unlisted_reason_refuses_holds
+        && wave_label == ^wave2_post_resolver_6451_body_stage_a_6443
+        && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
+        && compiler_frontier_gap_clustering_knowledge_attributed_holds()
+        && compiler_frontier_roster_all_classified_holds()
+        && compiler_frontier_roster_probe_paths_match_holds()
+    KnowledgeAttributed { dissolution_trigger: _ } => false
+  }
+}
+
+fn compiler_frontier_tractability_rank_for_path(target: String) -> Int {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: -1,
+    cons: fn(rank, row) {
+      if row.module_path == target { row.tractability_rank } else { rank }
+    }
+  )
+}
+
+type CompilerFrontierSweepRankWalkState {
+  ok: Bool
+  prev_rank: Int
+}
+
+data compiler_frontier_sweep_rank_walk_initial: CompilerFrontierSweepRankWalkState = CompilerFrontierSweepRankWalkState {
+  ok: true,
+  prev_rank: -1
+}
+
+fn compiler_frontier_sweep_rank_walk_step(
+  state: CompilerFrontierSweepRankWalkState,
+  path: String
+) -> CompilerFrontierSweepRankWalkState {
+  let rank = compiler_frontier_tractability_rank_for_path(target: path)
+  CompilerFrontierSweepRankWalkState {
+    ok: state.ok && ((state.prev_rank < 0) || (rank >= state.prev_rank)),
+    prev_rank: rank
+  }
+}
+
+fn compiler_frontier_sweep_order_paths_in_roster_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_sweep_order,
+    empty: true,
+    cons: fn(ok, path) {
+      ok && (count_rows_with_module_path(xs: compiler_frontier_roster, target: path) == 1)
+    }
+  )
+}
+
+fn compiler_frontier_sweep_order_rank_nondecreasing_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_sweep_order,
+    empty: compiler_frontier_sweep_rank_walk_initial,
+    cons: fn(state, path) {
+      compiler_frontier_sweep_rank_walk_step(state: state, path: path)
+    }
+  ).ok
+}
+
+fn compiler_frontier_sweep_order_matches_tractability_rank_holds() -> Bool {
+  compiler_frontier_sweep_order_complete_holds()
+    && compiler_frontier_sweep_order_paths_in_roster_holds()
+    && compiler_frontier_sweep_order_rank_nondecreasing_holds()
+}
+
+fn compiler_frontier_sweep_order_complete_holds() -> Bool {
+  length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
+}
+
+fn band_a_emit_readiness_roster_row_trigger_matches(
+  module_path: String,
+  trigger: Symbol,
+  row: CompilerModuleFrontierRow
+) -> Bool {
+  if module_path == row.module_path {
+    match row.disposition {
+      SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
+      SelfEmitted => false
+    }
+  } else {
+    false
+  }
+}
+
+fn band_a_emit_readiness_module_is_self_emitted(module_path: String) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: false,
+    cons: fn(matched, row) {
+      if row.module_path == module_path {
+        match row.disposition {
+          SelfEmitted => true
+          SeedRetained { reason: _, migration_trigger: _ } => false
+        }
+      } else {
+        matched
+      }
+    }
+  )
+}
+
+fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
+  match row.gate {
+    FlippableNow => true
+    BodyProducerGated => false
+    OtherGate { migration_trigger: trigger } =>
+      band_a_emit_readiness_module_is_self_emitted(module_path: row.module_path)
+        || band_a_emit_readiness_roster_row_trigger_matches(
+        module_path: row.module_path,
+        trigger: trigger,
+        row: compiler_frontier_row_use_site_verdict
+      )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_materialization_carriers
+        )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_self_host
+        )
+  }
+}
+
+fn compiler_frontier_band_a_other_gate_triggers_match_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && band_a_emit_readiness_other_gate_matches_frontier_row(row: row)
+    }
+  )
+}
+
+fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
+  compiler_frontier_band_a_emit_readiness_core_holds()
+    && compiler_frontier_band_a_other_gate_triggers_match_holds()
+}
+
+fn frontier_roster_row_blocker_matches_probe(
+  row: CompilerModuleFrontierRow,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  (row.module_path == receipt.module_path)
+    && frontier_blocker_class_matches(
+      blocker: row.measured_probe.blocker_class,
+      target: receipt.blocker_class
+    )
+}
+
+fn compiler_frontier_row_for_path_matches_probe(
+  target: String,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: false,
+    cons: fn(matched, row) {
+      if row.module_path == target {
+        frontier_roster_row_blocker_matches_probe(row: row, receipt: receipt)
+      } else {
+        matched
+      }
+    }
+  )
+}
+
+fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeReceipt>) -> Bool {
+  fold_list(
+    xs: survey,
+    empty: true,
+    cons: fn(ok, receipt) {
+      ok && compiler_frontier_row_for_path_matches_probe(
+        target: receipt.module_path,
+        receipt: receipt
+      )
+    }
+  )
+}
+
+data frontier_binding_projection_note: String = "Task 3 of docs/plans/module-identity-storage-binding-design.md: the path→module lookup is a PROJECTION off the derived binding authority (v2.compiler.source_authority ModuleStorageIndex), not a read of a hand table. The 27 hand FrontierQualifiedModuleBinding rows were the second authority §3 forbids; they survive in this PR only as the transition-parity oracle below and are deleted with it.
+
+The index arrives as a PARAMETER rather than an import, and that is forced by the layer DAG: the live rows are host-supplied through v2.test.workflow.host_module_binding_manifest, and no src/v2/compiler module may import v2.test.* (imports point toward std, §3). So the compiler layer owns the pure lookup and the test layer supplies the index.
+
+The distinction that decides whether this is a real dissolution or a relocated ledger is WHAT FLOWS IN, not the arity: passing a pure constant hand index would satisfy the signature and still be a parallel ledger. The live callers pass host_module_bindings."
+
+data frontier_binding_refusal_note: String = "Two DISTINCT located causes, never one. The prior lookup returned \"\" on miss — a sentinel meaning BOTH 'no binding for this path' AND 'the module name is empty' (state-space conflation, a named recurring failure mode). Projected off an unavailable index that sentinel becomes actively dangerous: every lookup returns \"\", and rust_qualified_module_mod_basename would fabricate a basename from the empty string SILENTLY, so a gate reading an EMPTY carrier would report on names it invented (§5 fabricated plausible output — structurally the coverage_complete-over-Empty shape).
+
+^frontier_binding_index_unavailable says the projection could not be computed (⊤-as-ignorance). ^frontier_binding_path_unbound says it was computed and this path genuinely has no module (a real answer). Their remedies differ — supply the index vs fix the roster or the tree — which is exactly why they are not one arm."
+
+fn frontier_binding_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: ^compiler_frontier_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data frontier_emitter_hand_row_debt_note: String = "TYPED, COUNTED DEBT — the emit path still reads the hand rows, and this is the one place that says so out loud.
+
+WHY IT SURVIVES: dag/gunbc/stage0_crate_layout_emit.dag generates stage0_crate_layout_generated.dag, and it is reached through generated_artifact_emit.dag's dispatch — ONE match over ~18 artifact variants, every one a zero-arg generator returning String. Supplying a ModuleStorageIndex there would force 17 unrelated generators to accept a host artifact they cannot use — the same coupling refused when the layout conjunct left compiler_frontier_census_holds (frontier_census_layout_relocation_note). Refusing it in one direction and accepting it in the other would be incoherent.
+
+COUNT: exactly ONE consumer chain — expected_stage0_crate_layout_generated_dag / _rs via hand_maintained_pub_mod_basenames, hand_maintained_stage0_filenames, emit_hand_maintained_pub_mod_block. Any NEW caller of the _hand_rows family is a regression, not a use.
+
+WHY THIS IS AN HONEST INTERIM RATHER THAN THE FORK §3 FORBIDS: the two authorities are not merely both present, they are PARITY-GATED. transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from transition artifact, parent ruling 2026-07-19) that REDS the moment the derived index and the hand rows disagree. A marked, parity-gated, trigger-bound duality is an interim; the same duality without the standing witness is a silent fork.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary (only host boundaries project paths, §2/§3) — its own designed lane, not a patch, because it touches the generated-artifact source and the same-PR regen discipline of the drift-gate chain. When it lands, this family, the 27 hand rows, FrontierQualifiedModuleBinding, and the parity witness are deleted TOGETHER."
+
+fn frontier_hand_rows_qualified_module_for_path(target: String) -> String {
+  fold_list(
+    xs: compiler_frontier_qualified_module_bindings,
+    empty: "",
+    cons: fn(found, binding) {
+      if found != "" {
+        found
+      } else if binding.module_path == target {
+        binding.qualified_module
+      } else {
+        ""
+      }
+    }
+  )
+}
+
+fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
+  rust_qualified_module_mod_basename(
+    qualified_module: frontier_hand_rows_qualified_module_for_path(target: row.module_path)
+  )
+}
+
+fn frontier_hand_rows_self_emitted_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
+  match row.disposition {
+    SelfEmitted => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, frontier_hand_rows_self_emitted_row_basename(row: row))
+    }
+  )
+}
+
+fn compiler_frontier_qualified_module_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<QualifiedName> {
+  if length(xs: index) == 0 {
+    outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_index_unavailable))
+  } else {
+    match module_storage_module_for_path(index: index, file_path: target) {
+      Present { value: v } => outcome_accepted(value: v)
+      Absent => outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_path_unbound))
+    }
+  }
+}
+
+fn compiler_frontier_qualified_module_dotted_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<String> {
+  bind_outcome(
+    o: compiler_frontier_qualified_module_for_path(index: index, target: target),
+    f: fn(qn) { outcome_accepted(value: qualified_name_to_dotted_string(qn: qn)) }
+  )
+}
+
+fn compiler_frontier_qualified_module_bindings_unique_holds(index: ModuleStorageIndex) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok
+        && (match compiler_frontier_qualified_module_for_path(index: index, target: row.module_path) {
+             Accepted { value: _, diagnostics: _ } => true
+             Rejected { diagnostics: _ } => false
+           })
+        && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn frontier_row_stage0_mod_basename(
+  index: ModuleStorageIndex,
+  row: CompilerModuleFrontierRow
+) -> Outcome<String> {
+  bind_outcome(
+    o: compiler_frontier_qualified_module_dotted_for_path(index: index, target: row.module_path),
+    f: fn(dotted) {
+      outcome_accepted(value: rust_qualified_module_mod_basename(qualified_module: dotted))
+    }
+  )
+}
+
+data frontier_basename_refusal_drop_note: String = "A row whose basename cannot be projected contributes NOTHING to this list, and the caller detects that by COUNT, not by a sentinel entry. compiler_frontier_crate_layout_holds asserts the produced length equals compiler_frontier_self_emitted_count(), so a refused projection shortens the list and REDS the gate — it cannot pass with an invented name in place of a real one.
+
+That count assertion is load-bearing rather than incidental: dropping a refusal silently is exactly the absorbing-drop shape §5 forbids (the pre-Phase-1 derivation made a failed module invisible to every downstream lookup), and the length check is what converts the drop back into a loud, counted failure. Do not weaken it to a subset test."
+
+fn self_emitted_frontier_row_stage0_mod_basename(
+  index: ModuleStorageIndex,
+  row: CompilerModuleFrontierRow
+) -> List<String> {
+  match row.disposition {
+    SelfEmitted => {
+      match frontier_row_stage0_mod_basename(index: index, row: row) {
+        Accepted { value: b, diagnostics: _ } => [b]
+        Rejected { diagnostics: _ } => []
+      }
+    }
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: ModuleStorageIndex) -> List<String> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, self_emitted_frontier_row_stage0_mod_basename(index: index, row: row))
+    }
+  )
+}
+
+type SeedRetainedIntrinsicRegistration {
+  basename: String
+  has_pub_mod: Bool
+  is_dir: Bool
+}
+
+type SeedRetainedScaffoldRegistration {
+  basename: String
+}
+
+data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
+  SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "main", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true }
+]
+
+data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
+]
+
+fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.has_pub_mod {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn intrinsic_stage0_filename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    []
+  } else {
+    [concat(row.basename, ".rs")]
+  }
+}
+
+fn intrinsic_stage0_dir_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn seed_retained_intrinsic_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_pub_mod_basename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_intrinsic_stage0_files() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_stage0_filename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_scaffold_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [row.basename])
+    }
+  )
+}
+
+fn seed_retained_scaffold_stage0_files() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [concat(row.basename, ".rs")])
+    }
+  )
+}
+
+fn hand_maintained_stage0_dirs() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_stage0_dir_from_row(row: row))
+    }
+  )
+}
+
+fn basename_to_pub_mod_decl(basename: String) -> String {
+  concat("pub mod ", basename, ";")
+}
+
+fn format_pub_mod_declarations(basenames: List<String>) -> String {
+  let lines = basenames |> map(basename_to_pub_mod_decl)
+  concat("\n", lines |> join(separator: "\n"))
+}
+
+fn basename_to_stage0_filename(basename: String) -> String {
+  concat(basename, ".rs")
+}
+
+fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
+  basenames |> map(basename_to_stage0_filename)
+}
+
+data frontier_hand_maintained_arity_note: String = "These three keep their ORIGINAL zero-arity shape and read the hand rows, deliberately — they are the emit path described in frontier_emitter_hand_row_debt_note, and their caller (generated_artifact_emit.dag's ~18-variant dispatch) has no index to give them. Changing their arity is what broke this lane once: dag/gunbc and dag/test/claim callers compile CLEAN at a stale arity because .dag does not arity-check these cross-module sites, so the breakage surfaces only at run time."
+
+fn hand_maintained_pub_mod_basenames() -> List<String> {
+  concat(
+    concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames()),
+    compiler_frontier_self_emitted_stage0_mod_basenames()
+  )
+}
+
+fn emit_hand_maintained_pub_mod_block() -> String {
+  format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames())
+}
+
+fn hand_maintained_stage0_filenames() -> List<String> {
+  concat(
+    concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
+    basenames_to_stage0_filenames(
+      basenames: compiler_frontier_self_emitted_stage0_mod_basenames()
+    )
+  )
+}
+
+fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
+  compiler_frontier_qualified_module_bindings_unique_holds(index: index)
+    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: index)) == compiler_frontier_self_emitted_count())
+}
+
+fn compiler_frontier_census_holds() -> Bool {
+  compiler_frontier_roster_complete_holds()
+    && compiler_frontier_roster_paths_unique_holds()
+    && compiler_frontier_self_emitted_baseline_holds()
+    && compiler_frontier_execution_measured_attribution_holds()
+    && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
+    && compiler_frontier_gap_clustering_knowledge_attributed_holds()
+    && compiler_frontier_sweep_order_complete_holds()
+    && compiler_frontier_sweep_order_matches_tractability_rank_holds()
+    && compiler_frontier_roster_all_classified_holds()
+    && compiler_frontier_roster_located_reason_not_class_projection_holds()
+    && compiler_frontier_self_emitted_located_reason_holds()
+    && compiler_frontier_roster_probe_paths_match_holds()
+    && compiler_frontier_band_a_emit_readiness_holds()
+}
+
+data frontier_census_layout_relocation_note: String = "SCOPE CHANGE, stated loudly because it NARROWS this gate: compiler_frontier_crate_layout_holds is no longer a conjunct of compiler_frontier_census_holds. It is RELOCATED, not deleted, and the relocation lands in the same PR as this removal — never a removal now and an enrollment later, which would leave a window where nothing checks it.
+
+WHY it cannot stay here: the layout gate now requires a ModuleStorageIndex, and the live index is host-supplied through v2.test.workflow.host_module_binding_manifest. compiler_frontier_census_holds is a pure zero-arity gate on the FAST lane with no way to obtain one, and the layer DAG forbids a compiler module importing v2.test.* to reach it. Threading an index through the whole census — whose other ~12 conjuncts have nothing to do with bindings — would make every unrelated census check depend on a host artifact, which is a worse coupling than the one being removed.
+
+WHERE it went: v2.test.claim.self_host.crate_layout_witness_test, enrolled on the WET cadence (module_binding_supply_transport), where the real index exists. The fast-lane census keeps every conjunct that does not need one, so this narrows the fast lane by exactly one check and widens what that check can actually see — from 27 hand rows to the whole-tree derived index.
+
+The honest cost: a PR that touches only the frontier roster no longer gets layout coverage in the fast lane; it gets it on the wet cadence instead. That is a real latency increase for that one signal, accepted deliberately rather than papered over."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

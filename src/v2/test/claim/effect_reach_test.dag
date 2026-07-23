@@ -1,0 +1,210 @@
+module v2.test.claim.effect_reach_test
+
+import v2.lens.effect_reach {
+  effect_reach_classification_from_facts,
+  derived_host_reading,
+  classification_is_local,
+  effect_reach_flow_count,
+  effect_reach_touched_by_paths
+}
+import v2.lens.witness_cost_locality { ModuleImportFact }
+import v2.std.collection { List }
+import v2.std.data_index { DataInitDecl }
+import v2.std.effect_reach { EffectReachClassification }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
+
+data fixture_transport_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "fix.witness",
+    imports: ["fix.transport", "fix.std_logic"]
+  },
+  ModuleImportFact { module: "fix.transport", imports: ["fix.harness"] },
+  ModuleImportFact { module: "fix.harness", imports: [] }
+]
+
+data fixture_severed_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] }
+]
+
+data fixture_hermetic_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.hermetic_witness", imports: ["fix.std_logic"] }
+]
+
+data fixture_path_data_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "fix.transport.sn_source_rel",
+    module: "fix.transport",
+    name: "sn_source_rel",
+    literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
+  }
+]
+
+data fixture_empty_data_inits: List<DataInitDecl> = []
+
+data fixture_prose_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
+]
+
+data fixture_prose_doc_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "fix.prose_witness.witness_doc",
+    module: "fix.prose_witness",
+    name: "witness_doc",
+    literal_fp: "str:\"receipt cites src/v2/compiler/03_normalize.dag but never reads it\""
+  }
+]
+
+data fixture_concat_path_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "fix.concat_witness",
+    imports: ["fix.concat_transport", "fix.std_logic"]
+  },
+  ModuleImportFact { module: "fix.concat_transport", imports: [] }
+]
+
+data fixture_concat_path_data_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "fix.concat_transport.sn_path_prefix",
+    module: "fix.concat_transport",
+    name: "sn_path_prefix",
+    literal_fp: "str:\"src/\""
+  },
+  DataInitDecl {
+    qualified_name: "fix.concat_transport.sn_path_suffix",
+    module: "fix.concat_transport",
+    name: "sn_path_suffix",
+    literal_fp: "str:\"v2/compiler/03_normalize.dag\""
+  }
+]
+
+fn transport_classification() -> EffectReachClassification {
+  effect_reach_classification_from_facts(
+    entry_module: "fix.witness",
+    facts: fixture_transport_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_path_data_inits
+  )
+}
+
+test fn effect_reach_path_data_init_derived_host_reading_holds() -> Bool {
+  derived_host_reading(classification: transport_classification())
+}
+
+test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.witness",
+    facts: fixture_severed_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_path_data_inits
+  )
+  classification_is_local(classification: c)
+}
+
+test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
+  effect_reach_touched_by_paths(
+    classification: transport_classification(),
+    touched_paths: [sn_source_rel_path]
+  )
+}
+
+test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
+  !effect_reach_touched_by_paths(
+    classification: transport_classification(),
+    touched_paths: ["src/v2/std/logic.dag"]
+  )
+}
+
+test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.hermetic_witness",
+    facts: fixture_hermetic_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_empty_data_inits
+  )
+  classification_is_local(classification: c)
+    && effect_reach_flow_count(classification: c) == 0
+}
+
+test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.prose_witness",
+    facts: fixture_prose_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_prose_doc_inits
+  )
+  classification_is_local(classification: c)
+    && !derived_host_reading(classification: c)
+    && effect_reach_flow_count(classification: c) == 0
+}
+
+fn witness_frontier_concat_built_path_not_classified() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.concat_witness",
+    facts: fixture_concat_path_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_concat_path_data_inits
+  )
+  classification_is_local(classification: c)
+    && !derived_host_reading(classification: c)
+    && effect_reach_flow_count(classification: c) == 0
+}
+
+test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
+  witness_frontier_concat_built_path_not_classified()
+}
+
+data live_03_normalize_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "test.claim.self_host_03_normalize_behavioral_witness",
+    imports: ["tools.self_host_module_behavioral_transport_roster"]
+  },
+  ModuleImportFact {
+    module: "tools.self_host_module_behavioral_transport_roster",
+    imports: [
+      "tools.self_host_curated_seed_linked_harness",
+      "v2.std.algebra",
+      "v2.std.collection",
+      "v2.std.logic",
+      "v2.std.text"
+    ]
+  },
+  ModuleImportFact {
+    module: "tools.self_host_curated_seed_linked_harness",
+    imports: [
+      "extdeps.shell",
+      "extdeps.filesystem.filesystem_io",
+      "extdeps.cargo_build",
+      "extdeps.git",
+      "extdeps.gunbc",
+      "std.logic",
+      "v2.std.algebra",
+      "v2.std.collection",
+      "v2.std.text",
+      "tools.host_prelude"
+    ]
+  }
+]
+
+data live_03_normalize_data_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_transport_roster",
+    module: "tools.self_host_module_behavioral_transport_roster",
+    name: "compiler_module_behavioral_transport_roster",
+    literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
+  }
+]
+
+test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> Bool {
+  derived_host_reading(
+    classification: effect_reach_classification_from_facts(
+      entry_module: "test.claim.self_host_03_normalize_behavioral_witness",
+      facts: live_03_normalize_facts,
+      decls: fn_arrow_decl_facts_live(),
+      data_inits: live_03_normalize_data_inits
+    )
+  )
+}

@@ -19,6 +19,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn sg5_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg5_pass_sym } },

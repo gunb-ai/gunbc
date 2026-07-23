@@ -2,14 +2,16 @@ module test.claim.roadmap_document
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
-import ctrl.process_algebra { ProcessNodeId }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data audit_id: ProcessNodeId = "fail-closed-audit"
-data status_id: ProcessNodeId = "pr-checkbox-status"
-data child_id: ProcessNodeId = "host-fed-status-bridge"
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data audit_id: RoadmapNodeId = "fail-closed-audit"
+data status_id: RoadmapNodeId = "pr-checkbox-status"
+data child_id: RoadmapNodeId = "host-fed-status-bridge"
 
 fn audit_node() -> RoadmapNode {
   RoadmapNode {

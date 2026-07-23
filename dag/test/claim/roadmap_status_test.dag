@@ -1,22 +1,16 @@
 module test.claim.roadmap_status
 
-import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
-import extdeps.github.github { GitHubUser, User }
-import gunbc.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine,
-  DriftVerdict, Drifted, Clean, Underivable,
-  pr_merged, merged_pr_numbers, prs_all_merged,
-  item_is_done, status_drift, item_drifted, item_drifts_against_prs,
-}
 
-data witness_user: GitHubUser = { login: "gunbai-bot", id: 1, type: User }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_user: GitHubUser = { login: "gunbai-bot", id: 1, type: extdeps.github.github.User }
 data witness_ref: PullRequestRef = { ref: "feature", sha: "deadbeef", label: "gunb:feature" }
 
-data pr_5445: PullRequest = {
+data pr_5445: extdeps.github.pulls.PullRequest = {
   number: 5445,
   title: "merged witness pr",
   body: none,
-  state: Open,
+  state: extdeps.github.pulls.Open,
   html_url: "https://github.com/gunb/gunbc/pull/5445",
   user: witness_user,
   head: witness_ref,
@@ -26,11 +20,11 @@ data pr_5445: PullRequest = {
   merged_at: "2026-06-20T00:00:00",
   draft: false,
 }
-data pr_open_9999: PullRequest = {
+data pr_open_9999: extdeps.github.pulls.PullRequest = {
   number: 9999,
   title: "open witness pr",
   body: none,
-  state: Open,
+  state: extdeps.github.pulls.Open,
   html_url: "https://github.com/gunb/gunbc/pull/9999",
   user: witness_user,
   head: witness_ref,

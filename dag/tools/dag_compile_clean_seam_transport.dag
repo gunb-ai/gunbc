@@ -1,0 +1,121 @@
+module tools.dag_compile_clean_seam_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.git
+import extdeps.gunbc
+import std.types { String, Bool }
+import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
+
+data cross_shard_seam_importer_entry_path: String = "dag/std/bit.dag"
+data cross_shard_seam_importee_entry_path: String = "dag/std/logic.dag"
+data cross_shard_seam_break_needle: String = "type Classical = True | False"
+data cross_shard_seam_break_replacement: String = "type ClassicalRenamedBug = True | False"
+data cross_shard_seam_class_marker: String = "Classical"
+
+type CrossShardSeamProbeResult {
+  probe_ran: Bool
+  y_exit_zero: Bool
+  x_exit_zero: Bool
+  m_exit_zero: Bool
+  y_output: String
+  x_output: String
+  m_output: String
+}
+
+fn cross_shard_seam_probe_failed() -> CrossShardSeamProbeResult {
+  CrossShardSeamProbeResult {
+    probe_ran: false,
+    y_exit_zero: false, x_exit_zero: false, m_exit_zero: false,
+    y_output: "", x_output: "", m_output: ""
+  }
+}
+
+fn cross_shard_seam_compile_args(stage: String, broken_dag: String, out_dir: String) -> List<String> {
+  let staged = if stage == "" {
+    ["compile"]
+  } else {
+    ["compile", "--source-root", stage]
+  }
+  concat(staged, [
+    "--source-root", broken_dag,
+    "--source-root", "src/v2",
+    "--dependency-pool-index", "primary-precedence",
+    "--output-dir", out_dir,
+    "--target", "dag"
+  ])
+}
+
+fn cross_shard_seam_break_module(broken_dag: String) -> Bool {
+  let target_path = concat(broken_dag, "/std/logic.dag")
+  let original = Filesystem.Read(path: target_path)
+  if original.success {
+    let broken_content = replace(original.content, cross_shard_seam_break_needle, cross_shard_seam_break_replacement)
+    let wrote = Filesystem.Write(path: target_path, content: broken_content)
+    wrote.success
+  } else {
+    false
+  }
+}
+
+fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
+  let root = git.Core.Toplevel()
+  if dcc_gunbc_ready(root: root.path) {
+    let broken = shell.Mktemp.Dir()
+    let stage_y = shell.Mktemp.Dir()
+    let stage_x = shell.Mktemp.Dir()
+    let out_y = shell.Mktemp.Dir()
+    let out_x = shell.Mktemp.Dir()
+    let out_m = shell.Mktemp.Dir()
+    if broken.success && stage_y.success && stage_x.success && out_y.success && out_x.success && out_m.success {
+      let broken_dag = concat(broken.path, "/dag")
+      let copied = shell.Copy.Recursive(source: concat(root.path, "/dag"), destination: broken_dag)
+      let seam_broken = cross_shard_seam_break_module(broken_dag: broken_dag)
+      let staged_y = shell.Copy.File(
+        source: concat(broken.path, concat("/", cross_shard_seam_importee_entry_path)),
+        destination: stage_y.path
+      )
+      let staged_x = shell.Copy.File(
+        source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)),
+        destination: stage_x.path
+      )
+      let gunbc_path = dcc_gunbc_path(root: root.path)
+      let compile_y = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: gunbc_path,
+        args: cross_shard_seam_compile_args(stage: stage_y.path, broken_dag: broken_dag, out_dir: out_y.path)
+      )
+      let compile_x = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: gunbc_path,
+        args: cross_shard_seam_compile_args(stage: stage_x.path, broken_dag: broken_dag, out_dir: out_x.path)
+      )
+      let compile_m = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: gunbc_path,
+        args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path)
+      )
+      let cleaned_broken = shell.Remove.RecursiveForce(path: broken.path)
+      let cleaned_sy = shell.Remove.RecursiveForce(path: stage_y.path)
+      let cleaned_sx = shell.Remove.RecursiveForce(path: stage_x.path)
+      let cleaned_oy = shell.Remove.RecursiveForce(path: out_y.path)
+      let cleaned_ox = shell.Remove.RecursiveForce(path: out_x.path)
+      let cleaned_om = shell.Remove.RecursiveForce(path: out_m.path)
+      CrossShardSeamProbeResult {
+        probe_ran: copied.success && seam_broken && staged_y.success && staged_x.success
+          && cleaned_broken.success && cleaned_sy.success && cleaned_sx.success
+          && cleaned_oy.success && cleaned_ox.success && cleaned_om.success,
+        y_exit_zero: compile_y.success,
+        x_exit_zero: compile_x.success,
+        m_exit_zero: compile_m.success,
+        y_output: concat(compile_y.stdout, compile_y.stderr),
+        x_output: concat(compile_x.stdout, compile_x.stderr),
+        m_output: concat(compile_m.stdout, compile_m.stderr)
+      }
+    } else {
+      cross_shard_seam_probe_failed()
+    }
+  } else {
+    cross_shard_seam_probe_failed()
+  }
+}

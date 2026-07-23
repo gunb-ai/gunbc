@@ -1,7 +1,8 @@
 module v1.compiler.complexity
 
 import std.types { SourceSpan }
-import v1.compiler.emit { to_string }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import v1.compiler.emit_core_support { to_string }
 import v1.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
@@ -27,10 +28,13 @@ import std.computation {
 }
 import std.induction {
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent,
+  cost_constant, cost_poly,
   sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
+}
+import std.computation {
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import v1.std.core {
   Node,
@@ -59,6 +63,7 @@ import v1.std.core {
   is_tree_size_preserving, is_tree_size_reducing,
   authored_name_at
 }
+import v1.compiler.infer_sigs { CallEdge }
 import v1.compiler.infer_types {
   resolved_type, node_is_collection
 }
@@ -98,6 +103,7 @@ type ComplexitySummary {
   span: CostExpr
   output_size: Map<String, CostExpr>
   certainty: Certainty
+  peak_space: CostExpr?
 }
 
 type CostInternTable {
@@ -125,11 +131,6 @@ fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
     output_size: empty_map(),
     certainty: Proven
   })
-}
-
-type CallEdge {
-  caller: String
-  callee: String
 }
 
 type SccInfo {
@@ -3406,6 +3407,174 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
   cost_seq(a: condition, b: max_branch)
 }
 
+data space_of_note: String = "space-complexity increment 1a (space-complexity-design.md): peak working-set derivation as the structural dual of the time cost-expr. Sequential steps RELEASE, so time's CostAdd (sum) becomes space's CostMax; concurrent steps CO-RESIDE, so time's CostMax becomes space's CostAdd (P1's space_measure_seq=max / space_measure_par=add lifted to CostExpr). A fold's iterations release, so CostSum collapses to its body's peak — the headline dual: a reducing fold is O(n) time but O(1) space. The accumulator/output_size additive term is added at the summary grain (peak_space = space_of(work) + output_size), not here. CostUnknown passes through fail-closed (the SpaceBoundUnknown frontier: counted now, error later)."
+
+fn space_of(work: CostExpr) -> CostExpr {
+  match work {
+    CostConst { value: v } => CostConst { value: v }
+    CostAdd { left: l, right: r } => cost_par(a: space_of(work: l), b: space_of(work: r))
+    CostMax { left: l, right: r } => cost_seq(a: space_of(work: l), b: space_of(work: r))
+    CostMul { left: l, right: r } => cost_seq(a: space_of(work: l), b: space_of(work: r))
+    CostSum { binder: _, upper: _, body: bd } => space_of(work: bd)
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: n } => CostExtern { name: n }
+    CostUnknown { reason: r } => CostUnknown { reason: r }
+  }
+}
+
+fn fold_peak_space(body_peak: CostExpr, output_size: CostExpr) -> CostExpr {
+  cost_seq(a: output_size, b: space_of(work: body_peak))
+}
+
+data derive_peak_space_note: String = "Summary-grain peak-space derivation (space-complexity-design.md 5): peak_space = space_of(work) for a scalar result; for a collection result the retained output co-resides with the transient working set, so it is the additive fold_peak_space(space_of(work) + output_term). The output_term is the summary's `result` output_size entry (the single convention the analysis emits: collection_output/scan_os/sort_os all key on `result`). Absent output_size (scalar) collapses to space_of(work) with no additive term. Set only at the finalized per-function summary; intermediate sub-expression summaries and the error/external/seed summaries leave peak_space absent (the SpaceBoundUnknown counted frontier, fail-closed)."
+
+fn derive_peak_space(work: CostExpr, output_size: Map<String, CostExpr>) -> CostExpr {
+  match map_get(output_size, "result") {
+    Present { value: out } => fold_peak_space(body_peak: work, output_size: out)
+    Absent => space_of(work: work)
+  }
+}
+
+data cost_account_space_from_summary_note: String = "Fill CostAccount.space (basis Derived) from a summary's derived peak_space: evaluate the peak-space CostExpr at a closed size_env to a concrete ByteSize. Absent peak_space (the frontier) or an underivable expr (CostUnknown/CostExtern/CostLog -> eval Absent) returns none — never a fabricated bound (fail-closed, space-complexity-design.md 4)."
+
+fn cost_account_space_from_summary(summary: ComplexitySummary, size_env: Map<String, Int>) -> ByteSize? {
+  match summary.peak_space {
+    Present { value: ps } =>
+      match eval_cost_expr_concrete(e: ps, env: size_env) {
+        Present { value: bytes } => Present { value: byte_size(count: bytes) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+data cost_expr_degree_note: String = "Asymptotic reading (space-complexity increment 2): the polynomial degree of a CostExpr. A CostSum over a size variable is one factor of n (+1 degree); sequential/parallel take the MAX degree; products ADD degrees; a bare log is below linear (degree 0 for the polynomial reading). Absent = the frontier (CostExtern/CostUnknown) — fail-closed, never a fabricated degree. Applied to space_of(work) it yields the SPACE order, which is <= the TIME order by construction (space_of collapses the CostSum that a reducing fold's TIME carries): the headline O(n)-time / O(1)-space, decided asymptotically."
+
+fn cost_expr_degree(e: CostExpr) -> Int? {
+  match e {
+    CostConst { value: _ } => Present { value: 0 }
+    CostAdd { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: if ld >= rd { ld } else { rd } }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMax { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: if ld >= rd { ld } else { rd } }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMul { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: ld + rd }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostSum { binder: _, upper: _, body: bd } =>
+      match cost_expr_degree(e: bd) {
+        Present { value: bdeg } => Present { value: 1 + bdeg }
+        Absent => none
+      }
+    CostLog { base: _, argument: _ } => Present { value: 0 }
+    CostExtern { name: _ } => none
+    CostUnknown { reason: _ } => none
+  }
+}
+
+fn degree_to_bound(degree: Int, param: String) -> CostBound {
+  if degree == 0 { cost_constant() } else { cost_poly(param: param, degree: degree) }
+}
+
+fn space_asymptotic_bound(work: CostExpr, param: String) -> CostBound {
+  match cost_expr_degree(e: space_of(work: work)) {
+    Present { value: d } => degree_to_bound(degree: d, param: param)
+    Absent => ForeverBound
+  }
+}
+
+fn time_asymptotic_bound(work: CostExpr, param: String) -> CostBound {
+  match cost_expr_degree(e: work) {
+    Present { value: d } => degree_to_bound(degree: d, param: param)
+    Absent => ForeverBound
+  }
+}
+
+fn eval_size_expr_concrete(s: SizeExpr, env: Map<String, Int>) -> Int? {
+  match s {
+    SizeConst { value: v } => Present { value: v }
+    SizeVar { name: n } => map_get(env, n)
+    SizeLen { collection: c } => map_get(env, c)
+    SizeAdd { left: l, right: r } =>
+      match eval_size_expr_concrete(s: l, env: env) {
+        Present { value: lv } => match eval_size_expr_concrete(s: r, env: env) {
+          Present { value: rv } => Present { value: lv + rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    SizeMax { left: l, right: r } =>
+      match eval_size_expr_concrete(s: l, env: env) {
+        Present { value: lv } => match eval_size_expr_concrete(s: r, env: env) {
+          Present { value: rv } => Present { value: if lv >= rv { lv } else { rv } }
+          Absent => none
+        }
+        Absent => none
+      }
+  }
+}
+
+fn int_max2(a: Int, b: Int) -> Int {
+  if a >= b { a } else { b }
+}
+
+fn eval_cost_expr_concrete(e: CostExpr, env: Map<String, Int>) -> Int? {
+  match e {
+    CostConst { value: v } => Present { value: v }
+    CostAdd { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: lv + rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMul { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: lv * rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMax { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: int_max2(a: lv, b: rv) }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostSum { binder: _, upper: up, body: bd } =>
+      match eval_size_expr_concrete(s: up, env: env) {
+        Present { value: n } => match eval_cost_expr_concrete(e: bd, env: env) {
+          Present { value: bv } => Present { value: n * bv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostLog { base: _, argument: _ } => none
+    CostExtern { name: _ } => none
+    CostUnknown { reason: _ } => none
+  }
+}
+
 fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
   let result = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
   result
@@ -3590,6 +3759,8 @@ type StructuralBoundResult {
 
 type ComplexityReport {
   function_classes: Map<String, String>
+  space_classes: Map<String, String>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   structural_bounds: List<StructuralBoundResult>
 }
@@ -3597,6 +3768,8 @@ type ComplexityReport {
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
+    space_classes: empty_map(),
+    function_space_bytes: empty_map(),
     violations: [],
     structural_bounds: []
   }
@@ -3956,6 +4129,8 @@ type SummaryResult {
 type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
+  space_classes: Map<String, String>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
 
@@ -4356,11 +4531,13 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
               }
             Absent => result.summary
           }
+          let simplified_work = simplify_cost(expr: bounded.work)
           let simplified = ComplexitySummary {
-            work: simplify_cost(expr: bounded.work),
+            work: simplified_work,
             span: simplify_cost(expr: bounded.span),
             output_size: bounded.output_size,
-            certainty: bounded.certainty
+            certainty: bounded.certainty,
+            peak_space: Present { value: derive_peak_space(work: simplified_work, output_size: bounded.output_size) }
           }
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
           SummaryResult { summary: simplified, table: final_table }
@@ -4627,6 +4804,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
     table: empty_cost_intern_table(),
     classes: empty_map(),
+    space_classes: empty_map(),
+    function_space_bytes: empty_map(),
     violations: [],
     fan_in: fan_in,
     processed: empty_map()
@@ -4636,6 +4815,13 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
+        let space_class_str = classify_complexity(expr: space_of(work: sr.summary.work))
+        let new_space_classes = map_insert(acc.space_classes, func_name, space_class_str)
+        let space_bytes_opt = cost_account_space_from_summary(summary: sr.summary, size_env: empty_map())
+        let new_function_space_bytes = match space_bytes_opt {
+          Present { value: bs } => map_insert(acc.function_space_bytes, func_name, byte_size_count(b: bs))
+          Absent => acc.function_space_bytes
+        }
         let new_processed = map_insert(acc.processed, func_name, true)
 
         let new_violations = if is_unknown_cost(expr: sr.summary.work) {
@@ -4667,7 +4853,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
+        TopoBuildAcc { table: final_table, classes: new_classes, space_classes: new_space_classes, function_space_bytes: new_function_space_bytes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
       Absent => acc
     }
   })
@@ -4675,6 +4861,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let structural_bounds = analyze_structural_bounds(func_entries: func_entries, si: si)
   ComplexityReport {
     function_classes: result.classes,
+    space_classes: result.space_classes,
+    function_space_bytes: result.function_space_bytes,
     violations: result.violations,
     structural_bounds: structural_bounds
   }

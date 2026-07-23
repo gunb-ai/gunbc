@@ -1,0 +1,6 @@
+module v2.test.workflow.host_frontier_probe_survey_manifest
+
+
+data host_frontier_probe_survey_module_count: Int = 0
+
+data host_frontier_probe_survey: List<FrontierProbeReceipt> = Empty

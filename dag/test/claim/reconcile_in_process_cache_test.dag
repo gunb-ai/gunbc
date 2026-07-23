@@ -1,0 +1,87 @@
+module test.claim.reconcile_in_process_cache
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data shared_subject_digest: ContentHash = "reconcile-in-process-witness-shared-subject-digest"
+
+fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
+  let row = cache_interface_facts_from_catalog(row: parse_cache_facts)
+  (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)
+    && !row.key_derivation.content_verified_on_read
+    && (row.locality == InProcess)
+    && (row.value_shape == StructuredArtifact)
+    && (row.miss_semantics == MissThenCreate)
+}
+
+fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
+  let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
+  (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
+    && !row.key_derivation.content_verified_on_read
+    && (row.locality == InProcess)
+    && (row.value_shape == StructuredArtifact)
+    && (row.miss_semantics == MissThenCreate)
+}
+
+fn witness_disk_sibling_is_content_addressed() -> Bool {
+  let disk = cache_interface_facts_from_catalog(row: resolved_graph_cache_facts)
+  (catalog_key_derivation_classification(kd: resolved_graph_cache_facts.key_derivation) == ContentAddressedByValue)
+    && disk.key_derivation.content_verified_on_read
+    && (disk.locality == PerHostFilesystem)
+}
+
+fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
+  let parse = cache_interface_facts_from_catalog(row: parse_cache_facts)
+  let typed = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
+  let disk = cache_interface_facts_from_catalog(row: resolved_graph_cache_facts)
+  (parse.locality == typed.locality)
+    && (parse.locality == InProcess)
+    && !(disk.locality == parse.locality)
+    && (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)
+    && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
+    && (catalog_key_derivation_classification(kd: resolved_graph_cache_facts.key_derivation) == ContentAddressedByValue)
+}
+
+fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
+  let id = ArtifactIdentity {
+    subject_digest: shared_subject_digest,
+    artifact_kind: parse_source_artifact_kind,
+  }
+  let key = cache_key_projection_transport(artifact: id, backend: parse_cache_facts)
+  key.store == parse_cache_id
+}
+
+fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
+  let id = ArtifactIdentity {
+    subject_digest: shared_subject_digest,
+    artifact_kind: typed_module_artifact_kind,
+  }
+  let key = cache_key_projection_transport(artifact: id, backend: typed_module_cache_facts)
+  key.store == typed_module_cache_id
+}
+
+fn witness_resolved_graph_routes_to_disk_backend() -> Bool {
+  let id = ArtifactIdentity {
+    subject_digest: shared_subject_digest,
+    artifact_kind: resolved_graph_artifact_kind,
+  }
+  let key = cache_key_projection_transport(artifact: id, backend: resolved_graph_cache_facts)
+  key.store == resolved_graph_cache_id
+}
+
+fn witness_reconcile_family_backends_are_distinct() -> Bool {
+  !(parse_cache_id == typed_module_cache_id)
+    && !(parse_cache_id == resolved_graph_cache_id)
+    && !(typed_module_cache_id == resolved_graph_cache_id)
+}
+
+test fn reconcile_in_process_cache_witnesses() -> Bool {
+  witness_parse_cache_is_in_process_hand_authored()
+    && witness_typed_module_cache_is_in_process_native_internal()
+    && witness_disk_sibling_is_content_addressed()
+    && witness_in_process_siblings_share_locality_not_key_class()
+    && witness_parse_source_routes_to_parse_cache_backend()
+    && witness_typed_module_routes_to_typed_module_cache_backend()
+    && witness_resolved_graph_routes_to_disk_backend()
+    && witness_reconcile_family_backends_are_distinct()
+}

@@ -1,0 +1,64 @@
+module v2.compiler.self_host.frontier_probe
+
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeReceipt,
+  ProbeStageAssemble,
+  ProbeStageEmit,
+  UnknownProbeCause,
+  frontier_classify_rejection_reason
+}
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.text { String }
+
+data frontier_probe_emit_from_ingest_consumer_dissolution_trigger: String = "migrate_when_frontier_per_module_probe_receipt_binds — frontier_probe_emit_from_ingest is staged kernel with no substrate consumer yet; roster rows bind via execution_measured_seed_retained_row_from_probe_receipt when per-module survey lands."
+
+fn frontier_probe_emit_from_ingest(
+  module_path: String,
+  ingest: SourceRootIngest,
+  admission: Admission
+) -> FrontierProbeReceipt {
+  match assemble_program_from_ingest(
+    ingest: ingest,
+    admission: admission,
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: d } =>
+      FrontierProbeReceipt {
+        module_path: module_path,
+        blocker_class: frontier_classify_rejection_reason(reason: d.head.reason),
+        located_stage: ProbeStageAssemble,
+        located_reason: d.head.reason
+      }
+    Accepted { value: _, diagnostics: _ } =>
+      match emit_compiler_import_closure_from_ingest(
+        ingest: ingest,
+        admission: admission,
+        target: rust_target_model()
+      ) {
+        Accepted { value: _, diagnostics: _ } =>
+          FrontierProbeReceipt {
+            module_path: module_path,
+            blocker_class: UnknownProbeCause {
+              reason: ^probe_emit_accept_self_host_bar_unbound
+            },
+            located_stage: ProbeStageEmit,
+            located_reason: ^probe_emit_accept_self_host_bar_unbound
+          }
+        Rejected { diagnostics: d } =>
+          FrontierProbeReceipt {
+            module_path: module_path,
+            blocker_class: frontier_classify_rejection_reason(reason: d.head.reason),
+            located_stage: ProbeStageEmit,
+            located_reason: d.head.reason
+          }
+      }
+  }
+}

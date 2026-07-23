@@ -1,44 +1,11 @@
 module v2.compiler.program_assembly
 
-import v2.compiler.name_resolve {
-  Admission,
-  resolve_with_admission,
-  resolve_with_admission_grounded,
-  validate_module_roots
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest,
-  source_authority_diagnostic,
-  source_root_set_from_ingest,
-}
-import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.cross_tree.resolution {
-  SourceRootIndex,
-  source_root_index_empty,
-  source_root_index_insert
-}
-import v2.std.language_model { LanguageModel }
-import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
-import v2.std.artifact { SourceFile }
-import v2.std.diagnostic {
-  Accepted,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node { Node }
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>,
-      index: SourceRootIndex
+      index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -48,9 +15,11 @@ fn program_assembly_empty_roots() -> FreeMonoid<Node> {
   Empty
 }
 
-fn program_assembly_read_to_normalized_root(
+fn program_assembly_read_to_normalized_root_prepared(
   read: DagSourceReadWitness,
-  lm: LanguageModel
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
 ) -> Outcome<Node> {
   match read.artifact.kind {
     SourceFile =>
@@ -62,7 +31,7 @@ fn program_assembly_read_to_normalized_root(
         ),
         f: fn(token_stream) {
           bind_outcome(
-            o: parse_module(tokens: token_stream, grammar: lm.grammar),
+            o: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
             f: fn(artifact) {
               normalize(parse_tree: artifact.tree)
             }
@@ -76,16 +45,34 @@ fn program_assembly_read_to_normalized_root(
   }
 }
 
+fn program_assembly_read_to_normalized_root(
+  read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<Node> {
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      program_assembly_read_to_normalized_root_prepared(
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
+  }
+}
+
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
 ) -> ProgramAssemblyFoldState {
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
     ProgramAssemblyFoldOk { roots: acc, index: idx } =>
-      match program_assembly_read_to_normalized_root(read: read, lm: lm) {
+      match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
         Accepted { value: root, diagnostics: _ } =>
           match qualified_name_from_module_node(root: root) {
             Accepted { value: qn, diagnostics: _ } =>
@@ -93,11 +80,8 @@ fn program_assembly_fold_step(
                 roots: list_snoc_item(xs: acc, item: root),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
               }
-            Rejected { diagnostics: _ } =>
-              ProgramAssemblyFoldOk {
-                roots: list_snoc_item(xs: acc, item: root),
-                index: idx
-              }
+            Rejected { diagnostics: d } =>
+              ProgramAssemblyFoldFailed { diagnostics: d }
           }
         Rejected { diagnostics: d } =>
           ProgramAssemblyFoldFailed { diagnostics: d }
@@ -105,20 +89,37 @@ fn program_assembly_fold_step(
   }
 }
 
+data program_assembly_module_binding_fail_closed_note: String = "§5 fail-closed repair (Phase 1, docs/plans/module-identity-storage-binding-design.md): the Rejected arm of qualified_name_from_module_node previously kept the root and left the SourceRootIndex UNCHANGED — a module whose name could not be derived was silently dropped from the index while its root stayed in the program, so every downstream lookup missed it with no diagnostic and no count. That is an absorbing fallback in drop form: the deficit's frequency was zero by construction, so it could never rank for fixing (§6 prices by displaced cost, and a masked cost displaces nothing). The arm now refuses with the located diagnostic the name derivation produced. The binding itself is homed on v2.compiler.source_authority (ModuleStorageBinding); this fold keeps the SourceRootIndex it already owned, and its name-derivation failure mode is now the same refusal the authority raises."
+
+data program_assembly_prepare_once_note: String = "prepare_grammar is hoisted ABOVE fold_list here so the grammar is well-formed-checked, validated (5 checks), and FIRST/nullable-analyzed ONCE per assembly — then parse_module_prepared reuses the PreparedGrammar for every module in the ingest. A door call over a K-module import closure therefore validates once, not K times (the recompute-per-module cost this dissolves). Empty-ingest is guarded so it never pays the one-time prepare for zero modules. Fail-closed: an invalid grammar fails the whole assembly (ProgramAssemblyFoldFailed) before any module is parsed, carrying the validation diagnostic — never a per-module silent skip."
+
 fn program_assembly_fold_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> ProgramAssemblyFoldState {
-  fold_list(
-    xs: ingest,
-    empty: ProgramAssemblyFoldOk {
-      roots: program_assembly_empty_roots(),
-      index: source_root_index_empty()
-    },
-    cons: fn(state, read) {
-      program_assembly_fold_step(state: state, read: read, lm: lm)
-    }
-  )
+  match ingest {
+    Empty =>
+      ProgramAssemblyFoldOk {
+        roots: program_assembly_empty_roots(),
+        index: source_root_index_empty()
+      }
+    _ =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          ProgramAssemblyFoldFailed { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
+          fold_list(
+            xs: ingest,
+            empty: ProgramAssemblyFoldOk {
+              roots: program_assembly_empty_roots(),
+              index: source_root_index_empty()
+            },
+            cons: fn(state, read) {
+              program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
+            }
+          )
+      }
+  }
 }
 
 fn module_roots_from_source_root_ingest(

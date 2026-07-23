@@ -1,36 +1,7 @@
 module test.claim.markdown_source_emit
 
-import std.markdown {
-  MarkdownDocument,
-  MarkdownListItem,
-  MarkdownTaskItem,
-  MarkdownTableRow,
-  MarkdownTableCell,
-  HeadingBlock,
-  ParagraphBlock,
-  UnorderedListBlock,
-  OrderedListBlock,
-  CodeBlock,
-  TaskListBlock,
-  TableBlock,
-  BlockquoteBlock,
-  TextInline,
-  EmphasisInline,
-  StrongInline,
-  CodeInline,
-  LinkInline,
-  H1,
-  Checked,
-  Unchecked,
-  AlignNone,
-  AlignCenter,
-}
-import extdeps.languages.markdown {
-  MarkdownSpellings,
-  commonmark_gfm_spellings,
-  serialize_markdown_source,
-  serialize_markdown_source_with,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_doc() -> MarkdownDocument {
   MarkdownDocument {
@@ -187,6 +158,7 @@ fn perturbed_bullet_spellings() -> MarkdownSpellings {
     blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
     list_indent: commonmark_gfm_spellings.list_indent,
     block_separator: commonmark_gfm_spellings.block_separator,
+    thematic_break: commonmark_gfm_spellings.thematic_break,
   }
 }
 

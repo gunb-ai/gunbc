@@ -1,0 +1,150 @@
+module v2.test.long.parse_table_memo_amortization
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.node { Hash, Node, content_hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data memo_amort_empty_a_source: Medium<String> = Medium { carried: "module memo_amort_a\n", fidelity: Lossless }
+data memo_amort_empty_b_source: Medium<String> = Medium { carried: "module memo_amort_b\n", fidelity: Lossless }
+data memo_amort_bisect_add_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data memo_amort_file_a_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: memo_amort_empty_a_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^memo_amort_file_a_artifact,
+    file_path: "src/v2/test/fixture/memo_amort_file_a.dag"
+  },
+  compilation_unit: ^memo_amort_cu_a,
+  source_root: V2Tree
+}
+
+data memo_amort_file_b_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: memo_amort_empty_b_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^memo_amort_file_b_artifact,
+    file_path: "src/v2/test/fixture/memo_amort_file_b.dag"
+  },
+  compilation_unit: ^memo_amort_cu_b,
+  source_root: V2Tree
+}
+
+data memo_amort_bisect_add_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: memo_amort_bisect_add_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^memo_amort_bisect_add_artifact,
+    file_path: "src/v2/test/fixture/memo_amort_bisect_add.dag"
+  },
+  compilation_unit: ^memo_amort_cu_bisect_add,
+  source_root: V2Tree
+}
+
+data memo_amort_ingest_one_file: SourceRootIngest = Cons {
+  head: memo_amort_file_a_read,
+  tail: Empty
+}
+
+data memo_amort_ingest_two_files: SourceRootIngest = Cons {
+  head: memo_amort_file_a_read,
+  tail: Cons { head: memo_amort_file_b_read, tail: Empty }
+}
+
+data memo_amort_ingest_bisect_add: SourceRootIngest = Cons {
+  head: memo_amort_bisect_add_read,
+  tail: Empty
+}
+
+fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash> {
+  match module_roots_from_source_root_ingest(
+    ingest: ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      match length(xs: roots) == 1 {
+        true =>
+          fold_list(
+            xs: roots,
+            empty: Rejected { diagnostics: None },
+            cons: fn(_acc, root) {
+              outcome_accepted(value: content_hash(n: root))
+            }
+          )
+        false =>
+          Rejected { diagnostics: None }
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+fn memo_amort_parse_one_file_holds() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: memo_amort_ingest_one_file,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn memo_amort_parse_two_files_holds() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: memo_amort_ingest_two_files,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn memo_amort_parse_two_files_twice_holds() -> Bool {
+  memo_amort_parse_two_files_holds() && memo_amort_parse_two_files_holds()
+}
+
+fn witness_parse_table_memo_hit_path_content_hash_stable() -> Bool {
+  match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
+    Accepted { value: hash_miss, diagnostics: _ } =>
+      match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
+        Accepted { value: hash_hit, diagnostics: _ } =>
+          match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_one_file) {
+            Accepted { value: hash_empty, diagnostics: _ } =>
+              hash_miss == hash_hit && hash_miss != hash_empty
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn parse_table_grammar_memo_multi_file_ingest_parses() -> Bool {
+  memo_amort_parse_two_files_holds()
+}
+
+test fn parse_table_memo_hit_path_content_hash_stable_holds() -> Bool {
+  witness_parse_table_memo_hit_path_content_hash_stable()
+}
+
+data empty_ingest_guard_note: String = "Covers the empty-ingest branch of program_assembly_fold_ingest, added with the prepare-once hoist: an empty ingest must assemble to empty roots WITHOUT paying the one-time grammar preparation (well-formed + 5-check validation + FIRST analysis) for zero modules. Discriminating — RED if the guard rejected, fabricated a root, or (regression) fell through to prepare_grammar for no modules. Fast by construction (no prepare, no parse), unlike the multi-file amortization witnesses above which each pay exactly ONE preparation for the whole fold."
+
+test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: Empty,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 0
+    Rejected { diagnostics: _ } => false
+  }
+}

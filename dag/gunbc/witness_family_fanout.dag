@@ -1,0 +1,64 @@
+module gunbc.witness_family_fanout
+
+import std.types { String, Int, List }
+import v2.std.node { Symbol }
+
+data witness_family_fanout_doc: String = "Witness-family fan-out partition (v1_deletion_plan witness_family_fanout). Lane 4 (wise-fox-351): meet_join + variant_construct + classical_not_ingested emit-on-demand native witnesses on the #6879 kernel. Dissolve-on: every enrolled lane ACCEPT witness green + ci_floor_cutover routes native."
+
+type WitnessFamilyKind
+  = EmitHostExecutionFamily
+  | ClaimFamily
+
+type WitnessFamilyLane {
+  lane_id: Symbol,
+  lane_number: Int,
+  kind: WitnessFamilyKind,
+  title: String,
+  scope_note: String,
+  witness_entry: String,
+  witness_function: String,
+  lane_state: String
+}
+
+data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_meet_join,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "meet_join — std/logic meet and join emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_meet_join_family_witness_test: PURE receipts only (grain/closure key sensitivity, store materialization, role bound, budget refusal) — native execution MIGRATED to the lane-6 family crate (one-build members-warm + eval-anchored member agreements + all-alt wrong-fixture octet flips); the per-witness cold/warm/wrong-fixture crate builds are deleted.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    witness_function: "emit_on_demand_meet_join_family_witnesses",
+    lane_state: "LANDED (wise-fox-351); native execution migrated to lane 6 (merry-pike-487)"
+  },
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_variant_construct,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "variant_construct — variant-construct-then-match emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_variant_construct_family_witness_test: consolidated to ONE-BUILD grain (emit_on_demand_variant_construct_native_one_build_holds — primary cold/warm octet 9 + wrong-value alt cold octet 1 in one root, 2 builds; formerly 5), closure_digest key sensitivity pure.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    witness_function: "emit_on_demand_variant_construct_family_witnesses",
+    lane_state: "LANDED (wise-fox-351); one-build consolidation (merry-pike-487 fan-out)"
+  },
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_classical_not_ingested,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "classical_not_ingested — ingested classical_not emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: consolidated to ONE-BUILD grain (emit_on_demand_classical_not_native_one_build_holds — primary cold/warm octet 0 + cached eval-anchored agreement warm + swapped-source alt cold octet 1 with cached mismatch RED, 2 builds; formerly ~6), closure_digest key sensitivity pure.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    witness_function: "emit_on_demand_classical_not_ingested_family_witnesses",
+    lane_state: "LANDED (wise-fox-351); one-build consolidation (merry-pike-487 fan-out)"
+  },
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_family_crate_grain,
+    lane_number: 6,
+    kind: EmitHostExecutionFamily,
+    title: "family-crate grain — one native crate per witness family (build-grain flip)",
+    scope_note: "Operator-directed 2026-07-21, answered by measurement: per-witness crates ~17s each LOSE to the interpreter; ONE family crate wins. Members concatenate via emit_family (per-member target models) under a DERIVED argv-dispatched main (fail-closed: unknown member exits 2); first member run builds, members 2..N are compile_skipped. Key = emit_on_demand_key over family_closure_digest (std.emit_on_demand witness_family_build_grain_ruling; member list order is declared key material). This module is the ONE executing consumer for the logic family's native execution: eval-anchored member agreements (run_test_claim_from_source_emit_vs_eval_cached) and the unknown-member refusal run warm on the one-build workspace; the all-alt family carries every wrong-fixture octet flip in one cold rebuild. The meet_join and complement suites keep pure receipts only.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    witness_function: "emit_on_demand_family_crate_witnesses",
+    lane_state: "LANDED (merry-pike-487); suite migration LANDED (merry-pike-487 follow-on)"
+  }
+]

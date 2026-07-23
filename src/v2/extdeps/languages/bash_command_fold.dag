@@ -1,42 +1,57 @@
 module v2.extdeps.languages.bash_command_fold
 
-import extdeps.languages.bash.program {
-  AndOr,
-  AndOrOp,
-  AndThen,
-  Assign,
-  Command,
-  Exit,
-  If,
-  Lit,
-  OrElse,
-  Pipe,
-  Redir,
-  ShellStmt,
-  ShellWord,
-  Subshell,
-  VarRef,
-  serialize_stmt
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_command,
+  bash_build_command_words_pair,
+  bash_build_command_words_single,
+  bash_build_pipe,
+  bash_build_exit,
+  bash_build_stmt_tag,
+  bash_build_word_lit,
+  bash_build_word_var
 }
 import v2.extdeps.languages.bash {
   bash_named_edge,
+  bash_redir_stderr_null_emitted,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_emitted,
+  bash_redir_to_file_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_assign_emitted,
+  bash_stmt_assign_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_stmt_pipe_emitted,
+  bash_stmt_pipe_target_model,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
+  bash_stmt_with_redir_emitted,
   bash_stmt_env_prefixed_target_model,
   bash_stmt_heredoc_target_model,
-  bash_stmt_negation_target_model,
   bash_stmt_with_redir_target_model,
   bash_token_class_emit_transforms,
   bash_target_model_bundle,
   bash_word_atom,
+  bash_word_cmdsubst_emitted,
+  bash_word_cmdsubst_target_model,
+  bash_word_pass_emitted,
   bash_word_pass_target_model
 }
-import v2.std.algebra { list_append }
+import v2.std.algebra { list_append, list_map }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Present,
   empty_map,
-  list_at_optional,
   list_nth,
   map_insert
 }
@@ -56,7 +71,10 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
+  Outcome,
   Rejected,
+  Some,
   Unavailable,
   node_locus
 }
@@ -87,45 +105,10 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-fn bash_fold_word_kinded_emitted(kind: Symbol, value: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: kind } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: value } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_word_lit_emitted(text: String) -> Node {
-  bash_fold_word_kinded_emitted(kind: ^bash_fold_word_kind_lit, value: text)
-}
-
-fn bash_fold_word_var_emitted(name: String) -> Node {
-  bash_fold_word_kinded_emitted(kind: ^bash_fold_word_kind_var, value: name)
-}
-
-fn bash_fold_stmt_tag(binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
+data bash_fold_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn bash_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
@@ -135,19 +118,19 @@ fn bash_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
   )
 }
 
-data bash_fold_diagnostic_anchor: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: bash_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (bash_fold_unsupported_variant_diagnostic, bash_fold_delegated_needs_component_spellings_diagnostic, bash_fold_words_absent_diagnostic, bash_fold_stmts_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN #5920 STEP 3 follow-on lands: production emit callers (orch_emit_run beyond env-free RawLine; stmt-shaped fold serialize) surface bash_fold_word_emitted_witness / bash_fold_stmt_bundle_witness Violates diagnostics through emit() with node_locus over the offending ShellWord or ShellStmt subtree in BashFoldStmtBundle.emitted, retiring the synthetic anchor."
-
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
     at: node_locus(node: bash_fold_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_serialize_refused(variant: Symbol) -> Outcome<String> {
+  Rejected {
+    diagnostics: Some {
+      diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: variant)]
+    }
   }
 }
 
@@ -159,486 +142,51 @@ fn bash_fold_delegated_needs_component_spellings_diagnostic() -> Diagnostic {
   }
 }
 
-fn bash_fold_word_emitted_witness(w: ShellWord) -> Witness<Node> {
-  match w {
-    Lit { text: t } => Holds { value: bash_fold_word_lit_emitted(text: t) }
-    VarRef { name: n } => Holds { value: bash_fold_word_var_emitted(name: n) }
-    Concat { parts: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_concat) }
-    CmdSubst { body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_cmdsubst) }
-    Raw { text: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_raw) }
-  }
-}
-
-fn bash_fold_command_words_single_emitted(word: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: word }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_command_words_pair_emitted(left: Node, right: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_command_emitted(words: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_fold_stmt_tag(binding: ^bash_production_fold_command)
-      },
-      Edge { label: Positional, target: words }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_words_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^bash_fold_words_empty,
-    at: node_locus(node: bash_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn bash_fold_command_words_emitted_from_list_suffix_witness(
-  words: List<ShellWord>,
-  accumulated: Node,
-  index: Int
-) -> Witness<Node> {
-  match list_at_optional(xs: words, index: index) {
-    Present { value: w } =>
-      match bash_fold_word_emitted_witness(w: w) {
-        Holds { value: word_node } =>
-          bash_fold_command_words_emitted_from_list_suffix_witness(
-            words: words,
-            accumulated: bash_fold_command_words_pair_emitted(
-              left: accumulated,
-              right: word_node
-            ),
-            index: index + 1
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Absent => Holds { value: accumulated }
-  }
-}
-
-fn bash_fold_command_words_emitted_witness(words: List<ShellWord>) -> Witness<Node> {
-  match list_nth(xs: words, wanted: 0, absent: bash_fold_words_absent_diagnostic()) {
-    Holds { value: w0 } =>
-      match bash_fold_word_emitted_witness(w: w0) {
-        Holds { value: word0 } =>
-          bash_fold_command_words_emitted_from_list_suffix_witness(
-            words: words,
-            accumulated: bash_fold_command_words_single_emitted(word: word0),
-            index: 1
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_exit_emitted(code: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_fold_stmt_tag(binding: ^bash_production_fold_exit)
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: code } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_assign_emitted_witness(name: String, value: ShellWord) -> Witness<Node> {
-  match bash_fold_word_emitted_witness(w: value) {
-    Holds { value: word_node } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge {
-              label: Positional,
-              target: bash_fold_stmt_tag(binding: ^bash_production_fold_assign)
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: name } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            },
-            Edge { label: Positional, target: word_node }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-type BashFoldStmtBundle {
-  production_binding: Symbol
-  relation_rule: Symbol
-  emitted: Node
-}
-
-fn bash_fold_binary_stmt_emitted_witness(
-  binding: Symbol,
-  left: ShellStmt,
-  right: ShellStmt
-) -> Witness<Node> {
-  match bash_fold_stmt_emitted_witness(stmt: left) {
-    Holds { value: left_emitted } =>
-      match bash_fold_stmt_emitted_witness(stmt: right) {
-        Holds { value: right_emitted } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                Edge { label: Positional, target: bash_fold_stmt_tag(binding: binding) },
-                Edge { label: Positional, target: left_emitted },
-                Edge { label: Positional, target: right_emitted }
-              ],
-              occurrence_id: SyntheticOccurrence
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_stmt_list_single_emitted(stmt: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: stmt }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_stmt_list_pair_emitted(left: Node, right: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_stmts_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^bash_fold_stmts_empty,
-    at: node_locus(node: bash_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn bash_fold_stmt_list_emitted_from_suffix_witness(
-  stmts: List<ShellStmt>,
-  accumulated: Node,
-  index: Int
-) -> Witness<Node> {
-  match list_at_optional(xs: stmts, index: index) {
-    Present { value: s } =>
-      match bash_fold_stmt_emitted_witness(stmt: s) {
-        Holds { value: stmt_node } =>
-          bash_fold_stmt_list_emitted_from_suffix_witness(
-            stmts: stmts,
-            accumulated: bash_fold_stmt_list_pair_emitted(
-              left: accumulated,
-              right: stmt_node
-            ),
-            index: index + 1
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Absent => Holds { value: accumulated }
-  }
-}
-
-fn bash_fold_stmt_list_emitted_witness(stmts: List<ShellStmt>) -> Witness<Node> {
-  match list_nth(xs: stmts, wanted: 0, absent: bash_fold_stmts_absent_diagnostic()) {
-    Holds { value: s0 } =>
-      match bash_fold_stmt_emitted_witness(stmt: s0) {
-        Holds { value: stmt0 } =>
-          bash_fold_stmt_list_emitted_from_suffix_witness(
-            stmts: stmts,
-            accumulated: bash_fold_stmt_list_single_emitted(stmt: stmt0),
-            index: 1
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_subshell_emitted(body: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_fold_stmt_tag(binding: ^bash_production_fold_subshell)
-      },
-      Edge { label: Positional, target: body }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_if_emitted(cond: Node, body: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_fold_stmt_tag(binding: ^bash_production_fold_if)
-      },
-      Edge { label: Positional, target: cond },
-      Edge { label: Positional, target: body }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle> {
-  match stmt {
-    Command { words: ws } =>
-      match bash_fold_command_words_emitted_witness(words: ws) {
-        Holds { value: words_node } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_command,
-              relation_rule: ^bash_relation_rule_fold_command,
-              emitted: bash_fold_command_emitted(words: words_node)
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Exit { code: c } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_fold_exit,
-          relation_rule: ^bash_relation_rule_fold_exit,
-          emitted: bash_fold_exit_emitted(code: to_string(c))
-        }
-      }
-    Assign { name: n, value: v } =>
-      match bash_fold_assign_emitted_witness(name: n, value: v) {
-        Holds { value: emitted } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_assign,
-              relation_rule: ^bash_relation_rule_fold_assign,
-              emitted: emitted
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    AndOr { left: l, op: AndThen, right: r } =>
-      match bash_fold_binary_stmt_emitted_witness(
-        binding: ^bash_production_fold_and_then,
-        left: l,
-        right: r
-      ) {
-        Holds { value: emitted } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_and_then,
-              relation_rule: ^bash_relation_rule_fold_and_then,
-              emitted: emitted
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    AndOr { left: l, op: OrElse, right: r } =>
-      match bash_fold_binary_stmt_emitted_witness(
-        binding: ^bash_production_fold_or_else,
-        left: l,
-        right: r
-      ) {
-        Holds { value: emitted } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_or_else,
-              relation_rule: ^bash_relation_rule_fold_or_else,
-              emitted: emitted
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Pipe { left: l, right: r } =>
-      match bash_fold_binary_stmt_emitted_witness(
-        binding: ^bash_production_fold_pipe,
-        left: l,
-        right: r
-      ) {
-        Holds { value: emitted } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_pipe,
-              relation_rule: ^bash_relation_rule_fold_pipe,
-              emitted: emitted
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    If { cond: c, then: body } =>
-      match bash_fold_stmt_emitted_witness(stmt: c) {
-        Holds { value: cond_emitted } =>
-          match bash_fold_stmt_list_emitted_witness(stmts: body) {
-            Holds { value: body_emitted } =>
-              Holds {
-                value: BashFoldStmtBundle {
-                  production_binding: ^bash_production_fold_if,
-                  relation_rule: ^bash_relation_rule_fold_if,
-                  emitted: bash_fold_if_emitted(cond: cond_emitted, body: body_emitted)
-                }
-              }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Subshell { body: b } =>
-      match bash_fold_stmt_list_emitted_witness(stmts: b) {
-        Holds { value: body_emitted } =>
-          Holds {
-            value: BashFoldStmtBundle {
-              production_binding: ^bash_production_fold_subshell,
-              relation_rule: ^bash_relation_rule_fold_subshell,
-              emitted: bash_fold_subshell_emitted(body: body_emitted)
-            }
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    BraceGroup { body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_brace_group) }
-    EnvPrefixed { name: _, value: _, command: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    WithRedir { stmt: _, redir: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Heredoc { path: _, delimiter: _, body: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Negation { stmt: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    RawLine { text: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-  }
-}
-
-fn bash_fold_stmt_emitted_witness(stmt: ShellStmt) -> Witness<Node> {
-  match bash_fold_stmt_bundle_witness(stmt: stmt) {
-    Holds { value: bundle } => Holds { value: bundle.emitted }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_production_binding_for_stmt(stmt: ShellStmt) -> Symbol {
-  match bash_fold_stmt_bundle_witness(stmt: stmt) {
-    Holds { value: bundle } => bundle.production_binding
-    Violates { diagnostic: _ } => ^bash_production_fold_unsupported
-  }
-}
-
-fn bash_fold_relation_rule_for_stmt(stmt: ShellStmt) -> Symbol {
-  match bash_fold_stmt_bundle_witness(stmt: stmt) {
-    Holds { value: bundle } => bundle.relation_rule
-    Violates { diagnostic: _ } => ^bash_relation_rule_fold_unsupported
-  }
-}
-
-data bash_fold_cmd_true_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_single_emitted(
-    word: bash_fold_word_lit_emitted(text: "true")
+data bash_fold_cmd_true_emitted: Node = bash_build_command(
+  words: bash_build_command_words_single(
+    word: bash_build_word_lit(text: "true")
   )
 )
 
-data bash_fold_cmd_echo_hi_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_pair_emitted(
-    left: bash_fold_command_words_single_emitted(
-      word: bash_fold_word_lit_emitted(text: "echo")
+data bash_fold_cmd_echo_hi_emitted: Node = bash_build_command(
+  words: bash_build_command_words_pair(
+    left: bash_build_command_words_single(
+      word: bash_build_word_lit(text: "echo")
     ),
-    right: bash_fold_word_lit_emitted(text: "hi")
+    right: bash_build_word_lit(text: "hi")
   )
 )
 
-data bash_fold_cmd_var_x_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_single_emitted(
-    word: bash_fold_word_var_emitted(name: "X")
+data bash_fold_cmd_var_x_emitted: Node = bash_build_command(
+  words: bash_build_command_words_single(
+    word: bash_build_word_var(name: "X")
   )
 )
 
-data bash_fold_cmd_false_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_single_emitted(
-    word: bash_fold_word_lit_emitted(text: "false")
+data bash_fold_cmd_false_emitted: Node = bash_build_command(
+  words: bash_build_command_words_single(
+    word: bash_build_word_lit(text: "false")
   )
 )
 
-data bash_fold_cmd_wc_minus_c_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_pair_emitted(
-    left: bash_fold_command_words_single_emitted(
-      word: bash_fold_word_lit_emitted(text: "wc")
+data bash_fold_cmd_wc_minus_c_emitted: Node = bash_build_command(
+  words: bash_build_command_words_pair(
+    left: bash_build_command_words_single(
+      word: bash_build_word_lit(text: "wc")
     ),
-    right: bash_fold_word_lit_emitted(text: "-c")
+    right: bash_build_word_lit(text: "-c")
   )
 )
 
-data bash_fold_and_then_true_false_emitted: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [
-    Edge {
-      label: Positional,
-      target: bash_fold_stmt_tag(binding: ^bash_production_fold_and_then)
-    },
-    Edge { label: Positional, target: bash_fold_cmd_true_emitted },
-    Edge { label: Positional, target: bash_fold_cmd_false_emitted }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
+data bash_fold_and_then_true_false_emitted: Node = bash_build_and_then(
+  left: bash_fold_cmd_true_emitted,
+  right: bash_fold_cmd_false_emitted
+)
 
-data bash_fold_pipe_echo_hi_wc_emitted: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [
-    Edge {
-      label: Positional,
-      target: bash_fold_stmt_tag(binding: ^bash_production_fold_pipe)
-    },
-    Edge { label: Positional, target: bash_fold_cmd_echo_hi_emitted },
-    Edge { label: Positional, target: bash_fold_cmd_wc_minus_c_emitted }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
+data bash_fold_pipe_echo_hi_wc_emitted: Node = bash_build_pipe(
+  left: bash_fold_cmd_echo_hi_emitted,
+  right: bash_fold_cmd_wc_minus_c_emitted
+)
 
 fn bash_fold_word_leaf_productions() -> List<FormalProduction> {
   [
@@ -659,6 +207,57 @@ fn bash_fold_word_leaf_productions() -> List<FormalProduction> {
   ]
 }
 
+fn bash_fold_word_compound_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^bash_production_fold_concat_word,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^bash_fold_word_kind_concat, binding: ^bash_fold_word_kind_concat),
+        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_concat_parts)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_cmdsubst_word,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^bash_fold_word_kind_cmdsubst, binding: ^bash_fold_word_kind_cmdsubst),
+        grammar_formal_terminal(identity: ^bash_fold_cmdsubst_open),
+        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+        grammar_formal_terminal(identity: ^bash_fold_cmdsubst_close)
+      ]
+    )
+  ]
+}
+
+fn bash_fold_concat_parts_leaf_production(word_kind: Symbol) -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_concat_parts,
+    rhs: [grammar_formal_nonterminal_occurrence(identity: word_kind)]
+  )
+}
+
+fn bash_fold_concat_parts_pair_production(word_kind: Symbol) -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_concat_parts,
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_concat_parts),
+      grammar_formal_nonterminal_occurrence(identity: word_kind)
+    ]
+  )
+}
+
+fn bash_fold_concat_parts_productions() -> List<FormalProduction> {
+  [
+    bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_lit_word),
+    bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_var_word),
+    bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_concat_word),
+    bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_cmdsubst_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_lit_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_var_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_concat_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_cmdsubst_word)
+  ]
+}
+
 fn bash_fold_command_words_leaf_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -668,28 +267,35 @@ fn bash_fold_command_words_leaf_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^bash_production_fold_command_words,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_var_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_concat_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_cmdsubst_word)]
     )
   ]
 }
 
+fn bash_fold_command_words_list_production(word_kind: Symbol) -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_command_words,
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_command_words),
+      grammar_formal_terminal(identity: ^bash_token_word_sep),
+      grammar_formal_nonterminal_occurrence(identity: word_kind)
+    ]
+  )
+}
+
 fn bash_fold_command_words_list_productions() -> List<FormalProduction> {
   [
-    grammar_formal_production(
-      lhs: ^bash_production_fold_command_words,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_command_words),
-        grammar_formal_terminal(identity: ^bash_token_word_sep),
-        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_lit_word)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^bash_production_fold_command_words,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_command_words),
-        grammar_formal_terminal(identity: ^bash_token_word_sep),
-        grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_var_word)
-      ]
-    )
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_lit_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_var_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_concat_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_cmdsubst_word)
   ]
 }
 
@@ -736,27 +342,89 @@ fn bash_fold_operand_exit_production() -> FormalProduction {
   )
 }
 
+fn bash_fold_assign_rhs(value_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  [
+    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_assign),
+    grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
+    grammar_formal_terminal(identity: ^bash_token_assign_eq),
+    grammar_formal_nonterminal_occurrence(identity: value_word_kind)
+  ]
+}
+
 fn bash_fold_operand_assign_lit_production() -> FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
-    rhs: [
-      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_assign),
-      grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
-      grammar_formal_terminal(identity: ^bash_token_assign_eq),
-      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_lit_word)
-    ]
+    rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_lit_word)
   )
 }
 
 fn bash_fold_operand_assign_var_production() -> FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
-    rhs: [
-      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_assign),
-      grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
-      grammar_formal_terminal(identity: ^bash_token_assign_eq),
-      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_var_word)
-    ]
+    rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_var_word)
+  )
+}
+
+fn bash_fold_operand_assign_concat_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_operand,
+    rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_concat_word)
+  )
+}
+
+fn bash_fold_operand_assign_cmdsubst_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_operand,
+    rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_cmdsubst_word)
+  )
+}
+
+fn bash_fold_with_redir_fixed_rhs(redir_binding: Symbol, redir_token: Symbol) -> List<FormalGrammarSymbol> {
+  [
+    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
+    grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+    bash_fold_stmt_kind_tag_terminal(binding: redir_binding),
+    grammar_formal_terminal(identity: redir_token)
+  ]
+}
+
+fn bash_fold_with_redir_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  [
+    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
+    grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_redir_to_file),
+    grammar_formal_terminal(identity: ^bash_fold_redir_to_file),
+    grammar_formal_nonterminal_occurrence(identity: path_word_kind)
+  ]
+}
+
+fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
+  [
+    bash_fold_with_redir_fixed_rhs(
+      redir_binding: ^bash_production_fold_redir_stderr_null,
+      redir_token: ^bash_fold_redir_stderr_null
+    ),
+    bash_fold_with_redir_fixed_rhs(
+      redir_binding: ^bash_production_fold_redir_stdout_and_stderr_null,
+      redir_token: ^bash_fold_redir_stdout_and_stderr_null
+    ),
+    bash_fold_with_redir_fixed_rhs(
+      redir_binding: ^bash_production_fold_redir_stdout_to_stderr,
+      redir_token: ^bash_fold_redir_stdout_to_stderr
+    ),
+    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_lit_word),
+    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_var_word)
+  ]
+}
+
+fn bash_fold_with_redir_productions() -> List<FormalProduction> {
+  list_append(
+    list_map(xs: bash_fold_with_redir_rhs_alternatives(), f: fn(rhs) {
+      grammar_formal_production(lhs: ^bash_production_fold_with_redir, rhs: rhs)
+    }),
+    list_map(xs: bash_fold_with_redir_rhs_alternatives(), f: fn(rhs) {
+      grammar_formal_production(lhs: ^bash_production_fold_operand, rhs: rhs)
+    })
   )
 }
 
@@ -828,6 +496,8 @@ fn bash_fold_operand_productions() -> List<FormalProduction> {
     bash_fold_operand_exit_production(),
     bash_fold_operand_assign_lit_production(),
     bash_fold_operand_assign_var_production(),
+    bash_fold_operand_assign_concat_production(),
+    bash_fold_operand_assign_cmdsubst_production(),
     bash_fold_operand_and_then_production(),
     bash_fold_operand_or_else_production(),
     bash_fold_operand_pipe_production(),
@@ -921,6 +591,20 @@ fn bash_fold_assign_var_top_production() -> FormalProduction {
   )
 }
 
+fn bash_fold_assign_concat_top_production() -> FormalProduction {
+  bash_fold_top_level_production(
+    binding: ^bash_production_fold_assign,
+    rule_rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_concat_word)
+  )
+}
+
+fn bash_fold_assign_cmdsubst_top_production() -> FormalProduction {
+  bash_fold_top_level_production(
+    binding: ^bash_production_fold_assign,
+    rule_rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_cmdsubst_word)
+  )
+}
+
 fn bash_fold_subshell_top_production() -> FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_subshell,
@@ -962,10 +646,16 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
     list_append(
       list_append(
         list_append(
-          bash_fold_word_leaf_productions(),
-          bash_fold_command_words_leaf_productions()
+          list_append(
+            bash_fold_word_leaf_productions(),
+            bash_fold_word_compound_productions()
+          ),
+          bash_fold_concat_parts_productions()
         ),
-        bash_fold_command_words_list_productions()
+        list_append(
+          bash_fold_command_words_leaf_productions(),
+          bash_fold_command_words_list_productions()
+        )
       ),
       list_append(
         bash_fold_stmt_list_leaf_productions(),
@@ -978,9 +668,14 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
           bash_fold_command_top_production(),
           bash_fold_exit_top_production(),
           bash_fold_assign_lit_top_production(),
-          bash_fold_assign_var_top_production()
+          bash_fold_assign_var_top_production(),
+          bash_fold_assign_concat_top_production(),
+          bash_fold_assign_cmdsubst_top_production()
         ],
-        bash_fold_list_stmt_productions()
+        list_append(
+          bash_fold_list_stmt_productions(),
+          bash_fold_with_redir_productions()
+        )
       ),
       bash_fold_operand_productions()
     )
@@ -1092,7 +787,15 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_token_if_fi, text: "; fi"),
       bash_fold_lex_rule(token_class: ^bash_fold_stmt_kind_tag, text: "\u{0002}"),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_lit, text: "\u{0000}"),
-      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var, text: "\u{0001}")
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var, text: "\u{0001}"),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_concat, text: "\u{0003}"),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_cmdsubst, text: "\u{0004}"),
+      bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_open, text: "$("),
+      bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_close, text: ")"),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_null, text: " 2>/dev/null"),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_and_stderr_null, text: " >/dev/null 2>&1"),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_to_stderr, text: " >&2"),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > ")
     ]
   }
 }
@@ -1101,7 +804,35 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
-data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001}/\\u{0002} kind-marker lex bytes (kind_lit/kind_var/stmt_kind_tag) and zero-width bash_fold_kind_emit_transform/bash_fold_stmt_kind_tag_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var and stmt production tags without sentinel bytes"
+data bash_ingest_only_lex_rules_note: String = "INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; do is spelled with a REQUIRED leading space so at the d of done its spelling can never be a prefix candidate — do and done do not collide at the same start position, so no maximal-munch arbitration between them is needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
+
+fn bash_ingest_only_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_for, text: "for "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_do, text: " do"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_done, text: "done"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_while, text: "while "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_until, text: "until "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_select, text: "select "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_case, text: "case "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_esac, text: "esac"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_case_clause_sep, text: ";;"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: "{ "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: "; }"),
+      bash_fold_lex_rule(token_class: ^bash_token_orch_seq_newline, text: "\n")
+    ]
+  }
+}
+
+fn bash_ingest_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: bash_fold_lex_rules().rules,
+      right: bash_ingest_only_lex_rules().rules
+    )
+  }
+}
 
 fn bash_fold_kind_emit_transform(_spelling: String) -> String {
   ""
@@ -1120,7 +851,9 @@ fn bash_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   let m1 = map_insert(m0, ^bash_fold_word_kind_lit, bash_fold_kind_emit_transform)
   let m2 = map_insert(m1, ^bash_fold_word_kind_var, bash_fold_kind_emit_transform)
   let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, bash_fold_stmt_kind_tag_emit_transform)
-  map_insert(m3, ^bash_token_orch_raw, bash_fold_identity_emit_transform)
+  let m4 = map_insert(m3, ^bash_fold_word_kind_concat, bash_fold_kind_emit_transform)
+  let m5 = map_insert(m4, ^bash_fold_word_kind_cmdsubst, bash_fold_kind_emit_transform)
+  map_insert(m5, ^bash_token_orch_raw, bash_fold_identity_emit_transform)
 }
 
 fn bash_fold_binding_spellings() -> Map<Symbol, String> {
@@ -1183,51 +916,6 @@ fn bash_fold_target_model_for_emitted_witness(
         )
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_target_model_from_native_bundle_witness(stmt: ShellStmt) -> Witness<TargetModel> {
-  match bash_fold_stmt_bundle_witness(stmt: stmt) {
-    Holds { value: bundle } =>
-      bash_fold_target_model_for_emitted_witness(
-        emitted: bundle.emitted,
-        source_literal: ^bash_fold_dynamic_source_literal,
-        source_text: serialize_stmt(s: stmt),
-        production_binding: bundle.production_binding,
-        rule_name: bundle.relation_rule
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
-  match stmt {
-    WithRedir { stmt: _, redir: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Heredoc { path: _, delimiter: _, body: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    RawLine { text: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Negation { stmt: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    EnvPrefixed { name: _, value: _, command: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Command { words: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    Assign { name: _, value: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    Exit { code: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    AndOr { left: _, op: _, right: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    Pipe { left: _, right: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    Subshell { body: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    If { cond: _, then: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    BraceGroup { body: _ } =>
-      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
   }
 }
 
@@ -1300,22 +988,22 @@ fn bash_fold_env_prefixed_wrong_target_model_witness() -> Witness<TargetModel> {
   }
 }
 
-data bash_fold_cmd_true_wrong_emitted: Node = bash_fold_command_emitted(
-  words: bash_fold_command_words_single_emitted(
-    word: bash_fold_word_lit_emitted(text: "echo")
+data bash_fold_cmd_true_wrong_emitted: Node = bash_build_command(
+  words: bash_build_command_words_single(
+    word: bash_build_word_lit(text: "echo")
   )
 )
 
-data bash_fold_exit_42_emitted: Node = bash_fold_exit_emitted(code: "42")
+data bash_fold_exit_42_emitted: Node = bash_build_exit(code: "42")
 
-data bash_fold_exit_wrong_emitted: Node = bash_fold_exit_emitted(code: "0")
+data bash_fold_exit_wrong_emitted: Node = bash_build_exit(code: "0")
 
 data bash_fold_assign_foo_bar_emitted: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
       label: Positional,
-      target: bash_fold_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
     Edge {
       label: Positional,
@@ -1327,7 +1015,7 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
     },
     Edge {
       label: Positional,
-      target: bash_fold_word_lit_emitted(text: "bar")
+      target: bash_build_word_lit(text: "bar")
     }
   ],
   occurrence_id: SyntheticOccurrence
@@ -1338,7 +1026,7 @@ data bash_fold_assign_x_home_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: bash_fold_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
     Edge {
       label: Positional,
@@ -1350,7 +1038,7 @@ data bash_fold_assign_x_home_emitted: Node = Node {
     },
     Edge {
       label: Positional,
-      target: bash_fold_word_var_emitted(name: "HOME")
+      target: bash_build_word_var(name: "HOME")
     }
   ],
   occurrence_id: SyntheticOccurrence
@@ -1361,7 +1049,7 @@ data bash_fold_assign_wrong_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: bash_fold_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
     Edge {
       label: Positional,
@@ -1373,7 +1061,7 @@ data bash_fold_assign_wrong_emitted: Node = Node {
     },
     Edge {
       label: Positional,
-      target: bash_fold_word_lit_emitted(text: "baz")
+      target: bash_build_word_lit(text: "baz")
     }
   ],
   occurrence_id: SyntheticOccurrence
@@ -1427,53 +1115,4 @@ fn bash_fold_pipe_wrong_target_model_witness() -> Witness<TargetModel> {
     production_binding: ^bash_production_fold_and_then,
     rule_name: ^bash_relation_rule_fold_and_then
   )
-}
-
-fn bash_fold_subshell_wrong_target_model_witness() -> Witness<TargetModel> {
-  match bash_fold_stmt_bundle_witness(
-    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
-  ) {
-    Holds { value: bundle } =>
-      bash_fold_target_model_for_emitted_witness(
-        emitted: bundle.emitted,
-        source_literal: ^bash_fold_subshell_wrong_source_literal,
-        source_text: "(false)",
-        production_binding: ^bash_production_fold_subshell,
-        rule_name: ^bash_relation_rule_fold_subshell
-      )
-    Violates { diagnostic: _ } =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^bash_fold_subshell_wrong_fixture_build_failed,
-          at: node_locus(node: bash_fold_diagnostic_anchor),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
-  }
-}
-
-fn bash_fold_if_wrong_target_model_witness() -> Witness<TargetModel> {
-  match bash_fold_stmt_bundle_witness(
-    stmt: If {
-      cond: Command { words: [Lit { text: "true" }] },
-      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
-    }
-  ) {
-    Holds { value: bundle } =>
-      bash_fold_target_model_for_emitted_witness(
-        emitted: bundle.emitted,
-        source_literal: ^bash_fold_if_wrong_source_literal,
-        source_text: "if false; then 'echo' 'hi'; fi",
-        production_binding: ^bash_production_fold_if,
-        rule_name: ^bash_relation_rule_fold_if
-      )
-    Violates { diagnostic: _ } =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^bash_fold_if_wrong_fixture_build_failed,
-          at: node_locus(node: bash_fold_diagnostic_anchor),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
-  }
 }

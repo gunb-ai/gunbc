@@ -1,0 +1,142 @@
+module v2.test.resolve.qualified_module_projection_resolve
+
+import v2.compiler.resolve {
+  Namespace,
+  ResolveContext,
+  empty_canonical_symbol_set,
+  resolve_node,
+  scope_from_namespace
+}
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model,
+  dag_named_edge
+}
+import v2.std.algebra { fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { empty_symbol_index, SymbolIndex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn qmpr_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+data qmpr_provider_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_provider"
+)
+
+data qmpr_provider_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    dag_named_edge(
+      name: ^dag_surface_module_header,
+      target: dag_grammar_atom(id: ^dag_surface_module_header)
+    ),
+    dag_named_edge(
+      name: ^dag_surface_module_header_qualified_name,
+      target: qmpr_qn_spine(segments: qmpr_provider_qn)
+    ),
+    Edge {
+      label: Named { name: ^ProviderType },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^ProviderType } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data qmpr_provider_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: qmpr_provider_root
+)
+
+data qmpr_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_stripped_fixture"
+)
+
+data qmpr_qualified_ref: Node = qmpr_qn_spine(
+  segments: qualified_name_from_dotted_string(
+    dotted: "v2.test.resolve.qualified_module_projection_provider.ProviderType"
+  )
+)
+
+fn qmpr_namespace(index: SymbolIndex) -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: index,
+    module_qn: qmpr_consumer_qn
+  }
+}
+
+fn witness_qualified_name_node_resolves_holds() -> Bool {
+  let namespace = qmpr_namespace(index: qmpr_provider_index)
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
+      lm: dag_language_model(),
+      under_module_root: false
+    },
+    n: qmpr_qualified_ref
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_qualified_name_node_miss_red_holds() -> Bool {
+  let namespace = qmpr_namespace(index: empty_symbol_index())
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: qmpr_consumer_qn,
+      lm: dag_language_model(),
+      under_module_root: false
+    },
+    n: qmpr_qualified_ref
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn qualified_module_projection_resolve_witnesses() -> Bool {
+  witness_qualified_name_node_resolves_holds()
+    && witness_qualified_name_node_miss_red_holds()
+}

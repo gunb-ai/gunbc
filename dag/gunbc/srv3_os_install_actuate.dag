@@ -1,47 +1,8 @@
 module gunbc.srv3_os_install_actuate
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.boards.asrock_rack {
-  asrock_srv3_live_bmc_host,
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
-}
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  NbdProxyServeTransportIntent,
-  nbd_proxy_serve_transport_intent,
-  nbd_proxy_serve_script,
-  bmcweb_session_login_program,
-  srv3_nbd_proxy_local_port,
-}
-import extdeps.languages.bash.program { serialize_bash }
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_bmc_credential_resolve {
-  srv3_os_install_actuate_credential_intent,
-  observe_and_resolve_srv3_bmc_credential,
-  materialize_bmc_login_password,
-  bmcweb_login_body_content,
-  BmcCredentialResolution,
-  CredentialResolutionRefused,
-  UseFactoryCredential,
-  UseRotatedSecretRef,
-}
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.nbd_proxy_virtual_media_install {
-  srv3_os_install_actuator_plan,
-  os_install_actuator_step_count,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, NonEmptyStr }
-import std.resources { Network }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = Terminal {
-  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is long-running foreground."
+data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
 }
 
 data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
@@ -53,24 +14,7 @@ data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data srv3_os_install_actuate_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_os_install_actuate shell runner glue — srv3_bmcweb_session_login and srv3_nbd_proxy_serve orchestrate via shell.Exec.Run over concat-built scripts (srv3_bmcweb_login_body_content JSON body via concat before Filesystem.Write, login redirect after serialize_bash, jq token extract, test -s verify, export+cat token wrapper before nbd_proxy_serve_script); extdeps bmcweb_session_login_program and nbd_proxy_serve_script model per-step transport but workflow runner glue is medium-as-string in dag/gunbc/; DISSOLVES WHEN host_effect_apply binds BmcwebSessionLogin + NbdProxyServe orchestration without concat runner glue (extends live_deploy_emit_shell_dissolution_trigger / nbd_proxy_serve_bash_emit_dissolution_trigger); retire medium_structure_exception_roster entry for dag/gunbc/srv3_os_install_actuate.dag"
-
-data srv3_bmcweb_login_body_path: String = "/tmp/srv3_bmcweb_login_body.json"
-data srv3_bmcweb_login_response_path: String = "/tmp/srv3_bmcweb_login_response.json"
-data srv3_bmcweb_token_path: String = "/tmp/srv3_bmcweb_token"
-data srv3_nbd_proxy_serve_script_path: String = "/tmp/srv3_nbd_proxy_serve.sh"
-
 data srv3_os_install_actuate_operator_runbook: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
-
-fn srv3_nbd_proxy_serve_intent() -> NbdProxyServeTransportIntent {
-  nbd_proxy_serve_transport_intent(
-    bmc_host: asrock_srv3_live_bmc_host,
-    session_token: concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr,
-    ws_path: bmcweb_nbd_proxy_ws_path(variant: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint, slot: 0, index: 0),
-    iso_path: srv3_actuator_virtual_media_iso_install_path,
-    local_nbd_port: srv3_nbd_proxy_local_port,
-  )
-}
 
 fn srv3_bmcweb_login_body_content() -> String {
   let intent = srv3_os_install_actuate_credential_intent()
@@ -95,18 +39,8 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
   }
 }
 
-func srv3_os_install_actuate_emit_nbd_script() -> ProcessExit {
-  let intent = srv3_nbd_proxy_serve_intent()
-  let script = nbd_proxy_serve_script(intent: intent)
-  let write = Filesystem.Write(path: srv3_nbd_proxy_serve_script_path, content: script)
-  if write.success == false {
-    return exit_failure(reason: concat("emit-nbd-script: write failed: ", write.error))
-  }
-  ExitSuccess
-}
-
 func srv3_bmcweb_session_login() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
   return match resolution {
@@ -117,7 +51,7 @@ func srv3_bmcweb_session_login() -> ProcessExit
 }
 
 func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let password = match materialize_bmc_login_password(resolution: resolution) {
     Absent =>
@@ -137,61 +71,38 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     return exit_failure(reason: concat("bmcweb-login: body write failed: ", body_write.error))
   }
 
-  let login_prog = bmcweb_session_login_program(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+  let login_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_bmcweb_session_login_apply(),
+    failure_prefix: "bmcweb-login: curl login failed: ",
   )
-  let login_script = serialize_bash(p: login_prog)
-  let login_run = shell.Exec.Run(script: shell_exec_via_bash(body: login_script))
-  if login_run.success == false {
-    return exit_failure(reason: concat("bmcweb-login: curl login failed: ", login_run.stderr))
+  match login_exit {
+    ExitSuccess => {}
+    _ => return login_exit
   }
 
-  let extract_script = concat(
-    concat(
-      concat("jq -r '.token // empty' ", srv3_bmcweb_login_response_path),
-      " > ",
-    ),
-    srv3_bmcweb_token_path,
+  let extract_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_bmcweb_token_extract_apply(),
+    failure_prefix: "bmcweb-login: token extract failed: ",
   )
-  let extract_run = shell.Exec.Run(script: shell_exec_via_bash(body: extract_script))
-  if extract_run.success == false {
-    return exit_failure(reason: concat("bmcweb-login: token extract failed: ", extract_run.stderr))
+  match extract_exit {
+    ExitSuccess => {}
+    _ => return extract_exit
   }
 
-  let verify_run = shell.Exec.Run(
-    script: concat("test -s ", srv3_bmcweb_token_path),
-  )
-  if verify_run.success == false {
+  let verify = shell.Test.IsNonEmpty(path: srv3_bmcweb_token_path)
+  if verify.nonempty == false {
     return exit_failure(reason: "bmcweb-login: empty token — check BMC credentials and /login response")
   }
   ExitSuccess
 }
 
 func srv3_nbd_proxy_serve() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
-  let intent = srv3_nbd_proxy_serve_intent()
-  let script = nbd_proxy_serve_script(intent: intent)
-  let write = Filesystem.Write(path: srv3_nbd_proxy_serve_script_path, content: script)
-  if write.success == false {
-    return exit_failure(reason: concat("nbd-proxy-serve: script write failed: ", write.error))
-  }
-
-  let serve_script = concat(
-    concat(
-      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
-      "); bash ",
-    ),
-    srv3_nbd_proxy_serve_script_path,
+  srv3_reconciliation_to_process_exit(
+    r: srv3_nbd_proxy_serve_apply(),
+    failure_prefix: "nbd-proxy-serve: host effect apply refused: ",
   )
-  let serve_run = shell.Exec.Run(script: shell_exec_via_bash(body: serve_script))
-  if serve_run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("nbd-proxy-serve: foreground pipeline exited: ", serve_run.stderr))
-  }
 }
 
 fn srv3_os_install_actuator_step_count_is_three() -> Bool {

@@ -1,0 +1,14 @@
+module	emit_summary	cargo_verdict	first_error	mapped_gate	verdict
+src/v2/compiler/05_emit.dag	57 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/05_emit_orchestration.dag	63 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/emit_module.dag	58 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/emit_produced.dag	67 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/emit_semantic_decl.dag	58 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/emit_host.dag	66 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/fold_lowering.dag	41 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/02_parse.dag	72 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/03_ingest.dag	131 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/06_translate.dag	56 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/05_eval.dag	56 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes
+src/v2/compiler/materialization_carriers.dag	39 files emitted, 0 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/self_host.dag	34 files emitted, 0 diagnostics	refuse	error: expected item after attributes	UNKNOWN_emit_shape	UNKNOWN-error:_expected_item_after_attributes

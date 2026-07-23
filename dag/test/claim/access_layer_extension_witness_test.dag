@@ -1,31 +1,28 @@
 module test.claim.access_layer_extension_witness
 
-import std.types { NonEmptyStr, Bool, Int }
-import extdeps.access.posix { PosixUser, posix_user_is_root }
-import extdeps.access.rbac { RbacPolicy }
-import extdeps.bmc.access { redfish_rbac_policy }
-import extdeps.bmc.types { AccountRoleAdministrator, AccountRoleReadOnly, redfish_account_role_wire }
 
-fn role_has_privilege(policy: RbacPolicy, role: NonEmptyStr, privilege: NonEmptyStr) -> Bool {
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn role_has_privilege(policy: extdeps.access.rbac.RbacPolicy, role: std.types.NonEmptyStr, privilege: std.types.NonEmptyStr) -> Bool {
   fold(policy.permission_assignments, init: false, f: fn(acc, pa) {
     if acc { true }
     else { pa.role == role && pa.permission.operation == privilege }
   })
 }
 
-data root_user: PosixUser = { name: "root", uid: 0, gid: 0 }
+data root_user: extdeps.access.posix.PosixUser = { name: "root", uid: 0, gid: 0 }
 
-data service_user: PosixUser = { name: "deploy", uid: 1000, gid: 1000 }
+data service_user: extdeps.access.posix.PosixUser = { name: "deploy", uid: 1000, gid: 1000 }
 
 test fn posix_root_identification_holds() -> Bool {
-  posix_user_is_root(user: root_user) && (posix_user_is_root(user: service_user) == false)
+  extdeps.access.posix.posix_user_is_root(user: root_user) && (extdeps.access.posix.posix_user_is_root(user: service_user) == false)
 }
 
 test fn bmc_least_privilege_via_rbac_holds() -> Bool {
-  let admin = redfish_account_role_wire(role: AccountRoleAdministrator)
-  let reader = redfish_account_role_wire(role: AccountRoleReadOnly)
-  role_has_privilege(policy: redfish_rbac_policy, role: admin, privilege: "ConfigureUsers")
-    && (role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "ConfigureUsers") == false)
-    && role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "Login")
-    && role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "ConfigureSelf")
+  let admin = extdeps.bmc.types.redfish_account_role_wire(role: extdeps.bmc.types.AccountRoleAdministrator)
+  let reader = extdeps.bmc.types.redfish_account_role_wire(role: extdeps.bmc.types.AccountRoleReadOnly)
+  role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: admin, privilege: "ConfigureUsers")
+    && (role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "ConfigureUsers") == false)
+    && role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "Login")
+    && role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "ConfigureSelf")
 }

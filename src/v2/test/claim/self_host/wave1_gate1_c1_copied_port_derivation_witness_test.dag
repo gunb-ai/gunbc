@@ -1,0 +1,22 @@
+module v2.test.claim.self_host.wave1_gate1_c1_copied_port_derivation_witness
+
+import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
+  wave1_gate1_c1_derived_indices_match_retired_registry_holds,
+  wave1_gate1_c1_unpriceable_combiner_refuses_holds,
+  wave1_gate1_c1_citation_retained_frontier_count_holds
+}
+import v2.std.logic { Bool }
+
+data wave1_gate1_c1_witness_note: String = "Wave 1 Gate 1 C1 fast-lane witness: derived copied-port indices replace hand registry; unpriceable combiner fail-closed. Full cost-lens execution proofs (arrow domain exclusion RED, per-combiner derivation rows) live in src/v2/lens/cost/copied_port_derivation_test.dag and arrow_body_cost_domain_excluded.dag."
+
+test fn wave1_gate1_c1_derived_registry_witness_holds() -> Bool {
+  wave1_gate1_c1_derived_indices_match_retired_registry_holds()
+}
+
+test fn wave1_gate1_c1_unpriceable_refusal_witness_holds() -> Bool {
+  wave1_gate1_c1_unpriceable_combiner_refuses_holds()
+}
+
+test fn wave1_gate1_c1_citation_frontier_count_witness_holds() -> Bool {
+  wave1_gate1_c1_citation_retained_frontier_count_holds()
+}

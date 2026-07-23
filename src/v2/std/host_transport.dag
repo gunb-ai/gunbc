@@ -37,8 +37,12 @@ type InvocationArg
   | WorkspacePath { path: RelPath }
   | ProducedArtifact { path: RelPath }
 
+type ProcessProgram
+  = HostToolProgram { executable: String }
+  | ProducedProgram { path: RelPath }
+
 type ProcessInvocation {
-  tool: Symbol
+  program: ProcessProgram
   args: List<InvocationArg>
 }
 

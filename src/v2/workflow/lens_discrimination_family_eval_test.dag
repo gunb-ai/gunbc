@@ -4,5 +4,8 @@ import v2.std.logic { Bool }
 import v2.test.discrimination_gate.discrimination_roster {
   discrimination_family_gate
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test data witness_lens_discrimination_family_gate_closed: Bool = discrimination_family_gate()

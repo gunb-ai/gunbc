@@ -1,0 +1,250 @@
+module v2.lens.meta_exec_confinement
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+
+import v2.lens.layering_imports {
+  LayerImportFact,
+  layer_import_facts_live
+}
+import v2.std.algebra {
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { Char, String }
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+
+data meta_exec_confinement_law: String = "Meta-exec confinement (shell→intent Wave A1): shell.Exec.Run/.Check is the honest bottom bash transport — kept, not deleted — but sequestered to realization. extdeps.shell.exec is module-isolated from extdeps.shell; only realization-edge paths may import it without a shrinking roster entry. Intent-layer shell.Exec import is a typed leak; bare String at the Run script position is separately banned by host_language_transport_script once TransportScript brands the input. Dissolves when every roster row migrates off direct shell.Exec and typed host_effect_apply / emit(intent,Bash) is the only path from intent."
+
+data target_meta_exec_module: String = "extdeps.shell.exec"
+
+data meta_exec_realization_edge_path_prefixes: List<String> = [
+  "dag/tools/",
+  "dag/gunbc/host_effect_realize",
+  "dag/gunbc/ci_deploy_access_observe",
+  "dag/test/claim/"
+]
+
+data meta_exec_confinement_exception_roster: List<FrontierRow> = [
+  frontier_row(
+    unit: "dag/gunbc/ci_deploy_target_host.dag",
+    reason: "deploy-target host probe still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_converge_slice1.dag",
+    reason: "host-converge slice still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_runner_memory_cap_verify.dag",
+    reason: "runner memory-cap verification still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_identity_adopt.dag",
+    reason: "host-identity adoption still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/host_identity_assimilation.dag",
+    reason: "host-identity assimilation still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/srv3_install_diagnostic_checklist.dag",
+    reason: "srv3 install diagnostic checklist still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/tools/review.dag",
+    reason: "review tooling still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
+    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
+  )
+]
+
+fn meta_exec_confinement_exception_paths() -> List<String> {
+  frontier_units(rows: meta_exec_confinement_exception_roster)
+}
+
+type MetaExecConfinementLeak {
+  path: String
+  import_module: String
+}
+
+data empty_meta_exec_leaks: List<MetaExecConfinementLeak> = []
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) { acc || (s == target) }
+  )
+}
+
+fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
+  fold_list(
+    xs: prefixes,
+    empty: false,
+    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: char_eq) }
+  )
+}
+
+fn path_is_meta_exec_realization_edge(path: String) -> Bool {
+  path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
+}
+
+fn is_meta_exec_confinement_leak(fact: LayerImportFact, roster: List<String>) -> Bool {
+  fact.import_module == target_meta_exec_module
+    && (path_is_meta_exec_realization_edge(path: fact.path) == false)
+    && (list_contains_str(xs: roster, target: fact.path) == false)
+}
+
+fn scan_facts_for_leaks(
+  facts: List<LayerImportFact>,
+  roster: List<String>
+) -> List<MetaExecConfinementLeak> {
+  fold_list(
+    xs: facts,
+    empty: empty_meta_exec_leaks,
+    cons: fn(acc, fact) {
+      if is_meta_exec_confinement_leak(fact: fact, roster: roster) {
+        list_snoc_item(
+          xs: acc,
+          item: MetaExecConfinementLeak {
+            path: fact.path,
+            import_module: fact.import_module
+          }
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn meta_exec_leak_count(
+  facts: List<LayerImportFact>,
+  roster: List<String>
+) -> Int {
+  length(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+}
+
+fn meta_exec_confinement_holds(
+  facts: List<LayerImportFact>,
+  roster: List<String>
+) -> Bool {
+  is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+}
+
+fn meta_exec_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
+  meta_exec_leak_count(facts: facts, roster: meta_exec_confinement_exception_paths())
+}
+
+fn meta_exec_confinement_holds_canonical(facts: List<LayerImportFact>) -> Bool {
+  meta_exec_confinement_holds(facts: facts, roster: meta_exec_confinement_exception_paths())
+}
+
+data meta_exec_consumer_scan_roots: List<String> = [
+  "dag/std",
+  "dag/extdeps",
+  "dag/tools",
+  "dag/gunbc",
+  "src/v2/std",
+  "src/v2/extdeps",
+  "src/v2/compiler",
+  "src/v2/workflow",
+  "src/v2/lens"
+]
+
+fn meta_exec_leak_count_live(scan_roots: List<String>) -> Int {
+  meta_exec_leak_count_canonical(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+  )
+}
+
+fn meta_exec_confinement_clean_live(scan_roots: List<String>) -> Bool {
+  meta_exec_confinement_holds_canonical(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+  )
+}
+
+data empty_meta_exec_path_list: List<String> = []
+
+fn meta_exec_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: empty_meta_exec_path_list,
+    cons: fn(acc, fact) {
+      if fact.import_module == target_meta_exec_module
+        && (path_is_meta_exec_realization_edge(path: fact.path) == false) {
+        list_snoc_item(xs: acc, item: fact.path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn meta_exec_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+  meta_exec_leak_candidate_paths_from_facts(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+  )
+}
+
+fn meta_exec_stale_roster_entries(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> List<String> {
+  fold_list(
+    xs: roster,
+    empty: empty_meta_exec_path_list,
+    cons: fn(acc, entry) {
+      if list_contains_str(xs: live_leak_paths, target: entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+fn meta_exec_roster_stale_count(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> Int {
+  length(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+}
+
+fn meta_exec_roster_sound(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> Bool {
+  is_empty(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+}
+
+fn meta_exec_roster_stale_count_live(scan_roots: List<String>) -> Int {
+  meta_exec_roster_stale_count(
+    roster: meta_exec_confinement_exception_paths(),
+    live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+fn meta_exec_roster_sound_live(scan_roots: List<String>) -> Bool {
+  meta_exec_roster_sound(
+    roster: meta_exec_confinement_exception_paths(),
+    live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

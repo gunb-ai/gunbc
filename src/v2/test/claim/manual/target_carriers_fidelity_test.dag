@@ -1,25 +1,12 @@
 module v2.test.manual.target_carriers_fidelity
 
-import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.compiler.target_carriers {
-  decode_fidelity_from_target,
-  target_source_medium
-}
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_target_model,
-  dag_mvp1_target_model_lossless_fidelity_quotient
-}
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data target_carriers_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 fn dag_target_advertises_declared_loss() -> Bool {
-  match decode_fidelity_from_target(target: dag_mvp1_target_model()) {
+  match decode_fidelity_from_target(target: dag_target_model()) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
         Lossy => true
@@ -30,7 +17,7 @@ fn dag_target_advertises_declared_loss() -> Bool {
 }
 
 fn rust_target_advertises_lossless() -> Bool {
-  match decode_fidelity_from_target(target: rust_mvp1_target_model()) {
+  match decode_fidelity_from_target(target: rust_target_model()) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
         Lossless => true
@@ -43,7 +30,7 @@ fn rust_target_advertises_lossless() -> Bool {
 fn dag_emit_medium_matches_compose_up() -> Bool {
   match target_source_medium(
     text: target_carriers_probe_text,
-    target: dag_mvp1_target_model()
+    target: dag_target_model()
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
@@ -56,8 +43,8 @@ fn dag_emit_medium_matches_compose_up() -> Bool {
 
 fn dag_serialize_source_advertises_declared_loss() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_target_model(),
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    target: dag_target_model(),
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
@@ -70,8 +57,8 @@ fn dag_serialize_source_advertises_declared_loss() -> Bool {
 
 fn red_dag_emit_mis_tags_lossless() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_target_model(),
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    target: dag_target_model(),
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
@@ -84,7 +71,7 @@ fn red_dag_emit_mis_tags_lossless() -> Bool {
 
 fn perturbed_quotient_fidelity_is_lossless() -> Bool {
   match decode_fidelity_from_target(
-    target: dag_mvp1_target_model_lossless_fidelity_quotient()
+    target: dag_target_model_lossless_fidelity_quotient()
   ) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
@@ -97,7 +84,7 @@ fn perturbed_quotient_fidelity_is_lossless() -> Bool {
 
 fn perturbed_quotient_fidelity_red_if_still_lossy() -> Bool {
   match decode_fidelity_from_target(
-    target: dag_mvp1_target_model_lossless_fidelity_quotient()
+    target: dag_target_model_lossless_fidelity_quotient()
   ) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {

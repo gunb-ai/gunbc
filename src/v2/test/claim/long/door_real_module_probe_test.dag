@@ -1,0 +1,136 @@
+module v2.test.long.door_real_module_probe
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data door_real_module_probe_note: String = "Phase-2 discriminating witness (sharp-bee-290 / smart-eagle-362): synthetic 2-module quad+peer program exercising resolve_with_admission_policy BY EXECUTION. Supersedes the pre-flip parsed-source quad_with_peer_reds_at_resolve_ambiguous_export falsification row — ImportScoped + subject admit_named_exports flat-merge reds resolve_ambiguous_export; NamespaceOnlyY (default) skips subject export merge and greens."
+
+data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; durable table in v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export LANDED fix in phase-2 flip (this file's ImportScoped RED / NamespaceOnlyY GREEN pair). parse_grammar_choice_overlap_residue on import syntax remains migration-owned until phase-3 grammar deletion."
+
+fn quad_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: quad_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: export_sym },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: export_atom } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn quad_subject_with_import_use() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: quad_qn_node(seg: ^quadmod)
+      ),
+      Edge {
+        label: Named { name: ^list_append },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn quad_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: quad_subject_with_import_use(),
+    tail: Cons {
+      head: quad_module_root(
+        seg: ^minialg,
+        export_sym: ^list_append,
+        export_atom: ^dag_c3_surface_sugar_type
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn quad_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^quadmod, tail: Empty }
+    },
+    imports: Cons {
+      head: Import {
+        target: Cons { head: ^minialg, tail: Empty },
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
+  match resolve_with_admission_policy(
+    lm: dag_language_model(),
+    roots: quad_roots(),
+    admission: quad_admission(),
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: NamespaceOnlyY
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
+  match resolve_with_admission_policy(
+    lm: dag_language_model(),
+    roots: quad_roots(),
+    admission: quad_admission(),
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+  }
+}
+
+test fn quad_with_peer_import_scoped_reds_ambiguous_export_holds() -> Bool {
+  quad_import_scoped_admission_reds_ambiguous_export_holds()
+}
+
+test fn quad_with_peer_greens_under_namespace_only_projection() -> Bool {
+  quad_namespace_only_resolve_accepts_holds()
+}

@@ -8,11 +8,11 @@ import v2.std.node {
 }
 import v2.std.compilers.body_lowering { lower_bind, lower_branch, lower_loop }
 import v2.extdeps.languages.dag {
-  dag_mvp1_bind_let_body_node,
-  dag_mvp1_loop_body_node,
-  dag_mvp1_loop_measure_node,
-  dag_mvp1_pick_if_body_node,
-  dag_mvp1_type_atom_node
+  dag_bind_let_body_node,
+  dag_loop_body_node,
+  dag_loop_measure_node,
+  dag_pick_if_body_node,
+  dag_type_atom_node
 }
 import v2.std.logic { Bool }
 import v2.std.verification {
@@ -41,25 +41,25 @@ fn body_lowering_variant_bool_node(pass: Bool) -> Node {
 
 fn body_lowering_variant_branch_matches() -> Bool {
   lower_branch(
-    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
-    else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
-  ) == dag_mvp1_pick_if_body_node()
+    condition: dag_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_type_atom_node(identity: ^dag_pick_lit_one),
+    else_arm: dag_type_atom_node(identity: ^dag_pick_lit_two)
+  ) == dag_pick_if_body_node()
 }
 
 fn body_lowering_variant_loop_matches() -> Bool {
   lower_loop(
-    value: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
-    bound: dag_mvp1_loop_measure_node()
-  ) == dag_mvp1_loop_body_node()
+    value: dag_type_atom_node(identity: ^dag_pick_lit_one),
+    bound: dag_loop_measure_node()
+  ) == dag_loop_body_node()
 }
 
 fn body_lowering_variant_bind_matches() -> Bool {
   lower_bind(
-    key_binding: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_bind_x),
-    value: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
-    body_binding: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_bind_x)
-  ) == dag_mvp1_bind_let_body_node()
+    key_binding: dag_type_atom_node(identity: ^dag_binding_bind_x),
+    value: dag_type_atom_node(identity: ^dag_pick_lit_one),
+    body_binding: dag_type_atom_node(identity: ^dag_binding_bind_x)
+  ) == dag_bind_let_body_node()
 }
 
 data claim_body_lowering_variant_branch_matches: TestClaim = EqualsClaim {

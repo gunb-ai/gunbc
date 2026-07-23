@@ -1,0 +1,18 @@
+module v2.test.long.pipeline_stage_add_pick_relationship
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pipeline_add_pick_long_note: String = "Add/pick full-pipeline relationship witnesses (tokenize through normalize) exceed the per-PR 5s fast-lane eval budget under parallel floor load (gunbc_ci_fast_lane_rule_note). Pick then-arm magnitude is the dependency-fidelity normalize witness (RED until PR #6558 lands on main). Eval-fidelity keystone migration from execution/ deferred until #6558. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/pipeline_stage_add_pick_relationship_witness_test.dag --function <name>."
+
+test fn pipeline_parse_add_relationship_green() -> Bool {
+  pipeline_parse_add_relationship_holds()
+}
+
+test fn pipeline_normalize_add_transform_relationship_green() -> Bool {
+  pipeline_normalize_add_relationship_holds()
+}
+
+test fn pipeline_normalize_pick_then_arm_magnitude_relationship_green() -> Bool {
+  pipeline_normalize_pick_then_arm_magnitude_relationship_holds()
+}

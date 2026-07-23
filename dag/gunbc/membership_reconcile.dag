@@ -1,0 +1,145 @@
+module gunbc.membership_reconcile
+
+import std.types { String, List, Bool, Int }
+import std.change {
+  KeyedRow, KeyedPatch, KeyedDiffHunk,
+  KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
+  keyed_two_way_diff
+}
+import gunbc.ownership { Ownership, Owned, Ensured }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
+
+type MemberAction<M>
+  = MemberUpsert { member: M }
+  | MemberTeardown { member: M }
+  | MemberTeardownRefused { member: M, cause: TeardownRefusalCause }
+
+type MembershipPlan<M> {
+  actions: List<MemberAction<M>>
+}
+
+type MemberEffect<M>
+  = EffectUpsert { member: M }
+  | EffectTeardown { member: M }
+
+type MemberRefusal<M> {
+  member: M
+  cause: TeardownRefusalCause
+}
+
+type EffectsOrRefusal<M>
+  = EffectsReady { effects: List<MemberEffect<M>> }
+  | ApplyRefused { refusals: List<MemberRefusal<M>> }
+
+data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added/Modified -> upsert, Removed -> teardown (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Generic over member type M and key K: a member may be a service/unit/host OR a Session — consumers CALL this with their (key_of, key_eq, value_eq, ownership_of) bundle, they NEVER copy-adapt it (one fn, N bundles — a Realization; a forked reconcile means the genericity bought nothing). Reuses std.change.keyed_two_way_diff (the single already-generic diff engine) — no fork. R5 teardown-owned-only is a CONSTRUCTION WALL: a Removed non-owned member yields MemberTeardownRefused, which has NO effect arm in any apply dispatch, so the bad state is unwritable — never a post-check, never 'assume owned' (the absorbing fallback DESIGN §5 forbids). key_of MUST return stable IDENTITY (not content) so a content drift is Modified (re-upsert), not Remove+Add (teardown+reinstall); value_eq is presence+content so a same-key content drift re-upserts."
+
+fn member_rows<M, K>(members: List<M>, key_of: fn(M) -> K) -> List<KeyedRow<K, M>> {
+  map(members, m => KeyedRow { row_key: key_of(m), value: m })
+}
+
+fn hunk_to_action<M, K>(hunk: KeyedDiffHunk<K, M>, ownership_of: fn(M) -> Ownership?) -> MemberAction<M> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: _, to: m } => MemberUpsert { member: m }
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: m } => MemberUpsert { member: m }
+    KeyedDiffRemovedHunk { hunk_key: _, from: m } =>
+      match ownership_of(m) {
+        Present { value: own } =>
+          match own {
+            Owned => MemberTeardown { member: m }
+            Ensured => MemberTeardownRefused { member: m, cause: MemberNotOwned }
+          }
+        Absent => MemberTeardownRefused { member: m, cause: OwnershipUnknown }
+      }
+  }
+}
+
+fn membership_reconcile<M, K>(
+  desired: List<M>,
+  observed: List<M>,
+  key_of: fn(M) -> K,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
+  ownership_of: fn(M) -> Ownership?,
+) -> MembershipPlan<M> {
+  let patch = keyed_two_way_diff(
+    left: member_rows(members: observed, key_of: key_of),
+    right: member_rows(members: desired, key_of: key_of),
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  MembershipPlan {
+    actions: map(patch.hunks, h => hunk_to_action(hunk: h, ownership_of: ownership_of))
+  }
+}
+
+data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (upsert/teardown) OR a wholesale refusal. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
+
+fn membership_effects<M>(plan: MembershipPlan<M>) -> EffectsOrRefusal<M> {
+  let refusals = flat_map(plan.actions, a =>
+    match a {
+      MemberTeardownRefused { member: m, cause: c } => [MemberRefusal { member: m, cause: c }]
+      MemberUpsert { member: _ } => []
+      MemberTeardown { member: _ } => []
+    }
+  )
+  if count(refusals) > 0 {
+    ApplyRefused { refusals: refusals }
+  } else {
+    EffectsReady {
+      effects: flat_map(plan.actions, a =>
+        match a {
+          MemberUpsert { member: m } => [EffectUpsert { member: m }]
+          MemberTeardown { member: m } => [EffectTeardown { member: m }]
+          MemberTeardownRefused { member: _, cause: _ } => []
+        }
+      )
+    }
+  }
+}
+
+type MembershipTally {
+  upserts: Int
+  teardowns: Int
+  refusals: Int
+}
+
+data membership_tally_note: String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all three counts in a single pass; the membership_upsert/teardown/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
+
+fn membership_tally<M>(plan: MembershipPlan<M>) -> MembershipTally {
+  fold(plan.actions, init: MembershipTally { upserts: 0, teardowns: 0, refusals: 0 }, f: (acc, a) =>
+    match a {
+      MemberUpsert { member: _ } =>
+        MembershipTally { upserts: acc.upserts + 1, teardowns: acc.teardowns, refusals: acc.refusals }
+      MemberTeardown { member: _ } =>
+        MembershipTally { upserts: acc.upserts, teardowns: acc.teardowns + 1, refusals: acc.refusals }
+      MemberTeardownRefused { member: _, cause: _ } =>
+        MembershipTally { upserts: acc.upserts, teardowns: acc.teardowns, refusals: acc.refusals + 1 }
+    }
+  )
+}
+
+fn membership_upsert_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).upserts
+}
+
+fn membership_teardown_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).teardowns
+}
+
+fn membership_refusal_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).refusals
+}
+
+data membership_effects_wholesale_refuse_policy_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.membership_reconcile",
+    decl_name: "membership_effects",
+    field: WholeDeclaration,
+  }
+}
+
+data membership_effects_wholesale_refuse_policy_note: String = "WHOLESALE-REFUSE is a deliberate, SCOPE-DEPENDENT execution policy (pass-2 review, calm-ferret + royal-carp) — this counted mark is its single authority (§6 carrier-is-authority; the design doc glosses it, does not own it). membership_effects encodes a POLICY, not only a type: any refusal => the WHOLE apply emits nothing. This is separable from the PLAN grain, where 'siblings continue' (membership_reconcile still produces every per-member action and counts refusals — an owned teardown is recorded next to a non-owned refuse). The correct policy turns on the future real observed-provider's SCOPE: observed = owned-artifacts-only => a refusal is a genuine anomaly => wholesale-refuse is the right conservative halt (stop the line); observed = everything-on-host => foreign members are normal => wholesale-refuse would let any foreign thing block our owned teardown, and siblings-continue would be wanted instead. MOOT for the pass-2 deploy poles (apply pole has no Removed; retract pole observes owned-only) — no refusal arises today, so this is a safety backstop for a future non-degenerate observed provider. DISSOLVES when that real observed-provider design lands AND someone makes the conscious wholesale-vs-siblings-continue call (editing membership_effects); until then the type must NOT be silently taken to lock the choice."

@@ -1,14 +1,17 @@
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "git-scm.com/docs"
+  }
+}
+
+data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-diff"
   }
 }
 
@@ -61,9 +64,244 @@ type DiffHunk {
   lines: List<DiffLine>
 }
 
+type GitDiffChangeStatus
+  = DiffAddedStatus
+  | DiffCopiedStatus { similarity: Percent }
+  | DiffDeletedStatus
+  | DiffModifiedStatus
+  | DiffPairingBrokenStatus
+  | DiffRenamedStatus { similarity: Percent }
+  | DiffTypeChangedStatus
+  | DiffUnmergedStatus
+  | DiffUnknownGitStatus { raw: String }
+
+type GitDiffStatusEntry {
+  status: GitDiffChangeStatus
+  path: FilePath
+  old_path: FilePath?
+}
+
+type GitDiffNameStatusParsePending
+  = AwaitingStatusToken
+  | AwaitingSinglePath { status: GitDiffChangeStatus }
+  | AwaitingOldPath { status: GitDiffChangeStatus }
+  | AwaitingNewPath { status: GitDiffChangeStatus, old_path: FilePath }
+
+type GitDiffNameStatusParseState {
+  pending: GitDiffNameStatusParsePending
+  entries: List<GitDiffStatusEntry>
+}
+
+data git_diff_name_status_field_separator: String = from_code_point(0)
+
+fn git_diff_change_status_from_token(token: String) -> GitDiffChangeStatus {
+  let letter = substring(s: token, start: 0, end: 1)
+  let rest = substring(s: token, start: 1, end: string_length(s: token))
+  if letter == "A" { DiffAddedStatus }
+  else if letter == "D" { DiffDeletedStatus }
+  else if letter == "M" { DiffModifiedStatus }
+  else if letter == "T" { DiffTypeChangedStatus }
+  else if letter == "U" { DiffUnmergedStatus }
+  else if letter == "B" { DiffPairingBrokenStatus }
+  else if letter == "R" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffRenamedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else if letter == "C" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffCopiedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else { DiffUnknownGitStatus { raw: token } }
+}
+
+fn git_diff_name_status_pending_after_status(status: GitDiffChangeStatus) -> GitDiffNameStatusParsePending {
+  match status {
+    DiffRenamedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    DiffCopiedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    _ => AwaitingSinglePath { status: status }
+  }
+}
+
+fn git_diff_name_status_advance(state: GitDiffNameStatusParseState, token: String) -> GitDiffNameStatusParseState {
+  if token == "" {
+    state
+  } else {
+    match state.pending {
+      AwaitingStatusToken => GitDiffNameStatusParseState {
+        pending: git_diff_name_status_pending_after_status(status: git_diff_change_status_from_token(token: token)),
+        entries: state.entries
+      }
+      AwaitingSinglePath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Absent }])
+      }
+      AwaitingOldPath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingNewPath { status: status, old_path: token },
+        entries: state.entries
+      }
+      AwaitingNewPath { status: status, old_path: old_path } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Present { value: old_path } }])
+      }
+    }
+  }
+}
+
+type GitDiffNameStatusParseOutcome
+  = GitDiffNameStatusComplete { entries: List<GitDiffStatusEntry> }
+  | GitDiffNameStatusTruncated { pending: GitDiffNameStatusParsePending, entries: List<GitDiffStatusEntry> }
+
+fn git_diff_name_status_parse_state(raw: String) -> GitDiffNameStatusParseState {
+  let tokens = split(s: raw, delimiter: git_diff_name_status_field_separator)
+  fold(
+    tokens,
+    init: GitDiffNameStatusParseState { pending: AwaitingStatusToken, entries: [] },
+    f: git_diff_name_status_advance
+  )
+}
+
+fn git_diff_name_status_parse(raw: String) -> GitDiffNameStatusParseOutcome {
+  let state = git_diff_name_status_parse_state(raw: raw)
+  match state.pending {
+    AwaitingStatusToken => GitDiffNameStatusComplete { entries: state.entries }
+    _ => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+  }
+}
+
+fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<FilePath> {
+  match entry.old_path {
+    Present { value: old } => [entry.path, old]
+    Absent => [entry.path]
+  }
+}
+
+fn git_diff_status_touched_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  append(acc, items: git_diff_status_entry_touched_paths(entry: entry))
+}
+
+fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_touched_paths_step)
+}
+
+fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
+  match entry.status {
+    DiffDeletedStatus => Present { value: entry.path }
+    DiffRenamedStatus { similarity: _ } => entry.old_path
+    _ => Absent
+  }
+}
+
+fn git_diff_status_departed_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  match git_diff_status_entry_departed_path(entry: entry) {
+    Present { value: path } => append(acc, items: [path])
+    Absent => acc
+  }
+}
+
+fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_departed_paths_step)
+}
+
+fn git_diff_status_entries_any_unknown(entries: List<GitDiffStatusEntry>) -> Bool {
+  let unknown_tag = discriminant(v: DiffUnknownGitStatus { raw: "" })
+  fold(entries, init: false, f: fn(acc, entry) {
+    acc || (discriminant(v: entry.status) == unknown_tag)
+  })
+}
+
 data default_remote: String = "origin"
 
 data default_branch_names: List<String> = ["main", "master"]
+
+type GitDiffRange
+  = TwoDot
+  | ThreeDot
+
+fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
+  match range {
+    TwoDot => [base as String, head as String]
+    ThreeDot => [concat(concat(base as String, "..."), head as String)]
+  }
+}
+
+type GitRemoteRefParts {
+  remote: String
+  ref_name: String
+}
+
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+  let parts = split(s: ref as String, delimiter: "/")
+  GitRemoteRefParts {
+    remote: parts.first(),
+    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  }
+}
+
+fn git_shell_join_argv(argv: List<String>) -> String {
+  fold(argv, init: "", f: (acc, token) => if acc == "" { token } else { concat(concat(acc, " "), token) })
+}
+
+fn shape_git_toplevel_argv() -> List<String> {
+  ["git", "rev-parse", "--show-toplevel"]
+}
+
+fn git_toplevel_shell_subexpr_with_fallback() -> String {
+  concat(
+    "$(", concat(concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), " 2>/dev/null || pwd"), ")")
+  )
+}
+
+fn git_toplevel_shell_subexpr() -> String {
+  concat("$(", concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), ")"))
+}
+
+fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
+  ["git", "fetch", "--no-tags", remote, ref_name]
+}
+
+fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
+  let cmd = git_shell_join_argv(argv: shape_git_fetch_no_tags_argv(remote: remote, ref_name: ref_name))
+  if ignore_failure {
+    concat(cmd, " 2>/dev/null || true")
+  } else {
+    cmd
+  }
+}
+
+fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
+  ["git", "fetch", "--prune", remote]
+}
+
+fn git_fetch_prune_shell(remote: String) -> String {
+  git_shell_join_argv(argv: shape_git_fetch_prune_argv(remote: remote))
+}
+
+fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
+  ["git", "show", "-s", "--format=%T", ref as String]
+}
+
+fn shape_git_head_commit_short_argv() -> List<String> {
+  ["git", "rev-parse", "--short", "HEAD"]
+}
+
+fn shape_git_current_branch_argv() -> List<String> {
+  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+}
+
+fn shape_git_branch_show_current_argv() -> List<String> {
+  ["git", "branch", "--show-current"]
+}
+
+fn git_observe_meta_shell_fragment() -> String {
+  concat(
+    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
+    concat(" commit=$(", concat(git_shell_join_argv(argv: shape_git_head_commit_short_argv()), " 2>/dev/null || echo unknown)"))
+  )
+}
 
 service git.Core {
   operation CurrentBranch {
@@ -74,6 +312,20 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Not a git repository"
+    }
+  }
+
+  operation Toplevel {
+    input {}
+    output { path: FilePath from "stdout" }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { path: "." } "hermetic checkout root: the runner contract binds cwd = repo toplevel, so the relative root composes with checkout-rooted reads exactly as the absolute toplevel does wet"
     }
   }
 
@@ -152,6 +404,34 @@ service git.Core {
     }
   }
 
+  operation DiffUnified0 {
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    output {
+      diff: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "-U0", git_diff_range_argv(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameStatus {
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-status", "-z", git_diff_range_argv(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation RevList {
     input { since: String }
     output { commits: List<CommitSha> from "stdout_lines" }
@@ -182,6 +462,83 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
+    }
+  }
+
+  operation ShowTree {
+    input { ref: GitRef }
+    output {
+      tree: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation FetchNoTags {
+    input { remote: String, ref: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "fetch", "--no-tags", "{remote}", "{ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation FetchPrune {
+    input { remote: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "fetch", "--prune", "{remote}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation HeadCommitShort {
+    input {}
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--short", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+}
+
+fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+  ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
+}
+
+service git.Worktree {
+  operation Add {
+    input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "worktree", "add", "{path}", "-b", "{branch}", "{remote_ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Worktree add failed"
     }
   }
 }

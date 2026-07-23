@@ -1,0 +1,28 @@
+module extdeps.diffutils
+
+import std.types { FilePath }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/diffutils/manual/diffutils.html"
+  }
+}
+
+data diffutils_module_scope_doc: String = "GNU diffutils interface shapes, one file per upstream (DESIGN 3: cite the real upstream - diff is diffutils, not coreutils or the shell). Homed in its own module rather than extdeps.shell so that consumers of the diff operation do not couple to the whole shell-utilities surface, and a change here does not put every extdeps.shell importer in the affected set."
+
+service shell.Diff {
+  operation Recursive {
+    input { left: FilePath, right: FilePath }
+    output { identical: Bool from "exit_success", exit_code: Int from "exit_code" }
+    readonly
+    transport shell { argv: ["diff", "-r", "{left}", "{right}"] }
+    exit {
+      0 => Unit "Trees are identical"
+      1 => Unit "Trees differ"
+      nonzero => String "diff -r failed to compare the trees"
+    }
+  }
+}

@@ -1,15 +1,19 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalize { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
+  dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection {
   Absent,
   Map,
@@ -24,6 +28,7 @@ import v2.std.collection {
 }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   node_locus,
   Outcome,
@@ -34,16 +39,38 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending
 }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
+import v2.std.resolution_policy {
+  ImportScoped,
+  NameResolutionPolicy,
+  NamespaceOnlyY,
+  default_name_resolution_policy
+}
+import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_global_unique_lookup,
+  symbol_index_lexical_lookup,
+  symbol_index_lookup
+}
 import v2.std.node {
   Arrow,
   Atom,
   Bind,
   ComputationNode,
   Conj,
+  Disj,
   Edge,
   Named,
   Node,
   NodeFold,
+  NodeOccurrenceId,
   OccurrenceId,
   Positional,
   Symbol,
@@ -59,11 +86,22 @@ type ResolvedTree = Node
 type Namespace {
   bindings: Map<Symbol, Symbol>
   canonical_symbols: Set<Symbol>
+  symbol_index: SymbolIndex
+  module_qn: QualifiedName
 }
 
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+
+type ResolveContext {
+  scope: Scope
+  namespace: Namespace
+  policy: NameResolutionPolicy
+  position: QualifiedName
+  lm: LanguageModel
+  under_module_root: Bool
+}
 
 type EdgeResolveAcc
   = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
@@ -82,7 +120,9 @@ fn empty_edge_list() -> List<Edge> {
 fn empty_namespace() -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: empty_canonical_symbol_set()
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: empty_symbol_index(),
+    module_qn: Empty
   }
 }
 
@@ -136,6 +176,25 @@ fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   )
 }
 
+data resolve_variant_visibility_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.symbol_index_fill",
+    decl_name: "symbol_index_fill_unique_variant_aliases",
+    field: WholeDeclaration
+  }
+}
+
+fn namespace_bindings_augment_from_module_atoms(
+  root: Node,
+  bindings: Map<Symbol, Symbol>
+) -> Map<Symbol, Symbol> {
+  harvest_direct_atom_binding(
+    root: root,
+    acc: harvest_conj_named_bindings(root: root, acc: bindings)
+  )
+}
+
 fn add_module_named_exports(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   harvest_conj_named_bindings(root: root, acc: acc)
 }
@@ -181,7 +240,9 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       root: tree,
       acc: add_module_named_exports(root: tree, acc: empty_map())
     ),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
+    symbol_index: empty_symbol_index(),
+    module_qn: Empty
   }
 }
 
@@ -196,10 +257,58 @@ fn scope_root_module(s: Scope) -> Namespace {
   }
 }
 
+fn resolve_ctx_init(
+  namespace: Namespace,
+  lm: LanguageModel,
+  policy: NameResolutionPolicy
+) -> ResolveContext {
+  ResolveContext {
+    scope: scope_from_namespace(namespace: namespace),
+    namespace: namespace,
+    policy: policy,
+    position: namespace.module_qn,
+    lm: lm,
+    under_module_root: false
+  }
+}
+
+fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
+  ResolveContext {
+    scope: scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: qualified_name_snoc(qn: ctx.position, segment: segment),
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bool) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: under_module_root
+  }
+}
+
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
-      match map_get(m, name) {
+      match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             Accepted { value: optional_present(value: v), diagnostics: d_here }
@@ -219,7 +328,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
-      match map_get(mod.bindings, name) {
+      match v2.std.collection.map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
           Absent => Accepted { value: optional_absent(), diagnostics: d }
@@ -245,6 +354,14 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_ambiguous_symbol,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
@@ -257,43 +374,148 @@ fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
   )
 }
 
-fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
-  match lookup_chain(s: scope, name: identity) {
-    Accepted { value: found, diagnostics: pending } => match found {
-      Present { value: canonical } =>
-        Accepted {
-          value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-          diagnostics: pending
+fn symbol_index_lookup_position(ctx: ResolveContext) -> QualifiedName {
+  match ctx.policy {
+    NamespaceOnlyY => ctx.position
+    ImportScoped => ctx.namespace.module_qn
+  }
+}
+
+fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => sym
+    _ => fallback
+  }
+}
+
+type SymbolIndexAtomLookup
+  = SymbolIndexAtomHit { canonical: Symbol }
+  | SymbolIndexAtomAmbiguous
+  | SymbolIndexAtomUnbound
+
+fn lookup_symbol_index_atom_identity(
+  ctx: ResolveContext,
+  name: Symbol
+) -> SymbolIndexAtomLookup {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: name
+  ) {
+    LexicalHit { node: node, path: _ } =>
+      SymbolIndexAtomHit {
+        canonical: symbol_index_node_identity(node: node, fallback: name)
+      }
+    LexicalAmbiguous { candidates: _ } => SymbolIndexAtomAmbiguous
+    LexicalUnbound =>
+      match ctx.policy {
+        NamespaceOnlyY =>
+          match symbol_index_global_unique_lookup(
+            index: ctx.namespace.symbol_index,
+            name: name
+          ) {
+            GlobalBareHit { node } =>
+              SymbolIndexAtomHit {
+                canonical: symbol_index_node_identity(node: node, fallback: name)
+              }
+            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous
+            GlobalBareLookupUnbound => SymbolIndexAtomUnbound
+          }
+        ImportScoped => SymbolIndexAtomUnbound
+      }
+  }
+}
+
+fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Outcome<Node>> {
+  match qualified_name_from_node(root: n) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: path, diagnostics: pending } =>
+      if length(xs: path) > 1 {
+        match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+          Present { value: resolved_node } =>
+            optional_present(
+              value: Accepted {
+                value: canonical_atom(
+                  identity: symbol_index_node_identity(
+                    node: resolved_node,
+                    fallback: ^resolve_reason_unbound_symbol
+                  ),
+                  occurrence_id: n.occurrence_id
+                ),
+                diagnostics: pending
+              }
+            )
+          Absent =>
+            optional_present(
+              value: Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: pending,
+                  rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                )
+              }
+            )
         }
-      Absent =>
-        if namespace_has_canonical_symbol(
-          namespace: scope_root_module(s: scope),
-          name: identity
-        ) {
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
+  if dag_node_is_int_literal_atom(node: n) {
+    Accepted { value: n, diagnostics: None }
+  } else {
+    match lookup_chain(s: ctx.scope, name: identity) {
+      Accepted { value: found, diagnostics: pending } => match found {
+        Present { value: canonical } =>
           Accepted {
-            value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+            value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
             diagnostics: pending
           }
-        } else {
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: pending,
-              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-            )
+        Absent =>
+          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+            SymbolIndexAtomHit { canonical: canonical } =>
+              Accepted {
+                value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+                diagnostics: pending
+              }
+            SymbolIndexAtomAmbiguous =>
+              Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: pending,
+                  rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
+                )
+              }
+            SymbolIndexAtomUnbound =>
+              if namespace_has_canonical_symbol(
+                namespace: ctx.namespace,
+                name: identity
+              ) {
+                Accepted {
+                  value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+                  diagnostics: pending
+                }
+              } else {
+                Rejected {
+                  diagnostics: rejected_with_pending(
+                    pending: pending,
+                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                  )
+                }
+              }
           }
-        }
+      }
+      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
 fn resolve_surface_operator_atom(
+  ctx: ResolveContext,
   n: Node,
-  scope: Scope,
-  lm: LanguageModel,
   identity: Symbol
 ) -> Outcome<Node> {
-  match dag_surface_operator_canonicalization_lookup(lm: lm, surface_token: identity) {
+  match dag_surface_operator_canonicalization_lookup(lm: ctx.lm, surface_token: identity) {
     Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
       Accepted {
@@ -306,28 +528,24 @@ fn resolve_surface_operator_atom(
       }
     }
     Rejected { diagnostics: _ } =>
-      resolve_atom(n: n, scope: scope, identity: identity)
+      resolve_atom(ctx: ctx, n: n, identity: identity)
   }
 }
 
 fn resolve_transform_operator_child(
-  n: Node,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  n: Node
 ) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_surface_operator_atom(n: n, scope: scope, lm: lm, identity: id)
-    _ => resolve_node(n: n, scope: scope, lm: lm, under_module_root: under_module_root)
+      resolve_surface_operator_atom(ctx: ctx, n: n, identity: id)
+    _ => resolve_node(ctx: ctx, n: n)
   }
 }
 
 fn resolve_transform_children(
-  n: Node,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  n: Node
 ) -> Outcome<Node> {
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
@@ -339,10 +557,8 @@ fn resolve_transform_children(
 
             if length(xs: done) == 0 {
               match resolve_transform_operator_child(
-                n: e.target,
-                scope: scope,
-                lm: lm,
-                under_module_root: under_module_root
+                ctx: ctx,
+                n: e.target
               ) {
                 Rejected { diagnostics: r } =>
                   Rejected {
@@ -358,12 +574,7 @@ fn resolve_transform_children(
                   }
               }
             } else {
-              match resolve_node(
-                n: e.target,
-                scope: scope,
-                lm: lm,
-                under_module_root: under_module_root
-              ) {
+              match resolve_node(ctx: ctx, n: e.target) {
                 Rejected { diagnostics: r } =>
                   Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -379,12 +590,7 @@ fn resolve_transform_children(
               }
             }
           _ =>
-            match resolve_node(
-              n: e.target,
-              scope: scope,
-              lm: lm,
-              under_module_root: under_module_root
-            ) {
+            match resolve_node(ctx: ctx, n: e.target) {
               Rejected { diagnostics: r } =>
                 Rejected {
                   diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -411,24 +617,21 @@ fn resolve_transform_children(
 }
 
 fn resolve_node(
-  n: Node,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  n: Node
 ) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_atom(n: n, scope: scope, identity: id)
+      resolve_atom(ctx: ctx, n: n, identity: id)
     TypeNode { connective: Arrow } =>
       match resolve_edges_first_outer_then_inner(
+        ctx: ctx,
         edges: n.children,
-        scope_outer: scope,
+        scope_outer: ctx.scope,
         scope_inner: ScopeFrame {
           locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-          outer: scope
-        },
-        lm: lm,
-        under_module_root: under_module_root
+          outer: ctx.scope
+        }
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
@@ -438,56 +641,50 @@ fn resolve_node(
           }
       }
     ComputationNode { behavior: Bind } =>
-      resolve_bind_node(
-        n: n,
-        scope: scope,
-        lm: lm,
-        under_module_root: under_module_root
-      )
+      resolve_bind_node(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
-      resolve_transform_children(
-        n: n,
-        scope: scope,
-        lm: lm,
-        under_module_root: under_module_root
-      )
+      resolve_transform_children(ctx: ctx, n: n)
+    TypeNode { connective: Conj } =>
+      match try_resolve_qualified_name_node(ctx: ctx, n: n) {
+        Present { value: outcome } => outcome
+        Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+      }
     TypeNode { connective: _ } =>
-      resolve_children_homogeneous_scope(
-        n: n,
-        scope: scope,
-        lm: lm,
-        under_module_root: under_module_root
-      )
+      resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
-      resolve_children_homogeneous_scope(
-        n: n,
-        scope: scope,
-        lm: lm,
-        under_module_root: under_module_root
-      )
+      resolve_children_homogeneous_scope(ctx: ctx, n: n)
+  }
+}
+
+fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
+  if dag_surface_module_header_metadata_edge(name: name) {
+    true
+  } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
+    true
+  } else if name == ^grammar_production_identity_node_projection {
+    true
+  } else {
+    false
   }
 }
 
 fn resolve_child_edge(
-  e: Edge,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  e: Edge
 ) -> Outcome<Edge> {
   match e.label {
     Named { name: sym } =>
-      if under_module_root && (
-        dag_surface_module_header_metadata_edge(name: sym)
-          || dag_resolve_preserve_module_metadata_subtree(node: e.target)
-      ) {
+      if ctx.under_module_root
+        && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
         Accepted { value: e, diagnostics: None }
       } else {
-        match resolve_node(
-          n: e.target,
-          scope: scope,
-          lm: lm,
-          under_module_root: under_module_root
-        ) {
+        let child_ctx = if ctx.under_module_root
+          && !dag_surface_module_header_metadata_edge(name: sym) {
+          resolve_ctx_snoc_position(ctx: ctx, segment: sym)
+        } else {
+          ctx
+        }
+        match resolve_node(ctx: child_ctx, n: e.target) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
             Accepted {
@@ -497,16 +694,11 @@ fn resolve_child_edge(
         }
       }
     Positional =>
-      if under_module_root
+      if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
         Accepted { value: e, diagnostics: None }
       } else {
-        match resolve_node(
-          n: e.target,
-          scope: scope,
-          lm: lm,
-          under_module_root: under_module_root
-        ) {
+        match resolve_node(ctx: ctx, n: e.target) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
             Accepted {
@@ -518,24 +710,64 @@ fn resolve_child_edge(
   }
 }
 
+data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
+
+fn domain_root_has_named_bindings(root: Node) -> Bool {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: false, f: fn(acc, e) {
+        if acc {
+          acc
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        }
+      })
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn arrow_domain_has_named_bindings(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      if count(n.children) >= 1 {
+        match first(n.children) {
+          Present { value: e0 } => domain_root_has_named_bindings(root: e0.target)
+          Absent => false
+        }
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
 fn resolve_children_homogeneous_scope(
-  n: Node,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  n: Node
 ) -> Outcome<Node> {
-  let ctx = under_module_root || dag_node_is_module_root_conj(n: n)
+  let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
+  let scope_here = match arrow_domain_has_named_bindings(n: n) {
+    true =>
+      ScopeFrame {
+        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
+        outer: ctx.scope
+      }
+    false => ctx.scope
+  }
+  let child_ctx = resolve_ctx_with_scope(
+    ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
+    scope: scope_here
+  )
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         Rejected { diagnostics: r }
       Accepted { value: done, diagnostics: ad } =>
-        match resolve_child_edge(
-          e: e,
-          scope: scope,
-          lm: lm,
-          under_module_root: ctx
-        ) {
+        match resolve_child_edge(ctx: child_ctx, e: e) {
           Rejected { diagnostics: r } =>
             Rejected {
               diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -558,11 +790,10 @@ fn resolve_children_homogeneous_scope(
 }
 
 fn resolve_edges_first_outer_then_inner(
+  ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
-  scope_inner: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  scope_inner: Scope
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -582,10 +813,8 @@ fn resolve_edges_first_outer_then_inner(
             Accepted { value: done, diagnostics: ad } =>
               if seen {
                 match resolve_node(
-                  n: e.target,
-                  scope: scope_inner,
-                  lm: lm,
-                  under_module_root: under_module_root
+                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
+                  n: e.target
                 ) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
@@ -608,10 +837,8 @@ fn resolve_edges_first_outer_then_inner(
                 }
               } else {
                 match resolve_node(
-                  n: e.target,
-                  scope: scope_outer,
-                  lm: lm,
-                  under_module_root: under_module_root
+                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
+                  n: e.target
                 ) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
@@ -651,11 +878,10 @@ fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
 }
 
 fn resolve_bind_edges(
+  ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
-  scope_inner: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  scope_inner: Scope
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -697,11 +923,9 @@ fn resolve_bind_edges(
               } else {
                 if i == 1 {
                   match resolve_node(
-                  n: e.target,
-                  scope: scope_outer,
-                  lm: lm,
-                  under_module_root: under_module_root
-                ) {
+                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
+                    n: e.target
+                  ) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -723,11 +947,9 @@ fn resolve_bind_edges(
                   }
                 } else {
                   match resolve_node(
-                  n: e.target,
-                  scope: scope_inner,
-                  lm: lm,
-                  under_module_root: under_module_root
-                ) {
+                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
+                    n: e.target
+                  ) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -758,21 +980,18 @@ fn resolve_bind_edges(
 }
 
 fn resolve_bind_node(
-  n: Node,
-  scope: Scope,
-  lm: LanguageModel,
-  under_module_root: Bool
+  ctx: ResolveContext,
+  n: Node
 ) -> Outcome<Node> {
   if count(n.children) == 3 {
     match resolve_bind_edges(
+      ctx: ctx,
       edges: n.children,
-      scope_outer: scope,
+      scope_outer: ctx.scope,
       scope_inner: ScopeFrame {
         locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: scope
-      },
-      lm: lm,
-      under_module_root: under_module_root
+        outer: ctx.scope
+      }
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
@@ -799,12 +1018,24 @@ fn resolve_with_namespace(
   namespace: Namespace,
   lm: LanguageModel
 ) -> Outcome<ResolvedTree> {
+  resolve_with_namespace_policy(
+    tree: tree,
+    namespace: namespace,
+    lm: lm,
+    policy: default_name_resolution_policy()
+  )
+}
+
+fn resolve_with_namespace_policy(
+  tree: NormalizedTree,
+  namespace: Namespace,
+  lm: LanguageModel,
+  policy: NameResolutionPolicy
+) -> Outcome<ResolvedTree> {
   if well_formed(n: tree) {
     resolve_node(
-      n: tree,
-      scope: scope_from_namespace(namespace: namespace),
-      lm: lm,
-      under_module_root: false
+      ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
+      n: tree
     )
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }

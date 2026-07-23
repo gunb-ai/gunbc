@@ -8,21 +8,39 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_target_model,
   bash_stmt_env_unset_emitted,
   bash_stmt_env_unset_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_assign_emitted,
   orch_seq2_emitted_command,
   orch_seq2_target_model,
   orch_retry_emitted_command,
-  orch_retry_target_model
+  orch_retry_target_model,
+  orch_retry_1level_emitted_command,
+  orch_retry_1level_target_model,
+  orch_retry_escalation_final_emitted_command,
+  orch_retry_escalation_final_target_model,
+  orch_retry_escalation_step_emitted_command,
+  orch_retry_escalation_step_target_model
+}
+import v2.extdeps.languages.bash_orch_if {
+  bash_stmt_if_else_emitted,
+  orch_if_target_model,
+  orch_if_else_target_model,
+  bash_stmt_while_emitted,
+  orch_while_target_model,
+  bash_bounded_poll_emitted,
+  orch_bounded_poll_target_model
+}
+import v2.extdeps.languages.bash_orch_tier2 {
+  bash_orch_procedure_emitted,
+  bash_orch_call_emitted,
+  orch_procedure_target_model,
+  orch_call_target_model,
+  orch_cmdsubst_assign_target_model,
+  orch_let_assign_target_model
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
-import v2.std.algebra {
-  FreeMonoid,
-  list_head,
-  list_tail,
-  HeadFound,
-  HeadAbsent,
-  TailFound,
-  TailAbsent
-}
+import std.algebra { FreeMonoid }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
@@ -40,7 +58,18 @@ import v2.std.orchestration_emit {
   orch_construct_run_env_prefixed,
   orch_construct_run_env_unset,
   orch_construct_seq2,
-  orch_construct_retry
+  orch_construct_retry,
+  orch_construct_retry_1level,
+  orch_construct_retry_escalation_final,
+  orch_construct_retry_escalation_step,
+  orch_construct_if,
+  orch_construct_if_else,
+  orch_construct_while,
+  orch_construct_bounded_poll,
+  orch_construct_procedure,
+  orch_construct_call,
+  orch_construct_cmdsubst_assign,
+  orch_construct_let_assign
 }
 import v2.std.text { String }
 
@@ -67,6 +96,50 @@ fn bash_orchestration_emit_registry_node() -> Node {
       bash_named_edge(
         name: orch_construct_retry,
         target: orch_retry_emitted_command
+      ),
+      bash_named_edge(
+        name: orch_construct_retry_1level,
+        target: orch_retry_1level_emitted_command
+      ),
+      bash_named_edge(
+        name: orch_construct_retry_escalation_final,
+        target: orch_retry_escalation_final_emitted_command
+      ),
+      bash_named_edge(
+        name: orch_construct_retry_escalation_step,
+        target: orch_retry_escalation_step_emitted_command
+      ),
+      bash_named_edge(
+        name: orch_construct_if,
+        target: bash_stmt_if_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_if_else,
+        target: bash_stmt_if_else_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_while,
+        target: bash_stmt_while_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_bounded_poll,
+        target: bash_bounded_poll_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_procedure,
+        target: bash_orch_procedure_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_call,
+        target: bash_orch_call_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_cmdsubst_assign,
+        target: bash_stmt_assign_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_let_assign,
+        target: bash_stmt_assign_emitted
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -140,6 +213,17 @@ fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
     realize_run_rawline: bash_fold_raw_line_target_model,
     run_env_plan: bash_orch_run_env_plan,
     realize_seq2: orch_seq2_target_model,
-    realize_retry: orch_retry_target_model
+    realize_retry: orch_retry_target_model,
+    realize_retry_1level: orch_retry_1level_target_model,
+    realize_retry_escalation_final: orch_retry_escalation_final_target_model,
+    realize_retry_escalation_step: orch_retry_escalation_step_target_model,
+    realize_if: orch_if_target_model,
+    realize_if_else: orch_if_else_target_model,
+    realize_while: orch_while_target_model,
+    realize_bounded_poll: orch_bounded_poll_target_model,
+    realize_procedure: orch_procedure_target_model,
+    realize_call: orch_call_target_model,
+    realize_cmdsubst_assign: orch_cmdsubst_assign_target_model,
+    realize_let_assign: orch_let_assign_target_model
   }
 }

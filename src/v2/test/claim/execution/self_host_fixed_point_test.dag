@@ -26,6 +26,9 @@ import v2.compiler.self_host {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data self_host_fixture_fixpoint_source: String = "self_host_fixpoint_byte_identical_v1"
 

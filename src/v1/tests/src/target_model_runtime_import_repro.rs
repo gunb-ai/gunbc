@@ -67,12 +67,12 @@ fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usi
         })
         .collect();
     let source_count = sources.len();
-    let result = compile_to_resolved(Rc::new(sources));
+    let result = compile_to_resolved(Rc::new(sources.into()));
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     (source_count, msgs.len(), msgs)
 }

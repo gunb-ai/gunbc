@@ -1,13 +1,6 @@
 module v2.test.realization_vocabulary_containment.clean_tree
 
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_consumer_scan_roots,
-  realization_vocab_leak_count_live,
-  realization_vocab_containment_clean_live
-}
-import v2.std.logic { Bool }
 
-test fn realization_vocab_clean_tree_holds() -> Bool {
-  realization_vocab_containment_clean_live(scan_roots: realization_vocab_consumer_scan_roots)
-    && (realization_vocab_leak_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0)
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data clean_tree_fast_lane_note: String = "Full-corpus live-tree containment receipt moved to long/realization_vocabulary_containment_witness_test.dag — layer_import_facts_live over realization_vocab_consumer_scan_roots exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note; explicit enrollment deleted from commit_workflow 2026-07-18). Per-PR fast-lane coverage: lens_unit/discriminators_test.dag (synthetic predicate receipts), scanner/planted_leak_test.dag (fixture scan), roster_soundness_test.dag (stale-roster RED)."

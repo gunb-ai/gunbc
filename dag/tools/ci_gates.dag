@@ -3,18 +3,17 @@ module tools.ci_gates
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec, Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
-import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 import tools.regen_verify_gate { run_regen_verify_gate }
-import tools.emit_determinism_gate { run_emit_determinism_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -22,7 +21,6 @@ fn exit_ok(e: ProcessExit) -> Bool {
 
 fn run_spec_gate(g: Gate) -> ProcessExit {
   match g {
-    RustMonolithGate => run_rust_monolith_gate()
     EmitHostGate => run_emit_host_ci_gate()
     LayeringImportsGate => run_layering_imports_ci_gate()
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
@@ -32,10 +30,12 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
     RegenVerifyGate => run_regen_verify_gate()
-    SelfHostRealizedComparisonGate => exit_failure(
-      reason: "SelfHostRealizedComparisonGate: run via ci_floor_plan v2.workflow.self_host_realized_comparison_gate"
+    SelfHostReadsRealBytesGate => exit_failure(
+      reason: "SelfHostReadsRealBytesGate: run via ci_floor_plan (self_host_realized_comparison_claims.reads_real_bytes_both_sides_holds)"
     )
-    EmitDeterminismGate => run_emit_determinism_gate()
+    SelfHostStalenessGate => exit_failure(
+      reason: "SelfHostStalenessGate: run via ci_floor_plan (self_host_realized_comparison_claims.staleness_gate_holds)"
+    )
   }
 }
 

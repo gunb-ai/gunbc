@@ -1,0 +1,29 @@
+module test.claim.ci_deploy_observed_wet
+
+
+data ci_deploy_observed_wet_note: String = "OFFLINE wet integration witness (hermetic-floor split, operator posture 2026-07-11: integration-style witnesses do not run regularly; CI runs hermetic/mocked variants). deploy_access_check_observed shells live whoami + sudo -n, so this half of test.claim.ci_deploy_witness moved here when the discovery corpus flipped Hermetic; the pure half (script pins, enrollment pins, and the mock-shaped deploy_access_check(access, actor) dual) stays discovered. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/ci_deploy_observed_wet_test.dag. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then enroll this entry there as a declared execution row."
+
+fn ci_deploy_observed_runner_principal_name() -> String {
+  grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) as String
+}
+
+fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
+  let d = deploy_access_check_observed(access: ci_deploy_srv1_access)
+  match d {
+    Permit =>
+      string_contains(
+        s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
+        pattern: "deploy-access-preflight: PASS"
+      )
+        && string_contains(
+          s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
+          pattern: ci_deploy_observed_runner_principal_name()
+        )
+    Deny { reason: _ } =>
+      string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
+  }
+}
+
+test fn ci_deploy_observed_wet_witnesses() -> Bool {
+  witness_deploy_access_preflight_is_fail_closed()
+}

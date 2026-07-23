@@ -136,7 +136,7 @@ Shard A's partition/composition proof + one exemplar is a first receipt, NOT "co
 4. CI receipt shows old batch-1 wall-clock, new batch-1 wall-clock, shard count, and no coverage loss.
 5. RED: drop one shard from the roster → the coverage witness fails; a planted bad module in an omitted shard cannot pass.
 
-## What "complete" honestly means after the current wave
+## What "complete" honestly means today
 
 Rails (honestly completable now): CD target-host proof first slice · privilege refusal before mutation · runner memory live-read carrier first slice · mechanism inventory baseline · resolver profile receipt · compile-clean shard algebra/exemplar.
 

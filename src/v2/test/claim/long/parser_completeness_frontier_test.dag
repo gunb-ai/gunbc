@@ -1,0 +1,145 @@
+module v2.test.long.parser_completeness_frontier
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data parser_frontier_module_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^parser_frontier_module_artifact,
+  file_path: "src/v2/pilot/parser_frontier_pilot.dag"
+}
+
+fn parser_frontier_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: parser_frontier_module_artifact,
+      compilation_unit: ^parser_frontier_pilot_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn parser_frontier_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^parser_frontier_pilot, tail: Empty }
+    },
+    imports: Empty
+  }
+}
+
+fn parser_frontier_assemble_for(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: parser_frontier_ingest_for(src: src),
+    admission: parser_frontier_admission(),
+    lm: dag_language_model()
+  )
+}
+
+fn parser_frontier_assemble_accepts(src: String) -> Bool {
+  match parser_frontier_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn parser_frontier_infer_accepts(src: String) -> Bool {
+  match bind_outcome(
+    o: parser_frontier_assemble_for(src: src),
+    f: fn(resolved) { infer(tree: resolved) }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data src_module_header: String = "module parser_frontier_pilot\n"
+data src_type_decl: String = "module parser_frontier_pilot\n\ntype Flag = On | Off\n"
+data src_fn_simple_body: String = "module parser_frontier_pilot\n\ntype Flag = On | Off\n\nfn keep(f: Flag) -> Flag { f }\n"
+data src_single_arm_match: String = "module parser_frontier_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
+data src_multi_arm_match: String = "module parser_frontier_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
+
+data src_logic_empty_record_type: String = "module parser_frontier_pilot\n\ntype Fact {}\n"
+data src_logic_record_type_fields: String = "module parser_frontier_pilot\n\ntype Fact {}\ntype Facts { width: Fact, encoding: Fact }\n"
+data src_logic_data_nested_ctor: String = "module parser_frontier_pilot\n\ntype Fact {}\ntype Facts { width: Fact, encoding: Fact }\ndata f: Facts = Facts { width: Fact {}, encoding: Fact {} }\n"
+data src_logic_let_discard: String = "module parser_frontier_pilot\n\ntype T = A | B\nfn f(x: T) -> T { let _x = x\n  x }\n"
+data src_logic_generic_data: String = "module parser_frontier_pilot\n\ntype Box<T> {}\ntype I = Z\ndata x: Box<I> = Box {}\n"
+data src_logic_inline_fn_multi_arm: String = "module parser_frontier_pilot\n\ntype T = A | B\ntype Rec { slot: T }\ndata r: Rec = Rec { slot: fn(a, b) { match a { A => b, B => A } } }\n"
+data src_logic_nested_rec_fn: String = "module parser_frontier_pilot\n\ntype T = A | B\ntype Inner { meet: T }\ntype Outer { inner: Inner, top: T }\ndata o: Outer = Outer { inner: Inner { meet: fn(a, b) { match a { A => b, B => A } } }, top: A }\n"
+data src_logic_untyped_single_param_fn: String = "module parser_frontier_pilot\n\ntype T = A | B\ntype Wrap { f: T }\ndata r: Wrap = Wrap { f: fn(a) { match a { A => A, B => B } } }\n"
+
+test fn parser_frontier_parse_module_header_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_module_header)
+}
+
+test fn parser_frontier_parse_type_decl_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_type_decl)
+}
+
+test fn parser_frontier_parse_fn_simple_body_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_fn_simple_body)
+}
+
+test fn parser_frontier_parse_single_arm_match_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_single_arm_match)
+}
+
+test fn parser_frontier_infer_single_arm_module_holds() -> Bool {
+  parser_frontier_infer_accepts(src: src_single_arm_match)
+}
+
+test fn parser_frontier_parse_multi_arm_match_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_multi_arm_match)
+    && parser_frontier_infer_accepts(src: src_multi_arm_match)
+}
+
+test fn parser_frontier_logic_empty_record_type_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_empty_record_type)
+}
+
+test fn parser_frontier_logic_record_type_fields_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_record_type_fields)
+}
+
+test fn parser_frontier_logic_data_nested_ctor_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_data_nested_ctor)
+}
+
+test fn parser_frontier_logic_let_discard_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_let_discard)
+}
+
+test fn parser_frontier_logic_generic_data_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_generic_data)
+}
+
+test fn parser_frontier_logic_inline_fn_multi_arm_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_inline_fn_multi_arm)
+}
+
+test fn parser_frontier_logic_nested_rec_fn_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_nested_rec_fn)
+}
+
+test fn parser_frontier_logic_untyped_single_param_fn_holds() -> Bool {
+  parser_frontier_assemble_accepts(src: src_logic_untyped_single_param_fn)
+}
+
+test fn parser_completeness_frontier_all_holds() -> Bool {
+  parser_frontier_parse_module_header_holds()
+    && parser_frontier_parse_type_decl_holds()
+    && parser_frontier_parse_fn_simple_body_holds()
+    && parser_frontier_parse_single_arm_match_holds()
+    && parser_frontier_infer_single_arm_module_holds()
+    && parser_frontier_parse_multi_arm_match_holds()
+    && parser_frontier_logic_empty_record_type_holds()
+    && parser_frontier_logic_record_type_fields_holds()
+    && parser_frontier_logic_data_nested_ctor_holds()
+    && parser_frontier_logic_let_discard_holds()
+    && parser_frontier_logic_generic_data_holds()
+    && parser_frontier_logic_inline_fn_multi_arm_holds()
+    && parser_frontier_logic_nested_rec_fn_holds()
+    && parser_frontier_logic_untyped_single_param_fn_holds()
+}

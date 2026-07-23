@@ -2,12 +2,14 @@ module test.claim.roadmap_emit
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
-import ctrl.process_algebra { ProcessNodeId }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data parent_id: ProcessNodeId = "invert-hand-maintained"
-data child_id: ProcessNodeId = "pr-checkbox-status"
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data parent_id: RoadmapNodeId = "invert-hand-maintained"
+data child_id: RoadmapNodeId = "pr-checkbox-status"
 
 fn parent_node() -> RoadmapNode {
   RoadmapNode {

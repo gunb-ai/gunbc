@@ -1,0 +1,9 @@
+module test.retirement.map_lookup_dual_dispatch_retired
+
+
+data map_lookup_dual_dispatch_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "map_lookup_dual_dispatch_test.rs",
+  disposition: DeleteLowValue {
+    reason: "Residual of the 5-test-migration lane. Four runtime tests already migrated to dag/test/claim/map_lookup_dual_dispatch_witness_test.dag (method get, index sugar, lookup builtin, std.graph adjacency; routing proven by chokepoint perturbation). The two remaining are NOT redundant-by-coverage, so this is low-value-at-v1-sunset rather than DeleteRedundant: (1) map_lookup_operations_do_not_probe_value_map_outside_chokepoint is a v1_interpreter.rs source-text bypass scan the module itself documents as a pinned-harness fact 'dissolving with the v1 interpreter' (a transient v1-Rust scaffold, no v2-relevant concept; the routing it statically complements is perturbation-proven for the live surfaces); (2) map_get_function_returns_optional_for_empty_list_hit is #[ignore]d on a pre-existing empty-list inference bug (never run in CI), inert."
+  }
+}

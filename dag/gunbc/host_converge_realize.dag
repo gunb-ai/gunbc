@@ -1,0 +1,101 @@
+module gunbc.host_converge_realize
+
+import std.types { String, List, Bool }
+import gunbc.host_converge {
+  ConvergeKnob,
+  ConvergeTarget,
+  HostConverge,
+  ConvergeSlice,
+  converge_slice_label,
+  SliceProperty,
+  PerSlotMemoryCap,
+  RunnerWidth,
+  JobserverTokens,
+  VerifyOnlyCap,
+  GunbcPinnedTree,
+}
+
+type ConvergeKnobInterpretVerdict =
+    KnobUnimplemented { knob_name: String, target_kind: String, reason: String }
+
+fn converge_target_kind_label(t: ConvergeTarget) -> String {
+  match t {
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => "SliceProperty"
+    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => "PerSlotMemoryCap"
+    RunnerWidth { instance_glob: _ } => "RunnerWidth"
+    JobserverTokens { env_file: _, env_key: _, service_unit: _ } => "JobserverTokens"
+    VerifyOnlyCap { slice_unit: _, property: _ } => "VerifyOnlyCap"
+    GunbcPinnedTree {
+      gunbc_root_env_key: _,
+      gunbc_root_path: _,
+      dag_root: _,
+      ctrl_checkout_path: _,
+      binary: _,
+      pin_read_script: _,
+      green_place_marker: _,
+      live_apply: _,
+    } => "GunbcPinnedTree"
+  }
+}
+
+data converge_knob_unimplemented_reason_prefix: String = "host_converge_realize: ConvergeKnob interpreter frontier — fail-closed Unimplemented per knob target; no free-form imperative arm (host-effect Phase D / shell-emission slice 2)"
+
+fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
+  concat(
+    concat(
+      concat(
+        concat(converge_knob_unimplemented_reason_prefix, " ["),
+        converge_target_kind_label(t: knob.target)
+      ),
+      concat(concat("/", knob.name), "]")
+    ),
+    " — typed extdeps.os.systemd/oomd read+write not yet wired for this knob arm"
+  )
+}
+
+fn interpret_converge_knob(knob: ConvergeKnob) -> ConvergeKnobInterpretVerdict {
+  KnobUnimplemented {
+    knob_name: knob.name,
+    target_kind: converge_target_kind_label(t: knob.target),
+    reason: converge_knob_unimplemented_reason(knob: knob),
+  }
+}
+
+type ConvergeHostInterpretResult =
+    ConvergeHostRefused { reason: String }
+  | ConvergeHostInterpreted { knob_count: Int, stdout: String }
+
+data converge_host_no_knobs_reason: String = "host_converge_realize: HostConverge has zero knobs; fail-closed — refusing fabricated ConvergePlanApplied without knob work"
+
+fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpretResult {
+  if host_converge.knobs.length() == 0 {
+    ConvergeHostRefused { reason: converge_host_no_knobs_reason }
+  } else {
+    fold(
+      host_converge.knobs,
+      init: ConvergeHostInterpreted { knob_count: 0, stdout: "" },
+      f: fn(acc, knob) {
+        match acc {
+          ConvergeHostRefused { reason: _ } => acc
+          ConvergeHostInterpreted { knob_count: n, stdout: out } =>
+            match interpret_converge_knob(knob: knob) {
+              KnobUnimplemented { knob_name: name, target_kind: _, reason: why } =>
+                ConvergeHostRefused {
+                  reason: concat(
+                    concat(concat(why, " (host="), host_converge.identity as String),
+                    concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
+                  ),
+                }
+            }
+        }
+      }
+    )
+  }
+}
+
+fn converge_host_interpret_refused(r: ConvergeHostInterpretResult) -> Bool {
+  match r {
+    ConvergeHostRefused { reason: _ } => true
+    ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
+  }
+}

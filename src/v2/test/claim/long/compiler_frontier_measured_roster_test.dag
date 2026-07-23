@@ -1,0 +1,57 @@
+module v2.test.long.compiler_frontier_measured_roster
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_census_holds,
+  compiler_frontier_module_count_expected,
+  compiler_frontier_roster,
+  compiler_frontier_roster_all_classified_holds,
+  compiler_frontier_roster_probe_paths_match_holds,
+  compiler_frontier_row_00_compile,
+  compiler_frontier_row_01_tokenize,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_sweep_order,
+  compiler_frontier_sweep_order_matches_tractability_rank_holds
+}
+import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
+  NameResolutionGap,
+  SelfEmitReady
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+
+test fn compiler_frontier_structural_census_invariants_holds() -> Bool {
+  compiler_frontier_census_holds()
+    && compiler_frontier_roster_all_classified_holds()
+    && compiler_frontier_roster_probe_paths_match_holds()
+    && (length(xs: compiler_frontier_roster) == compiler_frontier_module_count_expected)
+}
+
+test fn compiler_frontier_measured_parse_engine_hooks_self_emit_ready_holds() -> Bool {
+  match compiler_frontier_row_parse_engine_hooks.measured_probe.blocker_class {
+    SelfEmitReady => true
+    _ => false
+  }
+}
+
+test fn compiler_frontier_measured_tokenize_emit_surface_holds() -> Bool {
+  match compiler_frontier_row_01_tokenize.measured_probe.blocker_class {
+    EmitSurfaceGap => true
+    _ => false
+  }
+}
+
+test fn compiler_frontier_measured_compile_emit_surface_holds() -> Bool {
+  match compiler_frontier_row_00_compile.measured_probe.blocker_class {
+    EmitSurfaceGap => true
+    _ => false
+  }
+}
+
+test fn compiler_frontier_sweep_order_has_expected_length_holds() -> Bool {
+  length(xs: compiler_frontier_sweep_order) == 27
+}
+
+test fn compiler_frontier_sweep_order_matches_tractability_rank_holds() -> Bool {
+  compiler_frontier_sweep_order_matches_tractability_rank_holds()
+}

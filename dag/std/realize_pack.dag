@@ -1,0 +1,90 @@
+module std.realize_pack
+
+import std.types { Int, Bool, String }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.realization_width { memory_bounded_shard_count, int_min }
+
+data realize_pack_module_note: String = "Witness-realization plan P4 (realize — the memory-safe packing half of `realize`, spine FLAG D). Packs concurrent width = min(independence_width, budget / DERIVED space bound). RE-POINTED 2026-07-16 off measured peak onto the DERIVED bound (operator: derive, don't measure — §4 bounded/forward, the space-complexity analysis's dual of DescentEvidence; space-complexity-design.md). The input is the derived space `ByteSize?` produced by cost_account_space_from_summary (Present = the statically derived working-set bound, none = SpaceBoundUnknown, the fail-closed frontier — counted now, error later). P4 is decoupled from CostBasis by consuming that ByteSize? directly; measurement is demoted to at-most a falsifier, never a scheduler input. Three typed verdicts, none fabricated: PackedWidth when the bound is derived and the budget is readable; MaturationReserve(width 1) when the bound is BoundUnknown (a subject whose space is not yet derivable runs alone — the frontier resolving to a safe reserve, not a fabricated number); BudgetRefused when the host budget read fails — REFUSING, never the conservative_fallback_width fabrication realization_width.dag:109 emits (the live §5 absorbing-fallback the audit flagged). The exit-137 failure mode (memory-blind packing OOMs) becomes arithmetic: width never exceeds budget/bound by construction. Space composes as P1's dual — concurrent shards CO-RESIDE, so W shards at bound B need W*B <= budget, i.e. budget/B >= W."
+
+type DerivedBound
+  = BoundDerived { bytes: ByteSize }
+  | BoundUnknown
+
+fn derived_bound_of(derived_space: ByteSize?) -> DerivedBound {
+  match derived_space {
+    Present { value: bytes } => BoundDerived { bytes: bytes }
+    Absent => BoundUnknown
+  }
+}
+
+type HostBudget
+  = BudgetReadable { bytes: ByteSize }
+  | BudgetUnreadable
+
+type RealizeVerdict
+  = PackedWidth { width: HardwareThreadCount }
+  | MaturationReserve { width: HardwareThreadCount }
+  | BudgetRefused
+
+fn realize_pack_width(bound: DerivedBound, budget: HostBudget, independence_width: Int) -> RealizeVerdict {
+  match budget {
+    BudgetUnreadable => BudgetRefused
+    BudgetReadable { bytes: budget_bytes } =>
+      match bound {
+        BoundUnknown => MaturationReserve { width: hardware_thread_count(count: 1) }
+        BoundDerived { bytes: bound_bytes } =>
+          let mem_width = memory_bounded_shard_count(memory_budget: budget_bytes, per_shard_peak: bound_bytes)
+          let packed = int_min(a: independence_width, b: mem_width)
+          PackedWidth { width: hardware_thread_count(count: packed) }
+      }
+  }
+}
+
+fn realize_verdict_width(v: RealizeVerdict) -> Int {
+  match v {
+    PackedWidth { width: w } => hardware_thread_count_value(t: w)
+    MaturationReserve { width: w } => hardware_thread_count_value(t: w)
+    BudgetRefused => 0
+  }
+}
+
+fn realize_verdict_label(v: RealizeVerdict) -> String {
+  match v {
+    PackedWidth { width: _ } => "PackedWidth"
+    MaturationReserve { width: _ } => "MaturationReserve"
+    BudgetRefused => "BudgetRefused"
+  }
+}
+
+data realize_advisory_note: String = "P4 advisory-first bridge entry (witness-realization plan): the terminal-kernel executor (claim_executor, hand Rust) consumes the modeled packing law through the interpreter — it extracts the DERIVED per-function space bound (ComplexityReport.function_space_bytes, empty size_env — a closed witness has no free size-vars) and the host budget as plain Int?s, and this wrapper reconstructs the DerivedBound/HostBudget shapes and calls realize_pack_width. The law stays modeled here (§2, no Rust reimplementation); the kernel only marshals scalars and reads back a RealizeAdvisory. Advisory-first (§5): the verdict is LOGGED beside the live MemoryGovernor admission, never yet used to schedule, so the derived bounds are proven sound on the real corpus before the governor is demoted to a safety net. Absent derived_bytes -> BoundUnknown -> MaturationReserve (the fail-closed frontier), never a fabricated width."
+
+type RealizeAdvisory {
+  width: Int
+  verdict: String
+}
+
+fn realize_advisory(derived_bytes: Int?, budget_bytes: Int?, independence_width: Int) -> RealizeAdvisory {
+  let bound = match derived_bytes {
+    Present { value: b } => BoundDerived { bytes: byte_size(count: b) }
+    Absent => BoundUnknown
+  }
+  let budget = match budget_bytes {
+    Present { value: y } => BudgetReadable { bytes: byte_size(count: y) }
+    Absent => BudgetUnreadable
+  }
+  let v = realize_pack_width(bound: bound, budget: budget, independence_width: independence_width)
+  RealizeAdvisory { width: realize_verdict_width(v: v), verdict: realize_verdict_label(v: v) }
+}
+
+fn realize_fits_budget(v: RealizeVerdict, bound: DerivedBound, budget: HostBudget) -> Bool {
+  match budget {
+    BudgetUnreadable => match v { BudgetRefused => true  PackedWidth { width: _ } => false  MaturationReserve { width: _ } => false }
+    BudgetReadable { bytes: budget_bytes } =>
+      match bound {
+        BoundUnknown => true
+        BoundDerived { bytes: bound_bytes } =>
+          let w = realize_verdict_width(v: v)
+          (w * byte_size_count(bound_bytes)) <= byte_size_count(budget_bytes)
+      }
+  }
+}

@@ -12,6 +12,9 @@ import v2.std.verification {
 }
 import v2.test.fixture.floor_skip.floor_disc_shared_helper { floor_disc_shared_helper }
 import v2.workflow.affected_set_floor_runner { floor_claim_touches_rerun_frontier }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data floor_disc_node_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^floor_disc_node_a_symbol } },

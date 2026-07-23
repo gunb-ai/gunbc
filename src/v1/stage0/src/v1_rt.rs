@@ -3,12 +3,9 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-#[cfg(feature = "text_lookup_work_counter")]
-use std::cell::Cell;
 
 #[cfg(feature = "text_lookup_work_counter")]
 thread_local! {
@@ -66,6 +63,152 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
+/// Read-only silent-pick telemetry for resolution divergence census slice 2.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpPickSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+    pub chosen_module_path: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpTieSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FnParentFirstHitSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub parent_match_count: usize,
+    pub chosen_parent_module: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SilentPickTelemetry {
+    pub global_bare_lcp_picks: std::vec::Vec<GlobalBareLcpPickSite>,
+    pub global_bare_lcp_ties: std::vec::Vec<GlobalBareLcpTieSite>,
+    pub fn_parent_first_hits: std::vec::Vec<FnParentFirstHitSite>,
+}
+
+thread_local! {
+    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };
+    static RESOLUTION_SILENT_PICK: RefCell<SilentPickTelemetry> = RefCell::new(SilentPickTelemetry::default());
+}
+
+pub fn resolution_silent_pick_enable() {
+    RESOLUTION_SILENT_PICK.with(|t| *t.borrow_mut() = SilentPickTelemetry::default());
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(true));
+}
+
+pub fn resolution_silent_pick_disable() -> SilentPickTelemetry {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(false));
+    RESOLUTION_SILENT_PICK.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+pub fn resolution_silent_pick_is_enabled() -> bool {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.get())
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_pick(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+    chosen_module_path: String,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_picks
+            .push(GlobalBareLcpPickSite {
+                env_module_path,
+                name,
+                candidate_count,
+                chosen_module_path,
+            });
+    });
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_tie(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_ties
+            .push(GlobalBareLcpTieSite {
+                env_module_path,
+                name,
+                candidate_count,
+            });
+    });
+}
+
+pub fn resolution_silent_pick_record_fn_parent_first_hit(
+    env_module_path: String,
+    name: String,
+    parent_match_count: i64,
+    chosen_parent_module: String,
+) {
+    let parent_match_count = parent_match_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || parent_match_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .fn_parent_first_hits
+            .push(FnParentFirstHitSite {
+                env_module_path,
+                name,
+                parent_match_count,
+                chosen_parent_module,
+            });
+    });
+}
+
+// Vec here is im's persistent Vector (one realization with the
+// interpreter's Value::List). VecCompat papers the std-Vec API deltas the
+// emitter's method rows rely on (first/push/with_capacity; join via VecJoin)
+// so emitted call sites stay identical across carriers.
+pub trait VecCompat<T> {
+    fn first(&self) -> Option<&T>;
+    fn push(&mut self, item: T);
+    fn with_capacity(capacity: usize) -> Self;
+}
+
+impl<T: Clone> VecCompat<T> for Vec<T> {
+    fn first(&self) -> Option<&T> {
+        self.front()
+    }
+    fn push(&mut self, item: T) {
+        self.push_back(item);
+    }
+    fn with_capacity(_capacity: usize) -> Self {
+        Vec::new()
+    }
+}
+
+pub trait VecJoin {
+    fn join(&self, sep: &str) -> String;
+}
+
+impl VecJoin for Vec<String> {
+    fn join(&self, sep: &str) -> String {
+        self.iter().cloned().collect::<std::vec::Vec<_>>().join(sep)
+    }
+}
+
 pub trait V2Concat {
     fn v1_concat(self, other: Self) -> Self;
 }
@@ -77,7 +220,7 @@ impl V2Concat for String {
     }
 }
 
-impl<T> V2Concat for Vec<T> {
+impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
         self.extend(other);
         self
@@ -152,7 +295,7 @@ pub fn trim(s: String) -> String {
     s.trim().to_string()
 }
 
-pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
+pub fn count<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
 
@@ -201,7 +344,7 @@ pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> {
     HashMap::new()
 }
 
-pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut map: HashMap<K, V>,
     key: K,
     value: V,
@@ -210,7 +353,7 @@ pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
     map
 }
 
-pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut base: HashMap<K, V>,
     overlay: HashMap<K, V>,
 ) -> HashMap<K, V> {
@@ -227,6 +370,12 @@ pub fn map_get<K: std::cmp::Eq + std::hash::Hash, V: Clone>(
 
 pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
+}
+
+pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+    let mut keys = map_keys(m);
+    keys.sort();
+    keys
 }
 
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
@@ -252,19 +401,19 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
-pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
+pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
     a.extend(b);
     a
 }
 
-pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> {
-    list.push(item);
+pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
+    list.push_back(item);
     list
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
-    v.push(item);
+    v.push_back(item);
     v
 }
 
@@ -274,10 +423,17 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let end = (end.max(0) as usize).min(len).max(start);
     let units = (end.saturating_sub(start)) as u64;
     record_source_chars_slice_walked(units);
-    chars[start..end]
-        .iter()
-        .filter_map(|&cp| char::from_u32(cp as u32))
-        .collect()
+    // Focus caches the current RRB chunk, so per-char access is contiguous-slice
+    // speed; a plain iter().skip(start) walks O(start) per call, which summed
+    // quadratically across a tokenize pass (profiled 2026-07-06).
+    let mut focus = chars.focus();
+    let mut out = String::with_capacity(end - start);
+    for i in start..end {
+        if let Some(ch) = char::from_u32(*focus.index(i) as u32) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn parse_int(s: String) -> Option<i64> {
@@ -314,9 +470,7 @@ pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v = (*list).clone();
-    v.reverse();
-    Rc::new(v)
+    Rc::new(list.iter().cloned().rev().collect())
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -329,9 +483,21 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    match Rc::try_unwrap(x) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    }
+}
+
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
-    Rc::make_mut(&mut v).push(item);
+    Rc::make_mut(&mut v).push_back(item);
     v
 }
 
@@ -341,6 +507,10 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
+// Every rc_* update here rides a persistent carrier (im HashMap/Vector/
+// OrdSet — one realization with the interpreter's Value::Map/List/Set), so
+// make_mut's clone arm is O(1) structural sharing and each update copies an
+// O(log n) node path — a designed update, never a degradation arm.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
@@ -548,6 +718,41 @@ fn expect_hash_digest(s: &str, arg: &str) {
     if !is_hash_digest(s) {
         panic!("{} must be a 16-char hex Hash digest", arg);
     }
+}
+
+/// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
+/// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
+/// define the segments of a natural Gantt read directly off any run log.
+///
+/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
+/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
+/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
+/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
+/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
+/// per-stage carrier that a floor witness consumes by execution (the same retirement event
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
+/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
+/// still attributable from the model path.
+pub fn trace_mark(label: String) {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static TRACE_T0: OnceLock<Instant> = OnceLock::new();
+    let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
+    let mut rss_mib = String::from("absent");
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmRSS:") {
+                if let Some(kib) = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|k| k.parse::<i64>().ok())
+                {
+                    rss_mib = (kib / 1024).to_string();
+                }
+            }
+        }
+    }
+    eprintln!("[gantt] {} t_ms={} rss_mib={}", label, ms, rss_mib);
 }
 
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`

@@ -1,7 +1,7 @@
 module v2.test.languages_consumer_census.corpus.data_decl_ratchet
 
-import v2.lens.languages_consumer_census { languages_consumer_census_live_data_decl_ratchet_holds }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_data_decl_ratchet_holds() -> Bool {
   languages_consumer_census_live_data_decl_ratchet_holds()

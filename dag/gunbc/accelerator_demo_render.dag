@@ -1,49 +1,5 @@
 module gunbc.accelerator_demo_render
 
-import std.types { String, Int, NonEmptyStr, List }
-import std.render { kv_pair, list_block }
-import std.realization {
-  Placement,
-  LocalAccelerator,
-  LocalInProcess,
-  LocalFilesystem,
-  RemoteNetwork,
-}
-import std.numerical_contract {
-  NumericalContract,
-  IntegerExact,
-  FloatApproximate,
-  FmaContractionPermitted,
-  FmaContractionRefused,
-  float_contract,
-}
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
-import gunbc.accelerator_demo_plan {
-  AcceleratorRecognitionOutcome,
-  AcceleratorRefusalReason,
-  Recognized,
-  Refused,
-  NotElementwisePure,
-  CarriesEffects,
-  FmaContractionViolatesContract,
-  AcceleratorUnsupportedNumericalDomain,
-  demo_plan_fused_op_count,
-  demo_target_label,
-  integer_exact_contract,
-}
-import gunbc.accelerator_demo_program {
-  AcceleratorDemoProgram,
-  PureElementwiseMap,
-  EffectfulElementwiseMap,
-  DataDependentGatherMap,
-  relu_mul_add_pure_program,
-  relu_mul_add_effectful_program,
-  elementwise_op_count,
-}
-import gunbc.accelerator_demo_recognizer { recognize_accelerator_program_with_contract }
-import std.approximate_field { ToNearestEven }
-import std.realization_schedule { RealizationPlan }
-import std.measure { Nano }
 
 type AcceleratorDemoPlanView {
   target: String
@@ -107,7 +63,7 @@ fn project_plan_view(
 ) -> AcceleratorDemoPlanView {
   AcceleratorDemoPlanView {
     target: demo_target_label
-    fused_op_count: demo_plan_fused_op_count(plan: plan)
+    fused_op_count: gunbc.accelerator_demo_plan.demo_plan_fused_op_count(plan: plan)
     placement_label: render_placement(placement: kernel_placement)
     target_medium: target_medium
     contract_label: render_numerical_contract(contract: contract)
@@ -178,14 +134,14 @@ fn render_outcome_line(view: AcceleratorDemoOutcomeView) -> String {
 
 fn render_plan_digest_block(view: AcceleratorDemoPlanView) -> String {
   let entries = [
-    kv_pair(key: "Target", sep: ": ", value: view.target),
-    kv_pair(key: "Fused ops", sep: ": ", value: to_string(view.fused_op_count)),
-    kv_pair(key: "Placement", sep: ": ", value: view.placement_label),
-    kv_pair(key: "Medium", sep: ": ", value: view.target_medium),
-    kv_pair(key: "Contract", sep: ": ", value: view.contract_label),
-    kv_pair(key: "Fidelity", sep: ": ", value: view.fidelity_label),
+    std.render.kv_pair(key: "Target", sep: ": ", value: view.target),
+    std.render.kv_pair(key: "Fused ops", sep: ": ", value: to_string(view.fused_op_count)),
+    std.render.kv_pair(key: "Placement", sep: ": ", value: view.placement_label),
+    std.render.kv_pair(key: "Medium", sep: ": ", value: view.target_medium),
+    std.render.kv_pair(key: "Contract", sep: ": ", value: view.contract_label),
+    std.render.kv_pair(key: "Fidelity", sep: ": ", value: view.fidelity_label),
   ]
-  list_block(header: "Accelerator demo plan", level: 0, unit: "  ", prefix: "- ", items: entries)
+  std.render.list_block(header: "Accelerator demo plan", level: 0, unit: "  ", prefix: "- ", items: entries)
 }
 
 fn witness_render_refused_carries_effects() -> Bool {
@@ -241,7 +197,7 @@ fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
   concat(
     "fused elementwise kernel: Mul -> Add -> Relu (op_count=",
     concat(
-      to_string(elementwise_op_count(program: program)),
+      to_string(gunbc.accelerator_demo_program.elementwise_op_count(program: program)),
       ")"
     )
   )
@@ -280,7 +236,7 @@ fn project_triptych_view(
   program: AcceleratorDemoProgram,
   contract: NumericalContract
 ) -> AcceleratorDemoTriptychView {
-  let outcome = recognize_accelerator_program_with_contract(
+  let outcome = gunbc.accelerator_demo_recognizer.recognize_accelerator_program_with_contract(
     program: program,
     contract: contract,
     insist_on_fma_fused_kernel: false
@@ -322,7 +278,7 @@ fn render_triptych_text(view: AcceleratorDemoTriptychView) -> String {
 fn witness_triptych_pure_program_projects_recognized_plan() -> Bool {
   let view = project_triptych_view(
     program: relu_mul_add_pure_program,
-    contract: integer_exact_contract()
+    contract: std.numerical_contract.integer_exact_contract()
   )
   match view.right {
     TriptychPlan { plan: plan } =>
@@ -334,7 +290,7 @@ fn witness_triptych_pure_program_projects_recognized_plan() -> Bool {
 fn witness_triptych_effectful_program_projects_located_refusal() -> Bool {
   let view = project_triptych_view(
     program: relu_mul_add_effectful_program,
-    contract: integer_exact_contract()
+    contract: std.numerical_contract.integer_exact_contract()
   )
   match view.right {
     TriptychPlan { plan: _ } => false
@@ -346,7 +302,7 @@ fn witness_triptych_effectful_program_projects_located_refusal() -> Bool {
 fn witness_triptych_float_permitted_projects_lossy_plan() -> Bool {
   let view = project_triptych_view(
     program: relu_mul_add_pure_program,
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+    contract: std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionPermitted)
   )
   match view.right {
     TriptychPlan { plan: plan } =>
@@ -359,7 +315,7 @@ fn witness_triptych_render_contains_three_panels() -> Bool {
   let text = render_triptych_text(
     view: project_triptych_view(
       program: relu_mul_add_pure_program,
-      contract: integer_exact_contract()
+      contract: std.numerical_contract.integer_exact_contract()
     )
   )
   string_contains(s: text, pattern: "[LEFT: Program]")
@@ -371,7 +327,7 @@ fn witness_triptych_effectful_render_shows_refusal_panel() -> Bool {
   let text = render_triptych_text(
     view: project_triptych_view(
       program: relu_mul_add_effectful_program,
-      contract: integer_exact_contract()
+      contract: std.numerical_contract.integer_exact_contract()
     )
   )
   string_contains(s: text, pattern: "refused at EffectfulElementwiseMap: CarriesEffects")

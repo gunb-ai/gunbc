@@ -1,29 +1,7 @@
 module v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects
 
-import v2.compiler.eval {
-  EffectIoEvalAbsent,
-  empty_evaluation_environment,
-  eval_bind_node_eval,
-  eval_default_interpretation,
-  eval_diagnostic,
-  eval_runtime
-}
-import v2.compiler.infer { InferredTree }
-import v2.extdeps.runtimes.v2_evaluator { v2_eval_wave1_allocate_literal }
-import v2.std.collection { Map }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Bind,
-  ComputationNode,
-  Node,
-  SyntheticOccurrence
-}
-import v2.std.runtime {
-  ValueInterpreter,
-  ValueRuntimeInterpreter
-}
-import v2.std.witness { Violates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
   let node = Node {
@@ -47,7 +25,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
     interpretation: eval_default_interpretation(),
     interpreter: ValueRuntimeInterpreter {
       interpreter: ValueInterpreter {
-        allocate_literal: v2_eval_wave1_allocate_literal
+        allocate_literal: v2_eval_allocate_literal
       }
     },
     environment: empty_evaluation_environment(),

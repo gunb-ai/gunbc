@@ -1,0 +1,80 @@
+module v2.test.claim.self_host.verdict_failure_kind_witness_test
+
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  port_locus
+}
+import v2.std.verdict {
+  BuildFailed,
+  Deferred,
+  Pass,
+  RunFailed,
+  SemanticMismatch,
+  verdict_build_failed,
+  verdict_run_failed,
+  verdict_semantic_mismatch
+}
+import v2.std.collection { Absent }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+fn sample_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: ^verdict_surface),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sample_rejected_outcome() -> Outcome<String> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: sample_diagnostic(reason: ^emit_host_build_failed))
+  }
+}
+
+fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
+  let rejected = sample_rejected_outcome()
+  let semantic = verdict_semantic_mismatch(
+    actual: rejected,
+    falsification: Absent
+  )
+  let build = verdict_build_failed(
+    actual: rejected,
+    diagnostic: sample_diagnostic(reason: ^emit_host_build_failed)
+  )
+  let run = verdict_run_failed(
+    actual: rejected,
+    diagnostic: sample_diagnostic(reason: ^emit_host_exit_not_ok)
+  )
+  match semantic {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+    && match build {
+      BuildFailed { actual: _, diagnostic: _ } => true
+      Pass => false
+      SemanticMismatch { actual: _, falsification: _ } => false
+      RunFailed { actual: _, diagnostic: _ } => false
+      Deferred { actual: _, diagnostic: _ } => false
+    }
+    && match run {
+      RunFailed { actual: _, diagnostic: _ } => true
+      Pass => false
+      SemanticMismatch { actual: _, falsification: _ } => false
+      BuildFailed { actual: _, diagnostic: _ } => false
+      Deferred { actual: _, diagnostic: _ } => false
+    }
+}
+
+test fn verdict_failure_kind_witnesses() -> Bool {
+  witness_semantic_mismatch_discriminates_from_host_failures()
+}

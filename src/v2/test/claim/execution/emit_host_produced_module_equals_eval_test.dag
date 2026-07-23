@@ -1,0 +1,74 @@
+module v2.test.execution.emit_host_produced_module_equals_eval
+
+
+import v2.compiler.ingested_fixture_arrows { ingested_add_decl_node }
+import v2.compiler.emit_host { run_test_claim_from_source_emit_vs_eval }
+import v2.compiler.emit_produced { emit_produced_module_rust }
+import v2.compiler.eval { TestClaimRun }
+import v2.extdeps.languages.rust { rust_target_model_staging }
+import v2.test.execution.emit_host_add_equals_eval {
+  emit_eval_call_primitive_five,
+  emit_eval_call_primitive_six,
+  emit_eval_subject,
+  emit_eval_verdict_is_semantic_mismatch,
+  emit_eval_verdict_is_pass
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.runtime { EvaluationEnvironment, RuntimeValue }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data produced_module_two_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
+
+fn produced_add_module_source() -> Outcome<Medium<String>> {
+  match ingested_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Accepted { value: d1, diagnostics: _ } =>
+      match ingested_add_decl_node(fn_name: ^rust_binding_fn_add2) {
+        Accepted { value: d2, diagnostics: _ } =>
+          emit_produced_module_rust(decls: [d1, d2], target: rust_target_model_staging())
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn produced_module_run(
+  cp: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_from_source_emit_vs_eval(
+    subject: emit_eval_subject(call_primitive: cp),
+    source_outcome: produced_add_module_source(),
+    target: rust_target_model_staging()
+  )
+}
+
+fn produced_module_source_matches(golden: String) -> Bool {
+  match produced_add_module_source() {
+    Accepted { value: medium, diagnostics: _ } => medium.carried == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn produced_module_two_distinct_fns_assemble() -> Bool {
+  produced_module_source_matches(golden: produced_module_two_golden)
+}
+
+test fn emit_host_produced_module_add_equals_eval_holds() -> Bool {
+  emit_eval_verdict_is_pass(run: produced_module_run(cp: emit_eval_call_primitive_five))
+}
+
+test fn emit_host_produced_module_wrong_oracle_refuses_holds() -> Bool {
+  emit_eval_verdict_is_semantic_mismatch(run: produced_module_run(cp: emit_eval_call_primitive_six))
+}
+
+test fn emit_host_produced_module_all_holds() -> Bool {
+  produced_module_two_distinct_fns_assemble()
+    && emit_host_produced_module_add_equals_eval_holds()
+    && emit_host_produced_module_wrong_oracle_refuses_holds()
+}

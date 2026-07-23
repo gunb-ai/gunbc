@@ -1,0 +1,9 @@
+module test.claim.self_host_04_infer_behavioral_witness
+
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+
+data self_host_04_infer_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip prep (04_infer): compares gunbc-emitted vs seed infer_arrow_domain_binding_heuristic_note (04_infer.dag module authority constant); --inject-fault perturbs emitted comparison (not driver flag). Full infer-tree walk deferred until emit surface greens (#6775). Live host effects — enroll when frontier flips SelfEmitted with binding."
+
+test fn self_host_04_infer_behavioral_receipt_holds() -> Bool {
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/04_infer.dag")
+}

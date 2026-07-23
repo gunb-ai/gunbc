@@ -1,0 +1,77 @@
+module extdeps.tcgplayer.pricing
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.tcgplayer.com/reference/pricing_getproductprices-1"
+  }
+}
+
+type ProductPriceRow {
+  productId: Int
+  lowPrice: Float?
+  midPrice: Float?
+  highPrice: Float?
+  marketPrice: Float?
+  directLowPrice: Float?
+  subTypeName: String?
+}
+
+data tcgplayer_pricing_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.tcgplayer.pricing",
+    decl_name: "ProductPriceRow",
+    field: WholeDeclaration
+  }
+}
+
+type ProductPricesResponse {
+  success: Bool
+  errors: List<String>?
+  results: List<ProductPriceRow>?
+}
+
+data structural_coverage_gap_pricing_operations_residual: List<String> = [
+  "sku-level pricing (GET /pricing/sku/ by sku id list) and market price by product condition id are",
+  "unmodeled; extend when the listing flow prices per-condition skus instead of products"
+]
+
+service tcgplayer.Pricing {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: bearer_token
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation GetProductPrices {
+    input {
+      bearer_token: Secret
+      product_ids: NonEmptyStr
+    }
+    output {
+      market_price: Float? from "results/0/marketPrice"
+      sub_type_name: String? from "results/0/subTypeName"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/pricing/product/\{product_ids\}"
+    }
+    response {
+      200 => ProductPricesResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+}

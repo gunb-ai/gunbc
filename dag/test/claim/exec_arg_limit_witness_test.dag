@@ -1,0 +1,45 @@
+module test.claim.exec_arg_limit_witness
+
+import std.types { Bool, String }
+import std.measure { byte_size_count }
+import extdeps.os.exec_arg_limit {
+  host_exec_arg_max_strlen,
+  host_exec_arg_max_strlen_from_page,
+  linux_execve_max_arg_strlen_page_factor,
+}
+import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_architecture_profile }
+import extdeps.runtime.architecture.aarch64_linux { aarch64_linux_architecture_profile }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data exec_arg_limit_witness_note: String = "Single-authority closure for the Linux per-argument exec ceiling. host_exec_arg_max_strlen is derived (32 * PAGE_SIZE from x86_64_linux_architecture_profile); shell.Exec.Check is the argv-embedding consumer; dispatch_shell in v1_interpreter realizes the typed refusal. witness_rust_const_mirrors_authority cross-checks the Rust seed const against the derived authority; argv_arg_limit_test::dispatch_shell_wiring_refuses_oversized_argv proves the dispatch path in-crate."
+
+data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
+
+fn witness_host_exec_arg_max_strlen_is_execve_formula() -> Bool {
+  host_exec_arg_max_strlen == host_exec_arg_max_strlen_from_page(
+    page: x86_64_linux_architecture_profile.page_size,
+    page_factor: linux_execve_max_arg_strlen_page_factor,
+  )
+}
+
+fn witness_linux_page_size_uniform_on_deploy_architectures() -> Bool {
+  byte_size_count(x86_64_linux_architecture_profile.page_size) == byte_size_count(aarch64_linux_architecture_profile.page_size)
+}
+
+fn witness_rust_const_mirrors_authority() -> Bool {
+  let src = filesystem_read(path: v1_interpreter_source_path)
+  let expected = to_string(byte_size_count(b: host_exec_arg_max_strlen))
+  string_contains(
+    s: src.content,
+    pattern: concat("HOST_ARG_MAX_STRLEN_BYTES: usize = ", concat(expected, ";")),
+  )
+}
+
+test fn exec_arg_limit_witnesses() -> Bool {
+  witness_host_exec_arg_max_strlen_is_execve_formula()
+    && witness_linux_page_size_uniform_on_deploy_architectures()
+    && witness_rust_const_mirrors_authority()
+}

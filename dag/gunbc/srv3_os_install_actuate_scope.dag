@@ -6,13 +6,13 @@ import gunbc.os_install {
   srv3_os_install_plan_autoinstall,
   fleet_install_server_specs,
 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_ubuntu_install_media_install_path }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_ubuntu_install_media_install_path }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
 import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
 import gunbc.os_install_mechanism { srv3_install_mechanism, NbdProxyVirtualMediaInstall }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, NoCloudLocal }
 import extdeps.uri { uri_wire }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr, Int, Bool, String }
 
@@ -21,8 +21,6 @@ data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
 }
 
 data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
-
-data srv3_seeded_iso_pivot_dissolution_trigger: String = "🟡 dissolve-on: srv3_autoinstall_seed_delivery_refusal — NoCloudNet fail-closed gap DISSOLVES WHEN seeded ISO path proven unattended (boot-once + SOL receipt + OS-up witness green BY EXECUTION) and consumers bind srv3_seeded_ubuntu_install_media_install_path + srv3_ubuntu_autoinstall_on_iso NoCloudLocal delivery"
 
 type AutoinstallSeedDeliveryRefusal {
   install_server_count: Int
@@ -71,20 +69,24 @@ data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold 
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: String = "🟡 partial-dissolve: srv3_os_install_actuate BMC login/boot wired through gunbc.srv3_bmc_credential_resolve — observe bmc_probe_credential_phase, resolve intent vs FactoryCredentialActive|RotatedCredentialActive, materialize via factory login or fetch_secret_ref_credential(bmc_srv3_admin_secret_ref); boot-once destructive step gated by WorkflowOperatorApproval escalation (srv3_boot_once_cd_gated); remaining debt: host_effect_apply transport (netrc/login body on disk), dissolve when live execution receipt green"
+data srv3_os_install_actuate_credential_debt_marker: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_bmc_credential_resolve",
+    decl_name: "resolve_bmc_credential",
+    field: WholeDeclaration
+  }
+}
 
 fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
-  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "srv3_bmc_credential_resolve")
-    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "fetch_secret_ref_credential")
-    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "bmc_srv3_admin_secret_ref")
+  match srv3_os_install_actuate_credential_debt_marker {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  string_contains(
-    s: srv3_os_install_actuate_credential_debt_marker as String,
-    pattern: bmc_srv3_secret_name,
-  )
-    && bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
 }
 
 fn srv3_actuator_prep_uses_seeded_autoinstall_delivery() -> Bool {

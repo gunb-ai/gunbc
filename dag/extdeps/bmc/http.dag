@@ -1,9 +1,5 @@
 module extdeps.bmc.http
 
-import std.types { NonEmptyStr, Secret }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -11,6 +7,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.dmtf.org/standards/redfish"
   }
 }
+
+data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.bmc.http",
+    decl_name: "redfish.Http",
+    field: WholeDeclaration
+  }
+}
+
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the three axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), and request-body-from-file. Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
 
 service redfish.Http {
 

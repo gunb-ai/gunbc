@@ -1,0 +1,295 @@
+module test.claim.orchestration_if_emit
+
+import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  PipelineStep,
+  If,
+  Do,
+  Run,
+  Pipeline,
+  FailFast,
+  Predicate,
+  ExitZero,
+  StrEq,
+  StrEmpty,
+  StrNonempty,
+  Not,
+  And,
+  LogMatches,
+  RedirectSpec,
+  CaptureSpec,
+  DiscardAll,
+  IgnoreFail
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, None, Rejected }
+
+data orch_if_golden_note: String = "Hand-authored goldens below are independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 pattern)."
+
+fn orch_if_streq_empty_then_golden() -> String {
+  "if [ -z \"$1\" ]; then verdict=absent; fi"
+}
+
+fn orch_if_streq_empty_then_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: StrEmpty { operand: "\"$1\"" },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "verdict=absent",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_streq_empty_then_perturbed_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: StrEmpty { operand: "\"$2\"" },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "verdict=absent",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_streq_else_golden() -> String {
+  "if [ \"$1\" = \"$2\" ]; then verdict=converged; else verdict=drifted; fi"
+}
+
+fn orch_if_streq_else_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "verdict=converged",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [
+          Do {
+            run: Run {
+              command: "verdict=drifted",
+              env: [],
+              redirect: Absent,
+              capture: Absent
+            }
+          }
+        ],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn orch_if_exit_zero_negated_golden() -> String {
+  "if ! mkdir -p \"$7\"; then echo missing; fi"
+}
+
+fn orch_if_exit_zero_negated_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: Not {
+      inner: ExitZero {
+        run: Run {
+          command: "mkdir -p \"$7\"",
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo missing",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_run_redirect_ignore_fail_golden() -> String {
+  "if (cd \"$checkout\" && git fetch --prune origin) >/dev/null 2>&1 || true; then echo ok; fi"
+}
+
+fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: ExitZero {
+      run: Run {
+        command: "(cd \"$checkout\" && git fetch --prune origin)",
+        env: [],
+        redirect: Present { value: DiscardAll },
+        capture: Present { value: IgnoreFail }
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo ok",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_log_matches_golden() -> String {
+  "if grep -qiE 'EAGAIN|Resource temporarily unavailable' \"$BUILD_LOG\"; then echo retry; fi"
+}
+
+fn orch_if_log_matches_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: LogMatches {
+      source: "\"$BUILD_LOG\"",
+      pattern: "EAGAIN|Resource temporarily unavailable"
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo retry",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_and_tests_golden() -> String {
+  "if [ -n \"$ctrl_pin\" ] && [ -n \"$dag_pin\" ]; then pin_ok=1; fi"
+}
+
+fn orch_if_and_tests_intent() -> PipelineStep {
+  v2.std.orchestration.If {
+    cond: v2.std.orchestration.And {
+      lhs: StrNonempty { operand: "\"$ctrl_pin\"" },
+      rhs: StrNonempty { operand: "\"$dag_pin\"" }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "pin_ok=1",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+test fn orch_if_streq_empty_then_holds() -> Bool {
+  match orch_emit_step(s: orch_if_streq_empty_then_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_streq_empty_then_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_streq_empty_then_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_if_streq_empty_then_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_if_streq_empty_then_golden()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_streq_else_holds() -> Bool {
+  match orch_emit_step(s: orch_if_streq_else_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_streq_else_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_exit_zero_negated_holds() -> Bool {
+  match orch_emit_step(s: orch_if_exit_zero_negated_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_exit_zero_negated_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_run_redirect_ignore_fail_holds() -> Bool {
+  match orch_emit_step(s: orch_if_run_redirect_ignore_fail_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_run_redirect_ignore_fail_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_log_matches_holds() -> Bool {
+  match orch_emit_step(s: orch_if_log_matches_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_log_matches_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_and_tests_holds() -> Bool {
+  match orch_emit_step(s: orch_if_and_tests_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_and_tests_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_band_holds() -> Bool {
+  orch_if_streq_empty_then_holds()
+    && orch_if_streq_empty_then_has_teeth_holds()
+    && orch_if_streq_else_holds()
+    && orch_if_exit_zero_negated_holds()
+    && orch_if_run_redirect_ignore_fail_holds()
+    && orch_if_log_matches_holds()
+    && orch_if_and_tests_holds()
+}
+

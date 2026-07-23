@@ -1,6 +1,9 @@
 module v2.std.fn_index
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
@@ -16,6 +19,21 @@ type FnArrowDecl {
   params: List<FnArrowParam>
 }
 
+data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.fn_index",
+    decl_name: "fn_arrow_decl_facts_live",
+    field: WholeDeclaration
+  }
+}
+
+data fn_arrow_skeleton_g2_marshal_host_scaffold_note: String = "§7 seed-retained host marshal in src/v1/stage0/src/coproduct_reflection.rs (marshal_string_literal_atom, hoist_call_arg_string_literal_edges, callee atoms on ExprCall) — SOURCE half for P1 G2 live-read call reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14). Dissolves when fn-arrow body projection is a modeled substrate fold emitting the same skeleton facts as fn_arrow_decl_facts_live, retiring the hand-Rust marshal_generic expansion."
+
 fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
   fn_arrow_decl_facts_live()
+}
+
+fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
+  fn_arrow_decl_substrate_is_whole_tree()
 }

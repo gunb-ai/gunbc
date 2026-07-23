@@ -1,9 +1,7 @@
 module v2.test.host_language_transport_script.scanner.let_bound_literal
 
-import v2.lens.host_language_transport_script {
-  transport_script_live_literal_violation_count_for_path
-}
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn scanner_let_bound_literal_red_detects_holds() -> Bool {
   transport_script_live_literal_violation_count_for_path(

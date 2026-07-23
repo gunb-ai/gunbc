@@ -1,0 +1,419 @@
+module v2.workflow.realization_runner
+
+import v2.std.algebra { contains, list_append, list_snoc_item, non_empty }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView }
+import std.measure { ByteSize, byte_size, measure_add }
+import std.types { ContentHash, Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorJob,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunRunnable,
+  ExecutorBlockedEvidence,
+  ExecutorEmptyFrontier,
+  parallel_executor_plan_from_dependencies
+}
+import v2.workflow.scheduler { scheduler_execution_dependencies }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type RunnerOrderingResult = RunnerOrderingOnly {}
+
+data runner_ordering_only: RunnerOrderingResult = RunnerOrderingOnly {}
+
+type NodeKeyedStoreEntry<V> {
+  node: Node
+  value: V
+}
+
+type NodeKeyedStore<V> {
+  entries: List<NodeKeyedStoreEntry<V>>
+}
+
+fn node_keyed_store_empty<V>() -> NodeKeyedStore<V> {
+  NodeKeyedStore { entries: [] }
+}
+
+fn node_keyed_store_has_node<V>(store: NodeKeyedStore<V>, node: Node) -> Bool {
+  fold(store.entries, init: false, f: fn(found, entry) {
+    found || (entry.node == node)
+  })
+}
+
+fn node_keyed_store_put<V>(store: NodeKeyedStore<V>, node: Node, value: V) -> NodeKeyedStore<V> {
+  NodeKeyedStore {
+    entries: list_snoc_item(
+      xs: store.entries,
+      item: NodeKeyedStoreEntry { node: node, value: value }
+    )
+  }
+}
+
+fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
+  fold(store.entries, init: 0, f: fn(count, _) { count + 1 })
+}
+
+data node_keyed_graph_artifact_note: String = "NodeKeyedGraphArtifact is the persistent/streamed form of NodeKeyedStore (the S2b store shape, landed early as the settled encoding authority — inherited from the S2a lane, bound 2026-07-10). CODEC RULING (settled): a tree codec over the Rc-shared graph un-shares every shared subtree — the resolved-graph cache write measured a ~3.4GiB working set expanding to 17GiB under serde_json::to_vec; serde-streaming and packed-binary-tree keep the unsharing, so both are WRONG. The artifact form is an interned content-keyed node table: each node encoded exactly ONCE, keyed by its content hash, children referenced BY HASH and never inline; a decode rebuilds the structural sharing. Witness homes, precisely: the SIZE/TOPOLOGY/REFUSAL witnesses (shared-row-counted-once with the tree-double-count RED, missing-ref refusals, interning check) execute in v2.test.claim.realization_runner_witness; the two SHARING witnesses are pointer-identity facts only a host realization can observe, so they execute in the seed test module src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs (decode-rebuilds-sharing via Rc ptr-eq with a deliberately unshared tree-decode RED control, and reencode-byte-identity). ROWS CARRY ROW-LOCAL FACTS ONLY (encoded body length): a stored transitive size would be a dual representation of the child_refs topology, so transitive footprint is DERIVED, never stored. The reachable-set fold node_keyed_graph_transitive_bytes IS the single value-size authority — the eval-memo byte-cap admission (extdeps.realization.eval_memo) and the space-lens predictor both bind to it, and no parallel size walk may exist anywhere. Content hashes ground on the fnv1a64 authority surfaced by std.content_hash / the v1 intrinsics (DESIGN section 3 convergence thread) — this schema must not mint a third hash surface; ContentHash here is the std.types carrier. Failure arms REFUSE, never widen: a child ref with no row refuses with the missing hash, never a fabricated size. The walk is fuel-bounded by row count and settles within the fuel by construction (each pass either visits a new interned row or empties the frontier — a visited ref is skipped, so even a cyclic row table converges to its reachable set); the Unsettled arm is the typed fail-closed backstop should that bound argument ever be violated, not a reachable state we can construct. Artifact well-formedness itself (interning — at most one row per hash — and acyclicity via child-before-parent row order) is the codec's obligation: node_keyed_graph_rows_interned checks the former, and the hash-consed single-pass decode refuses a forward or missing child ref, which makes an encoded cycle unrepresentable."
+
+data node_keyed_graph_codec_seed_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.realization_runner",
+    decl_name: "NodeKeyedGraphArtifact",
+    field: WholeDeclaration
+  }
+}
+
+data node_keyed_graph_codec_seed_note: String = "Seed-retained frontier row (DESIGN section 7: seed-retained = declared, with reason and migration trigger, never silent). The byte codec realizing NodeKeyedGraphArtifact — trait NodeKeyedGraphEncode plus node_keyed_graph_encode/node_keyed_graph_decode/node_keyed_graph_row_facts in src/v1/stage0/src/resolved_graph_cache.rs (hand-maintained registry), with its sharing witnesses in src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs — is HOST RUST because it is realization, not model: byte-level IO plus Rc pointer identity, neither expressible in the substrate today (no bytes carrier; pointer sharing is a host-realization fact the model deliberately does not carry). Reason it exists at all: the tree-codec un-sharing defect at the resolved-graph cache write (3.4GiB working set -> 17GiB encode). Dissolution trigger, concrete: when the section-4 one-grammar-both-directions emission rows extend to a binary medium (a bytes carrier + extdeps/languages-style row table for this format), the kernel becomes row-derived emission dispatched from THIS schema (RealizationDispatch via the bound declaration) and the hand-Rust retires with the seed; the sharing witnesses migrate to whatever surface can then observe rebuilt sharing. Until that trigger, the kernel rides the resolved_graph_cache.rs hand-maintained registry row and this disposition is its count."
+
+type NodeKeyedGraphRow {
+  content_hash: ContentHash
+  encoded_length: ByteSize
+  child_refs: List<ContentHash>
+}
+
+type NodeKeyedGraphArtifactEntry {
+  store_node: ContentHash
+  value_root: ContentHash
+}
+
+type NodeKeyedGraphArtifact {
+  rows: List<NodeKeyedGraphRow>
+  entries: List<NodeKeyedGraphArtifactEntry>
+}
+
+fn node_keyed_graph_contains_hash(hashes: List<ContentHash>, content_hash: ContentHash) -> Bool {
+  contains(xs: hashes, item: content_hash, eq: fn(left, right) { left == right })
+}
+
+type NodeKeyedGraphInternCheck {
+  seen: List<ContentHash>
+  interned: Bool
+}
+
+fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> Bool {
+  let checked = fold(rows, init: NodeKeyedGraphInternCheck { seen: [], interned: true }, f: fn(check, row) {
+    if node_keyed_graph_contains_hash(hashes: check.seen, content_hash: row.content_hash) {
+      NodeKeyedGraphInternCheck { seen: check.seen, interned: false }
+    } else {
+      NodeKeyedGraphInternCheck {
+        seen: list_snoc_item(xs: check.seen, item: row.content_hash),
+        interned: check.interned
+      }
+    }
+  })
+  checked.interned
+}
+
+fn node_keyed_graph_artifact_total_bytes(artifact: NodeKeyedGraphArtifact) -> ByteSize {
+  fold(artifact.rows, init: byte_size(count: 0), f: fn(total, row) {
+    measure_add(a: total, b: row.encoded_length)
+  })
+}
+
+type NodeKeyedGraphRowLookup
+  = NodeKeyedGraphRowFound { row: NodeKeyedGraphRow }
+  | NodeKeyedGraphRowMissing { content_hash: ContentHash }
+
+fn node_keyed_graph_row_lookup(rows: List<NodeKeyedGraphRow>, content_hash: ContentHash) -> NodeKeyedGraphRowLookup {
+  fold(rows, init: NodeKeyedGraphRowMissing { content_hash: content_hash }, f: fn(found, row) {
+    match found {
+      NodeKeyedGraphRowFound { row: _ } => found
+      NodeKeyedGraphRowMissing { content_hash: wanted } =>
+        if row.content_hash == wanted {
+          NodeKeyedGraphRowFound { row: row }
+        } else {
+          found
+        }
+    }
+  })
+}
+
+type NodeKeyedGraphReachState
+  = NodeKeyedGraphReachActive {
+      visited: List<ContentHash>,
+      frontier: List<ContentHash>,
+      bytes: ByteSize
+    }
+  | NodeKeyedGraphReachMissingRow { missing: ContentHash }
+
+fn node_keyed_graph_reach_step(
+  rows: List<NodeKeyedGraphRow>,
+  state: NodeKeyedGraphReachState
+) -> NodeKeyedGraphReachState {
+  match state {
+    NodeKeyedGraphReachMissingRow { missing: _ } => state
+    NodeKeyedGraphReachActive { visited: visited, frontier: frontier, bytes: bytes } =>
+      fold(frontier, init: NodeKeyedGraphReachActive { visited: visited, frontier: [], bytes: bytes }, f: fn(step_state, content_hash) {
+        match step_state {
+          NodeKeyedGraphReachMissingRow { missing: _ } => step_state
+          NodeKeyedGraphReachActive { visited: seen, frontier: next, bytes: acc } =>
+            if node_keyed_graph_contains_hash(hashes: seen, content_hash: content_hash) {
+              step_state
+            } else {
+              match node_keyed_graph_row_lookup(rows: rows, content_hash: content_hash) {
+                NodeKeyedGraphRowMissing { content_hash: missing } =>
+                  NodeKeyedGraphReachMissingRow { missing: missing }
+                NodeKeyedGraphRowFound { row: row } =>
+                  NodeKeyedGraphReachActive {
+                    visited: list_snoc_item(xs: seen, item: content_hash),
+                    frontier: list_append(left: next, right: row.child_refs),
+                    bytes: measure_add(a: acc, b: row.encoded_length)
+                  }
+              }
+            }
+        }
+      })
+  }
+}
+
+type NodeKeyedGraphTransitiveBytes
+  = NodeKeyedGraphTransitiveBytesSettled { bytes: ByteSize }
+  | NodeKeyedGraphTransitiveBytesMissingRow { missing: ContentHash }
+  | NodeKeyedGraphTransitiveBytesUnsettled { pending: List<ContentHash> }
+
+fn node_keyed_graph_transitive_bytes(
+  artifact: NodeKeyedGraphArtifact,
+  root: ContentHash
+) -> NodeKeyedGraphTransitiveBytes {
+  let seeded = node_keyed_graph_reach_step(
+    rows: artifact.rows,
+    state: NodeKeyedGraphReachActive {
+      visited: [],
+      frontier: [root],
+      bytes: byte_size(count: 0)
+    }
+  )
+  let walked = fold(artifact.rows, init: seeded, f: fn(state, _) {
+    node_keyed_graph_reach_step(rows: artifact.rows, state: state)
+  })
+  match walked {
+    NodeKeyedGraphReachMissingRow { missing: missing } =>
+      NodeKeyedGraphTransitiveBytesMissingRow { missing: missing }
+    NodeKeyedGraphReachActive { visited: _, frontier: frontier, bytes: bytes } =>
+      if non_empty(xs: frontier) {
+        NodeKeyedGraphTransitiveBytesUnsettled { pending: frontier }
+      } else {
+        NodeKeyedGraphTransitiveBytesSettled { bytes: bytes }
+      }
+  }
+}
+
+fn node_keyed_graph_entry_value_bytes(
+  artifact: NodeKeyedGraphArtifact,
+  entry: NodeKeyedGraphArtifactEntry
+) -> NodeKeyedGraphTransitiveBytes {
+  node_keyed_graph_transitive_bytes(artifact: artifact, root: entry.value_root)
+}
+
+fn runner_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+  scheduler_execution_dependencies(dependencies: dependencies)
+}
+
+fn runner_dependency_satisfied<V>(
+  dependency: DependencyView,
+  store: NodeKeyedStore<V>,
+  candidate: Node
+) -> Bool {
+  if dependency.dependent == candidate {
+    node_keyed_store_has_node(store: store, node: dependency.source)
+  } else {
+    true
+  }
+}
+
+fn runner_node_ready<V>(
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  candidate: Node
+) -> Bool {
+  fold(dependencies, init: true, f: fn(ok, dependency) {
+    ok && runner_dependency_satisfied(
+      dependency: dependency,
+      store: store,
+      candidate: candidate
+    )
+  })
+}
+
+type RunnerBlockedEvidence
+  = RunnerMissingDependency { node: Node, prerequisite: Node }
+  | RunnerExecutorBlocked { evidence: ExecutorBlockedEvidence }
+
+type RunnerMissingPrerequisite
+  = RunnerPrerequisiteNotFoundYet {}
+  | RunnerPrerequisiteMissing { node: Node }
+
+fn runner_first_missing_dependency<V>(
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  candidate: Node
+) -> Node {
+  match fold(dependencies, init: RunnerPrerequisiteNotFoundYet {}, f: fn(found, dependency) {
+    match found {
+      RunnerPrerequisiteMissing { node: _ } => found
+      RunnerPrerequisiteNotFoundYet {} =>
+        if dependency.dependent == candidate {
+          if node_keyed_store_has_node(store: store, node: dependency.source) {
+            RunnerPrerequisiteNotFoundYet {}
+          } else {
+            RunnerPrerequisiteMissing { node: dependency.source }
+          }
+        } else {
+          RunnerPrerequisiteNotFoundYet {}
+        }
+    }
+  }) {
+    RunnerPrerequisiteMissing { node: node } => node
+    RunnerPrerequisiteNotFoundYet {} => candidate
+  }
+}
+
+type RunnerDispatchOutcome<V>
+  = RunnerDispatchOk { store: NodeKeyedStore<V> }
+  | RunnerDispatchBlocked { evidence: RunnerBlockedEvidence }
+
+fn runner_dispatch_job<V>(
+  job: ExecutorJob,
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  value: V
+) -> RunnerDispatchOutcome<V> {
+  if runner_node_ready(dependencies: dependencies, store: store, candidate: job.node) {
+    RunnerDispatchOk {
+      store: node_keyed_store_put(store: store, node: job.node, value: value)
+    }
+  } else {
+    RunnerDispatchBlocked {
+      evidence: RunnerMissingDependency {
+        node: job.node,
+        prerequisite: runner_first_missing_dependency(
+          dependencies: dependencies,
+          store: store,
+          candidate: job.node
+        )
+      }
+    }
+  }
+}
+
+fn runner_dispatch_jobs<V>(
+  jobs: List<ExecutorJob>,
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  value: V
+) -> RunnerDispatchOutcome<V> {
+  fold(jobs, init: RunnerDispatchOk { store: store }, f: fn(outcome, job) {
+    match outcome {
+      RunnerDispatchOk { store: current } =>
+        runner_dispatch_job(
+          job: job,
+          dependencies: dependencies,
+          store: current,
+          value: value
+        )
+      RunnerDispatchBlocked { evidence: evidence } =>
+        RunnerDispatchBlocked { evidence: evidence }
+    }
+  })
+}
+
+fn runner_dispatch_batch<V>(
+  batch: ExecutorBatch,
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  value: V
+) -> RunnerDispatchOutcome<V> {
+  runner_dispatch_jobs(
+    jobs: batch.jobs,
+    dependencies: dependencies,
+    store: store,
+    value: value
+  )
+}
+
+fn runner_walk_batches<V>(
+  batches: List<ExecutorBatch>,
+  dependencies: List<DependencyView>,
+  store: NodeKeyedStore<V>,
+  value: V
+) -> RunnerDispatchOutcome<V> {
+  fold(batches, init: RunnerDispatchOk { store: store }, f: fn(outcome, batch) {
+    match outcome {
+      RunnerDispatchOk { store: current } =>
+        runner_dispatch_batch(
+          batch: batch,
+          dependencies: dependencies,
+          store: current,
+          value: value
+        )
+      RunnerDispatchBlocked { evidence: evidence } =>
+        RunnerDispatchBlocked { evidence: evidence }
+    }
+  })
+}
+
+type RunnerSchedulePlan<V>
+  = RunnerScheduleComplete {
+      batches: List<ExecutorBatch>,
+      store: NodeKeyedStore<V>
+    }
+  | RunnerScheduleBlocked { evidence: RunnerBlockedEvidence }
+
+fn runner_schedule_plan_from_dependencies<V>(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  value: V
+) -> RunnerSchedulePlan<V> {
+  let execution_dependencies = runner_execution_dependencies(dependencies: dependencies)
+  match parallel_executor_plan_from_dependencies(
+    nodes: nodes,
+    dependencies: dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+      match runner_walk_batches(
+        batches: batches,
+        dependencies: execution_dependencies,
+        store: node_keyed_store_empty(),
+        value: value
+      ) {
+        RunnerDispatchOk { store: store } =>
+          RunnerScheduleComplete { batches: batches, store: store }
+        RunnerDispatchBlocked { evidence: evidence } =>
+          RunnerScheduleBlocked { evidence: evidence }
+      }
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } =>
+      RunnerScheduleBlocked {
+        evidence: RunnerExecutorBlocked { evidence: ExecutorEmptyFrontier {} }
+      }
+    ExecutorRunBlocked { evidence: evidence, batches: _, scheduled: _, remaining: _ } =>
+      RunnerScheduleBlocked {
+        evidence: RunnerExecutorBlocked { evidence: evidence }
+      }
+  }
+}
+
+fn runner_schedule_store_covers_nodes<V>(
+  store: NodeKeyedStore<V>,
+  nodes: List<Node>
+) -> Bool {
+  fold(nodes, init: true, f: fn(ok, node) {
+    ok && node_keyed_store_has_node(store: store, node: node)
+  })
+}
+
+fn runner_schedule_batch_count(batches: List<ExecutorBatch>) -> Int {
+  fold(batches, init: 0, f: fn(count, _) { count + 1 })
+}
+
+fn runner_schedule_contains_batch(
+  batches: List<ExecutorBatch>,
+  batch: ExecutorBatch
+) -> Bool {
+  contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
+}

@@ -1,4 +1,0 @@
-module extdeps.fixture.external_authority_clean_https_no_anchor
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }

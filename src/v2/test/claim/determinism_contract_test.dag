@@ -1,87 +1,81 @@
 module v2.test.claim.determinism_contract_test
 
-import v2.std.collection { Absent, Present }
-import v2.std.determinism {
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.determinism {
+  Determinism,
   Deterministic,
-  HashIteration,
   NonDeterministic,
-  TimeRead,
-  determinism_class_eq,
   determinism_compose,
-  determinism_fact_for_signature,
-  determinism_primitive_in_roster,
-  determinism_primitive_lookup,
-  witness_deterministic_compose_is_deterministic,
-  witness_hash_map_keys_iter_is_hash_iteration_leak,
-  witness_nondeterministic_compose_propagates_left,
-  witness_nondeterministic_compose_propagates_right,
-  witness_pure_add_is_deterministic,
-  witness_sorted_export_set_map_keys_is_deterministic,
-  witness_unknown_primitive_absent_from_roster
+  determinism_from_perturbation
 }
+import std.perturbation { ResponseConsistent, ResponseViolation }
+import v2.std.determinism {
+  DeterminismFact,
+  determinism_fact_classification,
+  determinism_fact_signature
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
-fn rostered_classification_eq(sig: Symbol, expected: DeterminismClass) -> Bool {
-  match determinism_primitive_lookup(sig: sig) {
-    Present { value: classification } =>
-      determinism_class_eq(a: classification, b: expected)
-    Absent => false
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn example_root() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "std.resources",
+    decl_name: "Clock",
+    field: WholeDeclaration
   }
 }
 
-test fn determinism_pure_add_is_deterministic_holds() -> Bool {
-  witness_pure_add_is_deterministic
-    && rostered_classification_eq(sig: ^pure_add, expected: Deterministic)
-}
-
-test fn determinism_hash_map_keys_iter_is_hash_iteration_leak_holds() -> Bool {
-  witness_hash_map_keys_iter_is_hash_iteration_leak
-    && rostered_classification_eq(
-      sig: ^hash_map_keys_iter,
-      expected: NonDeterministic { source: HashIteration }
-    )
-}
-
-test fn determinism_unknown_primitive_absent_from_roster_holds() -> Bool {
-  witness_unknown_primitive_absent_from_roster
-}
-
-test fn determinism_compose_algebra_holds() -> Bool {
-  witness_deterministic_compose_is_deterministic
-    && witness_nondeterministic_compose_propagates_left
-    && witness_nondeterministic_compose_propagates_right
-    && determinism_class_eq(
-      a: determinism_compose(
-        outer: NonDeterministic { source: TimeRead },
-        inner: NonDeterministic { source: HashIteration }
-      ),
-      b: NonDeterministic { source: TimeRead }
-    )
-}
-
-test fn determinism_roster_5913_construction_rows_are_deterministic_holds() -> Bool {
-  witness_sorted_export_set_map_keys_is_deterministic
-    && determinism_primitive_in_roster(sig: ^unique_imported_variant_owner)
-    && determinism_primitive_in_roster(sig: ^alpha_sorted_variant_fold)
-    && determinism_primitive_in_roster(sig: ^find_struct_name_by_fields_disambiguation)
-    && rostered_classification_eq(
-      sig: ^unique_imported_variant_owner,
-      expected: Deterministic
-    )
-}
-
-test fn determinism_fact_for_signature_holds() -> Bool {
-  match determinism_fact_for_signature(sig: ^pure_add) {
-    Present { value: fact } =>
-      fact.signature == ^pure_add
-        && determinism_class_eq(a: fact.classification, b: Deterministic)
-    Absent => false
+fn det_is_deterministic(c: Determinism) -> Bool {
+  match c {
+    Deterministic => true
+    NonDeterministic { source: _ } => false
   }
 }
 
-test fn determinism_fact_for_unknown_signature_is_absent_holds() -> Bool {
-  match determinism_fact_for_signature(sig: ^unknown_determinism_roster_probe) {
-    Absent => true
-    Present { value: _ } => false
+test fn determinism_perturbation_consistent_is_deterministic() -> Bool {
+  det_is_deterministic(
+    c: determinism_from_perturbation(verdict: ResponseConsistent, reached: example_root())
+  )
+}
+
+test fn determinism_perturbation_violation_is_nondeterministic() -> Bool {
+  !det_is_deterministic(
+    c: determinism_from_perturbation(verdict: ResponseViolation, reached: example_root())
+  )
+}
+
+test fn determinism_compose_det_det_is_deterministic() -> Bool {
+  det_is_deterministic(
+    c: determinism_compose(outer: Deterministic, inner: Deterministic)
+  )
+}
+
+test fn determinism_compose_nondet_left_propagates() -> Bool {
+  !det_is_deterministic(
+    c: determinism_compose(
+      outer: NonDeterministic { source: example_root() },
+      inner: Deterministic
+    )
+  )
+}
+
+test fn determinism_compose_nondet_right_propagates() -> Bool {
+  !det_is_deterministic(
+    c: determinism_compose(
+      outer: Deterministic,
+      inner: NonDeterministic { source: example_root() }
+    )
+  )
+}
+
+test fn determinism_fact_binds_signature_and_classification() -> Bool {
+  let fact = DeterminismFact {
+    signature: ^emit_export_set,
+    classification: Deterministic
   }
+  det_is_deterministic(c: determinism_fact_classification(fact: fact))
+    && (determinism_fact_signature(fact: fact) == ^emit_export_set)
 }

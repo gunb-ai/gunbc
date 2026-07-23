@@ -23,8 +23,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data wgsl_kernel_target_medium_name: NonEmptyStr = "wgsl-compute-relu-mul-add"
 
-data wgsl_relu_mul_add_op_code_single_authority_note: String = "The fused op triplet (Mul -> Add -> Relu) is NOT re-minted here: relu_mul_add_wire_op_codes is imported from extdeps.languages.simd.kernel (§3 single authority). This WGSL module is a second EMISSION MEDIUM for the same op sequence, not a second op catalog."
-
 data wgsl_relu_mul_add_int_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<i32>;\n@group(0) @binding(1) var<storage, read> b: array<i32>;\n@group(0) @binding(2) var<storage, read> c: array<i32>;\n@group(0) @binding(3) var<storage, read_write> result: array<i32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  result[i] = max(a[i] * b[i] + c[i], 0);\n}\n"
 
 data wgsl_relu_mul_add_float_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<f32>;\n@group(0) @binding(1) var<storage, read> b: array<f32>;\n@group(0) @binding(2) var<storage, read> c: array<f32>;\n@group(0) @binding(3) var<storage, read_write> result: array<f32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  result[i] = max(a[i] * b[i] + c[i], 0.0);\n}\n"
@@ -108,9 +106,6 @@ data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold
   }
 }
 
-data wgsl_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler — a SEPARATE future PR emits the WGSL host harness (device dispatch via a GPU runtime) and dissolves these pure_dag_seam_unreachable() stubs into a target_model emit + on-silicon execution handler. Until then GPU execution is DEFERRED: these bodies are fail-closed stubs, this module is MODELING ONLY (the WGSL source strings are the emit authority)."
-
-data wgsl_kernel_source_grammar_dissolution_trigger: String = "dissolve-on: feature:dag-wgsl-grammar-ingest — the WGSL source String blobs below (wgsl_relu_mul_add_int/float_kernel_source) are a SCAFFOLD (§6): opaque emit-target authority that has not yet been lifted into substrate WGSL grammar rows. Dissolve by modeling the WGSL grammar under extdeps.languages.gpu.wgsl so the source is EMITTED (ingest ∘ emit = id) rather than carried as a String. This is DISTINCT from the host-realization dissolution (feature:dag-gpu-realization-handler): that lifts the dispatch stubs, this lifts the kernel text."
 
 data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -133,7 +128,7 @@ data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: Disposition 
 fn witness_wgsl_kernel_sources_grammar_scaffold_documented() -> Bool {
   match wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker {
     Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
-      Scaffold { dissolves_to: _, bind: _ } => wgsl_kernel_source_grammar_dissolution_trigger != ""
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
     Terminal { reason: _ } => false

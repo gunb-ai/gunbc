@@ -1,20 +1,7 @@
 module v2.test.lens_mock_totality.git_mock_totality
 
-import v2.lens.mock_totality { mock_unhandled_rejection }
-import v2.test.lens_mock_totality.witness_template {
-  mock_totality_green_holds,
-  mock_totality_red_on_omission_holds,
-  omit_consumer_handles,
-  outcome_accepted_p
-}
-import extdeps.git.mock_corpus {
-  PublishedMockCase,
-  git_published_mock_corpus
-}
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGitMock {
   tag: Symbol
@@ -22,8 +9,12 @@ type MaterializedGitMock {
 
 data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
 
+data git_phase3b_red_omit_keys: List<String> = ["git.Core.ShowTree"]
+
 fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
-  if case.operation_key == "git.Core.CurrentBranch" {
+  if case.operation_key == "git.Core.Toplevel" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_toplevel })
+  } else if case.operation_key == "git.Core.CurrentBranch" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
   } else if case.operation_key == "git.Core.RemoteBranches" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_remote_branches })
@@ -31,16 +22,28 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
   } else if case.operation_key == "git.Core.Diff" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff })
+  } else if case.operation_key == "git.Core.DiffUnified0" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_unified0 })
   } else if case.operation_key == "git.Core.DiffNameOnly" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_name_only })
   } else if case.operation_key == "git.Core.DiffNameOnlyMerge" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_name_only_merge })
+  } else if case.operation_key == "git.Core.DiffNameStatus" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_name_status })
   } else if case.operation_key == "git.Core.RevList" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list })
   } else if case.operation_key == "git.Core.RevListBefore" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list_before })
   } else if case.operation_key == "git.Core.Show" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show })
+  } else if case.operation_key == "git.Core.ShowTree" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show_tree })
+  } else if case.operation_key == "git.Core.FetchNoTags" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_fetch_no_tags })
+  } else if case.operation_key == "git.Core.FetchPrune" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_fetch_prune })
+  } else if case.operation_key == "git.Core.HeadCommitShort" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_head_commit_short })
   } else {
     mock_unhandled_rejection()
   }
@@ -58,6 +61,14 @@ fn git_omits_diff_name_only_merge_consumer_handles(case: PublishedMockCase) -> B
   )
 }
 
+fn git_omits_show_tree_consumer_handles(case: PublishedMockCase) -> Bool {
+  omit_consumer_handles(
+    case: case,
+    omit_keys: git_phase3b_red_omit_keys,
+    total_consumer_handles: git_real_consumer_handles
+  )
+}
+
 test fn git_mock_consumer_is_total_holds() -> Bool {
   mock_totality_green_holds(
     published: git_published_mock_corpus,
@@ -69,5 +80,12 @@ test fn git_mock_omitted_member_is_red_holds() -> Bool {
   mock_totality_red_on_omission_holds(
     published: git_published_mock_corpus,
     consumer_handles: git_omits_diff_name_only_merge_consumer_handles
+  )
+}
+
+test fn git_mock_omitted_show_tree_is_red_holds() -> Bool {
+  mock_totality_red_on_omission_holds(
+    published: git_published_mock_corpus,
+    consumer_handles: git_omits_show_tree_consumer_handles
   )
 }

@@ -1,0 +1,211 @@
+module gunbc.design.material
+
+import std.types { Milliseconds }
+import extdeps.color.srgb { Srgb8, srgb8_to_hsl_projection, hsl_projection_s_pct, hsl_projection_l_pct }
+data tokens_note: String = "Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together, so the gamer register is inadmissible by row. DataVizArea (review finding 4 on PR 6927, pre-modeled seam): status-dense product surfaces (node-level CI views, dashboards) need mutually distinguishable categorical series at exactly the chroma-and-brightness the quiet envelope forbids — so the envelope is AREA-SCOPED by construction: DataVizArea is the one declared exemption lane, its own admission law (distinguishability + CVD separation, cited categorical palettes) lands with its first consumer (the Dashboard archetype study), and today NO theme role projects it — the witness pins that its introduction is a conscious event, never a leak. ThemeCoherence: a Theme is a TOTAL assignment of roles to materials (theme_gaps countable, mirrors interaction coverage), each material's area class must equal the role's declared area class, and every color the page uses routes through a role var — one rule set, N themes; prefers-color-scheme selects, never forks. ContrastLaw (review finding 1, hardened 2026-07-21): theme contrast is computed WCAG relative-luminance contrast via extdeps.accessibility.wcag_contrast — the earlier HSL-lightness-gap check was a non-perceptual proxy that could green while legibility failed; text roles must clear AA normal text (4.5:1), figure/focus roles AA graphical (3:1), against BOTH canvas and surface. StillUntilTouched: MotionTrigger has no ambient variant; no animation/keyframes constructor exists."
+
+type AreaClass
+  = PointArea
+  | HairlineArea
+  | TextArea
+  | FieldArea
+  | DataVizArea
+
+type Material {
+  name: String
+  hue: Int
+  sat_pct: Int
+  light_pct: Int
+  area: AreaClass
+}
+
+fn area_max_sat(area: AreaClass) -> Int {
+  match area {
+    PointArea => 100
+    HairlineArea => 80
+    TextArea => 25
+    FieldArea => 40
+    DataVizArea => 100
+  }
+}
+
+fn area_key(area: AreaClass) -> String {
+  match area {
+    PointArea => "point"
+    HairlineArea => "hairline"
+    TextArea => "text"
+    FieldArea => "field"
+    DataVizArea => "dataviz"
+  }
+}
+
+fn quiet_envelope_hsl_pct(sat_pct: Int, light_pct: Int) -> Bool {
+  !(sat_pct > 45 && light_pct > 68)
+}
+
+fn quiet_envelope(m: Material) -> Bool {
+  quiet_envelope_hsl_pct(sat_pct: m.sat_pct, light_pct: m.light_pct)
+}
+
+fn quiet_envelope_srgb8(c: Srgb8) -> Bool {
+  let proj = srgb8_to_hsl_projection(c: c)
+  quiet_envelope_hsl_pct(sat_pct: hsl_projection_s_pct(p: proj), light_pct: hsl_projection_l_pct(p: proj))
+}
+
+fn area_exempt_from_quiet_envelope(area: AreaClass) -> Bool {
+  match area {
+    DataVizArea => true
+    PointArea => false
+    HairlineArea => false
+    TextArea => false
+    FieldArea => false
+  }
+}
+
+fn chroma_admissible(m: Material) -> Bool {
+  m.sat_pct <= area_max_sat(area: m.area)
+    && m.sat_pct >= 0
+    && m.light_pct >= 0
+    && m.light_pct <= 100
+    && (area_exempt_from_quiet_envelope(area: m.area) || quiet_envelope(m: m))
+}
+
+fn paint(m: Material) -> String {
+  join(["hsl(", to_string(m.hue), " ", to_string(m.sat_pct), "% ", to_string(m.light_pct), "%)"], "")
+}
+
+fn paint_alpha(m: Material, alpha_pct: Int) -> String {
+  join([
+    "hsl(", to_string(m.hue), " ", to_string(m.sat_pct), "% ", to_string(m.light_pct),
+    "% / ", to_string(alpha_pct), "%)",
+  ], "")
+}
+
+type TimingToken {
+  name: String
+  duration_ms: Milliseconds
+  easing: String
+}
+
+data respond_fast: TimingToken = TimingToken { name: "respond", duration_ms: 90, easing: "ease-out" }
+
+data reveal_deliberate: TimingToken = TimingToken { name: "reveal", duration_ms: 160, easing: "ease-out" }
+
+data restore_gentle: TimingToken = TimingToken { name: "restore", duration_ms: 240, easing: "ease" }
+
+data reframe_page: TimingToken = TimingToken { name: "reframe", duration_ms: 320, easing: "ease" }
+
+data timing_scale: List<TimingToken> = [respond_fast, reveal_deliberate, restore_gentle, reframe_page]
+
+type MotionTrigger
+  = OnHover
+  | OnFocusVisible
+  | OnActive
+
+fn trigger_pseudo(t: MotionTrigger) -> String {
+  match t {
+    OnHover => ":hover"
+    OnFocusVisible => ":focus-visible"
+    OnActive => ":active"
+  }
+}
+
+type CssDecl {
+  prop: String
+  value: String
+}
+
+fn decl(prop: String, value: String) -> CssDecl {
+  CssDecl { prop: prop, value: value }
+}
+
+fn transition_decl(props: String, t: TimingToken) -> CssDecl {
+  CssDecl {
+    prop: "transition",
+    value: join([props, " ", to_string(t.duration_ms), "ms ", t.easing], ""),
+  }
+}
+
+type TriggerShape
+  = SelfResponse
+  | WithinSubject { target: String }
+  | ContainerHas { container: String, target: String }
+
+type BuildRule
+  = StaticRule { selector: String, decls: List<CssDecl> }
+  | ResponseRule {
+      subject: String,
+      shape: TriggerShape,
+      trigger: MotionTrigger,
+      transition_props: String,
+      timing: TimingToken,
+      base_decls: List<CssDecl>,
+      response_decls: List<CssDecl>,
+    }
+
+fn response_base_selector(subject: String, shape: TriggerShape) -> String {
+  match shape {
+    SelfResponse => subject
+    WithinSubject { target } => join([subject, " ", target], "")
+    ContainerHas { container: _, target } => target
+  }
+}
+
+fn response_hot_selector(subject: String, shape: TriggerShape, trigger: MotionTrigger) -> String {
+  let pseudo = trigger_pseudo(t: trigger)
+  match shape {
+    SelfResponse => concat(subject, pseudo)
+    WithinSubject { target } => join([subject, pseudo, " ", target], "")
+    ContainerHas { container, target } =>
+      join([container, ":has(", subject, pseudo, ") ", target], "")
+  }
+}
+
+fn serialize_decls(decls: List<CssDecl>) -> String {
+  join(map(decls, d => join([d.prop, ": ", d.value], "")), "; ")
+}
+
+fn css_block(selector: String, decls: List<CssDecl>) -> String {
+  join([selector, " { ", serialize_decls(decls: decls), " }"], "")
+}
+
+fn serialize_rule(rule: BuildRule) -> String {
+  match rule {
+    StaticRule { selector, decls } => css_block(selector: selector, decls: decls)
+    ResponseRule { subject, shape, trigger, transition_props, timing, base_decls, response_decls } =>
+      join([
+        css_block(
+          selector: response_base_selector(subject: subject, shape: shape),
+          decls: concat(base_decls, [transition_decl(props: transition_props, t: timing)])),
+        css_block(
+          selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
+          decls: response_decls),
+      ], "\n")
+  }
+}
+
+fn serialize_rules(rules: List<BuildRule>) -> String {
+  join(map(rules, r => serialize_rule(rule: r)), "\n")
+}
+
+fn add_selector_once(selectors: List<String>, s: String) -> List<String> {
+  let found = fold(selectors, init: false, f: (acc, x) => acc || x == s)
+  if found { selectors } else { concat(selectors, [s]) }
+}
+
+fn reduced_motion_block(rules: List<BuildRule>) -> String {
+  let selectors = fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
+      add_selector_once(selectors: acc, s: response_base_selector(subject: subject, shape: shape))
+  })
+  if selectors.length() == 0 {
+    ""
+  } else {
+    join([
+      "@media (prefers-reduced-motion: reduce) { ",
+      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: "transition", value: "none")])), " "),
+      " }",
+    ], "")
+  }
+}

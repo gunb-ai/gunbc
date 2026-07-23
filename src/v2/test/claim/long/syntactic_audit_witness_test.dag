@@ -1,0 +1,48 @@
+module v2.test.long.syntactic_audit_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn syntactic_audit_runs_over_witness_roots() -> Bool {
+  return complexity_linearity_syntactic_finding_count_live() > 0
+}
+
+test fn syntactic_audit_finds_wildcard_match_arms() -> Bool {
+  return complexity_linearity_syntactic_wildcard_finding_count_live() > 0
+}
+
+test fn syntactic_audit_bites_translate_boundary_bounded() -> Bool {
+  return complexity_linearity_syntactic_site_fired_live(
+    site: "src/v2/compiler/06_translate.dag::serialize_type_expr_boundary_bounded"
+  )
+}
+
+test fn syntactic_audit_bites_tokenize_prefer_longer() -> Bool {
+  return complexity_linearity_syntactic_site_fired_live(
+    site: "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer"
+  )
+}
+
+test fn wildcard_fact_universe_is_nonempty() -> Bool {
+  return complexity_linearity_wildcard_total_live() > 0
+}
+
+test fn wildcard_triage_classifies_migration_debt() -> Bool {
+  return complexity_linearity_wildcard_migration_debt_live() > 0
+}
+
+test fn wildcard_triage_open_domain_is_proper_subset() -> Bool {
+  return complexity_linearity_wildcard_open_domain_live() < complexity_linearity_wildcard_total_live()
+}
+
+test fn wildcard_triage_eval_match_site_is_migration_debt() -> Bool {
+  return complexity_linearity_wildcard_triage_for_site(
+    site: "src/v2/compiler/05_eval.dag::eval_match_node_eval"
+  ) == "migration-debt"
+}
+
+test fn wildcard_triage_testgen_anchor_is_migration_debt() -> Bool {
+  return complexity_linearity_wildcard_triage_for_site(
+    site: "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim"
+  ) == "migration-debt"
+}

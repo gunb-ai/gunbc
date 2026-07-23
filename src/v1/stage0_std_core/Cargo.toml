@@ -1,0 +1,13 @@
+[package]
+name = "v1-stage0-std-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+im = { version = "15.1", features = ["serde"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
+v1-stage0-runtime = { path = "../stage0_runtime" }

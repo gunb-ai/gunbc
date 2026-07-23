@@ -1,0 +1,231 @@
+module v2.test.execution.pick_ingested_probe
+
+
+fn pick_probe_find_arrow(root: Node) -> Node {
+  match root.kind {
+    TypeNode { connective: Arrow } => root
+    _ =>
+      fold(root.children, init: root, f: fn(acc, e) {
+        match pick_probe_find_arrow(root: e.target).kind {
+          TypeNode { connective: Arrow } => pick_probe_find_arrow(root: e.target)
+          _ => acc
+        }
+      })
+  }
+}
+
+fn pick_probe_deep_unwrap(node: Node) -> Node {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: captured } => pick_probe_deep_unwrap(node: captured)
+    Absent =>
+      match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+        Accepted { value: child, diagnostics: _ } => pick_probe_deep_unwrap(node: child)
+        Rejected { diagnostics: _ } => node
+      }
+  }
+}
+
+fn pick_probe_int_literal_in_node_optional(node: Node) -> Optional<Node> {
+  let unwrapped = pick_probe_deep_unwrap(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    optional_present(value: unwrapped)
+  } else {
+    fold(unwrapped.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => pick_probe_int_literal_in_node_optional(node: e.target)
+      }
+    })
+  }
+}
+
+fn pick_probe_int_literal_has_magnitude_child_holds(literal: Node) -> Bool {
+  match dag_int_literal_magnitude_node_optional(node: literal) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn pick_probe_arm_int_literal_has_magnitude_child_holds(body: Node, arm_index: Int) -> Bool {
+  match list_at_optional(xs: body.children, index: arm_index) {
+    Present { value: edge } =>
+      match edge {
+        Edge { label: _, target: arm } =>
+          match pick_probe_int_literal_in_node_optional(node: arm) {
+            Present { value: literal } =>
+              pick_probe_int_literal_has_magnitude_child_holds(literal: literal)
+            Absent => false
+          }
+      }
+    Absent => false
+  }
+}
+
+fn pick_probe_module_arm_has_magnitude_child_holds(
+  module_outcome: Outcome<Node>,
+  arm_index: Int
+) -> Bool {
+  match module_outcome {
+    Accepted { value: module_root, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: module_root) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              pick_probe_arm_int_literal_has_magnitude_child_holds(body: body, arm_index: arm_index)
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_probe_find_if_expr_optional(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_if_expr {
+        optional_present(value: root)
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => pick_probe_find_if_expr_optional(root: e.target)
+          }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => pick_probe_find_if_expr_optional(root: e.target)
+        }
+      })
+  }
+}
+
+fn pick_probe_find_fn_decl_optional(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_fn_decl {
+        optional_present(value: root)
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => pick_probe_find_fn_decl_optional(root: e.target)
+          }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => pick_probe_find_fn_decl_optional(root: e.target)
+        }
+      })
+  }
+}
+
+fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) -> Optional<Node> {
+  match module_outcome {
+    Accepted { value: module_root, diagnostics: _ } =>
+      match pick_probe_find_fn_decl_optional(root: module_root) {
+        Present { value: fn_decl } =>
+          match body_lower_unwrap_captured(shell: fn_decl) {
+            Present { value: captured } =>
+              match pick_probe_find_if_expr_optional(root: captured) {
+                Present { value: if_shell } =>
+                  match body_lower_unwrap_captured(shell: if_shell) {
+                    Present { value: if_captured } =>
+                      match body_lower_if_then_arm_optional(captured: if_captured) {
+                        Present { value: then_capture } =>
+                          pick_probe_int_literal_in_node_optional(node: then_capture)
+                        Absent => Absent
+                      }
+                    Absent => Absent
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn pick_probe_normalized_has_branch_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: pick_ingested_source, file: ^pick_probe_file, rules: lm.lex) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: normalized, diagnostics: _ } =>
+              match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized)) {
+                Accepted { value: body, diagnostics: _ } =>
+                  match body.kind {
+                    ComputationNode { behavior: Branch } => true
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pick_probe_pipeline_resolves_holds() -> Bool {
+  pick_ingested_pipeline_resolves_holds()
+}
+
+test fn pick_probe_normalized_branch_holds() -> Bool {
+  pick_probe_normalized_has_branch_holds()
+}
+
+test fn pick_probe_normalized_arrow_branch_holds() -> Bool {
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
+}
+
+test fn pick_probe_swapped_arms_structural_red_holds() -> Bool {
+  pick_ingested_normalized_swapped_arms_structural_red_holds()
+}
+
+test fn pick_probe_eval_equals_holds() -> Bool {
+  pick_ingested_pick_true_executes_holds()
+    && pick_ingested_pick_false_executes_holds()
+}
+
+test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {
+  pick_probe_module_arm_has_magnitude_child_holds(
+    module_outcome: pick_ingested_resolved_module_from_source(source: pick_ingested_source),
+    arm_index: 1
+  )
+}
+
+test fn pick_probe_resolved_else_arm_has_magnitude_child_holds() -> Bool {
+  pick_probe_module_arm_has_magnitude_child_holds(
+    module_outcome: pick_ingested_resolved_module_from_source(source: pick_ingested_source),
+    arm_index: 2
+  )
+}
+
+test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
+  pick_probe_module_arm_has_magnitude_child_holds(
+    module_outcome: pick_ingested_normalized_module_from_source(source: pick_ingested_source),
+    arm_index: 1
+  )
+}
+
+test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool {
+  match pick_probe_parsed_then_arm_literal_optional(
+    module_outcome: pick_ingested_parsed_module_from_source(source: pick_ingested_source)
+  ) {
+    Present { value: literal } =>
+      pick_probe_int_literal_has_magnitude_child_holds(literal: literal)
+    Absent => false
+  }
+}

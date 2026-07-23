@@ -24,10 +24,10 @@ pub use crate::std_termination::{
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -36,7 +36,7 @@ pub enum SizeBound {
     CollectionSize { param: String },
     ParserStreamSize { witness: String },
     WorklistDrainSize { element: String },
-    TreeSize { param: String },
+    SubtreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
     ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
@@ -44,7 +44,9 @@ pub enum SizeBound {
 }
 
 pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
-    Rc::new(SizeBound::TreeSize { param: param })
+    Rc::new(SizeBound::SubtreeSize {
+        param: param.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,10 +106,10 @@ pub enum IterationPrimitive {
 }
 
 pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
-    match (*pattern).clone() {
+    match (*pattern.clone()).clone() {
         CallPattern::ChildAccessorCall { accessor: a, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: Rc::new(SizeBound::TreeSize { param: a.clone() }),
+            bound: Rc::new(SizeBound::SubtreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
@@ -174,8 +176,8 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
 }
 
 pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
-    match (*bound).clone() {
-        SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
+    match (*bound.clone()).clone() {
+        SizeBound::SubtreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
         SizeBound::ParserStreamSize { witness: w, .. } => Some(w.clone()),
         SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
@@ -187,7 +189,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
 }
 
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
-    match (*bound).clone() {
+    match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => true,
         SizeBound::ExplicitCountPositive { steps: _, .. } => true,
         SizeBound::Forever => true,
@@ -200,7 +202,7 @@ pub fn forever_iteration_bound() -> i64 {
 }
 
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
-    match (*bound).clone() {
+    match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {
             Some(positive_descent_count(s.clone()))
@@ -221,7 +223,7 @@ pub enum IterationDimension {
 }
 
 pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
-    match profile {
+    match profile.clone() {
         AlgebraProfile::FreeMonoidCollectionProfile => Some(IterationDimension::CollectionFold),
         AlgebraProfile::FreeMonoidScalarProfile => Some(IterationDimension::CollectionFold),
         AlgebraProfile::BooleanAlgebraCollectionProfile => Some(IterationDimension::CollectionFold),

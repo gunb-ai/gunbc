@@ -1,19 +1,13 @@
 module v2.workflow.phase_profile_proof_plan
 
-// Acceptance fixture for GUNBC_FLOOR_PHASE_PROFILE: single-witness plan at spawn_width=1.
-// Phase ticks are a process-global last-writer-wins sampler (not per-thread trace); width=1
-// keeps the witness deterministic. Parallel-width heartbeat semantics are covered by the
-// module doc in phase_profile.rs.
-
 import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   runnable_resource_profile_negligible
 }
-import std.measure { HardwareThreadCount, hardware_thread_count }
 import std.types { List }
 
-data phase_profile_gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
+data phase_profile_gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
 fn phase_profile_proof_batches() -> List<List<Runnable>> {
   [[
@@ -25,6 +19,3 @@ fn phase_profile_proof_batches() -> List<List<Runnable>> {
   ]]
 }
 
-fn phase_profile_proof_plan_spawn_width() -> HardwareThreadCount {
-  hardware_thread_count(count: 1)
-}

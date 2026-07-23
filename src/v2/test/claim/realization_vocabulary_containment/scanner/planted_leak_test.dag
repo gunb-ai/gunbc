@@ -1,18 +1,14 @@
 module v2.test.realization_vocabulary_containment.scanner.planted_leak
 
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_leak_count_live,
-  realization_vocab_containment_clean_live
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data planted_leak_scan_roots: List<String> = [
   "src/v2/test/fixture/realization_vocab_scan/leak"
 ]
 
 test fn realization_vocab_planted_leak_detected_holds() -> Bool {
-  (realization_vocab_leak_count_live(scan_roots: planted_leak_scan_roots) == 1)
-    && (realization_vocab_containment_clean_live(scan_roots: planted_leak_scan_roots) == false)
+  let facts = layer_import_facts_live(std_roots: planted_leak_scan_roots, extdeps_roots: [])
+  (realization_vocab_leak_count_canonical(facts: facts) == 1)
+    && (realization_vocab_containment_holds_canonical(facts: facts) == false)
 }

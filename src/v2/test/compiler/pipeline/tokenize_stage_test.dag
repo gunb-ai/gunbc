@@ -1,0 +1,14 @@
+module v2.test.compiler.pipeline.tokenize_stage
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pipeline_tokenize_stage_note: String = "Relationship witness: source text -> TokenStream. Asserts input reachability (accepts) and output reachability (declared lexemes witnessed). Fast-lane: tokenize-only eval."
+
+test fn pipeline_tokenize_add_relationship_green() -> Bool {
+  pipeline_tokenize_add_relationship_holds()
+}
+
+test fn pipeline_tokenize_pick_relationship_green() -> Bool {
+  pipeline_tokenize_pick_relationship_holds()
+}

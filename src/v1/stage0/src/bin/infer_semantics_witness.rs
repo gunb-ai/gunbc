@@ -1,8 +1,10 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::HashMap;
+use im::HashMap;
+use im::{vector as vec, Vector as Vec};
 use std::process::ExitCode;
 use std::rc::Rc;
+use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
@@ -108,7 +110,7 @@ fn resolve_imports_transitively(
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
 
-    while let Some((_path, content)) = queue.pop() {
+    while let Some((_path, content)) = queue.pop_back() {
         for module_path in extract_imports(&content) {
             if seen.contains_key(&module_path) {
                 continue;
@@ -133,7 +135,7 @@ fn resolve_imports_transitively(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
@@ -172,8 +174,8 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
-fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
-    Rc::new(std::collections::HashMap::new())
+fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    Rc::new(im::HashMap::new())
 }
 
 fn leaf_node(name: String) -> Rc<Node> {
@@ -310,12 +312,18 @@ fn unit_expr() -> Rc<Node> {
 
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::new()),
+        module_path: "".to_string(),
+        bindings: Rc::new(im::HashMap::new()),
+        str_bindings: Rc::new(im::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        inductive_fields: Rc::new(std::collections::HashMap::new()),
-        source_indices: Rc::new(std::collections::HashMap::new()),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
+        source_indices: Rc::new(im::HashMap::new()),
         intern_table: v1_compiler::v1_std_core::empty_intern_table(),
+        source_visible_names: Rc::new(im::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     })
 }
 
@@ -323,15 +331,17 @@ fn empty_infer_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: empty_type_env(),
         func_env: Rc::new(ResolvedFuncEnv {
-            local: Rc::new(std::collections::HashMap::new()),
+            name: "test".to_string(),
+            local: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
         }),
-        locals: Rc::new(std::collections::HashMap::new()),
-        match_bound_names: Rc::new(std::collections::HashMap::new()),
+        locals: Rc::new(im::HashMap::new()),
+        body_locals: Rc::new(im::HashMap::new()),
+        match_bound_names: Rc::new(im::HashMap::new()),
         module_name: "test".to_string(),
-        service_registry: Rc::new(std::collections::HashMap::new()),
-        item_registry: Rc::new(std::collections::HashMap::new()),
-        lambda_param_provenance: Rc::new(std::collections::HashMap::new()),
+        service_registry: Rc::new(im::HashMap::new()),
+        item_registry: Rc::new(im::HashMap::new()),
+        lambda_param_provenance: Rc::new(im::HashMap::new()),
     })
 }
 
@@ -657,7 +667,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
 
@@ -678,7 +688,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
 
@@ -696,7 +706,7 @@ fn optional_pattern_lookup_rejects_some_variant() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
 
@@ -715,7 +725,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
 
@@ -797,7 +807,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         1,
     );
 
@@ -880,7 +890,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         subject.clone(),
         "Present".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         1,
     );
     match present_lookup.status.as_ref() {
@@ -894,7 +904,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         subject,
         "Absent".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
     assert!(
@@ -916,7 +926,7 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
     assert!(matches!(
@@ -939,7 +949,7 @@ fn non_optional_applied_generic_missing_variant_still_fails() {
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_source_indices(),
+        empty_type_env(),
         0,
     );
     assert!(matches!(
@@ -987,12 +997,18 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
-            bindings: Rc::new(std::collections::HashMap::new()),
+            module_path: "".to_string(),
+            bindings: Rc::new(im::HashMap::new()),
+            str_bindings: Rc::new(im::HashMap::new()),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(std::collections::HashMap::new()),
-            inductive_fields: Rc::new(std::collections::HashMap::new()),
-            source_indices: Rc::new(std::collections::HashMap::new()),
+            recursive_type_set: Rc::new(im::HashMap::new()),
+            inductive_fields: Rc::new(im::HashMap::new()),
+            source_indices: Rc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
+            source_visible_names: Rc::new(im::HashMap::new()),
+            symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1009,12 +1025,18 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
-            bindings: Rc::new(std::collections::HashMap::new()),
+            module_path: "".to_string(),
+            bindings: Rc::new(im::HashMap::new()),
+            str_bindings: Rc::new(im::HashMap::new()),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(std::collections::HashMap::new()),
-            inductive_fields: Rc::new(std::collections::HashMap::new()),
-            source_indices: Rc::new(std::collections::HashMap::new()),
+            recursive_type_set: Rc::new(im::HashMap::new()),
+            inductive_fields: Rc::new(im::HashMap::new()),
+            source_indices: Rc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
+            source_visible_names: Rc::new(im::HashMap::new()),
+            symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1031,12 +1053,18 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
-            bindings: Rc::new(std::collections::HashMap::new()),
+            module_path: "".to_string(),
+            bindings: Rc::new(im::HashMap::new()),
+            str_bindings: Rc::new(im::HashMap::new()),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(std::collections::HashMap::new()),
-            inductive_fields: Rc::new(std::collections::HashMap::new()),
-            source_indices: Rc::new(std::collections::HashMap::new()),
+            recursive_type_set: Rc::new(im::HashMap::new()),
+            inductive_fields: Rc::new(im::HashMap::new()),
+            source_indices: Rc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
+            source_visible_names: Rc::new(im::HashMap::new()),
+            symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1078,20 +1106,27 @@ fn resolve_node_uses_node_name_for_lookup() {
         v1_compiler::v1_std_core::empty_intern_table(),
         "User".to_string(),
     );
+    let user_binding = Rc::new(TypeBinding {
+        name: "User".to_string(),
+        resolved: leaf_node("User".to_string()),
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    });
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::from([(
+        module_path: "".to_string(),
+        bindings: Rc::new(im::HashMap::from_iter([(
             user_intern.id,
-            Rc::new(TypeBinding {
-                name: "User".to_string(),
-                resolved: leaf_node("User".to_string()),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
+            user_binding.clone(),
         )])),
+        str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        inductive_fields: Rc::new(std::collections::HashMap::new()),
-        source_indices: Rc::new(std::collections::HashMap::new()),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
+        source_indices: Rc::new(im::HashMap::new()),
         intern_table: user_intern.table.clone(),
+        source_visible_names: Rc::new(im::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
     let result = resolve_node(node_ref, env, "test".to_string());
@@ -1588,20 +1623,27 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());
+    let box_binding = Rc::new(TypeBinding {
+        name: "Box".to_string(),
+        resolved: box_decl.clone(),
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    });
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::from([(
+        module_path: "".to_string(),
+        bindings: Rc::new(im::HashMap::from_iter([(
             box_intern.id,
-            Rc::new(TypeBinding {
-                name: "Box".to_string(),
-                resolved: box_decl.clone(),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
+            box_binding.clone(),
         )])),
+        str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
         source_indices: empty_source_indices(),
         intern_table: box_intern.table.clone(),
+        source_visible_names: Rc::new(im::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
     let box_nat = container_node("Box".to_string(), leaf_node("Nat".to_string()));

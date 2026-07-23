@@ -1,0 +1,49 @@
+module v2.test.claim.body_lowering_well_formed_wall
+
+
+data body_lowering_well_formed_wall_note: String = "Discriminating RED control for the body-lowering-is-TOTAL change (clever-hawk-862): body-lowering never hard-rejects — a well-formed body it cannot lower is wrapper-retained (counted), and normalize's well_formed gate (03_normalize.dag well_formed(normalized)) is the SOLE structural wall. This witness proves 'total' is NOT fail-open: a genuinely MALFORMED body-lowering output still gets REJECTED by well_formed. The malformed shape is an Arrow whose arrow_body_edge target is a bare Atom — NOT a valid arrow-body realization (well_formed's arrow_body_target_is_valid_realization admits only a ComputationNode or a record-construct Conj). This is exactly the shape body_lower_body_from_fn_captured must never fabricate (its no-core-substrate arm wrapper-retains instead of forcing an atom operand into the Arrow body). If well_formed were weakened to admit it, the negative witness goes red. Paired with the positive control (a Value-bodied Arrow passes), the pair discriminates the wall, by execution."
+
+fn well_formed_wall_atom(identity: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  )
+}
+
+fn well_formed_wall_malformed_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body)
+      }
+    ]
+  )
+}
+
+fn well_formed_wall_valid_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+      }
+    ]
+  )
+}
+
+test fn body_lowering_well_formed_wall_rejects_malformed_body() -> Bool {
+  !well_formed(n: well_formed_wall_malformed_arrow())
+}
+
+test fn body_lowering_well_formed_wall_accepts_valid_body() -> Bool {
+  well_formed(n: well_formed_wall_valid_arrow())
+}

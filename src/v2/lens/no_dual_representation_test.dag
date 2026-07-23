@@ -8,6 +8,8 @@ import v2.lens.no_dual_representation_test.scan {
   DualRepModuleRef,
   DualRepModuleScan,
   dual_rep_clean_holds_for_scans,
+  dual_rep_coverage_honesty_holds,
+  dual_rep_eq_site_count_from_scans,
   dual_rep_module_scans_from_fn_index,
   dual_rep_test_file_count_from_scans,
   dual_rep_violation_count_from_scans,
@@ -16,6 +18,9 @@ import v2.lens.no_dual_representation_test.scan {
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepModuleRef> {
   fold_list(
@@ -36,12 +41,29 @@ fn dual_rep_live_module_scans() -> List<DualRepModuleScan> {
   )
 }
 
+data no_dual_representation_body_partial_frontier_note: String = "body-partial frontier: live scan reads fn_arrow_decl_facts_live output skeletons only (fn_body_reflection_blocker in v2.lens.enforcement.receipts), not fn bodies; eq-sites are collected from output skeletons and data-inits only (skeleton-scoped, not full body coverage); a clean result is scoped to the examined eq-sites, not corpus cleanliness; dissolves when fn-body reflection lands via front-end ingest and symbol_index_fill"
+
 fn no_dual_representation_test_live_count() -> Int {
   dual_rep_violation_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
+fn no_dual_representation_test_live_eq_site_count() -> Int {
+  dual_rep_eq_site_count_from_scans(scans: dual_rep_live_module_scans())
+}
+
 fn no_dual_representation_test_live_file_count() -> Int {
   dual_rep_test_file_count_from_scans(scans: dual_rep_live_module_scans())
+}
+
+fn no_dual_representation_body_partial_frontier_declared() -> Bool {
+  no_dual_representation_body_partial_frontier_note != ""
+}
+
+fn no_dual_representation_test_coverage_honesty_holds() -> Bool {
+  dual_rep_coverage_honesty_holds(
+    eq_site_count: no_dual_representation_test_live_eq_site_count(),
+    frontier_declared: no_dual_representation_body_partial_frontier_declared()
+  )
 }
 
 fn no_dual_representation_test_clean_holds() -> Bool {

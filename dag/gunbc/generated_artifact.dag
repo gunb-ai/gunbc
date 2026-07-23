@@ -7,12 +7,19 @@ import gunbc.plan_registry { all_plans }
 
 type GeneratedArtifact
   = CiYamlArtifact
+  | FalsifierYamlArtifact
   | GitignoreArtifact
   | RoadmapArtifact
   | DesignArtifact
   | GithooksPrePushArtifact
+  | GithooksPreCommitArtifact
   | RunnerDeployArtifact
   | FleetConvergeArtifact
+  | Stage0CrateLayoutGeneratedDagArtifact
+  | Stage0CrateLayoutGeneratedRsArtifact
+  | Stage0CratePartitionGeneratedDagArtifact
+  | LiveDeployApplyScriptArtifact
+  | LiveDeployRetractScriptArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
   | PlanArtifact { plan: Plan }
@@ -20,7 +27,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -41,12 +48,19 @@ type CommitPolicy
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
+    FalsifierYamlArtifact => ".github/workflows/falsifier.yml"
     GitignoreArtifact => ".gitignore"
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
     GithooksPrePushArtifact => ".githooks/pre-push"
+    GithooksPreCommitArtifact => ".githooks/pre-commit"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
     FleetConvergeArtifact => ".github/fleet-converge.sh"
+    Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
+    Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+    Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
+    LiveDeployApplyScriptArtifact => ".github/live-deploy-srv1-apply.sh"
+    LiveDeployRetractScriptArtifact => ".github/live-deploy-srv1-retract.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
     ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
     PlanArtifact { plan } => plan_path(p: plan)
@@ -57,12 +71,19 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
+    GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
     RunnerDeployArtifact => NotCommitted
     FleetConvergeArtifact => CommitRequired { consumer: HostReconciler }
+    Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    LiveDeployApplyScriptArtifact => CommitRequired { consumer: HostReconciler }
+    LiveDeployRetractScriptArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
   }
@@ -82,12 +103,19 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
+    FalsifierYamlArtifact => match b { FalsifierYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
+    GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
+    Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
+    Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
+    Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
+    LiveDeployApplyScriptArtifact => match b { LiveDeployApplyScriptArtifact => true  _ => false }
+    LiveDeployRetractScriptArtifact => match b { LiveDeployRetractScriptArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }

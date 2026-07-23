@@ -1,0 +1,169 @@
+module v2.test.long.fold_lowering
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module -> normalize). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
+
+data fold_snippet: String = "module fold_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data non_fold_snippet: String = "module g_probe\n\nfn f(xs: List<Int>) -> Int {\n  g(xs, f: fn(acc, x) { acc })\n}\n"
+
+data bodyless_fold_snippet: String = "module bodyless_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0)\n}\n"
+
+fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn locate_call(root: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_primary_expr) {
+    ParseSubtreeFound { captured: call } => Present { value: call }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn ingest_and_locate(source_text: String, file: Symbol) -> Optional<Node> {
+  match ingest(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: tree } => locate_call(root: tree)
+  }
+}
+
+fn is_proven_termination(m: Multiplicity) -> Bool {
+  match m {
+    ProvenTermination { proof: _ } => true
+    RequiresTerminationProof => false
+    Bounded => false
+  }
+}
+
+fn outcome_is_rejected(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn collect_atom_identities(n: Node, acc: List<Symbol>) -> List<Symbol> {
+  let acc1 = match node_atom_identity_optional(node: n) {
+    Present { value: s } => Cons { head: s, tail: acc }
+    Absent => acc
+  }
+  fold(n.children, init: acc1, f: fn(a, e) {
+    collect_atom_identities(n: e.target, acc: a)
+  })
+}
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { s == needle }
+  })
+}
+
+fn fold_snippet_identities() -> List<Symbol> {
+  match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => Empty
+    Present { value: tree } => collect_atom_identities(n: tree, acc: Empty)
+  }
+}
+
+test fn fold_probe_ingest_is_accepted() -> Bool {
+  match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn fold_callee_name_survives_parse() -> Bool {
+  symbol_in(needle: ^fold, xs: fold_snippet_identities())
+}
+
+test fn fold_collection_name_survives_parse() -> Bool {
+  symbol_in(needle: ^xs, xs: fold_snippet_identities())
+}
+
+test fn fold_call_lowers_to_terminating_loop() -> Bool {
+  match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => false
+    Present { value: call } =>
+      match fold_call_to_loop(fold_call: call) {
+        Accepted { value: loop, diagnostics: _ } =>
+          is_proven_termination(m: loop_multiplicity(n: loop))
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn lowered_fixture_loop() -> Optional<Node> {
+  match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => Absent
+    Present { value: call } =>
+      match fold_call_to_loop(fold_call: call) {
+        Accepted { value: loop, diagnostics: _ } => Present { value: loop }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+test fn lowered_loop_binds_carrier_binder() -> Bool {
+  match lowered_fixture_loop() {
+    Absent => false
+    Present { value: loop } =>
+      match loop_carrier_binder_target(children: loop.children) {
+        Found { target: binder } =>
+          match node_atom_identity_optional(node: binder) {
+            Present { value: sym } => sym == ^acc
+            Absent => false
+          }
+        Ambiguous => false
+        Absent => false
+      }
+  }
+}
+
+test fn duplicate_carrier_edge_is_malformed() -> Bool {
+  match lowered_fixture_loop() {
+    Absent => false
+    Present { value: loop } =>
+      match loop_carrier_binder_target(children: loop.children) {
+        Found { target: binder } =>
+          !well_formed(n: node_rebuild(
+            n: loop,
+            children: list_snoc_item(
+              xs: loop.children,
+              item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+            )
+          ))
+        Ambiguous => false
+        Absent => false
+      }
+  }
+}
+
+test fn non_fold_call_refuses() -> Bool {
+  match ingest_and_locate(source_text: non_fold_snippet, file: ^g_probe_file) {
+    Absent => false
+    Present { value: call } =>
+      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+  }
+}
+
+test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+  match ingest_and_locate(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file) {
+    Absent => false
+    Present { value: call } =>
+      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+  }
+}

@@ -1,6 +1,16 @@
 module test.claim.rust_stage0_gates_witness
 
-import tools.rust_stage0_gates { path_is_rust_monolith, should_run_gates, unit_must_run }
+import tools.rust_stage0_gates {
+  path_is_rust_monolith,
+  should_run_gates,
+  unit_must_run,
+  witness_dag_only_gates_when_substrate_ready,
+  witness_empty_paths_gates_when_substrate_ready,
+  witness_declared_unit_unaffected_by_other_dag_when_substrate_ready
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn w_rs_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/src/lib.rs") }
 fn w_cargo_toml_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/Cargo.toml") }
@@ -13,20 +23,12 @@ fn w_mixed_fires() -> Bool {
   should_run_gates(paths: ["src/v2/std/text.dag", "src/v1/stage0/src/main.rs", "README.md"], git_success: true)
 }
 
-fn w_dag_only_no_fire() -> Bool {
-  should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
-}
-
 fn w_rs_substring_no_select() -> Bool {
   path_is_rust_monolith(path: "docs/notes.rs.md") == false
 }
 
 fn w_generic_config_no_select() -> Bool {
   path_is_rust_monolith(path: "docs/config.toml") == false
-}
-
-fn w_empty_no_fire() -> Bool {
-  should_run_gates(paths: [], git_success: true) == false
 }
 
 fn w_git_fail_fires() -> Bool {
@@ -37,20 +39,12 @@ fn w_closure_dag_fires() -> Bool {
   should_run_gates(paths: ["src/v2/std/node_query.dag"], git_success: true) == true
 }
 
-fn w_out_of_closure_dag_no_fire() -> Bool {
-  should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
-}
-
 fn w_undeclared_unit_must_run() -> Bool {
   unit_must_run(unit: "some_undeclared_rust_test", paths: ["src/v2/std/text.dag"]) == true
 }
 
 fn w_declared_unit_affected_by_closure_dag() -> Bool {
   unit_must_run(unit: "coproduct_reflection_conformance_test", paths: ["src/v2/std/node.dag"]) == true
-}
-
-fn w_declared_unit_unaffected_by_other_dag() -> Bool {
-  unit_must_run(unit: "coproduct_reflection_conformance_test", paths: ["src/v2/std/text.dag"]) == false
 }
 
 test fn rust_stage0_gates_witnesses() -> Bool {
@@ -61,14 +55,14 @@ test fn rust_stage0_gates_witnesses() -> Bool {
   w_cargo_config_selects() &&
   w_cargo_lock_selects() &&
   w_mixed_fires() &&
-  w_dag_only_no_fire() &&
+  witness_dag_only_gates_when_substrate_ready() &&
   w_rs_substring_no_select() &&
   w_generic_config_no_select() &&
-  w_empty_no_fire() &&
+  witness_empty_paths_gates_when_substrate_ready() &&
   w_git_fail_fires() &&
   w_closure_dag_fires() &&
-  w_out_of_closure_dag_no_fire() &&
+  witness_dag_only_gates_when_substrate_ready() &&
   w_undeclared_unit_must_run() &&
   w_declared_unit_affected_by_closure_dag() &&
-  w_declared_unit_unaffected_by_other_dag()
+  witness_declared_unit_unaffected_by_other_dag_when_substrate_ready()
 }

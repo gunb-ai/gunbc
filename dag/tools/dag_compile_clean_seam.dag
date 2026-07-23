@@ -1,0 +1,109 @@
+module tools.dag_compile_clean_seam
+
+import tools.dag_compile_clean_partition {
+  CompileCleanShardVerdict, ShardClean, ShardFailed,
+  compose_compile_clean_shard_verdicts
+}
+import tools.dag_compile_clean_seam_transport {
+  CrossShardSeamProbeResult,
+  run_cross_shard_seam_probe,
+  cross_shard_seam_class_marker,
+  cross_shard_seam_importer_entry_path,
+  cross_shard_seam_importee_entry_path
+}
+import std.types { String, Bool }
+
+type CrossShardSeamReceipt {
+  probe_ran: Bool
+  y_reds: Bool
+  x_reds: Bool
+  m_reds: Bool
+  y_names_class: Bool
+  x_names_class: Bool
+  m_names_class: Bool
+}
+
+fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
+  CrossShardSeamReceipt {
+    probe_ran: probe.probe_ran,
+    y_reds: !probe.y_exit_zero,
+    x_reds: !probe.x_exit_zero,
+    m_reds: !probe.m_exit_zero,
+    y_names_class: string_contains(s: probe.y_output, pattern: cross_shard_seam_class_marker),
+    x_names_class: string_contains(s: probe.x_output, pattern: cross_shard_seam_class_marker),
+    m_names_class: string_contains(s: probe.m_output, pattern: cross_shard_seam_class_marker)
+  }
+}
+
+fn shard_y_reds(receipt: CrossShardSeamReceipt) -> Bool {
+  receipt.y_reds && receipt.y_names_class
+}
+
+fn shard_x_reds_with_seam_attribution(receipt: CrossShardSeamReceipt) -> Bool {
+  receipt.x_reds && receipt.x_names_class
+}
+
+fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamReceipt) -> Bool {
+  receipt.m_reds && receipt.m_names_class
+}
+
+fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> CompileCleanShardVerdict {
+  let verdict_y = if shard_y_reds(receipt: receipt) {
+    ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
+  } else {
+    ShardClean
+  }
+  let verdict_x = if shard_x_reds_with_seam_attribution(receipt: receipt) {
+    ShardFailed { entry_path: cross_shard_seam_importer_entry_path }
+  } else {
+    ShardClean
+  }
+  compose_compile_clean_shard_verdicts(verdicts: [verdict_y, verdict_x])
+}
+
+fn composed_verdict_reds_and_names_cause(receipt: CrossShardSeamReceipt) -> Bool {
+  match cross_shard_seam_composed_verdict(receipt: receipt) {
+    ShardFailed { entry_path: p } => p != ""
+    ShardClean => false
+  }
+}
+
+fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamReceipt) -> Bool {
+  receipt.probe_ran
+    && shard_y_reds(receipt: receipt)
+    && shard_x_reds_with_seam_attribution(receipt: receipt)
+    && composed_verdict_reds_and_names_cause(receipt: receipt)
+    && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
+}
+
+fn witness_cross_shard_seam_preservation_holds() -> Bool {
+  witness_cross_shard_seam_preservation_holds_from(
+    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
+  )
+}
+
+fn synthetic_seam_receipt(y_reds: Bool, x_reds: Bool, m_reds: Bool, y_names: Bool, x_names: Bool, m_names: Bool) -> CrossShardSeamReceipt {
+  CrossShardSeamReceipt {
+    probe_ran: true,
+    y_reds: y_reds, x_reds: x_reds, m_reds: m_reds,
+    y_names_class: y_names, x_names_class: x_names, m_names_class: m_names
+  }
+}
+
+fn witness_seam_algebra_reds_on_synthetic_break() -> Bool {
+  witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: true, m_reds: true, y_names: true, x_names: true, m_names: true)
+  )
+}
+
+fn witness_seam_algebra_fails_closed_when_class_missing() -> Bool {
+  !witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: true, m_reds: true, y_names: true, x_names: true, m_names: false)
+  )
+}
+
+fn witness_seam_algebra_fails_closed_when_importer_silently_passes() -> Bool {
+  !witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: false, m_reds: true, y_names: true, x_names: false, m_names: true)
+  )
+}

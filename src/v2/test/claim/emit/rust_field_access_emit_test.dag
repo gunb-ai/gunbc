@@ -1,0 +1,122 @@
+module v2.test.emit.rust_field_access_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_field_access_arrow_domain_conj_node,
+  dag_field_access_arrow_with_body_fixture,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust_test {
+  rust_field_access_source_text,
+  rust_field_access_wrong_field_source_text,
+  rust_field_access_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Transform
+}
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_field_access_emit_root: Node = dag_field_access_arrow_with_body_fixture
+
+fn rust_field_access_emit_wrong_field_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^dag_token_dot)
+      },
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^dag_binding_param_r)
+      },
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_field_access_emit_wrong_field_root() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_field_access_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_field_access_emit_wrong_field_body()
+  )
+}
+
+fn rust_field_access_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_field_access_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_field_access_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_field_access_emit_facts_miss }
+  }
+}
+
+fn rust_field_access_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
+}
+
+fn rust_field_access_emit_get_accepts() -> Bool {
+  match rust_field_access_emit_from_root(
+    root: rust_field_access_emit_root,
+    target: rust_field_access_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_field_access_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
+  match rust_field_access_emit_from_root(
+    root: rust_field_access_emit_wrong_field_root(),
+    target: rust_field_access_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_field_access_wrong_field_source_text) &&
+      (source.carried != rust_field_access_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_field_access_emit_holds() -> Bool {
+  rust_field_access_emit_get_accepts() && rust_field_access_emit_wrong_field_discriminates()
+}

@@ -1,0 +1,41 @@
+module test.claim.peak_resident_measured_witness
+
+import std.logic { Bool }
+import std.types { Int }
+import std.measure { ByteSize, byte_size, byte_size_count, time_measure, One }
+import std.realization_measurement {
+  cost_account_measured_from_time_and_space,
+  space_measure_seq,
+  space_measure_par,
+  space_measure_list_seq,
+}
+import std.realization_schedule { Measured, Predicted }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition_reason: String = "peak_resident_measured_holds reads /proc/self/status (VmHWM) through the observed_peak_resident_bytes host builtin - host state outside the resolved substrate closure, the exact hidden-behind-a-builtin class the entry-text classifier cannot see (live_tree.dag) - so this row declares ReadsLiveTree and never predict-skips."
+
+data peak_resident_witness_note: String = "Witness-realization plan P1 ACCEPT: the first CostAccount.space with basis Measured produced BY EXECUTION (memory-control audit F2: RealizationMeasureEffect previously had no space-observing variant, so a Measured space fact was unproducible). The builtin fails closed when VmHWM is unavailable - the witness then errors rather than fabricating."
+
+test fn peak_resident_measured_holds() -> Bool {
+  let peak = observed_peak_resident_bytes()
+  let account = cost_account_measured_from_time_and_space(
+    time: time_measure(count: 1),
+    space: byte_size(count: peak)
+  )
+  peak > 0
+    && byte_size_count(account.space) == peak
+    && match account.basis {
+      Measured => true
+      Predicted => false
+    }
+}
+
+test fn space_seq_is_peak_not_sum_holds() -> Bool {
+  let a = byte_size(count: 5)
+  let b = byte_size(count: 3)
+  byte_size_count(space_measure_seq(a: a, b: b)) == 5
+    && byte_size_count(space_measure_par(a: a, b: b)) == 8
+    && byte_size_count(space_measure_list_seq(spaces: [a, b, byte_size(count: 4)])) == 5
+}

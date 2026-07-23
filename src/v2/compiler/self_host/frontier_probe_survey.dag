@@ -1,0 +1,164 @@
+module v2.compiler.self_host.frontier_probe_survey
+
+import v2.compiler.self_host.frontier_probe {
+  frontier_probe_emit_from_ingest
+}
+import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
+  FrontierBlockerClass,
+  FrontierProbeReceipt,
+  NameResolutionGap,
+  RealizationGap,
+  SelfEmitReady,
+  UnknownProbeCause,
+  FixtureCemented,
+  frontier_blocker_class_matches
+}
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+type FrontierGapClusterVerdict
+  = CommonRoot {
+      dominant_located_reason: Symbol,
+      dominant_module_count: Int,
+      module_count: Int
+    }
+  | HeterogeneousGaps {
+      distinct_located_reason_count: Int,
+      module_count: Int
+    }
+
+fn frontier_probe_receipt_located_reason_eq(left: Symbol, right: Symbol) -> Bool {
+  left == right
+}
+
+fn count_receipts_with_located_reason(
+  xs: List<FrontierProbeReceipt>,
+  target: Symbol
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, receipt) {
+      if frontier_probe_receipt_located_reason_eq(left: receipt.located_reason, right: target) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_receipts_with_blocker(
+  xs: List<FrontierProbeReceipt>,
+  target: FrontierBlockerClass
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, receipt) {
+      if frontier_blocker_class_matches(blocker: receipt.blocker_class, target: target) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+data frontier_probe_survey_has_unclassified_dispatch_note: String = "frontier_probe_survey_has_unclassified survives predicate dissolution because it is the existential UnknownProbeCause witness gate (any receipt still in the host-deferred / unclassified bucket), not a variant nickname for a single arm. The long-lane survey witness requires !has_unclassified before roster binding; dissolves when measured receipts eliminate the host UnknownProbeCause residue or the gate reads a typed survey-completeness carrier."
+
+fn frontier_probe_survey_has_unclassified(xs: List<FrontierProbeReceipt>) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(found, receipt) {
+      found || match receipt.blocker_class {
+        UnknownProbeCause { reason: _ } => true
+        FixtureCemented => false
+        SelfEmitReady => false
+        NameResolutionGap => false
+        EmitSurfaceGap => false
+        RealizationGap => false
+      }
+    }
+  )
+}
+
+fn frontier_probe_receipt_for_module(
+  module_path: String,
+  ingest: SourceRootIngest,
+  admission: Admission
+) -> FrontierProbeReceipt {
+  frontier_probe_emit_from_ingest(
+    module_path: module_path,
+    ingest: ingest,
+    admission: admission
+  )
+}
+
+fn frontier_probe_survey_receipt_paths_match(
+  xs: List<FrontierProbeReceipt>
+) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: true,
+    cons: fn(ok, receipt) {
+      ok && (receipt.module_path != "")
+    }
+  )
+}
+
+fn frontier_gap_clustering_from_receipts(
+  xs: List<FrontierProbeReceipt>,
+  module_count: Int
+) -> FrontierGapClusterVerdict {
+  let emit_surface_count = count_receipts_with_blocker(xs: xs, target: EmitSurfaceGap)
+  let name_resolution_count = count_receipts_with_blocker(xs: xs, target: NameResolutionGap)
+  let self_emit_ready_count = count_receipts_with_blocker(xs: xs, target: SelfEmitReady)
+  if self_emit_ready_count == module_count {
+    CommonRoot {
+      dominant_located_reason: ^probe_stage_emit_ok,
+      dominant_module_count: module_count,
+      module_count: module_count
+    }
+  } else if emit_surface_count >= name_resolution_count && emit_surface_count > 0 {
+    CommonRoot {
+      dominant_located_reason: ^measured_probe_emit_surface_gap,
+      dominant_module_count: emit_surface_count,
+      module_count: module_count
+    }
+  } else if name_resolution_count > emit_surface_count {
+    CommonRoot {
+      dominant_located_reason: ^measured_probe_name_resolution_gap,
+      dominant_module_count: name_resolution_count,
+      module_count: module_count
+    }
+  } else {
+    HeterogeneousGaps {
+      distinct_located_reason_count: module_count,
+      module_count: module_count
+    }
+  }
+}
+
+fn frontier_wave2_emit_surface_module_count(receipts: List<FrontierProbeReceipt>) -> Int {
+  count_receipts_with_blocker(xs: receipts, target: EmitSurfaceGap)
+}
+
+fn frontier_wave2_name_resolution_module_count(receipts: List<FrontierProbeReceipt>) -> Int {
+  count_receipts_with_blocker(xs: receipts, target: NameResolutionGap)
+}
+
+fn frontier_wave2_self_emit_ready_module_count(receipts: List<FrontierProbeReceipt>) -> Int {
+  count_receipts_with_blocker(xs: receipts, target: SelfEmitReady)
+}
+
+data frontier_probe_survey_dissolution_note: String = "Per-module receipts bind via host_frontier_probe_survey manifest generated by frontier_probe_survey bin; roster rows migrate from knowledge_attributed to execution_measured_seed_retained_row_from_probe_receipt when survey witness compiler_frontier_per_module_probe_survey_holds is green."
+
+data frontier_probe_survey_transport_scaffold_note: String = "SCAFFOLD (§7 seed-retained HAND-RUST, P5 gate): `frontier_probe_survey` seed bin is the host-effect loop that runs `frontier_probe_emit_from_ingest` per `compiler_frontier_sweep_order` entry (single authority on `frontier.dag`, not a parallel Rust roster). Census before=27 knowledge-attributed rows; census after=execution-measured receipts in `host_frontier_probe_survey_manifest`. Dissolves when `^migrate_when_frontier_per_module_probe_receipt_binds` lands per gunbc.plans.wave2_prep_design (census carrier §per-module facts) and the bin deletes in favor of floor-enrolled pure `.dag` transport or self-emitted survey kernel."

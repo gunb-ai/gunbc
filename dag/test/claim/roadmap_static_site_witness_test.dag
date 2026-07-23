@@ -2,7 +2,9 @@ module test.claim.roadmap_static_site_witness
 
 import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr, ContentHash }
+import std.disposition { Scaffold, Terminal }
 import extdeps.http.server { TextPlainUtf8, ApplicationJsonUtf8 }
+import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
 import gunbc.roadmap_static_site {
@@ -14,7 +16,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_static_route_authority_paths,
   served_static_route_literal_path,
   roadmap_site_readback_script,
-  roadmap_site_readback_shell_dissolution_trigger,
+  roadmap_site_readback_script_scaffold,
   roadmap_site_roadmap_md_artifact,
   roadmap_site_dispatch_json_artifact,
   roadmap_site_roadmap_url_path,
@@ -27,6 +29,9 @@ import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
   roadmap_dashboard_node_http_server_source,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)
@@ -129,21 +134,32 @@ fn witness_emitted_server_has_static_paths() -> Bool {
 }
 
 fn witness_readback_shell_marked_scaffold() -> Bool {
-  string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "dissolve-on: roadmap_site_readback_shell")
-    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "live_deploy_emit_shell_dissolution_trigger")
-    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "medium_structure_exception_roster")
+  match roadmap_site_readback_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn witness_readback_script_checks_health_and_digests() -> Bool {
   let sh = roadmap_site_readback_script(port: 8080)
   string_contains(s: sh, pattern: "/healthz")
     && string_contains(s: sh, pattern: "healthz json parse failed")
+    && string_contains(s: sh, pattern: "--connect-timeout")
+    && string_contains(s: sh, pattern: "--max-time")
     && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "digest mismatch")
     && string_contains(s: sh, pattern: "dispatch json parse failed")
     && string_contains(s: sh, pattern: "roadmap-site-receipt")
     && string_contains(s: sh, pattern: "read_back_ts=")
+}
+
+fn witness_readback_script_curls_are_wall_clock_bounded() -> Bool {
+  let sh = roadmap_site_readback_script(port: 8080)
+  let prefix = curl_localhost_bounded_get_argv_prefix()
+  string_contains(s: sh, pattern: prefix)
+    && string_contains(s: sh, pattern: "--connect-timeout 2")
+    && string_contains(s: sh, pattern: "--max-time 5")
 }
 
 fn witness_roadmap_route_is_plain_text() -> Bool {
@@ -168,5 +184,6 @@ test fn roadmap_static_site_witnesses() -> Bool {
     && witness_emitted_server_has_static_paths()
     && witness_readback_shell_marked_scaffold()
     && witness_readback_script_checks_health_and_digests()
+    && witness_readback_script_curls_are_wall_clock_bounded()
     && witness_roadmap_route_is_plain_text()
 }

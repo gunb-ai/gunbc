@@ -1,13 +1,61 @@
 module v2.lens.registry
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.algebra { count_where, for_all }
-import v2.std.collection { List }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
-type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
+type LensIdV0
+  = Complexity
+  | Cost
+  | Parallelism
+  | EffectEnumeration
+  | Idempotency
+  | Provenance
+  | UnusedParameters
+  | StructuralResolution
+  | TableDecisionTree
+  | Determinism
+  | ComplexityAccumulatorCopy
+  | ComplexityLinearityAudit
+  | ComplexityLowering
+  | Coverage
+  | DependencyFidelity
+  | Discrimination
+  | DispositionRedundancy
+  | DocReachability
+  | DuplicateComputation
+  | EffectReach
+  | MandatoryTag
+  | ExtdepsShapeTransportPolicy
+  | FactCardinality
+  | FactDensity
+  | FnFamily
+  | Grounding
+  | HostLanguageTransportScript
+  | IdenticalVariantPayload
+  | InertCarrier
+  | InertLens
+  | IntentLinearity
+  | InterfaceSummary
+  | LanguagesConsumerCensus
+  | LayeringImports
+  | LeafModelVerification
+  | LiveReadClassification
+  | MachineShape
+  | MockTotality
+  | MetaExecConfinement
+  | MutationAdequacy
+  | NonFoldResidue
+  | RealizationVocabularyContainment
+  | RosterRegistry
+  | ScheduleLens
+  | SimulatedRelationship
+  | StructuralSimilarity
+  | Subsumption
+  | Synthesis
+  | TestMigrationDebt
+  | UnitModeling
+  | Vacuity
+  | Visibility
+  | WiringLiveness
+  | WitnessCostLocality
 
 type LensModulePathV0 = Bound { path: String } | Unbound
 
@@ -74,6 +122,231 @@ data lens_registry_v0_table_decision_tree: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.table_decision_tree" }
 }
 
+data lens_registry_v0_determinism: LensRegistryEntryV0 = {
+  lens_id: Determinism
+  module_path: Bound { path: "v2.lens.determinism" }
+}
+
+data lens_registry_v0_complexity_accumulator_copy: LensRegistryEntryV0 = {
+  lens_id: ComplexityAccumulatorCopy
+  module_path: Bound { path: "v2.lens.complexity_accumulator_copy" }
+}
+
+data lens_registry_v0_complexity_linearity_audit: LensRegistryEntryV0 = {
+  lens_id: ComplexityLinearityAudit
+  module_path: Bound { path: "v2.lens.complexity_linearity_audit" }
+}
+
+data lens_registry_v0_complexity_lowering: LensRegistryEntryV0 = {
+  lens_id: ComplexityLowering
+  module_path: Bound { path: "v2.lens.complexity_lowering" }
+}
+
+data lens_registry_v0_coverage: LensRegistryEntryV0 = {
+  lens_id: Coverage
+  module_path: Bound { path: "v2.lens.coverage" }
+}
+
+data lens_registry_v0_dependency_fidelity: LensRegistryEntryV0 = {
+  lens_id: DependencyFidelity
+  module_path: Bound { path: "v2.lens.dependency_fidelity" }
+}
+
+data lens_registry_v0_discrimination: LensRegistryEntryV0 = {
+  lens_id: Discrimination
+  module_path: Bound { path: "v2.lens.discrimination" }
+}
+
+data lens_registry_v0_disposition_redundancy: LensRegistryEntryV0 = {
+  lens_id: DispositionRedundancy
+  module_path: Bound { path: "v2.lens.disposition_redundancy" }
+}
+
+data lens_registry_v0_doc_reachability: LensRegistryEntryV0 = {
+  lens_id: DocReachability
+  module_path: Bound { path: "v2.lens.doc_reachability" }
+}
+
+data lens_registry_v0_duplicate_computation: LensRegistryEntryV0 = {
+  lens_id: DuplicateComputation
+  module_path: Bound { path: "v2.lens.duplicate_computation" }
+}
+
+data lens_registry_v0_effect_reach: LensRegistryEntryV0 = {
+  lens_id: EffectReach
+  module_path: Bound { path: "v2.lens.effect_reach" }
+}
+
+data lens_registry_v0_mandatory_tag: LensRegistryEntryV0 = {
+  lens_id: MandatoryTag
+  module_path: Bound { path: "v2.lens.mandatory_tag" }
+}
+
+data lens_registry_v0_extdeps_shape_transport_policy: LensRegistryEntryV0 = {
+  lens_id: ExtdepsShapeTransportPolicy
+  module_path: Bound { path: "v2.lens.extdeps_shape_transport_policy" }
+}
+
+data lens_registry_v0_fact_cardinality: LensRegistryEntryV0 = {
+  lens_id: FactCardinality
+  module_path: Bound { path: "v2.lens.fact_cardinality" }
+}
+
+data lens_registry_v0_fact_density: LensRegistryEntryV0 = {
+  lens_id: FactDensity
+  module_path: Bound { path: "v2.lens.fact_density" }
+}
+
+data lens_registry_v0_fn_family: LensRegistryEntryV0 = {
+  lens_id: FnFamily
+  module_path: Bound { path: "v2.lens.fn_family" }
+}
+
+data lens_registry_v0_grounding: LensRegistryEntryV0 = {
+  lens_id: Grounding
+  module_path: Bound { path: "v2.lens.grounding" }
+}
+
+data lens_registry_v0_host_language_transport_script: LensRegistryEntryV0 = {
+  lens_id: HostLanguageTransportScript
+  module_path: Bound { path: "v2.lens.host_language_transport_script" }
+}
+
+data lens_registry_v0_identical_variant_payload: LensRegistryEntryV0 = {
+  lens_id: IdenticalVariantPayload
+  module_path: Bound { path: "v2.lens.identical_variant_payload" }
+}
+
+data lens_registry_v0_inert_carrier: LensRegistryEntryV0 = {
+  lens_id: InertCarrier
+  module_path: Bound { path: "v2.lens.inert_carrier" }
+}
+
+data lens_registry_v0_inert_lens: LensRegistryEntryV0 = {
+  lens_id: InertLens
+  module_path: Bound { path: "v2.lens.inert_lens" }
+}
+
+data lens_registry_v0_intent_linearity: LensRegistryEntryV0 = {
+  lens_id: IntentLinearity
+  module_path: Bound { path: "v2.lens.intent_linearity" }
+}
+
+data lens_registry_v0_interface_summary: LensRegistryEntryV0 = {
+  lens_id: InterfaceSummary
+  module_path: Bound { path: "v2.lens.interface_summary" }
+}
+
+data lens_registry_v0_languages_consumer_census: LensRegistryEntryV0 = {
+  lens_id: LanguagesConsumerCensus
+  module_path: Bound { path: "v2.lens.languages_consumer_census" }
+}
+
+data lens_registry_v0_layering_imports: LensRegistryEntryV0 = {
+  lens_id: LayeringImports
+  module_path: Bound { path: "v2.lens.layering_imports" }
+}
+
+data lens_registry_v0_leaf_model_verification: LensRegistryEntryV0 = {
+  lens_id: LeafModelVerification
+  module_path: Bound { path: "v2.lens.leaf_model_verification" }
+}
+
+data lens_registry_v0_live_read_classification: LensRegistryEntryV0 = {
+  lens_id: LiveReadClassification
+  module_path: Bound { path: "v2.lens.live_read_classification" }
+}
+
+data lens_registry_v0_machine_shape: LensRegistryEntryV0 = {
+  lens_id: MachineShape
+  module_path: Bound { path: "v2.lens.machine_shape" }
+}
+
+data lens_registry_v0_meta_exec_confinement: LensRegistryEntryV0 = {
+  lens_id: MetaExecConfinement
+  module_path: Bound { path: "v2.lens.meta_exec_confinement" }
+}
+
+data lens_registry_v0_mock_totality: LensRegistryEntryV0 = {
+  lens_id: MockTotality
+  module_path: Bound { path: "v2.lens.mock_totality" }
+}
+
+data lens_registry_v0_mutation_adequacy: LensRegistryEntryV0 = {
+  lens_id: MutationAdequacy
+  module_path: Bound { path: "v2.lens.mutation_adequacy" }
+}
+
+data lens_registry_v0_non_fold_residue: LensRegistryEntryV0 = {
+  lens_id: NonFoldResidue
+  module_path: Bound { path: "v2.lens.non_fold_residue" }
+}
+
+data lens_registry_v0_realization_vocabulary_containment: LensRegistryEntryV0 = {
+  lens_id: RealizationVocabularyContainment
+  module_path: Bound { path: "v2.lens.realization_vocabulary_containment" }
+}
+
+data lens_registry_v0_schedule_lens: LensRegistryEntryV0 = {
+  lens_id: ScheduleLens
+  module_path: Bound { path: "v2.lens.schedule_lens" }
+}
+
+data lens_registry_v0_simulated_relationship: LensRegistryEntryV0 = {
+  lens_id: SimulatedRelationship
+  module_path: Bound { path: "v2.lens.simulated_relationship" }
+}
+
+data lens_registry_v0_structural_similarity: LensRegistryEntryV0 = {
+  lens_id: StructuralSimilarity
+  module_path: Bound { path: "v2.lens.structural_similarity" }
+}
+
+data lens_registry_v0_subsumption: LensRegistryEntryV0 = {
+  lens_id: Subsumption
+  module_path: Bound { path: "v2.lens.subsumption" }
+}
+
+data lens_registry_v0_synthesis: LensRegistryEntryV0 = {
+  lens_id: Synthesis
+  module_path: Bound { path: "v2.lens.synthesis" }
+}
+
+data lens_registry_v0_test_migration_debt: LensRegistryEntryV0 = {
+  lens_id: TestMigrationDebt
+  module_path: Bound { path: "v2.lens.test_migration_debt" }
+}
+
+data lens_registry_v0_unit_modeling: LensRegistryEntryV0 = {
+  lens_id: UnitModeling
+  module_path: Bound { path: "v2.lens.unit_modeling" }
+}
+
+data lens_registry_v0_vacuity: LensRegistryEntryV0 = {
+  lens_id: Vacuity
+  module_path: Bound { path: "v2.lens.vacuity" }
+}
+
+data lens_registry_v0_visibility: LensRegistryEntryV0 = {
+  lens_id: Visibility
+  module_path: Bound { path: "v2.lens.visibility" }
+}
+
+data lens_registry_v0_wiring_liveness: LensRegistryEntryV0 = {
+  lens_id: WiringLiveness
+  module_path: Bound { path: "v2.lens.wiring_liveness" }
+}
+
+data lens_registry_v0_witness_cost_locality: LensRegistryEntryV0 = {
+  lens_id: WitnessCostLocality
+  module_path: Bound { path: "v2.lens.witness_cost_locality" }
+}
+
+data lens_registry_v0_roster_registry: LensRegistryEntryV0 = {
+  lens_id: RosterRegistry
+  module_path: Bound { path: "v2.lens.roster_registry" }
+}
+
 data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_complexity,
   lens_registry_v0_cost,
@@ -83,7 +356,52 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_provenance,
   lens_registry_v0_unused_parameters,
   lens_registry_v0_structural_resolution,
-  lens_registry_v0_table_decision_tree
+  lens_registry_v0_table_decision_tree,
+  lens_registry_v0_determinism,
+  lens_registry_v0_complexity_accumulator_copy,
+  lens_registry_v0_complexity_linearity_audit,
+  lens_registry_v0_complexity_lowering,
+  lens_registry_v0_coverage,
+  lens_registry_v0_dependency_fidelity,
+  lens_registry_v0_discrimination,
+  lens_registry_v0_disposition_redundancy,
+  lens_registry_v0_doc_reachability,
+  lens_registry_v0_duplicate_computation,
+  lens_registry_v0_effect_reach,
+  lens_registry_v0_mandatory_tag,
+  lens_registry_v0_extdeps_shape_transport_policy,
+  lens_registry_v0_fact_cardinality,
+  lens_registry_v0_fact_density,
+  lens_registry_v0_fn_family,
+  lens_registry_v0_grounding,
+  lens_registry_v0_host_language_transport_script,
+  lens_registry_v0_identical_variant_payload,
+  lens_registry_v0_inert_carrier,
+  lens_registry_v0_inert_lens,
+  lens_registry_v0_intent_linearity,
+  lens_registry_v0_interface_summary,
+  lens_registry_v0_languages_consumer_census,
+  lens_registry_v0_layering_imports,
+  lens_registry_v0_leaf_model_verification,
+  lens_registry_v0_live_read_classification,
+  lens_registry_v0_machine_shape,
+  lens_registry_v0_meta_exec_confinement,
+  lens_registry_v0_mock_totality,
+  lens_registry_v0_mutation_adequacy,
+  lens_registry_v0_non_fold_residue,
+  lens_registry_v0_realization_vocabulary_containment,
+  lens_registry_v0_roster_registry,
+  lens_registry_v0_schedule_lens,
+  lens_registry_v0_simulated_relationship,
+  lens_registry_v0_structural_similarity,
+  lens_registry_v0_subsumption,
+  lens_registry_v0_synthesis,
+  lens_registry_v0_test_migration_debt,
+  lens_registry_v0_unit_modeling,
+  lens_registry_v0_vacuity,
+  lens_registry_v0_visibility,
+  lens_registry_v0_wiring_liveness,
+  lens_registry_v0_witness_cost_locality
 ]
 
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
@@ -122,6 +440,186 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     TableDecisionTree => match right {
       TableDecisionTree => true
+      _ => false
+    }
+    Determinism => match right {
+      Determinism => true
+      _ => false
+    }
+    ComplexityAccumulatorCopy => match right {
+      ComplexityAccumulatorCopy => true
+      _ => false
+    }
+    ComplexityLinearityAudit => match right {
+      ComplexityLinearityAudit => true
+      _ => false
+    }
+    ComplexityLowering => match right {
+      ComplexityLowering => true
+      _ => false
+    }
+    Coverage => match right {
+      Coverage => true
+      _ => false
+    }
+    DependencyFidelity => match right {
+      DependencyFidelity => true
+      _ => false
+    }
+    Discrimination => match right {
+      Discrimination => true
+      _ => false
+    }
+    DispositionRedundancy => match right {
+      DispositionRedundancy => true
+      _ => false
+    }
+    DocReachability => match right {
+      DocReachability => true
+      _ => false
+    }
+    DuplicateComputation => match right {
+      DuplicateComputation => true
+      _ => false
+    }
+    EffectReach => match right {
+      EffectReach => true
+      _ => false
+    }
+    MandatoryTag => match right {
+      MandatoryTag => true
+      _ => false
+    }
+    ExtdepsShapeTransportPolicy => match right {
+      ExtdepsShapeTransportPolicy => true
+      _ => false
+    }
+    FactCardinality => match right {
+      FactCardinality => true
+      _ => false
+    }
+    FactDensity => match right {
+      FactDensity => true
+      _ => false
+    }
+    FnFamily => match right {
+      FnFamily => true
+      _ => false
+    }
+    Grounding => match right {
+      Grounding => true
+      _ => false
+    }
+    HostLanguageTransportScript => match right {
+      HostLanguageTransportScript => true
+      _ => false
+    }
+    IdenticalVariantPayload => match right {
+      IdenticalVariantPayload => true
+      _ => false
+    }
+    InertCarrier => match right {
+      InertCarrier => true
+      _ => false
+    }
+    InertLens => match right {
+      InertLens => true
+      _ => false
+    }
+    IntentLinearity => match right {
+      IntentLinearity => true
+      _ => false
+    }
+    InterfaceSummary => match right {
+      InterfaceSummary => true
+      _ => false
+    }
+    LanguagesConsumerCensus => match right {
+      LanguagesConsumerCensus => true
+      _ => false
+    }
+    LayeringImports => match right {
+      LayeringImports => true
+      _ => false
+    }
+    LeafModelVerification => match right {
+      LeafModelVerification => true
+      _ => false
+    }
+    LiveReadClassification => match right {
+      LiveReadClassification => true
+      _ => false
+    }
+    MachineShape => match right {
+      MachineShape => true
+      _ => false
+    }
+    MetaExecConfinement => match right {
+      MetaExecConfinement => true
+      _ => false
+    }
+    MockTotality => match right {
+      MockTotality => true
+      _ => false
+    }
+    MutationAdequacy => match right {
+      MutationAdequacy => true
+      _ => false
+    }
+    NonFoldResidue => match right {
+      NonFoldResidue => true
+      _ => false
+    }
+    RealizationVocabularyContainment => match right {
+      RealizationVocabularyContainment => true
+      _ => false
+    }
+    RosterRegistry => match right {
+      RosterRegistry => true
+      _ => false
+    }
+    ScheduleLens => match right {
+      ScheduleLens => true
+      _ => false
+    }
+    SimulatedRelationship => match right {
+      SimulatedRelationship => true
+      _ => false
+    }
+    StructuralSimilarity => match right {
+      StructuralSimilarity => true
+      _ => false
+    }
+    Subsumption => match right {
+      Subsumption => true
+      _ => false
+    }
+    Synthesis => match right {
+      Synthesis => true
+      _ => false
+    }
+    TestMigrationDebt => match right {
+      TestMigrationDebt => true
+      _ => false
+    }
+    UnitModeling => match right {
+      UnitModeling => true
+      _ => false
+    }
+    Vacuity => match right {
+      Vacuity => true
+      _ => false
+    }
+    Visibility => match right {
+      Visibility => true
+      _ => false
+    }
+    WiringLiveness => match right {
+      WiringLiveness => true
+      _ => false
+    }
+    WitnessCostLocality => match right {
+      WitnessCostLocality => true
       _ => false
     }
   }

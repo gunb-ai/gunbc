@@ -1,16 +1,13 @@
 module v2.lens.enforcement.vocab
 
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.algebra { for_all, contains }
 
 type SubjectRoster {
-  entries: List<String>
+  entries: List<QualifiedName>
 }
 
-data subject_roster_string_dissolution_trigger: String = "🟡 dissolve-on: SubjectRoster modeled as List<String> (StandingIntent.required_subjects + desired_scope + CoverageReceipt.discovered_subjects), not List<QualifiedName> as enforcement-intent-design SS12 sketched — a residue of when std qualified_name_from_dotted_string was an infinite-recursion OOM stub (gunb-ai/gunbc#6169, since fixed). #6169 is now grounded and QualifiedName is FreeMonoid<Symbol>, so the blocker is cleared: DISSOLVES BY restoring required_subjects to List<QualifiedName> and comparing against the discovered set via structural ==."
+type ScopeRoster {
+  roots: List<String>
+}
 
 type EnforcementMode = Advisory | AuditOnly | Blocking
 
@@ -23,6 +20,10 @@ type ConsumerRequirement
   | OneOf { acceptable: List<ConsumerKind> }
   | Exact { kind: ConsumerKind }
 
+type ConsumerWitnessBinding
+  = BoundConsumerWitness { witness: ScheduleWitnessEntry }
+  | NoConsumerWitness
+
 type NarrowingReason
   = BootstrapBlocked { blocker: String }
   | TypeReflectionUnavailable { blocker: String }
@@ -31,7 +32,7 @@ type NarrowingReason
 
 type ScopeSatisfaction
   = ScopeCovers
-  | ScopeNarrowed { missing: SubjectRoster, reason: NarrowingReason }
+  | ScopeNarrowed { missing: ScopeRoster, reason: NarrowingReason }
   | ScopeMissing
 
 type RedControlStatus
@@ -41,12 +42,6 @@ type SelfApplicationStatus
   = SelfAppliesObserved | SelfExemptObserved { reason: String } | SelfApplicationAbsent
 
 type ReceiptRef = HasReceiptRef { ref: String } | NoReceiptRef
-
-type Timestamp {
-  iso: String
-}
-
-data timestamp_iso_anemia_dissolution_trigger: String = "🟡 dissolve-on: Timestamp.iso is an anemic String leaf (DESIGN §2 deep decomposition: year/month/day/hour/… ground into std.measure). On-ledger via standing_intent_model_anemia_repo_wide (task E), not silent debt. DISSOLVES WHEN a std.measure-side wall-clock-instant carrier exists: Timestamp reuses it and iso becomes a rendering, not the authority."
 
 fn mode_rank(m: EnforcementMode) -> Int {
   match m {
@@ -115,7 +110,14 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
   }
 }
 
-data narrowing_reason_same_variant_dissolution_trigger: String = "🟡 dissolve-on: narrowing_reason_same_variant hand-rolls a 4×4 nested-match tag-equality over NarrowingReason (DESIGN §4 predicate/walker: one closed decision procedure, not per-shape recursion). No canonical variant-tag surface exists in std yet. DISSOLVES WHEN gunb-ai/gunbc#6172 lands a canonical variant_tag_eq / discriminator surface: replace the 16 arms with variant_tag_eq(a, b) and delete this fn."
+data narrowing_reason_same_variant_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.enforcement.vocab",
+    decl_name: "narrowing_reason_same_variant",
+    field: WholeDeclaration
+  }
+}
 
 fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool {
   match a {
@@ -150,6 +152,14 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
 fn subject_roster_covers(claimed: SubjectRoster, desired: SubjectRoster) -> Bool {
-  for_all(xs: desired.entries, predicate: fn(r) { contains(xs: claimed.entries, item: r, eq: string_eq) })
+  for_all(xs: desired.entries, predicate: fn(r) { contains(xs: claimed.entries, item: r, eq: qualified_name_eq) })
+}
+
+fn scope_roster_covers(claimed: ScopeRoster, desired: ScopeRoster) -> Bool {
+  for_all(xs: desired.roots, predicate: fn(r) { contains(xs: claimed.roots, item: r, eq: string_eq) })
 }

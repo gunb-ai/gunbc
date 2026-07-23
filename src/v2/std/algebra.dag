@@ -1,47 +1,28 @@
 module v2.std.algebra
 
 import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-type Magma<T> {
-  op: fn(T, T) -> T
-}
-type Semigroup<T> {
-  magma: Magma<T>
-}
-type Monoid<T> {
-  semigroup: Semigroup<T>
-  identity: T
-}
-type CommutativeMonoid<T> {
-  monoid: Monoid<T>
-}
-type Group<T> {
-  monoid: Monoid<T>
-  inverse: fn(T) -> T
-}
-type AbelianGroup<T> {
-  group: Group<T>
-}
-type Semiring<T> {
-  add: CommutativeMonoid<T>
-  mul: Monoid<T>
-}
-type CommutativeSemiring<T> {
-  semiring: Semiring<T>
-}
-type Ring<T> {
-  add: AbelianGroup<T>
-  mul: Monoid<T>
-}
-type CommutativeRing<T> {
-  ring: Ring<T>
-}
-type OrderedRing<T> {
-  ring: Ring<T>
-  compare: fn(T, T) -> Ordering
-}
-type Field<T> {
-  commutative_ring: CommutativeRing<T>
-  reciprocal: fn(T) -> T
+import std.algebra {
+  AbelianGroup,
+  BooleanAlgebra,
+  BoundedLattice,
+  CommutativeMonoid,
+  CommutativeSemiring,
+  Cons,
+  Empty,
+  Equal,
+  Field,
+  FreeMonoid,
+  Greater,
+  Group,
+  Lattice,
+  Less,
+  Magma,
+  Monoid,
+  OrderedRing,
+  Ordering,
+  Ring,
+  Semigroup,
+  Semiring,
 }
 
 type ApproximateField<T> {
@@ -52,27 +33,11 @@ type ApproximateField<T> {
   one: T
   compare: fn(T, T) -> Ordering
 }
-type Lattice<T> {
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
-type BoundedLattice<T> {
-  lattice: Lattice<T>
-  top: T
-  bottom: T
-}
-type BooleanAlgebra<T> {
-  bounded_lattice: BoundedLattice<T>
-  complement: fn(T) -> T
-}
 
 type Equivalence<T> {
   eq: fn(T, T) -> Bool
 }
 
-type FreeMonoid<T>
-  = Empty
-  | Cons { head: T, tail: FreeMonoid<T> }
 fn freemonoid_empty<T>() -> FreeMonoid<T> {
   Empty
 }
@@ -96,6 +61,26 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
     Empty => empty
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
+}
+
+fn list_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    Cons { head: f(item), tail: acc }
+  })
+}
+
+fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMonoid<U> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    fold_list_right(xs: f(item), empty: acc, snoc: fn(inner, produced) {
+      Cons { head: produced, tail: inner }
+    })
+  })
 }
 
 type ListTailResult<T>
@@ -706,6 +691,21 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
+fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  match xs {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
+  }
+}
+
+type CopiedPortFact {
+  combiner: Symbol
+  copied_port_index: Int
+}
+
+data copied_port_fact_registry_dissolution_note: String = "Wave 1 Gate 1 C1: hand-stamped copied_port_fact_* rows and copied_port_fact_registry deleted — per-op indices derive from combiner Arrow citations via v2.lens.cost.copied_port_derivation (cost lens over ^arrow_body_edge only). classify_call reads copied_port_index_of from v2.lens.cost.copied_port_citations; unpriceable combiners stay ^combiner_unregistered_carrier_reaches fail-closed."
+
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   if length(xs: xs) != length(xs: ys) {
     false
@@ -779,10 +779,6 @@ type PointwisePower<T> {
   member: fn(T) -> Bool
 }
 
-type Ordering
-  = Less
-  | Equal
-  | Greater
 type Homomorphism<C, Source, Target> {
   source: C<Source>
   target: C<Target>

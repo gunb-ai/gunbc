@@ -1,0 +1,129 @@
+module v2.test.lens_determinism.reach_witness
+
+import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
+import std.determinism { Determinism, Deterministic, NonDeterministic }
+import v2.std.determinism { DeterminismFact }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode
+}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn det_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn det_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn det_call(callee: Symbol, arg: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [det_positional(target: det_atom(id: callee)), det_positional(target: arg)],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn map_keys_call_fixture() -> Node {
+  det_call(callee: ^map_keys, arg: det_atom(id: ^emit_export_map))
+}
+
+fn sorted_map_keys_call_fixture() -> Node {
+  det_call(callee: ^sorted_map_keys, arg: det_atom(id: ^emit_export_map))
+}
+
+fn clean_call_fixture() -> Node {
+  det_call(callee: ^emit_concat, arg: det_atom(id: ^emit_export_map))
+}
+
+fn nested_map_keys_fixture() -> Node {
+  det_call(callee: ^emit_concat, arg: map_keys_call_fixture())
+}
+
+fn witness_violates(w: Witness<DeterminismFact>) -> Bool {
+  match w {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
+fn witness_holds(w: Witness<DeterminismFact>) -> Bool {
+  match w {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn axis_is_nondeterministic(a: Determinism) -> Bool {
+  match a {
+    NonDeterministic { source: _ } => true
+    Deterministic => false
+  }
+}
+
+test fn determinism_flags_map_keys_reach() -> Bool {
+  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: map_keys_call_fixture()))
+}
+
+test fn determinism_holds_sorted_map_keys_sibling() -> Bool {
+  witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
+}
+
+test fn determinism_holds_clean_call() -> Bool {
+  witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: clean_call_fixture()))
+}
+
+test fn determinism_flags_nested_map_keys_in_subtree() -> Bool {
+  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: nested_map_keys_fixture()))
+}
+
+test fn determinism_axis_map_keys_is_nondeterministic() -> Bool {
+  axis_is_nondeterministic(a: determinism_axis_for_node(n: map_keys_call_fixture()))
+}
+
+fn gate_rejects(o: Outcome<Witness<Node>>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn determinism_gate_rejects_map_keys_reach() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: map_keys_call_fixture()))
+}
+
+test fn determinism_gate_accepts_clean_tree() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: clean_call_fixture()))
+}
+
+test fn determinism_gate_accepts_sorted_map_keys_sibling() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: sorted_map_keys_call_fixture()))
+}
+
+test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: nested_map_keys_fixture()))
+}

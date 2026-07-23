@@ -7,7 +7,16 @@ import v1.std.core {
   Connective, NoConnective, Arrow,
   SourceSpan, ErrorNode, make_error_node, InternalError
 }
-import v1.compiler.emit { escape_json_string }
+
+import v1.compiler.emit_core_support { escape_json_string }
+
+
+type DagCollectSlot {
+  key: String
+  fp: String
+  node: Node
+  seq: Int
+}
 
 type DagCollectAcc {
   seen: Map<String, String>
@@ -15,10 +24,15 @@ type DagCollectAcc {
   collision_errors: List<ErrorNode>
 }
 
-type DagCollectPending {
-  anchor: Node
-  key: String
-  fp: String
+fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
+  slots |> count
+}
+
+fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> DagCollectAcc {
+  let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
+  let order = ordered_slots |> map(s => s.node)
+  let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))
+  DagCollectAcc { seen: seen, order: order, collision_errors: collision_errors }
 }
 
 fn json_quote(s: String) -> String {
@@ -104,6 +118,14 @@ fn dag_node_surface_fingerprint_rec(node: Node) -> String {
 
 fn dag_node_surface_fingerprint(node: Node) -> String {
   dag_node_surface_fingerprint_rec(node: node)
+}
+
+fn dag_collect_fp_memo_reset() -> Bool {
+  true
+}
+
+fn dag_node_surface_fingerprint_memo(node: Node) -> String {
+  dag_node_surface_fingerprint(node: node)
 }
 
 fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {

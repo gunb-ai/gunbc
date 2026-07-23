@@ -1,33 +1,7 @@
 module test.claim.bmc_redfish_grounding
 
-import std.logic { Bool }
-import std.measure {
-  byte_size_count,
-  watt,
-  watt_count,
-  hardware_thread_count,
-  hardware_thread_count_value,
-  gibibyte,
-  gibibyte_to_byte_size,
-  memory_scale_factor_bytes,
-  Mega,
-  gibibyte_scale_factor_bytes,
-}
-import extdeps.bmc.types {
-  BmcTelemetrySnapshot,
-  RedfishChassisSensorCollection,
-  RedfishPowerControl,
-  RedfishPowerSubsystem,
-  RedfishSensorReading,
-  RedfishSystemInventory,
-  On,
-}
-import extdeps.bmc.redfish {
-  bmc_ground_host_observations,
-  redfish_system_inventory,
-}
-import extdeps.bmc { bmc_ground_snapshot }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",

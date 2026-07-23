@@ -1,7 +1,10 @@
 module v2.std.node
 
+import std.types { ContentHash }
+import std.content_hash { content_hash_atom, content_hash_combine }
+
 type Symbol
-type Hash
+type Hash = ContentHash
 
 type OccurrenceId {
   value: Int
@@ -191,6 +194,16 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
   )
 }
 
+fn node_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
 type NodeFoldTopDown<A,R> {
   init: fn(Node, A) -> R
   child_context: fn(Node, A, Edge) -> A
@@ -210,14 +223,33 @@ type EdgeDiscipline
   | LoopBoundEdges
 
   | ArrowBodyEdges
+
+data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — atom_connective_edge_discipline(child_count) is the single authority (NoEdges when child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom through it. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom discipline."
+
+fn atom_connective_edge_discipline(child_count: Int) -> EdgeDiscipline {
+  if child_count == 0 {
+    NoEdges
+  } else {
+    LabeledEdges
+  }
+}
+
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
-    Atom { identity: _ } => NoEdges
+    Atom { identity: _ } => atom_connective_edge_discipline(child_count: 0)
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
     Cardinality => PositionalEdges
     Instantiation => PositionalEdges
+  }
+}
+
+fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
+  match c {
+    Atom { identity: _ } =>
+      atom_connective_edge_discipline(child_count: count(children))
+    _ => connective_edge_discipline(c: c)
   }
 }
 
@@ -271,14 +303,16 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == ^loop_bound_edge)
+      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
     }
   })
 }
 
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
+  let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   (bound_edges == 1)
+  && (carrier_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -371,12 +405,38 @@ fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 
+fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
+}
+
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
         Positional => true
-        Named { name: sym } => sym != ^loop_bound_edge
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      }
+    _ =>
+      match e.label {
+        Positional => true
+        Named { name: _ } => true
+      }
+  }
+}
+
+data edge_contributes_to_cost_fold_note: String = "Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to use that function directly."
+
+fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Loop } =>
+      match e.label {
+        Positional => true
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      }
+    TypeNode { connective: Arrow } =>
+      match e.label {
+        Positional => false
+        Named { name: sym } => sym == ^arrow_body_edge
       }
     _ =>
       match e.label {
@@ -406,7 +466,11 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
-    Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
+    Atom { identity: _ } =>
+      edges_conform(
+        children: children,
+        d: connective_edge_discipline_for_children(c: c, children: children)
+      )
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
@@ -508,7 +572,8 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
 }
 fn node_edge_discipline(n: Node) -> EdgeDiscipline {
   match n.kind {
-    TypeNode { connective: c } => connective_edge_discipline(c: c)
+    TypeNode { connective: c } =>
+      connective_edge_discipline_for_children(c: c, children: n.children)
     ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
   }
 }
@@ -520,21 +585,30 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
 }
 
 fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+  filter(children, fn(e) {
+    match e.label {
+      Positional => true
+      Named { name: _ } => false
+    }
+  })
 }
 fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label {
-    Named { name: sym } => sym == ^arrow_body_edge
-    Positional => false
+  filter(children, fn(e) {
+    match e.label {
+      Named { name: sym } => sym == ^arrow_body_edge
+      Positional => false
+    }
   })
 }
 fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
-    filter(children, e => match e.label {
-      Named { name: sym } => sym != ^arrow_body_edge
-      Positional => false
+    filter(children, fn(e) {
+      match e.label {
+        Named { name: sym } => sym != ^arrow_body_edge
+        Positional => false
+      }
     }),
-    e => named_edge_sort_key(e: e)
+    fn(e) { named_edge_sort_key(e: e) }
   )
 }
 fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
@@ -547,21 +621,30 @@ fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Ed
   )
 }
 fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+  filter(children, fn(e) {
+    match e.label {
+      Positional => true
+      Named { name: _ } => false
+    }
+  })
 }
 fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label {
-    Named { name: sym } => sym == ^loop_bound_edge
-    Positional => false
+  filter(children, fn(e) {
+    match e.label {
+      Named { name: sym } => sym == ^loop_bound_edge
+      Positional => false
+    }
   })
 }
 fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
-    filter(children, e => match e.label {
-      Named { name: sym } => sym != ^loop_bound_edge
-      Positional => false
+    filter(children, fn(e) {
+      match e.label {
+        Named { name: sym } => sym != ^loop_bound_edge
+        Positional => false
+      }
     }),
-    e => named_edge_sort_key(e: e)
+    fn(e) { named_edge_sort_key(e: e) }
   )
 }
 fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
@@ -579,7 +662,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
     LabeledEdges =>
       Node {
         kind: base.kind,
-        children: sort_by(base.children, e => named_edge_sort_key(e: e)),
+        children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
         occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
@@ -616,64 +699,64 @@ fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
   })
 }
 
-fn canonical_hash_of_connective(c: Connective) -> Hash {
+fn canonical_hash_of_connective(c: Connective) -> ContentHash {
   match c {
     Atom { identity: sym } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_atom),
-        b: atom_identity_hash(s: sym)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_atom),
+        right: content_hash_atom(value: sym)
       )
-    Conj => atom_identity_hash(s: ^canonical_tag_conj)
-    Disj => atom_identity_hash(s: ^canonical_tag_disj)
-    Arrow => atom_identity_hash(s: ^canonical_tag_arrow)
-    Cardinality => atom_identity_hash(s: ^canonical_tag_cardinality)
-    Instantiation => atom_identity_hash(s: ^canonical_tag_instantiation)
+    Conj => content_hash_atom(value: ^canonical_tag_conj)
+    Disj => content_hash_atom(value: ^canonical_tag_disj)
+    Arrow => content_hash_atom(value: ^canonical_tag_arrow)
+    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
+    Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }
 
-fn canonical_hash_of_behavior(b: Behavior) -> Hash {
+fn canonical_hash_of_behavior(b: Behavior) -> ContentHash {
   match b {
-    Value => atom_identity_hash(s: ^canonical_tag_value)
-    Transform => atom_identity_hash(s: ^canonical_tag_transform)
-    Branch => atom_identity_hash(s: ^canonical_tag_branch)
-    Loop => atom_identity_hash(s: ^canonical_tag_loop)
-    Bind => atom_identity_hash(s: ^canonical_tag_bind)
-    Match => atom_identity_hash(s: ^canonical_tag_match)
+    Value => content_hash_atom(value: ^canonical_tag_value)
+    Transform => content_hash_atom(value: ^canonical_tag_transform)
+    Branch => content_hash_atom(value: ^canonical_tag_branch)
+    Loop => content_hash_atom(value: ^canonical_tag_loop)
+    Bind => content_hash_atom(value: ^canonical_tag_bind)
+    Match => content_hash_atom(value: ^canonical_tag_match)
   }
 }
 
-fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
+fn canonical_hash_of_node_kind(kind: NodeKind) -> ContentHash {
   match kind {
     TypeNode { connective: c } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_type_node),
-        b: canonical_hash_of_connective(c: c)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_type_node),
+        right: canonical_hash_of_connective(c: c)
       )
     ComputationNode { behavior: b } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_computation_node),
-        b: canonical_hash_of_behavior(b: b)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_computation_node),
+        right: canonical_hash_of_behavior(b: b)
       )
   }
 }
 
-fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> ContentHash {
   match label {
     Named { name: sym } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_named_edge),
-        b: atom_identity_hash(s: sym)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_named_edge),
+        right: content_hash_atom(value: sym)
       )
-    Positional => atom_identity_hash(s: ^canonical_tag_positional_edge)
+    Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
   }
 }
 
-fn combine_hash(a: Hash, b: Hash) -> Hash {
-  hash_combine(a: a, b: b)
+fn combine_hash(a: ContentHash, b: ContentHash) -> ContentHash {
+  content_hash_combine(left: a, right: b)
 }
 
-fn symbol_identity_digest(sym: Symbol) -> Hash {
-  atom_identity_hash(s: sym)
+fn symbol_identity_digest(sym: Symbol) -> ContentHash {
+  content_hash_atom(value: sym)
 }
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
@@ -684,44 +767,44 @@ data byte_offset_cache_digest_max_limbs: Int = 9
 data byte_offset_cache_digest_overflow_limbs: Int = 4
 
 type ByteOffsetCacheDigestAuthority
-  = ByteOffsetWithinCeiling { digest: Hash }
+  = ByteOffsetWithinCeiling { digest: ContentHash }
   | ByteOffsetOverCeiling {
-      within_ceiling_digest: Hash,
+      within_ceiling_digest: ContentHash,
       quotient: Int
     }
   | ByteOffsetCacheDigestIneligible {
-      within_ceiling_digest: Hash,
+      within_ceiling_digest: ContentHash,
       boundary_tag: Symbol,
       residual_quotient: Int
     }
 
 type ByteOffsetCacheKey
-  = ByteOffsetCacheEligible { digest: Hash }
+  = ByteOffsetCacheEligible { digest: ContentHash }
   | ByteOffsetCacheIneligible {
       boundary_tag: Symbol,
-      witness: Hash
+      witness: ContentHash
     }
 
-fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
+fn byte_limb_hash_peano_digest(limb: Int) -> ContentHash {
   if limb < 0 || limb > 255 {
-    atom_identity_hash(s: ^canonical_tag_byte_limb_out_of_range)
+    content_hash_atom(value: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
-    atom_identity_hash(s: ^canonical_tag_scalar_int_zero)
+    content_hash_atom(value: ^canonical_tag_scalar_int_zero)
   } else {
     if limb == 1 {
-      atom_identity_hash(s: ^canonical_tag_scalar_int_one)
+      content_hash_atom(value: ^canonical_tag_scalar_int_one)
     } else {
       combine_hash(
-        a: atom_identity_hash(s: ^canonical_tag_scalar_int_succ),
+        a: content_hash_atom(value: ^canonical_tag_scalar_int_succ),
         b: byte_limb_hash_peano_digest(limb: limb - 1)
       )
     }
   }
 }
 
-fn byte_offset_byte_digest(b: Int) -> Hash {
+fn byte_offset_byte_digest(b: Int) -> ContentHash {
   combine_hash(
-    a: atom_identity_hash(s: ^canonical_tag_byte_offset_byte),
+    a: content_hash_atom(value: ^canonical_tag_byte_offset_byte),
     b: byte_limb_hash_peano_digest(limb: b)
   )
 }
@@ -734,7 +817,7 @@ fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
   }
 }
 
-fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> Hash {
+fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> ContentHash {
   let shifted = byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
   if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
     combine_hash(
@@ -749,10 +832,10 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
   }
 }
 
-fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
+fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> ContentHash {
   if quotient < 256 * 256 {
     combine_hash(
-      a: atom_identity_hash(s: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
+      a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: quotient / 256)
@@ -760,7 +843,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
     )
   } else {
     combine_hash(
-      a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
+      a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
@@ -769,9 +852,9 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
   }
 }
 
-fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
+fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> ContentHash {
   combine_hash(
-    a: atom_identity_hash(s: ^canonical_tag_byte_offset_residual_quotient_magnitude),
+    a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude),
     b: combine_hash(
       a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 0),
       b: combine_hash(
@@ -803,13 +886,13 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   )
 }
 
-fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> Hash {
+fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> ContentHash {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+      content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -819,7 +902,7 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
       byte_offset_residual_quotient_limb_pair_digest(quotient: quotient)
     }
   } else if quotient == 0 {
-    atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+    content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -831,13 +914,13 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
   }
 }
 
-fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> Hash {
+fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> ContentHash {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+      content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -850,7 +933,7 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
       )
     }
   } else if quotient == 0 {
-    atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+    content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -862,12 +945,12 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
   }
 }
 
-fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
+fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> ContentHash {
   if quotient < 65536 {
-    atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
+    content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
     combine_hash(
-      a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band),
+      a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band),
       b: byte_offset_overflow_quotient_high_band_digest(
         quotient: quotient / 65536,
         limbs_remaining: byte_offset_cache_digest_overflow_limbs
@@ -877,10 +960,10 @@ fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
 }
 
 fn byte_offset_cache_digest_ineligible_witness_digest(
-  within_ceiling_digest: Hash,
+  within_ceiling_digest: ContentHash,
   boundary_tag: Symbol,
   quotient: Int
-) -> Hash {
+) -> ContentHash {
   if boundary_tag == ^canonical_tag_byte_offset_overflow_residual_unrepresentable {
     byte_offset_cache_digest_ineligible_hash(
       within_ceiling_digest: combine_hash(
@@ -901,14 +984,14 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
 }
 
 fn byte_offset_cache_digest_ineligible_hash(
-  within_ceiling_digest: Hash,
+  within_ceiling_digest: ContentHash,
   boundary_tag: Symbol
-) -> Hash {
+) -> ContentHash {
   combine_hash(
-    a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_digest_ineligible),
+    a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
     b: combine_hash(
       a: within_ceiling_digest,
-      b: atom_identity_hash(s: boundary_tag)
+      b: content_hash_atom(value: boundary_tag)
     )
   )
 }
@@ -920,12 +1003,12 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   if limbs_remaining == 0 {
     if quotient == 0 {
       ByteOffsetWithinCeiling {
-        digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+        digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
       }
     } else if quotient < 256 * 256 {
       ByteOffsetWithinCeiling {
         digest: combine_hash(
-          a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: quotient / 256)
@@ -935,7 +1018,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     } else {
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: combine_hash(
-          a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
@@ -947,7 +1030,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     }
   } else if quotient == 0 {
     ByteOffsetWithinCeiling {
-      digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+      digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
@@ -1086,7 +1169,7 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
         ByteOffsetWithinCeiling { digest: tail_digest } =>
           ByteOffsetCacheEligible {
             digest: combine_hash(
-              a: atom_identity_hash(s: ^canonical_tag_byte_offset_out_of_ceiling),
+              a: content_hash_atom(value: ^canonical_tag_byte_offset_out_of_ceiling),
               b: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_digest
@@ -1119,17 +1202,17 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
   if limbs_remaining == 0 {
     if i == 0 {
       ByteOffsetWithinCeiling {
-        digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+        digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
       }
     } else {
       ByteOffsetOverCeiling {
-        within_ceiling_digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero),
+        within_ceiling_digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero),
         quotient: i
       }
     }
   } else if i == 0 {
     ByteOffsetWithinCeiling {
-      digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
+      digest: content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_nonneg_bounded_authority(
@@ -1184,7 +1267,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       ByteOffsetWithinCeiling { digest: digest } =>
         ByteOffsetWithinCeiling {
           digest: combine_hash(
-            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
+            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: digest
           )
         }
@@ -1194,7 +1277,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       } =>
         ByteOffsetOverCeiling {
           within_ceiling_digest: combine_hash(
-            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
+            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           quotient: quotient
@@ -1206,7 +1289,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
-            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
+            a: content_hash_atom(value: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           boundary_tag: boundary_tag,
@@ -1397,11 +1480,11 @@ fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
 
-fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
+fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> ContentHash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
       combine_hash(
-        a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_key_eligible),
+        a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible),
         b: digest
       )
     ByteOffsetCacheIneligible {
@@ -1409,18 +1492,18 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
       witness: witness
     } =>
       combine_hash(
-        a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_key_ineligible),
+        a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible),
         b: combine_hash(
-          a: atom_identity_hash(s: boundary_tag),
+          a: content_hash_atom(value: boundary_tag),
           b: witness
         )
       )
   }
 }
 
-fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
+fn bag_hash_digest(empty: ContentHash, xs: List<ContentHash>) -> ContentHash {
   fold(
-    sort_by(xs, h => h),
+    sort_by(xs, fn(h) { h }),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)
@@ -1428,15 +1511,15 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   )
 }
 
-fn content_hash(n: Node) -> Hash {
+fn content_hash(n: Node) -> ContentHash {
   fold_node_content_hash(
     n: n,
     algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
-        hash_combine(
-          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
-          b: child_hash
+        content_hash_combine(
+          left: content_hash_combine(left: acc, right: canonical_hash_of_edge_label(label: e.label)),
+          right: child_hash
         )
       }
     }

@@ -14,21 +14,28 @@ import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
-import extdeps.memory.types { MemoryKind, Dram }
+import extdeps.memory.types { MemoryKind, Dram, HostMemoryPopulation, MemoryPopulationRow }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
+<<<<<<< HEAD
 import extdeps.cache.sccache { sccache_toolchain_capability }
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability, LatencyClass }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
+=======
+import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
+import product.placement_supply { HostIdentity }
+>>>>>>> origin/main
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
-import std.measure { gibibyte, gibibyte_to_byte_size, hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
+import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import std.types { List, NonEmptyStr, Bool, Int }
+import std.types { List, NonEmptyStr, Bool, Int, String }
 import std.verification { NanosecondDuration, nanosecond_duration }
 import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time_and_space }
+import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
 import std.nat { Nat }
 import std.float { Float }
 
@@ -96,13 +103,16 @@ fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
   )
 }
 
-fn placement_supply_row_from_host(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
-  PlacementSupplyRow {
-    identity: identity,
-    hardware_threads: cpu_facts_threads(cpu),
-    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
-    ram_bytes: ram_bytes_total,
-  }
+fn memory_devices_from_population(pop: HostMemoryPopulation) -> List<MemoryDevice> {
+  pop.rows
+    |> map(
+      row =>
+        MemoryDevice {
+          capacity: memory_population_row_bytes(row: row),
+          memory_kind: Dram,
+          bandwidth: none,
+        }
+    )
 }
 
 type MeasurementConfidence
@@ -168,11 +178,7 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
-    space: byte_size(count: fold(
-      receipts,
-      init: 0,
-      f: (acc, receipt) => acc + byte_size_count(receipt.cost.space)
-    ))
+    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
   )
 }
 
@@ -223,11 +229,38 @@ data srv4_nvme0: StorageDevice = nvme_storage_device(
   persistence: Persistent,
 )
 
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), all three hosts observed 2026-07-16 (deferral scaffolds retired on the srv1/srv2 observation); (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
+
+data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+
+data srv1_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  ],
+}
+
+data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+
+data srv2_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  ],
+}
+
+data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
+
+data srv3_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
+    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 },
+  ],
+}
+
 data srv1_host: ComputeHost = ComputeHost {
   identity: operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv1_memory_population),
   storage: [srv1_nvme0],
   network_interfaces: [],
 }
@@ -235,7 +268,7 @@ data srv2_host: ComputeHost = ComputeHost {
   identity: operator_host_srv2,
   baseboard: Present { value: srv2_baseboard },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv2_memory_population),
   storage: [srv2_nvme0],
   network_interfaces: [],
 }
@@ -243,7 +276,7 @@ data srv3_host: ComputeHost = ComputeHost {
   identity: operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [srv3_nvme0],
   network_interfaces: [],
 }

@@ -108,33 +108,9 @@ type BooleanAlgebra<T> {
   bottom: T
 }
 
-type FreeMonoid<T> {
-
-  concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
-  empty: FreeMonoid<T>
-  append: fn(T) -> FreeMonoid<T>
-
-  slice: fn(Int, Int) -> FreeMonoid<T>
-  length: fn() -> Int
-  is_empty: fn() -> Bool
-  count: fn() -> Int
-  first: fn() -> T?
-  last: fn() -> T?
-
-  map: fn(fn(T) -> T) -> FreeMonoid<T>
-  filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
-  fold: fn(T, fn(T, T) -> T) -> T
-  flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
-  any: fn(fn(T) -> Bool) -> Bool
-  all: fn(fn(T) -> Bool) -> Bool
-
-  enumerate: fn() -> FreeMonoid<Tuple<Int, T>>
-  reverse: fn() -> FreeMonoid<T>
-  skip: fn(Int) -> FreeMonoid<T>
-  take: fn(Int) -> FreeMonoid<T>
-  sort_by: fn(fn(T, T) -> Int) -> FreeMonoid<T>
-  contains: fn(T) -> Bool
-}
+type FreeMonoid<T>
+  = Empty
+  | Cons { head: T, tail: FreeMonoid<T> }
 
 type PartialFunction<K, V> {
   lookup: fn(K) -> Witness<V>
@@ -198,15 +174,23 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
-data kernel_algebra_profile: Map<String, AlgebraProfile> = {
-  "Int": OrderedRingProfile,
-  "Float": ApproximateFieldProfile,
-  "Bool": BooleanAlgebraProfile,
-  "String": FreeMonoidScalarProfile,
-  "List": FreeMonoidCollectionProfile,
-  "Set": BooleanAlgebraCollectionProfile,
-  "Map": PartialFunctionProfile
+fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(empty_map(), "Int", OrderedRingProfile),
+              "Float", ApproximateFieldProfile),
+            "Bool", BooleanAlgebraProfile),
+          "String", FreeMonoidScalarProfile),
+        "List", FreeMonoidCollectionProfile),
+      "Set", BooleanAlgebraCollectionProfile),
+    "Map", PartialFunctionProfile)
 }
+
+data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
 
 fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
   [
@@ -294,6 +278,7 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "get", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Present { value: ShrinkEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: none },
@@ -327,6 +312,14 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
+}
+
+fn algebra_method_template_name(name: String) -> Bool {
+  [
+    OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile, PartialFunctionProfile
+  ] |> any(p => algebra_templates_for_profile(profile: p) |> any(t => t.name == name))
 }
 
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {

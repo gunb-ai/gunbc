@@ -1,40 +1,32 @@
 module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  RegenVerifyGate, EmitDeterminismGate
+  RegenVerifyGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
-func rust_monolith_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: RustMonolithGate))
-}
-
 func emit_host_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: EmitHostGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: EmitHostGate))
 }
 
 func layering_imports_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: LayeringImportsGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: LayeringImportsGate))
 }
 
 func extdeps_external_authority_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
 }
 
 func dag_compile_clean_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: DagCompileCleanGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: DagCompileCleanGate))
 }
 
 func generated_artifact_drift_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
 }
 
 func regen_verify_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: RegenVerifyGate))
-}
-
-func emit_determinism_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: EmitDeterminismGate))
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: RegenVerifyGate))
 }

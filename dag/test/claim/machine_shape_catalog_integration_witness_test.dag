@@ -1,0 +1,72 @@
+module test.claim.machine_shape_catalog_integration_witness
+
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.cpu.machine_shape {
+  FromCpuModelCatalog,
+  shape_from_catalog,
+}
+import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { byte_size_count, hardware_thread_count_value }
+import std.types { list_length }
+import std.machine_shape {
+  DomainId,
+  LevelId,
+  MachineShape,
+  MachineShapeOk,
+  machine_shape_domain_lane_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ampere_domain: DomainId = "ampere-altra-max" as DomainId
+data ampere_l1_level: LevelId = "l1d" as LevelId
+data ampere_l2_level: LevelId = "l2" as LevelId
+data ampere_l3_level: LevelId = "l3" as LevelId
+
+data ampere_l1_bytes_per_core: Nat = 65536
+data ampere_l2_bytes_per_core: Nat = 1048576
+data ampere_l3_bytes: Nat = 16777216
+data ampere_cache_line_bytes: Nat = 64
+
+fn cpu_catalog_shape() -> MachineShape {
+  match shape_from_catalog(input: FromCpuModelCatalog {
+    domain: ampere_domain,
+    l1_level: ampere_l1_level,
+    l2_level: ampere_l2_level,
+    l3_level: ampere_l3_level,
+    row: altra_max_m12830_catalog,
+  }) {
+    MachineShapeOk { shape: s } => s
+    _ => MachineShape { domains: [], edges: [] }
+  }
+}
+
+fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
+  let memory = cpu_catalog_shape().domains.first().memory
+  list_length(items: memory) == 3
+    && memory.first().id == ampere_l1_level
+    && byte_size_count(b: memory.first().capacity) == ampere_l1_bytes_per_core
+    && match memory.first().transfer_grain {
+      Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
+      Absent => false
+    }
+    && memory.skip(n: 1).first().id == ampere_l2_level
+    && byte_size_count(b: memory.skip(n: 1).first().capacity) == ampere_l2_bytes_per_core
+    && memory.skip(n: 2).first().id == ampere_l3_level
+    && byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
+}
+
+fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
+  match machine_shape_domain_lane_count(shape: cpu_catalog_shape()) {
+    Present { value: lanes } =>
+      hardware_thread_count_value(t: lanes) == hardware_thread_count_value(t: altra_max_m12830_catalog.threads)
+    Absent => false
+  }
+}
+
+test fn machine_shape_catalog_integration_witnesses() -> Bool {
+  w_cpu_cache_levels_integrated_into_memory_shape()
+    && w_cpu_catalog_lane_count_matches_threads()
+}

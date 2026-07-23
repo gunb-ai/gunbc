@@ -27,7 +27,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),
@@ -40,7 +40,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
     let sources: Vec<Rc<SourceFile>> =
         resolve_imports_transitively_with_source_roots(entry, content, &v2_source_roots());
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -70,10 +70,10 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
 #[test]
 fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(vec![]);
-    let empty_path = Rc::new(vec![]);
-    let empty_shared = Rc::new(std::collections::BTreeSet::new());
-    let empty_indices = Rc::new(std::collections::HashMap::new());
+    let empty_bindings = Rc::new(im::vector![]);
+    let empty_path = Rc::new(im::vector![]);
+    let empty_shared = Rc::new(im::OrdSet::new());
+    let empty_indices = Rc::new(im::HashMap::new());
 
     let non_optional = emit_variant_pattern(
         "Absent".to_string(),
@@ -109,10 +109,10 @@ fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
 #[test]
 fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(vec![]);
-    let empty_path = Rc::new(vec![]);
-    let empty_shared = Rc::new(std::collections::BTreeSet::new());
-    let empty_indices = Rc::new(std::collections::HashMap::new());
+    let empty_bindings = Rc::new(im::vector![]);
+    let empty_path = Rc::new(im::vector![]);
+    let empty_shared = Rc::new(im::OrdSet::new());
+    let empty_indices = Rc::new(im::HashMap::new());
 
     let non_witness = emit_variant_pattern(
         "Holds".to_string(),

@@ -1,11 +1,12 @@
 module v2.test.execution.bind_eval_by_execution
 
-import v2.compiler.body_producer {
-  produce_mvp1_bind_arrow_with_body,
-  produce_mvp1_bind_arrow_with_body_wrong_value
+import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+  table_fixture_bind_arrow_with_body,
+  table_fixture_bind_wrong_value_arrow_with_body
 }
-import v2.test.complexity_gate.source_bridged_bind_subject_producer {
-  source_bridged_bind_arrow_with_body
+import v2.compiler.ingested_fixture_arrows {
+  ingested_bind_arrow_with_body,
+  ingested_bind_arrow_with_body_wrong_value
 }
 import v2.compiler.eval {
   EvalContext,
@@ -29,10 +30,17 @@ import v2.std.collection {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one,
+  dag_int_literal_fixture_two,
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_int_literal_atom
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -70,7 +78,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -86,6 +96,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bind_atom(s: Symbol) -> Node {
   Node {
@@ -121,11 +134,11 @@ fn bind_two_value() -> RuntimeValue {
 }
 
 fn bind_literal_one_node() -> Node {
-  bind_atom(s: ^dag_mvp1_pick_lit_one)
+  dag_int_literal_fixture_one()
 }
 
 fn bind_literal_two_node() -> Node {
-  bind_atom(s: ^dag_mvp1_pick_lit_two)
+  dag_int_literal_fixture_two()
 }
 
 fn bind_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -153,10 +166,18 @@ fn bind_runtime_int_is_two(value: RuntimeValue) -> Bool {
 }
 
 fn bind_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == bind_literal_one_node() {
-    outcome_accepted(value: bind_one_value())
-  } else if node == bind_literal_two_node() {
-    outcome_accepted(value: bind_two_value())
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: bind_one_value())
+        } else if mag == 2 {
+          outcome_accepted(value: bind_two_value())
+        } else {
+          outcome_rejected(d: bind_runtime_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
   } else {
     outcome_rejected(d: bind_runtime_diagnostic(n: node))
   }
@@ -211,6 +232,9 @@ fn bind_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: bind_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
@@ -335,14 +359,14 @@ fn bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
 }
 
 fn bind_source_pipeline_admits_holds() -> Bool {
-  match source_bridged_bind_arrow_with_body() {
+  match table_fixture_bind_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn bind_source_driven_executes_holds() -> Bool {
-  match source_bridged_bind_arrow_with_body() {
+  match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
@@ -355,7 +379,7 @@ fn bind_source_driven_executes_holds() -> Bool {
 }
 
 fn bind_direct_runtime_holds() -> Bool {
-  match source_bridged_bind_arrow_with_body() {
+  match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = bind_pick_call(callee: arrow)
       match bind_inferred_run_tree(
@@ -380,7 +404,7 @@ fn bind_direct_runtime_holds() -> Bool {
 }
 
 fn bind_value_perturbation_red_holds() -> Bool {
-  match source_bridged_bind_arrow_with_body() {
+  match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
@@ -393,7 +417,7 @@ fn bind_value_perturbation_red_holds() -> Bool {
 }
 
 fn bind_fixture_producer_holds() -> Bool {
-  match produce_mvp1_bind_arrow_with_body() {
+  match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
@@ -406,7 +430,33 @@ fn bind_fixture_producer_holds() -> Bool {
 }
 
 fn bind_fixture_wrong_value_red_holds() -> Bool {
-  match produce_mvp1_bind_arrow_with_body_wrong_value() {
+  match table_fixture_bind_wrong_value_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      bind_run_passes(
+        run: bind_run(
+          callee: arrow,
+          expected: bind_literal_one_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bind_census_ingested_executes_holds() -> Bool {
+  match ingested_bind_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      bind_run_passes(
+        run: bind_run(
+          callee: arrow,
+          expected: bind_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bind_census_ingested_wrong_value_red_holds() -> Bool {
+  match ingested_bind_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(

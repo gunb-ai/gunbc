@@ -1,0 +1,18 @@
+module v2.test.long.no_dual_representation_test_test
+
+import v2.lens.no_dual_representation_test {
+  no_dual_representation_test_clean_holds,
+  no_dual_representation_test_coverage_honesty_holds,
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn no_violations_in_examined_scope() -> Bool {
+  return no_dual_representation_test_clean_holds()
+}
+
+test fn coverage_honesty_holds() -> Bool {
+  return no_dual_representation_test_coverage_honesty_holds()
+}

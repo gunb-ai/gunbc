@@ -1,0 +1,65 @@
+module gunbc.live_deploy.operations
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.apt { apt_install_argv }
+import extdeps.os.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+  systemctl_disable_now_argv,
+}
+
+data live_deploy_operations_note: String = "Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell."
+
+fn argv_join(argv: List<String>) -> String {
+  join(argv, " ")
+}
+
+fn privileged_command(argv: List<String>) -> String {
+  concat("sudo -n ", argv_join(argv: argv))
+}
+
+fn dpkg_status_command(package: NonEmptyStr) -> String {
+  argv_join(argv: dpkg_status_argv(package: package))
+}
+
+fn apt_install_command(package: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    privileged_command(argv: apt_install_argv(package: package))
+  } else {
+    argv_join(argv: apt_install_argv(package: package))
+  }
+}
+
+fn systemctl_daemon_reload_command(privileged: Bool) -> String {
+  if privileged {
+    privileged_command(argv: systemctl_daemon_reload_argv())
+  } else {
+    argv_join(argv: systemctl_daemon_reload_argv())
+  }
+}
+
+fn systemctl_enable_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    privileged_command(argv: systemctl_enable_argv(unit: unit))
+  } else {
+    argv_join(argv: systemctl_enable_argv(unit: unit))
+  }
+}
+
+fn systemctl_restart_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    privileged_command(argv: systemctl_restart_argv(unit: unit))
+  } else {
+    argv_join(argv: systemctl_restart_argv(unit: unit))
+  }
+}
+
+fn systemctl_disable_now_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    privileged_command(argv: systemctl_disable_now_argv(unit: unit))
+  } else {
+    argv_join(argv: systemctl_disable_now_argv(unit: unit))
+  }
+}

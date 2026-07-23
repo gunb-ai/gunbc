@@ -1,0 +1,16 @@
+module v2.test.claim.parse_engine_hooks_test
+
+import v2.compiler.parse_engine_hooks {
+  parse_engine_expr_production,
+  parse_engine_match_arm_body_production,
+  parse_engine_match_arm_stmt_body_production
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn parse_engine_hooks_symbols_match_grammar_productions() -> Bool {
+  (parse_engine_match_arm_body_production == ^dag_production_match_arm_body)
+    && (parse_engine_match_arm_stmt_body_production == ^dag_production_match_arm_stmt_body)
+    && (parse_engine_expr_production == ^dag_production_expr)
+}

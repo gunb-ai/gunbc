@@ -1,0 +1,200 @@
+module test.claim.effect_grant_witness_test
+
+import std.types { Bool, String, List }
+import std.effects { ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect, PostAlways, PathParam }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Verb, Read, Write, Execute, verb_of_effect_shape, verb_eq,
+  NamespaceTree, FilesystemPathTree, UriTree, ServiceOpTree,
+  NamespacePosition, position_under, filesystem_position,
+  HandlerBinding, RealTransport, Replay,
+  LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
+  Grant, Envelope,
+  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
+  envelope_bounded_by,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data effect_grant_witness_note: String = "P-A discriminating witnesses for std.effect_grant. The core claim is fail-closed admissibility (DESIGN 5): an effect whose target is not under any grant root for its verb is REFUSED, never widened. Every positive arm is paired with a negative arm that goes RED if the refusal is dropped (empty envelope admits, wrong verb admits, wrong tree admits, sibling path admits, a child envelope widens past its parent)."
+
+fn frame_named(name: String) -> Frame {
+  Frame { name: name, kind: SharedStateFrame }
+}
+
+data test_frame: Frame = frame_named(name: "eval")
+
+data workspace_root: NamespacePosition = NamespacePosition {
+  tree: FilesystemPathTree,
+  path: ["workspace"]
+}
+
+data workspace_file: NamespacePosition = NamespacePosition {
+  tree: FilesystemPathTree,
+  path: ["workspace", "src", "foo.rs"]
+}
+
+data outside_workspace: NamespacePosition = NamespacePosition {
+  tree: FilesystemPathTree,
+  path: ["etc", "passwd"]
+}
+
+data bmc_uri: NamespacePosition = NamespacePosition {
+  tree: UriTree,
+  path: ["https://bmc.local", "power"]
+}
+
+data workspace_write_grant: Grant = Grant {
+  verb: Write,
+  root: workspace_root,
+  binding: RealTransport,
+  lifecycle: LifecycleByConvention
+}
+
+data write_only_env: Envelope = Envelope {
+  frame: test_frame,
+  grants: [workspace_write_grant]
+}
+
+data usr_bin_root: NamespacePosition = filesystem_position(path: ["usr", "bin"])
+
+data apt_get_target: NamespacePosition = filesystem_position(path: ["usr", "bin", "apt-get"])
+
+data other_bin_target: NamespacePosition = filesystem_position(path: ["usr", "sbin", "other"])
+
+data execute_only_grant: Grant = Grant {
+  verb: Execute,
+  root: usr_bin_root,
+  binding: RealTransport,
+  lifecycle: LifecycleByConstruction
+}
+
+data execute_only_env: Envelope = Envelope {
+  frame: test_frame,
+  grants: [execute_only_grant]
+}
+
+data empty_env: Envelope = Envelope {
+  frame: test_frame,
+  grants: []
+}
+
+fn is_admitted(a: EffectAdmission) -> Bool {
+  match a {
+    Admitted { via_root: r } => true
+    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+  }
+}
+
+fn is_refused(a: EffectAdmission) -> Bool {
+  match a {
+    Admitted { via_root: r } => false
+    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+  }
+}
+
+test fn effect_grant_verb_coarsening_witnesses() -> Bool {
+  verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Read)
+    && verb_eq(a: verb_of_effect_shape(shape: UpsertEffect { key_source: PathParam { param: "id" } }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: DeleteEffect { key_source: PathParam { param: "id" } }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: CreateEffect { cause: PostAlways }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: AppendEffect), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Execute)
+    && !verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Write)
+    && !verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Write)
+}
+
+test fn effect_grant_position_under_witnesses() -> Bool {
+  position_under(target: workspace_file, root: workspace_root)
+    && position_under(target: workspace_root, root: workspace_root)
+    && !position_under(target: outside_workspace, root: workspace_root)
+    && !position_under(
+         target: NamespacePosition { tree: UriTree, path: ["workspace", "src", "foo.rs"] },
+         root: workspace_root
+       )
+}
+
+test fn effect_grant_admission_witnesses() -> Bool {
+  is_admitted(a: admit_effect(env: write_only_env, verb: Write, target: workspace_file))
+    && is_refused(a: admit_effect(env: write_only_env, verb: Write, target: outside_workspace))
+    && is_refused(a: admit_effect(env: write_only_env, verb: Read, target: workspace_file))
+    && is_refused(a: admit_effect(env: write_only_env, verb: Write, target: bmc_uri))
+    && is_refused(a: admit_effect(env: empty_env, verb: Write, target: workspace_file))
+}
+
+test fn effect_grant_execute_admission_witnesses() -> Bool {
+  is_admitted(a: admit_effect(env: execute_only_env, verb: Execute, target: apt_get_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Write, target: apt_get_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Read, target: apt_get_target))
+    && is_refused(a: admit_effect(env: write_only_env, verb: Execute, target: apt_get_target))
+    && is_refused(a: admit_effect(env: empty_env, verb: Execute, target: apt_get_target))
+}
+
+test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {
+  match admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      verb_eq(a: v, b: Execute)
+        && position_under(target: other_bin_target, root: t)
+        && position_under(target: t, root: other_bin_target)
+    Admitted { via_root: r } => false
+  }
+}
+
+test fn effect_grant_refusal_is_located_witnesses() -> Bool {
+  match admit_effect(env: write_only_env, verb: Write, target: outside_workspace) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      verb_eq(a: v, b: Write)
+        && position_under(target: outside_workspace, root: t)
+        && position_under(target: t, root: outside_workspace)
+    Admitted { via_root: r } => false
+  }
+}
+
+test fn effect_grant_bounding_witnesses() -> Bool {
+  let parent = Envelope {
+    frame: test_frame,
+    grants: [workspace_write_grant]
+  }
+  let child_ok = Envelope {
+    frame: frame_named(name: "child"),
+    grants: [Grant {
+      verb: Write,
+      root: NamespacePosition { tree: FilesystemPathTree, path: ["workspace", "scratch"] },
+      binding: RealTransport,
+      lifecycle: LifecycleByConstruction
+    }]
+  }
+  let child_widens_tree = Envelope {
+    frame: frame_named(name: "child"),
+    grants: [Grant {
+      verb: Write,
+      root: NamespacePosition { tree: FilesystemPathTree, path: ["etc"] },
+      binding: RealTransport,
+      lifecycle: LifecycleByConvention
+    }]
+  }
+  let child_widens_verb = Envelope {
+    frame: frame_named(name: "child"),
+    grants: [Grant {
+      verb: Read,
+      root: NamespacePosition { tree: FilesystemPathTree, path: ["workspace", "scratch"] },
+      binding: RealTransport,
+      lifecycle: LifecycleByConvention
+    }]
+  }
+  let child_widens_execute = Envelope {
+    frame: frame_named(name: "child"),
+    grants: [Grant {
+      verb: Execute,
+      root: NamespacePosition { tree: FilesystemPathTree, path: ["usr", "bin", "apt-get"] },
+      binding: RealTransport,
+      lifecycle: LifecycleByConstruction
+    }]
+  }
+  envelope_bounded_by(child: child_ok, parent: parent)
+    && !envelope_bounded_by(child: child_widens_tree, parent: parent)
+    && !envelope_bounded_by(child: child_widens_verb, parent: parent)
+    && !envelope_bounded_by(child: child_widens_execute, parent: parent)
+}

@@ -1,0 +1,116 @@
+module v2.compiler.emit_semantic_decl
+
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root,
+  serialize_concrete_syntax_tokens_to_source
+}
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclSerializeProfile,
+  semantic_decl_emission_from_target,
+  semantic_decl_serialize_target,
+  target_semantic_enum_surface_from_coproduct,
+  target_semantic_struct_surface_from_record
+}
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel, concrete_syntax_token_list_from_node }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_rejected
+}
+import v2.std.node { Disj, Conj, Node, Symbol, TypeNode }
+import extdeps.communication.medium { Medium }
+import v2.std.text { String }
+import std.algebra { Empty }
+
+fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_semantic_decl_unsupported_shape,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_decl_surface(
+  surface: Node,
+  rules: Node,
+  profile: TargetSemanticDeclSerializeProfile
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: rules, emitted: surface),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: semantic_decl_serialize_target(profile: profile, rules: rules),
+                f: fn(serialize_target) {
+                  serialize_concrete_syntax_tokens_to_source(
+                    target: serialize_target,
+                    tokens: tokens
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn emit_semantic_type_decl(
+  name: Symbol,
+  params: List<Symbol>,
+  node: Node,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: semantic_decl_emission_from_target(target: target),
+    f: fn(emission) {
+      match node.kind {
+        TypeNode { connective: Disj } =>
+          bind_outcome(
+            o: target_semantic_enum_surface_from_coproduct(
+              projection: emission.surface,
+              name: name,
+              params: params,
+              coproduct: node
+            ),
+            f: fn(surface) {
+              emit_decl_surface(
+                surface: surface,
+                rules: emission.enum_translation_rules,
+                profile: emission.enum_serialize_profile
+              )
+            }
+          )
+        TypeNode { connective: Conj } =>
+          bind_outcome(
+            o: target_semantic_struct_surface_from_record(
+              projection: emission.surface,
+              name: name,
+              params: params,
+              record: node
+            ),
+            f: fn(surface) {
+              emit_decl_surface(
+                surface: surface,
+                rules: emission.struct_translation_rules,
+                profile: emission.struct_serialize_profile
+              )
+            }
+          )
+        _ => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+      }
+    }
+  )
+}

@@ -1,0 +1,9 @@
+module test.claim.self_host_target_carriers_behavioral_witness
+
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+
+data self_host_target_carriers_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 Band A (07_target_carriers): tools.self_host_module_behavioral_transport_roster's compiler_module_behavioral_receipt_for emits src/v2/compiler/07_target_carriers.dag via gunbc --entry, assembles a shim-free v1_compiled crate (emitted lib.rs + seed-linked v1-compiler path dep), runs cargo build + witness (plain + --inject-fault), and claim-run on target_carriers_fidelity_test. Live host effects — nightly falsifier Wet batch when frontier row is SelfEmitted with binding."
+
+test fn self_host_target_carriers_behavioral_receipt_holds() -> Bool {
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/07_target_carriers.dag")
+}

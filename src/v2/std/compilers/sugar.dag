@@ -1,17 +1,10 @@
 module v2.std.compilers.sugar
 
-import v2.std.algebra {
-  Cons,
-  Empty,
-  FreeMonoid,
-  fold_list,
-  is_empty,
-  length,
-  list_append,
-  list_snoc_item
-}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list, is_empty, length, list_append, list_snoc_item }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   node_locus,
   Outcome,
@@ -47,27 +40,36 @@ import v2.std.node {
 type SugarLowering
   = SugarRewriteConnective { connective: Connective, edges: EdgeDiscipline }
   | SugarUnwrapPositionalChild {}
+  | SugarFoldCoproductPipeChain {}
+
+type SugarKey
+  = SurfaceAtomKey { atom: Symbol }
+  | ProductionIdentityKey { identity: Symbol }
 
 type SugarRule {
-  surface_atom: Symbol
+  key: SugarKey
   lowering: SugarLowering
 }
 
 data sugar_rule_service: SugarRule = SugarRule {
-  surface_atom: ^dag_c3_surface_sugar_service,
+  key: SurfaceAtomKey { atom: ^dag_c3_surface_sugar_service },
   lowering: SugarRewriteConnective { connective: Conj, edges: LabeledEdges }
 }
 data sugar_rule_fn: SugarRule = SugarRule {
-  surface_atom: ^dag_c3_surface_sugar_fn,
+  key: SurfaceAtomKey { atom: ^dag_c3_surface_sugar_fn },
   lowering: SugarRewriteConnective { connective: Arrow, edges: PositionalEdges }
 }
 data sugar_rule_type: SugarRule = SugarRule {
-  surface_atom: ^dag_c3_surface_sugar_type,
+  key: SurfaceAtomKey { atom: ^dag_c3_surface_sugar_type },
   lowering: SugarUnwrapPositionalChild {}
 }
 data sugar_rule_operation: SugarRule = SugarRule {
-  surface_atom: ^dag_c3_surface_sugar_operation,
+  key: SurfaceAtomKey { atom: ^dag_c3_surface_sugar_operation },
   lowering: SugarRewriteConnective { connective: Arrow, edges: PositionalEdges }
+}
+data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs },
+  lowering: SugarFoldCoproductPipeChain {}
 }
 
 fn sugar_rules() -> List<SugarRule> {
@@ -75,7 +77,8 @@ fn sugar_rules() -> List<SugarRule> {
     sugar_rule_service,
     sugar_rule_fn,
     sugar_rule_type,
-    sugar_rule_operation
+    sugar_rule_operation,
+    sugar_rule_type_alias_rhs
   ]
 }
 
@@ -83,26 +86,33 @@ fn no_sugar_rule() -> SugarRule? {
   optional_absent()
 }
 
-fn sugar_rule_for_atom(id: Symbol, rule: SugarRule) -> SugarRule? {
-  if id == rule.surface_atom {
-    optional_present(value: rule)
-  } else {
-    optional_absent()
+fn sugar_key_matches(key: SugarKey, rule_key: SugarKey) -> Bool {
+  match key {
+    SurfaceAtomKey { atom: a } =>
+      match rule_key {
+        SurfaceAtomKey { atom: b } => a == b
+        ProductionIdentityKey { identity: _ } => false
+      }
+    ProductionIdentityKey { identity: i } =>
+      match rule_key {
+        SurfaceAtomKey { atom: _ } => false
+        ProductionIdentityKey { identity: j } => i == j
+      }
   }
 }
 
-fn classify_sugar(n: Node) -> SugarRule? {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => sugar_rule_for_atom(id: id, rule: rule)
+fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
+  fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sugar_key_matches(key: key, rule_key: rule.key) {
+          optional_present(value: rule)
+        } else {
+          optional_absent()
         }
-      })
-    TypeNode { connective: _ } => no_sugar_rule()
-    ComputationNode { behavior: _ } => no_sugar_rule()
-  }
+    }
+  })
 }
 
 fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
@@ -170,7 +180,7 @@ fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
 
 fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
   if is_empty_conj_root(n: spine) {
-    Empty
+    std.algebra.Empty
   } else {
     match sugar_sequence_pair_optional(node: spine) {
       Present { value: pair } =>
@@ -182,17 +192,17 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
             )
           Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
         }
-      Absent => Empty
+      Absent => std.algebra.Empty
     }
   }
 }
 
 fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
   match sugar_sequence_pair_optional(node: captured) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: pair } =>
       list_append(
-        left: Cons { head: pair.left, tail: Empty },
+        left: Cons { head: pair.left, tail: std.algebra.Empty },
         right: sugar_collect_pipe_chain_variants(spine: pair.right)
       )
   }
@@ -239,7 +249,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
 fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
   fold_list(
     xs: variants,
-    empty: outcome_accepted(Empty),
+    empty: outcome_accepted(std.algebra.Empty),
     cons: fn(acc_outcome, variant) {
       bind_outcome(o: acc_outcome, f: fn(edges) {
         bind_outcome(o: sugar_variant_to_disj_edge(variant_node: variant), f: fn(edge) {
@@ -270,23 +280,39 @@ fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node>
   }
 }
 
-fn apply_sugar(rule: SugarRule, n: Node, children: List<Edge>) -> Outcome<Node> {
+fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
   match rule.lowering {
     SugarRewriteConnective { connective: connective, edges: discipline } =>
-      if edges_conform(children: children, d: discipline) {
+      if edges_conform(children: folded.children, d: discipline) {
         Accepted {
-          value: sugar_type_node(connective: connective, children: children, n: n),
+          value: sugar_type_node(connective: connective, children: folded.children, n: n),
           diagnostics: None
         }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
     SugarUnwrapPositionalChild {} =>
-      match sugar_positional_unwrap_child(children: children) {
+      match sugar_positional_unwrap_child(children: folded.children) {
         Present { value: child } =>
           Accepted { value: child, diagnostics: None }
         Absent =>
           Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+    SugarFoldCoproductPipeChain {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: result, diagnostics: d } =>
+              match result.kind {
+                TypeNode { connective: Disj } =>
+                  Accepted { value: result, diagnostics: d }
+                _ =>
+                  Accepted { value: folded, diagnostics: None }
+              }
+          }
+        Absent =>
+          Accepted { value: folded, diagnostics: None }
       }
   }
 }

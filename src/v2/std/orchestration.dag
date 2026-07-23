@@ -1,9 +1,9 @@
 module v2.std.orchestration
 
 import v2.std.text { String }
-import v2.std.algebra { FreeMonoid }
-import v2.std.collection { Optional }
-import v2.std.cardinality { DescentEvidence }
+import std.nat { Nat }
+import std.algebra { FreeMonoid }
+import v2.std.collection { List, Optional }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
 
@@ -37,9 +37,13 @@ type Predicate
   = ExitZero { run: Run }
   | LogMatches { source: String, pattern: String }
   | StrEq { lhs: String, rhs: String }
+  | StrEmpty { operand: String }
+  | StrNonempty { operand: String }
   | Not { inner: Predicate }
   | And { lhs: Predicate, rhs: Predicate }
   | Or { lhs: Predicate, rhs: Predicate }
+
+data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary empty/nonempty tests are StrEmpty (-z) and StrNonempty (-n); do not encode them as StrEq with a literal \"\" operand."
 
 type EscalationLevel {
   detect: Predicate
@@ -49,18 +53,39 @@ type EscalationLevel {
 
 type FailurePolicy = FailFast | Continue
 
+type Expr
+  = ExprLit { spelling: String }
+  | ExprVarRef { name: String }
+  | ExprCmdSubst { callee: String, args: List<String> }
+
+type Procedure {
+  name: String
+  body: Pipeline
+}
+
 type PipelineStep
   = Do { run: Run }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
-  | While { cond: Predicate, body: Pipeline, bound: DescentEvidence }
+  | While { cond: Predicate, body: Pipeline }
+  | BoundedPoll {
+      max_attempts: Nat,
+      body: Pipeline,
+      success: Predicate
+    }
   | Retry {
       body: Pipeline,
       escalations: FreeMonoid<EscalationLevel>,
       on_exhausted: Pipeline
     }
+  | Let { name: String, value: Expr }
+  | Call { callee: String, args: List<String> }
 
 type Pipeline {
   steps: FreeMonoid<PipelineStep>
   on_failure: FailurePolicy
 }
+
+data orchestration_bash_emit_scaffold_note: String = "v2.std.orchestration Pipeline/PipelineStep is the bash-emit scaffold: Do-run leaves carry command strings for foreign-executor/bootstrap emission via v2.compiler.emit_orchestration. Runtime-present bounded composition authority is v2.std.effect_plan EffectPlan/Do-effect (host-effect-orchestration.md section 1b; #6903 Wave A2)."
+
+data orchestration_to_effect_plan_dissolve_on: String = "🟡 dissolve-on: v2.std.orchestration — bash-emit Pipeline/PipelineStep scaffold (Do-run string leaves). Composition authority for bounded external effects is v2.std.effect_plan (landed #6903). DISSOLVES WHEN host-effect-orchestration.md Phase B: module renames/merges into std.effect_plan, Run.command leaves migrate onto typed EffectPlan Do-effect leaves and extdeps operations, and foreign-executor sites route through emit_orchestration only."

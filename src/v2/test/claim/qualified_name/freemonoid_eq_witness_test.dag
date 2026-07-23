@@ -1,8 +1,7 @@
 module v2.test.claim.qualified_name.freemonoid_eq_witness
 
-import v2.std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.node { Symbol }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type QnPath = FreeMonoid<Symbol>
 

@@ -1,0 +1,27 @@
+module test.claim.emit_host_gate_verdicts_test
+
+
+data emit_host_gate_verdicts_red_doc: String = "Discriminating controls for the per-smoke verdict line (tools.emit_host_gate.per_smoke_verdict_note): the refusal reason must NAME each failing smoke — the defect this dissolves is a five-smokes-into-one-Bool fold whose failure was unnameable from the receipt (2026-07-13 srv3 forensics receipt). A regression that drops a smoke from the line, swaps pass/FAIL polarity, or degenerates the join to empty goes RED on the exact-string pins below."
+
+test fn verdict_line_names_failing_smokes() -> Bool {
+  let got = smoke_verdict_line(rust: true, python: true, go: false, ts: false, node_http: true, c: true)
+  got == "emit-host smoke verdicts: rust=pass python=pass go=FAIL ts=FAIL node_http=pass c=pass"
+}
+
+test fn verdict_line_all_pass_names_all_smokes() -> Bool {
+  let got = smoke_verdict_line(rust: true, python: true, go: true, ts: true, node_http: true, c: true)
+  got == "emit-host smoke verdicts: rust=pass python=pass go=pass ts=pass node_http=pass c=pass"
+}
+
+test fn verdict_line_all_fail_names_all_smokes() -> Bool {
+  let got = smoke_verdict_line(rust: false, python: false, go: false, ts: false, node_http: false, c: false)
+  got == "emit-host smoke verdicts: rust=FAIL python=FAIL go=FAIL ts=FAIL node_http=FAIL c=FAIL"
+}
+
+test fn gate_failure_exit_reason_carries_verdicts() -> Bool {
+  let e = gate_failure_exit(rust: true, python: true, go: false, ts: true, node_http: true, c: true)
+  match e {
+    ExitFailure { code: _, reason: r } => r == "emit-host smoke verdicts: rust=pass python=pass go=FAIL ts=pass node_http=pass c=pass"
+    _ => false
+  }
+}

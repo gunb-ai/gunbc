@@ -20,6 +20,9 @@ import v2.std.timeseries_signal {
   InductorPassive,
   ResistorPassive,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   let component = Resistor {

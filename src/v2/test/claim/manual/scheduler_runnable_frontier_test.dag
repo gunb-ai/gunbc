@@ -1,33 +1,8 @@
 module v2.test.manual.scheduler_runnable_frontier
 
-import v2.std.collection { List }
-import v2.std.dependency {
-  Contains,
-  DataDependsOn,
-  DependencyView,
-  ReadinessLayer,
-  topological_layers
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.workflow.scheduler {
-  RunnableFrontier,
-  SchedulerNoRunnableFrontier,
-  SchedulerPlanBlocked,
-  SchedulerPlanComplete,
-  SchedulerPlanRunnable,
-  runnable_frontier,
-  runnable_frontier_from_dependencies,
-  scheduler_plan,
-  scheduler_plan_from_dependencies,
-  scheduler_step_plan_from_dependencies
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scheduler_build_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_build_symbol } },

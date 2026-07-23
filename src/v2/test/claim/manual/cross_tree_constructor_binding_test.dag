@@ -1,0 +1,14 @@
+module v2.test.claim.manual.cross_tree_constructor_binding_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn build_reversed() -> List<Int> {
+  fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {
+    list_append(left: [item], right: acc)
+  })
+}
+
+test fn witness_bare_imported_empty_binds_across_trees() -> Bool {
+  build_reversed() == Cons { head: 2, tail: Cons { head: 1, tail: Empty } }
+}

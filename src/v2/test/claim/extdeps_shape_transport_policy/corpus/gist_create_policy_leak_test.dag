@@ -1,11 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.corpus.gist_create_policy_leak
 
-import v2.lens.extdeps_shape_transport_policy {
-  extdeps_live_module_gist_create_declares_filename_input,
-  extdeps_live_module_gist_create_files_keyed_by_filename
-}
-import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_github_gists_module }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_gist_create_defused_holds() -> Bool {
   extdeps_live_module_gist_create_declares_filename_input(

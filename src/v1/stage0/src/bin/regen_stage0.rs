@@ -1,15 +1,22 @@
-use std::collections::{BTreeSet, HashMap};
+use im::HashMap;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
-use v1_compiler::v1_std_core::{diagnostic_to_message, diagnostic_to_span, CompilerDiagnostic};
+
+#[path = "../bootstrap_stage0_crate_layout_generated.rs"]
+mod bootstrap_stage0_crate_layout_generated;
+use bootstrap_stage0_crate_layout_generated::{
+    HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES,
+};
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
@@ -18,6 +25,9 @@ const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
 // Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Hand-maintained registry authority: gunbc.stage0_crate_layout_generated
+// (frontier-derived; regen via generated_artifact_gate main_wet).
+// Witness: stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
 // Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
@@ -40,22 +50,27 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
+    "gunbc_stage0_crate_layout_generated.rs",
+    "gunbc_stage0_crate_partition_generated.rs",
     "lib.rs",
     "std_algebra.rs",
     "std_coercion.rs",
     "std_computation.rs",
     "std_constructors.rs",
+    "std_content_hash.rs",
+    "std_currency.rs",
     "std_decl_ref.rs",
+    "std_disposition.rs",
     "std_effects.rs",
     "std_emit_model.rs",
     "std_error_primitives.rs",
+    "std_execution_mode.rs",
     "std_graph.rs",
     "std_http_path.rs",
     "std_induction.rs",
     "std_integer.rs",
+    "std_interface_summary.rs",
     "std_iteration.rs",
-    "std_lens_verdict.rs",
-    "std_list.rs",
     "std_logic.rs",
     "std_machine_constraints.rs",
     "std_magnitude.rs",
@@ -70,6 +85,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_types.rs",
     "v1_compiler_artifact.rs",
     "v1_compiler_coercion.rs",
+    "v1_compiler_closure_stub_v2_std_integer_rust.rs",
+    "v1_compiler_closure_stub_v2_std_text_rust.rs",
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",
@@ -113,27 +130,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "wt_b.rs",
     "wt_common.rs",
 ];
-
-const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    "cli_run.rs",
-    "complexity_linearity_audit_project.rs",
-    "coproduct_reflection.rs",
-    "external_authority_project.rs",
-    "recorded_fixture.rs",
-    "resolved_graph_cache.rs",
-    "rest_transport_facts.rs",
-    "wire_value_serialize.rs",
-    // dag_collect split (#6053) removed Ci-subcommand / extract_module_path emission from
-    // 05_emit_rust.dag; without those, the emitter no longer produces byte-identical main.rs,
-    // so main.rs parks here until those gaps are restored in .dag. Registry flip deferred until
-    // regen_stage0 --verify confirms byte-identical output vs this committed file.
-    // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
-    "main.rs",
-    "v1_interpreter.rs",
-];
-
-/// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
-const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &["module_path_index"];
 
 fn main() -> ExitCode {
     match run() {
@@ -319,8 +315,11 @@ fn run() -> Result<(), String> {
     }
 
     assert_registry_is_partitioned()?;
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace = workspace_root(&manifest_dir)?;
+    // Runtime-derived, never env!("CARGO_MANIFEST_DIR"): a baked path in a binary
+    // served across runner slots reads ANOTHER slot's checkout (silent wrong-tree
+    // regen, worse than the cli_run.rs strip_prefix panic — fleet red 2026-07-11).
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let manifest_dir = workspace.join("src/v1/stage0");
     let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
     let fresh_dir = match &emit_fresh {
@@ -333,14 +332,21 @@ fn run() -> Result<(), String> {
 
     let mut phases = Vec::new();
     let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    // Hand-maintained verification: diff each hand file against its fresh emit candidate
+    // (without overwriting it) so the gate's exclusion of hand files stops being silent.
+    // Runs before the crate assembly / registry asserts so the report is always visible on
+    // an emit-fresh run, independent of later failures.
+    if emit_fresh.is_some() {
+        let report = time_phase(&mut phases, "verify_hand_maintained_candidates", || {
+            verify_hand_maintained_candidates(&emitted, &stage0_src, &fresh_dir.join(".handverify"))
+        })?;
+        print_hand_verify_report(&report);
+    }
     time_phase(&mut phases, "write_emitted_crate", || {
         write_emitted_crate(&fresh_dir, &emitted)
     })?;
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_complexity_linearity_audit_mod", || {
-        patch_complexity_linearity_audit_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
@@ -444,19 +450,6 @@ fn run() -> Result<(), String> {
         GENERATED_STAGE0_FILES.len()
     );
     Ok(())
-}
-
-fn workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
-    manifest_dir
-        .ancestors()
-        .nth(3)
-        .map(Path::to_path_buf)
-        .ok_or_else(|| {
-            format!(
-                "could not find workspace root from {}",
-                manifest_dir.display()
-            )
-        })
 }
 
 fn time_phase<T, F>(phases: &mut Vec<BootstrapTimingPhase>, name: &str, f: F) -> Result<T, String>
@@ -580,7 +573,7 @@ fn cargo_invalidation_input(
     let bytes = fs::read(path)
         .map_err(|e| format!("read cargo invalidation input {}: {e}", path.display()))?;
     Ok(CargoInvalidationInput {
-        path: display_source_path(path, workspace),
+        path: v1_compiler::cli_run::regen_workspace_relpath(path, workspace),
         content_hash: format!("fnv1a64:{:016x}", fnv1a64(&bytes)),
         len_bytes: bytes.len() as u64,
     })
@@ -620,37 +613,9 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
-    let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
-
-    let hard_errors: Vec<String> = result
-        .diagnostics
-        .iter()
-        .filter(|d| {
-            !matches!(
-                *d.diagnostic.clone(),
-                CompilerDiagnostic::ComplexityUnknown { .. }
-            )
-        })
-        .map(|d| {
-            let span = diagnostic_to_span(d.diagnostic.clone());
-            format!(
-                "{} ({}:{}-{})",
-                diagnostic_to_message(d.diagnostic.clone()),
-                span.file,
-                span.start,
-                span.end
-            )
-        })
-        .collect();
-    if !hard_errors.is_empty() {
-        return Err(format!(
-            "v2 self-compile produced {} hard diagnostic(s):\n{}",
-            hard_errors.len(),
-            hard_errors.join("\n")
-        ));
-    }
-    if result.files.is_empty() {
-        return Err("v2 self-compile emitted no files".to_string());
+    let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
+    if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
+        return Err(message);
     }
 
     let mut out = HashMap::new();
@@ -664,135 +629,23 @@ fn source_files_for_roots(
     roots: &[PathBuf],
     workspace: &Path,
 ) -> Result<Vec<Rc<SourceFile>>, String> {
-    let index = build_module_index(roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "source root list must not be empty".to_string())?;
-    let mut entry_files = Vec::new();
-    let mut dag_paths = Vec::new();
-    collect_dag_files(entry_root, &mut dag_paths)?;
-    for path in dag_paths {
-        let content =
-            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        entry_files.push((display_source_path(&path, workspace), content));
+    // The regen input closure ([src/v1, dag] entries + transitive import closure) is
+    // computed by the single authority `cli_run::regen_input_sources`, which the
+    // regen-affected-set skip witness also consumes — so "what regen reads" lives in
+    // exactly one place. `roots` must match that authority's roots (asserted here so a
+    // caller drift is a loud refusal, never a silent fork).
+    let expected = v1_compiler::cli_run::regen_source_roots(workspace);
+    if roots != expected.as_slice() {
+        return Err(format!(
+            "source_files_for_roots called with roots {roots:?}; regen closure authority \
+             (cli_run::regen_source_roots) expects {expected:?}"
+        ));
     }
-
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = Vec::new();
-    for (path, content) in &entry_files {
-        if let Some(module_path) = extract_module_path(content) {
-            seen.insert(
-                module_path,
-                Rc::new(SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
-                }),
-            );
-        }
-        queue.push((path.clone(), content.clone()));
-    }
-
-    while let Some((_path, content)) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel_path = display_source_path(file_path, workspace);
-                seen.insert(
-                    module_path,
-                    Rc::new(SourceFile {
-                        path: rel_path.clone(),
-                        content: file_content.clone(),
-                    }),
-                );
-                queue.push((rel_path, file_content));
-            }
-        }
-    }
-
-    let mut result: Vec<Rc<SourceFile>> = seen.into_values().collect();
-    result.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(result)
-}
-
-fn build_module_index(roots: &[PathBuf]) -> Result<HashMap<String, PathBuf>, String> {
-    let mut index: HashMap<String, PathBuf> = HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content =
-                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    return Err(format!(
-                        "duplicate module path `{module_path}`: {} and {}",
-                        existing.display(),
-                        path.display()
-                    ));
-                }
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-fn collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = fs::read_dir(dir)
-        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_dag_files(&path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == "dag") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn extract_module_path(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("module ") {
-            return Some(rest.trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
-}
-
-fn extract_import_paths(content: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            let module_path = rest.split('{').next().unwrap_or(rest).trim();
-            if !module_path.is_empty() {
-                imports.push(module_path.to_string());
-            }
-        }
-    }
-    imports
-}
-
-fn display_source_path(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
+    let sources = v1_compiler::cli_run::regen_input_sources(workspace)?;
+    Ok(sources
+        .into_iter()
+        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .collect())
 }
 
 fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<(), String> {
@@ -840,20 +693,6 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod complexity_linearity_audit_project;") {
-        lib_text = lib_text.replace(
-            "pub mod cli_run;\n",
-            "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
-    Ok(())
-}
-
 fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
     let support_path = src_dir.join("v1_compiler_emit_core_support.rs");
     let support_text = fs::read_to_string(&support_path)
@@ -882,6 +721,41 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Normalize one emitted source file's TEXT through standalone rustfmt via stdin, returning the
+/// canonically-formatted content. Reading from stdin (not a file path) means rustfmt formats
+/// exactly this content with no path-header line and no module-tree recursion — a pure per-file
+/// normalization, crate-build-independent. A separate thread feeds stdin so a large file cannot
+/// deadlock against rustfmt's stdout. rustfmt's non-zero exit (unparseable emit) propagates as a
+/// hard error (fail-closed), never a silent skip.
+fn normalize_generated_source(content: &str) -> Result<String, String> {
+    let mut child = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn rustfmt: {e}"))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "rustfmt stdin unavailable".to_string())?;
+    let owned = content.to_string();
+    let writer = std::thread::spawn(move || stdin.write_all(owned.as_bytes()));
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("wait rustfmt: {e}"))?;
+    writer
+        .join()
+        .map_err(|_| "rustfmt stdin writer panicked".to_string())?
+        .map_err(|e| format!("write rustfmt stdin: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
+    }
+}
+
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
     let output = Command::new("cargo")
         .arg("fmt")
@@ -890,14 +764,173 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
         .arg(dir.join("Cargo.toml"))
         .output()
         .map_err(|e| format!("spawn cargo fmt for {}: {e}", dir.display()))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
+    if !output.status.success() {
+        return Err(format!(
             "cargo fmt failed for {}:\n{}",
             dir.display(),
             String::from_utf8_lossy(&output.stderr)
-        ))
+        ));
+    }
+    // `cargo fmt` walks the crate module tree and silently SKIPS files it cannot reach when the
+    // faithful-full-regen crate has non-building modules, leaving raw emit that diverges from the
+    // fmt-normalized committed seed by formatting alone (the #6848 regen red, and its twin in the
+    // .dag self_host_realized_comparison gate, which byte-compares this same emitted tree and
+    // cannot re-normalize on its side). Normalize every emitted generated file per-file through
+    // standalone rustfmt so the emitted ARTIFACT is canonically formatted for EVERY comparer — one
+    // normalization authority at production, not a re-normalization patched into each comparer.
+    let src = dir.join("src");
+    for file_name in GENERATED_STAGE0_FILES {
+        let path = src.join(file_name);
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("read emitted {}: {e}", path.display()))?;
+        let normalized = normalize_generated_source(&raw)
+            .map_err(|e| format!("rustfmt emitted {}: {e}", path.display()))?;
+        if normalized != raw {
+            fs::write(&path, normalized)
+                .map_err(|e| format!("write normalized {}: {e}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// A HAND_MAINTAINED file's status relative to what the emitter would produce for it.
+/// The regen gate copies hand files verbatim and never diffs them against a fresh emit,
+/// so a bad hand-sync -- or an emitter that has quietly caught up -- is invisible. This
+/// classification turns that silent exclusion into a countable, located signal.
+struct HandVerifyReport {
+    /// Emitter produces a candidate byte-identical (after identical rustfmt normalization)
+    /// to the committed hand file: the HAND entry is now a dead scaffold and the file
+    /// should be flipped into GENERATED_STAGE0_FILES.
+    matches: Vec<String>,
+    /// Emitter produces a candidate that differs from committed: either the known emitter
+    /// gap that justifies hand-maintenance, or an unintended hand-edit. Inspect the diff.
+    drifts: Vec<String>,
+    /// No emit candidate exists (a pure host-physics pin with no `.dag` source): not
+    /// regen-verifiable, covered only by the fresh-crate cargo-green check.
+    no_candidate: Vec<String>,
+    /// A candidate exists but could not be rustfmt-normalized (an unparseable / incomplete
+    /// emit candidate, or an rustfmt spawn / IO failure): the comparison is inconclusive.
+    /// Kept DISTINCT from `drifts` on purpose -- collapsing a normalization failure into
+    /// "drift" is the §5 absorbing-fallback this very gate exists to eliminate (infra failure
+    /// made indistinguishable from real content drift, its frequency uncountable). Each entry
+    /// carries the reason so a genuine content diff stays countable and a tooling failure stays
+    /// loud. (Infra failure formatting the *committed* file is hard-propagated upstream, so a
+    /// candidate-side failure here is normally the emitter producing un-formattable output.)
+    unverifiable: Vec<String>,
+}
+
+/// rustfmt `content` standalone (edition 2021), returning the formatted text. Emitting to
+/// stdout leaves no file behind. Returns Err with rustfmt's stderr when the content does not
+/// parse, and with the spawn/IO error when rustfmt cannot be run at all -- callers keep those
+/// cases distinct from a real content difference rather than folding them into "drift".
+fn rustfmt_normalize(content: &str, work_dir: &Path, tag: &str) -> Result<String, String> {
+    fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
+    let path = work_dir.join(format!("{tag}.rs"));
+    fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let output = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .arg("--emit")
+        .arg("stdout")
+        .arg(&path)
+        .output()
+        .map_err(|e| format!("spawn rustfmt for {}: {e}", path.display()))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Verify the hand-maintained files against what the emitter would produce, WITHOUT
+/// overwriting them. Both the emit candidate and the committed file are pushed through the
+/// same standalone rustfmt so the comparison isolates content drift from formatting noise.
+fn verify_hand_maintained_candidates(
+    emitted: &HashMap<String, String>,
+    stage0_src: &Path,
+    work_dir: &Path,
+) -> Result<HandVerifyReport, String> {
+    let mut report = HandVerifyReport {
+        matches: Vec::new(),
+        drifts: Vec::new(),
+        no_candidate: Vec::new(),
+        unverifiable: Vec::new(),
+    };
+    for file_name in HAND_MAINTAINED_STAGE0_FILES {
+        // compile_stage0's emitted map is keyed by output path (e.g. "src/main.rs"),
+        // while the roster lists bare filenames; look up both so a genuinely-emitted
+        // hand file is not misreported as absent.
+        let candidate = emitted
+            .get(&format!("src/{file_name}"))
+            .or_else(|| emitted.get(*file_name));
+        let Some(candidate) = candidate else {
+            report.no_candidate.push((*file_name).to_string());
+            continue;
+        };
+        let committed_path = stage0_src.join(file_name);
+        let committed = fs::read_to_string(&committed_path)
+            .map_err(|e| format!("read committed hand file {}: {e}", committed_path.display()))?;
+        let committed_norm = rustfmt_normalize(&committed, work_dir, "committed")
+            .map_err(|e| format!("rustfmt committed hand file {file_name}: {e}"))?;
+        match rustfmt_normalize(candidate, work_dir, "candidate") {
+            Ok(candidate_norm) if candidate_norm == committed_norm => {
+                report.matches.push((*file_name).to_string())
+            }
+            // Both files normalized and the content differs: a real drift.
+            Ok(_) => report.drifts.push((*file_name).to_string()),
+            // The candidate would not normalize -- inconclusive, NOT drift. Keep it loud and
+            // countable with its reason instead of fabricating a drift count.
+            Err(reason) => {
+                let first_line = reason.lines().next().unwrap_or("").trim();
+                report
+                    .unverifiable
+                    .push(format!("{file_name} ({first_line})"));
+            }
+        }
+    }
+    // Directory pins (e.g. module_path_index) have no single emit candidate keyed by path.
+    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        report.no_candidate.push(format!("{dir_name}/ (dir pin)"));
+    }
+    Ok(report)
+}
+
+/// Print the hand-maintained verification report. MATCH is the actionable signal (flip to
+/// GENERATED); DRIFT is expected for files parked on a known emitter gap; NO CANDIDATE marks
+/// the terminal-kernel host-physics pins that regen cannot cross-check.
+fn print_hand_verify_report(report: &HandVerifyReport) {
+    println!(
+        "regen_stage0 hand-maintained verification: {} match / {} drift / {} no-candidate / {} unverifiable",
+        report.matches.len(),
+        report.drifts.len(),
+        report.no_candidate.len(),
+        report.unverifiable.len()
+    );
+    if !report.matches.is_empty() {
+        println!(
+            "  MATCH (emitter reproduces these -- flip to GENERATED_STAGE0_FILES): {}",
+            report.matches.join(", ")
+        );
+    }
+    if !report.drifts.is_empty() {
+        println!(
+            "  DRIFT (emit candidate differs -- known emitter gap or hand-edit, inspect): {}",
+            report.drifts.join(", ")
+        );
+    }
+    if !report.no_candidate.is_empty() {
+        println!(
+            "  NO CANDIDATE (not in the fresh emit closure -- a host-physics pin with no \
+             .dag source, or a module the closure does not reach; cargo-green only): {}",
+            report.no_candidate.join(", ")
+        );
+    }
+    if !report.unverifiable.is_empty() {
+        println!(
+            "  UNVERIFIABLE (candidate did not rustfmt-normalize -- inconclusive, not counted \
+             as drift; inspect the reason): {}",
+            report.unverifiable.join(", ")
+        );
     }
 }
 
@@ -919,20 +952,37 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
     }
 }
 
-fn stage0_split_crate_boundaries(workspace: &Path) -> Vec<(PathBuf, String)> {
-    v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_files()
-        .iter()
-        .map(|file| (workspace.join(&file.path), file.content.clone()))
-        .collect()
+fn stage0_split_crate_boundaries(workspace: &Path) -> Result<Vec<(PathBuf, String)>, String> {
+    if !v1_compiler::v1_compiler_stage0_crates::stage0_partition_lookups_valid() {
+        return Err(
+            "stage0 partition emit refused: lookup validation failed (missing module owner or package crate_dir)"
+                .to_string(),
+        );
+    }
+    match v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_emit_outcome().as_ref() {
+        v1_compiler::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+            files,
+        } => Ok(files
+            .iter()
+            .map(|file| (workspace.join(&file.path), file.content.clone()))
+            .collect()),
+        v1_compiler::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+            cause,
+        } => Err(v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_emit_refusal_message(
+            cause.clone(),
+        )),
+    }
 }
 
 fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
     let mut mismatches = Vec::new();
-    for (path, expected) in stage0_split_crate_boundaries(workspace) {
+    for (path, expected) in stage0_split_crate_boundaries(workspace)? {
         let committed =
             fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         if committed != expected {
-            mismatches.push(display_source_path(&path, workspace));
+            mismatches.push(v1_compiler::cli_run::regen_workspace_relpath(
+                &path, workspace,
+            ));
         }
     }
     if mismatches.is_empty() {
@@ -946,7 +996,7 @@ fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> 
 }
 
 fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
-    for (path, contents) in stage0_split_crate_boundaries(workspace) {
+    for (path, contents) in stage0_split_crate_boundaries(workspace)? {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
@@ -1113,10 +1163,19 @@ fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), S
             .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
         let fresh_text = fs::read_to_string(&fresh)
             .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
+        // Plain byte compare: the emitted fresh crate is already normalized per-file by
+        // `rustfmt_generated_crate` (production-side single authority, matching the committed
+        // seed's own fmt normalization), so any surviving difference is genuine content drift.
         if committed_text != fresh_text {
             mismatches.push((*file_name).to_string());
         }
     }
+    // Structured divergence-count contract for the regen_divergence ratchet (#6352, two-job split):
+    // regen OWNS emitting this exact key; the ratchet OWNS parsing it. This is a real per-run
+    // execution output (mismatches.len()), not a prose-scrape of the human message below and not a
+    // re-asserted literal. Emitted on both paths (0 on match, N on divergence) so the ratchet reads
+    // it whether the seed is byte-identical or stale.
+    println!("regen_divergence_count={}", mismatches.len());
     if mismatches.is_empty() {
         return Ok(());
     }
@@ -1178,6 +1237,8 @@ fn changed_registered_outputs(
             }
             Err(e) => return Err(format!("read committed {}: {e}", committed.display())),
         };
+        // Plain byte compare: the emitted fresh crate is already per-file normalized at production
+        // (`rustfmt_generated_crate`), so the changed list carries genuine content drift only.
         if fresh_text != committed_text {
             changed.push((*file_name).to_string());
         }
@@ -1255,9 +1316,10 @@ mod tests {
     fn changed_registered_outputs_lists_only_mismatched_generated_files() {
         let committed = temp_test_dir("committed");
         let fresh = temp_test_dir("fresh");
-        seed_registered_files(&committed, "same\n");
-        seed_registered_files(&fresh, "same\n");
-        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "changed\n")
+        // Plain byte compare: only the file whose content genuinely changed is listed.
+        seed_registered_files(&committed, "fn same() {}\n");
+        seed_registered_files(&fresh, "fn same() {}\n");
+        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "fn changed() {}\n")
             .expect("write changed generated file");
 
         let changed =
@@ -1266,6 +1328,34 @@ mod tests {
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
+    }
+
+    // Regression for the #6848 regen_verify red (v1_compiler_infer.rs): the raw emit for a region
+    // (e.g. match-arm block wrapping) differs from the fmt-normalized committed seed by
+    // rustfmt-REVERSIBLE formatting alone, and `cargo fmt --all` in `rustfmt_generated_crate`
+    // silently skips it because the faithful-full-regen crate does not build. Per-file
+    // `normalize_generated_source` is the production-side authority that erases exactly that
+    // reversible formatting (so both the Rust verify gate AND the .dag self-host comparer see a
+    // canonically-formatted artifact) while preserving genuine content differences.
+    #[test]
+    fn normalize_generated_source_erases_rustfmt_reversible_formatting_but_preserves_content() {
+        let canonical = "pub fn f(x: i32) -> i32 {\n    let y = x + 1;\n    y\n}\n";
+        let raw_same = "pub fn f(x:i32)->i32{let y=x+1;y}\n";
+        let canonical_norm = normalize_generated_source(canonical).expect("rustfmt canonical form");
+        let raw_same_norm = normalize_generated_source(raw_same).expect("rustfmt raw-same form");
+        // Reversible formatting: messy raw and canonical normalize to the SAME text.
+        assert_eq!(
+            raw_same_norm, canonical_norm,
+            "formatting-only difference must vanish after normalization"
+        );
+
+        // RED control: a genuine content difference (x + 2, not x + 1) must SURVIVE normalization.
+        let raw_drift = "pub fn f(x:i32)->i32{let y=x+2;y}\n";
+        let raw_drift_norm = normalize_generated_source(raw_drift).expect("rustfmt drift form");
+        assert_ne!(
+            raw_drift_norm, canonical_norm,
+            "genuine content drift must survive normalization"
+        );
     }
 
     #[test]
@@ -1301,6 +1391,13 @@ mod tests {
             .all(|input| input.content_hash.starts_with("fnv1a64:") && input.len_bytes > 0));
 
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn compile_stage0_uses_shared_refusal_authority() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
+        let source = fs::read_to_string(path).expect("read regen_stage0.rs");
+        assert!(source.contains("stage0_self_compile_refusal_message"));
     }
 
     #[test]
@@ -1360,5 +1457,20 @@ mod tests {
             .expect("clock before unix epoch")
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
+    }
+
+    #[test]
+    fn emitted_compiler_tests_has_no_stale_global_bare_arg() {
+        let workspace = v1_compiler::cli_run::workspace_root();
+        let emitted = compile_stage0(&workspace).expect("compile_stage0");
+        let key = emitted
+            .keys()
+            .find(|path| path.ends_with("compiler_tests.rs"))
+            .expect("compiler_tests.rs in emitted stage0 roster");
+        let bad = "intern_table.clone(),\n                        std::rc::Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
+        assert!(
+            !emitted[key].contains(bad),
+            "fresh emit of compiler_tests.rs still passes removed global_bare arg"
+        );
     }
 }

@@ -1,0 +1,113 @@
+module v2.test.emit.rust_loop_emit
+
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body,
+  table_fixture_loop_wrong_value_arrow_with_body
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust_test {
+  rust_loop_source_text,
+  rust_loop_wrong_value_source_text,
+  rust_loop_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rust_loop_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_loop_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_loop_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_loop_emit_facts_miss }
+  }
+}
+
+fn rust_loop_emit_producer_inferred_tree() -> Outcome<InferredTree> {
+  match table_fixture_loop_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_loop_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_loop_emit_wrong_value_producer_inferred_tree() -> Outcome<InferredTree> {
+  match table_fixture_loop_wrong_value_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_loop_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_loop_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_loop_emit_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_loop_emit_from_wrong_value_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_loop_emit_wrong_value_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_loop_emit_one_accepts() -> Bool {
+  match rust_loop_emit_from_tree(target: rust_loop_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_loop_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_loop_emit_wrong_value_discriminates() -> Bool {
+  match rust_loop_emit_from_wrong_value_tree(target: rust_loop_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_loop_wrong_value_source_text) &&
+      (source.carried != rust_loop_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_loop_emit_holds() -> Bool {
+  rust_loop_emit_one_accepts()
+    && rust_loop_emit_wrong_value_discriminates()
+}

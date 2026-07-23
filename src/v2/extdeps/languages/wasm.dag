@@ -85,15 +85,8 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.logic { Bool }
-import v2.std.algebra {
-  approximate_field_type_node,
-  commutative_semiring_type_node,
-  Cons,
-  Empty,
-  fold_list,
-  list_append,
-  list_snoc_item
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { approximate_field_type_node, commutative_semiring_type_node, fold_list, list_append, list_snoc_item }
 import v2.std.text { String }
 
 type WasmIntWidth
@@ -126,7 +119,7 @@ type WasmGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-fn wasm_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn wasm_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^wasm_token_lparen },
     FixedToken { token_class: ^wasm_token_kw_func },
@@ -148,7 +141,7 @@ fn wasm_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^wasm_token_rparen }
   ]
 }
-data wasm_mvp1_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
+data wasm_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
 
 data wasm_facts_i32: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
   surface_spelling: ^wasm_surface_spelling_i32,
@@ -286,48 +279,27 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 }
 
-fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+fn wasm_inhabitant_node(id: Symbol, facts: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_integer_facts_node(facts: facts)
-      )
+      wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
     ],
     occurrence_id: SyntheticOccurrence
+  }
 }
+
+fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_integer_facts_node(facts: facts))
 }
 
 fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_float_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  wasm_inhabitant_node(id: id, facts: wasm_float_facts_node(facts: facts))
 }
 
 fn wasm_inhabitant_i32_node() -> Node {
   wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)
-}
-
-fn wasm_inhabitant_i64_node() -> Node {
-  wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)
-}
-
-fn wasm_inhabitant_f32_node() -> Node {
-  wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)
-}
-
-fn wasm_inhabitant_f64_node() -> Node {
-  wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64)
 }
 
 fn wasm_integer_inhabitant_id(facts: WasmIntegerPrimitiveFacts) -> Symbol {
@@ -408,42 +380,6 @@ fn wasm_float_numeric_immediate_node(
 }
 }
 
-fn wasm_i32_numeric_literal_node() -> Node {
-  wasm_int_numeric_immediate_node(
-    surface: ^wasm_surface_i32_numeric_literal,
-    token_class: ^wasm_token_i32_numeric_literal,
-    width: WasmIntBits32,
-    validation: ^wasm_numeric_immediate_validation_i32_range
-  )
-}
-
-fn wasm_i64_numeric_literal_node() -> Node {
-  wasm_int_numeric_immediate_node(
-    surface: ^wasm_surface_i64_numeric_literal,
-    token_class: ^wasm_token_i64_numeric_literal,
-    width: WasmIntBits64,
-    validation: ^wasm_numeric_immediate_validation_i64_range
-  )
-}
-
-fn wasm_f32_numeric_literal_node() -> Node {
-  wasm_float_numeric_immediate_node(
-    surface: ^wasm_surface_f32_numeric_literal,
-    token_class: ^wasm_token_f32_numeric_literal,
-    width: WasmFloatBits32,
-    validation: ^wasm_numeric_immediate_validation_f32_payload
-  )
-}
-
-fn wasm_f64_numeric_literal_node() -> Node {
-  wasm_float_numeric_immediate_node(
-    surface: ^wasm_surface_f64_numeric_literal,
-    token_class: ^wasm_token_f64_numeric_literal,
-    width: WasmFloatBits64,
-    validation: ^wasm_numeric_immediate_validation_f64_payload
-  )
-}
-
 fn wasm_localidx_node(token_class: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^wasm_surface_localidx } },
@@ -462,7 +398,7 @@ fn wasm_localidx_node(token_class: Symbol) -> Node {
       )
     ],
     occurrence_id: SyntheticOccurrence
-}
+  }
 }
 
 fn wasm_localidx_operand_node() -> Node {
@@ -473,20 +409,20 @@ fn wasm_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_inhabitant_i32_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_inhabitant_i64_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_inhabitant_f32_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_inhabitant_f64_node()),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64))
     ],
     occurrence_id: SyntheticOccurrence
-}
+  }
 }
 
-fn wasm_mvp1_selection_policy_node() -> Node {
+fn wasm_selection_policy_node() -> Node {
   wasm_inhabitant_i32_node()
 }
 
-fn wasm_mvp1_emitted_add_fn_node() -> Node {
+fn wasm_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -498,8 +434,8 @@ fn wasm_mvp1_emitted_add_fn_node() -> Node {
 }
 }
 
-fn wasm_mvp1_source_text_authority() -> String {
-  wasm_mvp1_source_text
+fn wasm_source_text_authority() -> String {
+  wasm_source_text
 }
 
 fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -507,30 +443,30 @@ fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn wasm_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+fn wasm_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
     head: wasm_named_edge(
       name: ^serialize_source_field_source_text,
-      target: wasm_inhabitant_atom(id: ^wasm_mvp1_source_literal)
+      target: wasm_inhabitant_atom(id: ^wasm_source_literal)
     ),
     tail: Cons {
       head: wasm_named_edge(
         name: ^serialize_source_field_source_grammar,
-        target: wasm_inhabitant_atom(id: ^wasm_production_mvp1_fn_add)
+        target: wasm_inhabitant_atom(id: ^wasm_production_fn_add)
       ),
       tail: Empty
     }
   }
 }
 
-fn wasm_mvp1_serialize_source_children() -> List<Edge> {
+fn wasm_serialize_source_children() -> List<Edge> {
   list_append(
-    left: wasm_mvp1_serialize_source_prefix_edges(),
+    left: wasm_serialize_source_prefix_edges(),
     right: [
       wasm_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: wasm_mvp1_concrete_tokens(),
+          tokens: wasm_concrete_tokens(),
           token_to_node: wasm_concrete_token_node
         )
       )
@@ -538,11 +474,11 @@ fn wasm_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn wasm_mvp1_serialize_source_node() -> Node {
-  let _authority = wasm_mvp1_source_text_authority()
+fn wasm_serialize_source_node() -> Node {
+  let _authority = wasm_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: wasm_mvp1_serialize_source_children(),
+    children: wasm_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
@@ -598,7 +534,7 @@ fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken)
 
 fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
   fold_list(
-    xs: wasm_mvp1_concrete_tokens(),
+    xs: wasm_concrete_tokens(),
     empty: wasm_grammar_terminal(token_class: ^wasm_token_lparen),
     cons: fn(acc, token) {
       wasm_grammar_sequence_fold_step(acc: acc, token: token)
@@ -606,11 +542,11 @@ fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
   )
 }
 
-fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
+fn wasm_grammar_relation_row() -> WasmGrammarRelationRow {
   WasmGrammarRelationRow {
-    production: wasm_grammar_production_mvp1_fn_add(),
-    emitted: wasm_mvp1_emitted_add_fn_node(),
-    tokens: wasm_mvp1_concrete_tokens()
+    production: wasm_grammar_production_fn_add(),
+    emitted: wasm_emitted_add_fn_node(),
+    tokens: wasm_concrete_tokens()
   }
 }
 
@@ -635,26 +571,26 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
 }
 }
 
-fn wasm_mvp1_translation_rules_node() -> Node {
+fn wasm_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
-        name: ^wasm_relation_rule_mvp1_fn_add,
-        target: wasm_grammar_relation_row_node(row: wasm_mvp1_grammar_relation_row())
+        name: ^wasm_relation_rule_fn_add,
+        target: wasm_grammar_relation_row_node(row: wasm_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn wasm_mvp1_target_model_node() -> Node {
+fn wasm_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: wasm_mvp1_selection_policy_node()
+        target: wasm_selection_policy_node()
       ),
       wasm_named_edge(
         name: ^target_model_edge_declared_inhabitants,
@@ -662,18 +598,18 @@ fn wasm_mvp1_target_model_node() -> Node {
       ),
       wasm_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: wasm_mvp1_translation_rules_node()
+        target: wasm_translation_rules_node()
       ),
       wasm_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: wasm_mvp1_serialize_source_node()
+        target: wasm_serialize_source_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn wasm_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn wasm_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^wasm_binding_fn_add, "$add"),
@@ -685,13 +621,13 @@ fn wasm_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn wasm_mvp1_target_model() -> TargetModel {
+fn wasm_target_model() -> TargetModel {
   TargetModel {
-    bundle: wasm_mvp1_target_model_node(),
-    lex: wasm_wave1_lex(),
-    binding_spellings: wasm_mvp1_binding_spellings(),
+    bundle: wasm_target_model_node(),
+    lex: wasm_lex(),
+    binding_spellings: wasm_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: wasm_mvp1_source_text_authority(),
+    authority_source_text: wasm_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -922,35 +858,7 @@ fn wasm_localidx_literal_lex_rule() -> LexRule {
   )
 }
 
-fn wasm_i32_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_i32_numeric_literal,
-    pattern: wasm_wat_int_literal_lex_pattern()
-  )
-}
-
-fn wasm_i64_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_i64_numeric_literal,
-    pattern: wasm_wat_int_literal_lex_pattern()
-  )
-}
-
-fn wasm_f32_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_f32_numeric_literal,
-    pattern: wasm_wat_float_literal_lex_pattern()
-  )
-}
-
-fn wasm_f64_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_f64_numeric_literal,
-    pattern: wasm_wat_float_literal_lex_pattern()
-  )
-}
-
-fn wasm_wave1_lex_rules() -> LexRuleSet {
+fn wasm_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       wasm_lex_rule(token_class: ^wasm_token_lparen, text: "("),
@@ -986,10 +894,22 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_int_numeric_literal_lex_rule(),
       wasm_float_numeric_literal_lex_rule(),
       wasm_localidx_literal_lex_rule(),
-      wasm_i32_numeric_literal_lex_rule(),
-      wasm_i64_numeric_literal_lex_rule(),
-      wasm_f32_numeric_literal_lex_rule(),
-      wasm_f64_numeric_literal_lex_rule(),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_i32_numeric_literal,
+        pattern: wasm_wat_int_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_i64_numeric_literal,
+        pattern: wasm_wat_int_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_f32_numeric_literal,
+        pattern: wasm_wat_float_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_f64_numeric_literal,
+        pattern: wasm_wat_float_literal_lex_pattern()
+      ),
       wasm_lex_rule(token_class: ^wasm_token_i32_const, text: "i32.const"),
       wasm_lex_rule(token_class: ^wasm_token_i32_add, text: "i32.add"),
       wasm_lex_rule(token_class: ^wasm_token_i32_sub, text: "i32.sub"),
@@ -1042,8 +962,8 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn wasm_wave1_lex() -> LexRules {
-  ModeledLexRules { root: wasm_wave1_lex_rules() }
+fn wasm_lex() -> LexRules {
+  ModeledLexRules { root: wasm_lex_rules() }
 }
 
 fn wasm_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -1059,14 +979,14 @@ fn wasm_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
   )
 }
 
-fn wasm_formal_production_mvp1_fn_add() -> FormalProduction {
+fn wasm_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^wasm_production_mvp1_fn_add,
-    rhs: wasm_formal_rhs_from_tokens(tokens: wasm_mvp1_concrete_tokens())
+    lhs: ^wasm_production_fn_add,
+    rhs: wasm_formal_rhs_from_tokens(tokens: wasm_concrete_tokens())
   )
 }
 
-fn wasm_wave1_formal_productions() -> List<FormalProduction> {
+fn wasm_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^wasm_production_value_type, rhs: [grammar_formal_terminal(identity: ^wasm_token_type_i32)]),
     grammar_formal_production(lhs: ^wasm_production_value_type, rhs: [grammar_formal_terminal(identity: ^wasm_token_type_i64)]),
@@ -1151,16 +1071,16 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(lhs: ^wasm_production_numeric_binop_instr, rhs: [grammar_formal_terminal(identity: ^wasm_token_f64_max)]),
     grammar_formal_production(lhs: ^wasm_production_numeric_binop_instr, rhs: [grammar_formal_terminal(identity: ^wasm_token_f64_copysign)]),
 
-    grammar_formal_production(lhs: ^wasm_production_mvp1_module_fn_suffix, rhs: []),
+    grammar_formal_production(lhs: ^wasm_production_module_fn_suffix, rhs: []),
     grammar_formal_production(
-      lhs: ^wasm_production_mvp1_module_fn_suffix,
+      lhs: ^wasm_production_module_fn_suffix,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_fn_add),
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_module_fn_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_fn_add),
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_module_fn_suffix)
       ]
     ),
     grammar_formal_production(
-      lhs: ^wasm_production_mvp1_module,
+      lhs: ^wasm_production_module,
       rhs: [
         grammar_formal_terminal(identity: ^wasm_token_lparen),
         grammar_formal_terminal(identity: ^wasm_token_kw_module),
@@ -1168,7 +1088,7 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
-      lhs: ^wasm_production_mvp1_module,
+      lhs: ^wasm_production_module,
       rhs: [
         grammar_formal_terminal(identity: ^wasm_token_lparen),
         grammar_formal_terminal(identity: ^wasm_token_kw_module),
@@ -1177,33 +1097,33 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
-      lhs: ^wasm_production_mvp1_module,
+      lhs: ^wasm_production_module,
       rhs: [
         grammar_formal_terminal(identity: ^wasm_token_lparen),
         grammar_formal_terminal(identity: ^wasm_token_kw_module),
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_fn_add),
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_module_fn_suffix),
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_fn_add),
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_module_fn_suffix),
         grammar_formal_terminal(identity: ^wasm_token_rparen)
       ]
     ),
     grammar_formal_production(
-      lhs: ^wasm_production_mvp1_module,
+      lhs: ^wasm_production_module,
       rhs: [
         grammar_formal_terminal(identity: ^wasm_token_lparen),
         grammar_formal_terminal(identity: ^wasm_token_kw_module),
         grammar_formal_terminal(identity: ^wasm_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_fn_add),
-        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_module_fn_suffix),
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_fn_add),
+        grammar_formal_nonterminal_occurrence(identity: ^wasm_production_module_fn_suffix),
         grammar_formal_terminal(identity: ^wasm_token_rparen)
       ]
     ),
     grammar_formal_production(
       lhs: ^wasm_production_text_fragment,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_fn_add)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^wasm_production_fn_add)]
     ),
     grammar_formal_production(
       lhs: ^wasm_production_text_fragment,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^wasm_production_mvp1_module)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^wasm_production_module)]
     ),
     grammar_formal_production(
       lhs: ^wasm_production_text_fragment,
@@ -1221,7 +1141,7 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^wasm_production_text_fragment,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^wasm_production_numeric_binop_instr)]
     ),
-    wasm_formal_production_mvp1_fn_add()
+    wasm_formal_production_fn_add()
   ]
 }
 
@@ -1229,7 +1149,7 @@ fn wasm_grammar_atom(id: Symbol) -> Node {
   wasm_inhabitant_atom(id: id)
 }
 
-fn wasm_grammar_mvp1_fn_add_expr() -> GrammarExpr {
+fn wasm_grammar_fn_add_expr() -> GrammarExpr {
   wasm_grammar_sequence(
     left: wasm_grammar_terminal(token_class: ^wasm_token_lparen),
     right: wasm_grammar_sequence(
@@ -1284,10 +1204,10 @@ fn wasm_grammar_mvp1_fn_add_expr() -> GrammarExpr {
   )
 }
 
-fn wasm_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn wasm_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^wasm_production_mvp1_fn_add,
-    expression: wasm_grammar_mvp1_fn_add_expr(),
+    name: ^wasm_production_fn_add,
+    expression: wasm_grammar_fn_add_expr(),
     emitted: wasm_grammar_atom(id: ^wasm_surface_fn_item)
   }
 }
@@ -1388,7 +1308,7 @@ fn wasm_grammar_numeric_binop_instr_expr() -> GrammarExpr {
   )
 }
 
-fn wasm_grammar_mvp1_module_expr() -> GrammarExpr {
+fn wasm_grammar_module_expr() -> GrammarExpr {
   wasm_grammar_sequence(
     left: wasm_grammar_terminal(token_class: ^wasm_token_lparen),
     right: wasm_grammar_sequence(
@@ -1399,7 +1319,7 @@ fn wasm_grammar_mvp1_module_expr() -> GrammarExpr {
         ),
         right: wasm_grammar_sequence(
           left: wasm_grammar_repeat(
-            element: Nonterminal { production: ^wasm_production_mvp1_fn_add }
+            element: Nonterminal { production: ^wasm_production_fn_add }
           ),
           right: wasm_grammar_terminal(token_class: ^wasm_token_rparen)
         )
@@ -1410,9 +1330,9 @@ fn wasm_grammar_mvp1_module_expr() -> GrammarExpr {
 
 fn wasm_grammar_text_fragment_expr() -> GrammarExpr {
   wasm_grammar_choice(
-    left: Nonterminal { production: ^wasm_production_mvp1_fn_add },
+    left: Nonterminal { production: ^wasm_production_fn_add },
     right: wasm_grammar_choice(
-      left: Nonterminal { production: ^wasm_production_mvp1_module },
+      left: Nonterminal { production: ^wasm_production_module },
       right: wasm_grammar_choice(
         left: Nonterminal { production: ^wasm_production_value_type },
         right: wasm_grammar_choice(
@@ -1435,11 +1355,11 @@ fn wasm_grammar_production_text_fragment() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_mvp1_module() -> GrammarProduction {
+fn wasm_grammar_production_module() -> GrammarProduction {
   GrammarProduction {
-    name: ^wasm_production_mvp1_module,
-    expression: wasm_grammar_mvp1_module_expr(),
-    emitted: wasm_grammar_atom(id: ^wasm_surface_mvp1_module_item)
+    name: ^wasm_production_module,
+    expression: wasm_grammar_module_expr(),
+    emitted: wasm_grammar_atom(id: ^wasm_surface_module_item)
   }
 }
 
@@ -1451,36 +1371,68 @@ fn wasm_grammar_production_value_type() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_i32_numeric_literal() -> GrammarProduction {
+fn wasm_grammar_production_numeric_literal(
+  production: Symbol,
+  token_class: Symbol,
+  emitted: Node
+) -> GrammarProduction {
   GrammarProduction {
-    name: ^wasm_production_i32_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_i32_numeric_literal),
-    emitted: wasm_i32_numeric_literal_node()
+    name: production,
+    expression: wasm_grammar_terminal(token_class: token_class),
+    emitted: emitted
   }
+}
+
+fn wasm_grammar_production_i32_numeric_literal() -> GrammarProduction {
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_i32_numeric_literal,
+    token_class: ^wasm_token_i32_numeric_literal,
+    emitted: wasm_int_numeric_immediate_node(
+      surface: ^wasm_surface_i32_numeric_literal,
+      token_class: ^wasm_token_i32_numeric_literal,
+      width: WasmIntBits32,
+      validation: ^wasm_numeric_immediate_validation_i32_range
+    )
+  )
 }
 
 fn wasm_grammar_production_i64_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_i64_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_i64_numeric_literal),
-    emitted: wasm_i64_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_i64_numeric_literal,
+    token_class: ^wasm_token_i64_numeric_literal,
+    emitted: wasm_int_numeric_immediate_node(
+      surface: ^wasm_surface_i64_numeric_literal,
+      token_class: ^wasm_token_i64_numeric_literal,
+      width: WasmIntBits64,
+      validation: ^wasm_numeric_immediate_validation_i64_range
+    )
+  )
 }
 
 fn wasm_grammar_production_f32_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_f32_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_f32_numeric_literal),
-    emitted: wasm_f32_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_f32_numeric_literal,
+    token_class: ^wasm_token_f32_numeric_literal,
+    emitted: wasm_float_numeric_immediate_node(
+      surface: ^wasm_surface_f32_numeric_literal,
+      token_class: ^wasm_token_f32_numeric_literal,
+      width: WasmFloatBits32,
+      validation: ^wasm_numeric_immediate_validation_f32_payload
+    )
+  )
 }
 
 fn wasm_grammar_production_f64_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_f64_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_f64_numeric_literal),
-    emitted: wasm_f64_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_f64_numeric_literal,
+    token_class: ^wasm_token_f64_numeric_literal,
+    emitted: wasm_float_numeric_immediate_node(
+      surface: ^wasm_surface_f64_numeric_literal,
+      token_class: ^wasm_token_f64_numeric_literal,
+      width: WasmFloatBits64,
+      validation: ^wasm_numeric_immediate_validation_f64_payload
+    )
+  )
 }
 
 fn wasm_grammar_production_localidx() -> GrammarProduction {
@@ -1507,10 +1459,10 @@ fn wasm_grammar_production_numeric_binop_instr() -> GrammarProduction {
   }
 }
 
-fn wasm_wave1_grammar_root() -> GrammarRoot {
+fn wasm_grammar_root() -> GrammarRoot {
   let start = wasm_grammar_production_text_fragment()
-  let fn_add = wasm_grammar_production_mvp1_fn_add()
-  let module = wasm_grammar_production_mvp1_module()
+  let fn_add = wasm_grammar_production_fn_add()
+  let module = wasm_grammar_production_module()
   let value_type = wasm_grammar_production_value_type()
   let i32_numeric_literal = wasm_grammar_production_i32_numeric_literal()
   let i64_numeric_literal = wasm_grammar_production_i64_numeric_literal()
@@ -1538,13 +1490,13 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn wasm_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: wasm_wave1_grammar_root() }
+fn wasm_grammar() -> ParseGrammar {
+  ModeledGrammar { root: wasm_grammar_root() }
 }
 
-fn wasm_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn wasm_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: wasm_wave1_lex_rules(),
+    rules: wasm_lex_rules(),
     token_class: sym
   )
 }
@@ -1594,10 +1546,10 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       wasm_catalog_surface_symbol(sym: sym) ||
-        wasm_wave1_lex_token_symbol(sym: sym) ||
+        wasm_lex_token_symbol(sym: sym) ||
         sym == ^wasm_surface_fn_item ||
         sym == ^wasm_surface_text_fragment ||
-        sym == ^wasm_surface_mvp1_module_item ||
+        sym == ^wasm_surface_module_item ||
         sym == ^wasm_surface_value_type ||
         sym == ^wasm_surface_i32_numeric_literal ||
         sym == ^wasm_surface_i64_numeric_literal ||
@@ -1616,9 +1568,9 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == ^wasm_numeric_immediate_validation_f32_payload ||
         sym == ^wasm_numeric_immediate_validation_f64_payload ||
         sym == ^wasm_localidx_validation_u32_range ||
-        sym == ^wasm_production_mvp1_fn_add ||
+        sym == ^wasm_production_fn_add ||
         sym == ^wasm_production_text_fragment ||
-        sym == ^wasm_production_mvp1_module ||
+        sym == ^wasm_production_module ||
         sym == ^wasm_production_value_type ||
         sym == ^wasm_production_i32_numeric_literal ||
         sym == ^wasm_production_i64_numeric_literal ||
@@ -1627,7 +1579,7 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == ^wasm_production_numeric_const_instr ||
         sym == ^wasm_production_numeric_binop_instr ||
         sym == ^wasm_production_localidx ||
-        sym == ^wasm_mvp1_source_literal
+        sym == ^wasm_source_literal
     }
   }
 }
@@ -1712,7 +1664,7 @@ fn wasm_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn wasm_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn wasm_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: wasm_primitive_bundles_from_integer_catalog(),
     right: wasm_primitive_bundles_from_float_catalog()
@@ -1831,10 +1783,10 @@ fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      wasm_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      wasm_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      wasm_named_edge(name: ^model_core_law_field_subject, target: witness),
+      wasm_named_edge(name: ^model_core_law_field_algebra, target: algebra),
       wasm_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: ^model_core_law_field_kind,
         target: wasm_inhabitant_atom(id: discriminant(v: key))
       )
     ],
@@ -1965,7 +1917,7 @@ fn wasm_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   }
 }
 
-fn wasm_effect_semantics_wave2b() -> EffectSemanticsDecl {
+fn wasm_effect_semantics() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
       wasm_pure_operation(operation: ^wasm_op_integer_add),
@@ -2006,7 +1958,7 @@ fn wasm_fail_closed_partial_operation(
   }
 }
 
-fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+fn wasm_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       wasm_fail_closed_partial_operation(
@@ -2038,30 +1990,23 @@ fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
   }
 }
 
-fn wasm_model_core_wave2b() -> ModelCore {
+fn wasm_model_core() -> ModelCore {
   ModelCore {
-    primitives: wasm_wave1_primitive_fact_bundles(),
+    primitives: wasm_primitive_fact_bundles(),
     inhabitance: wasm_model_core_inhabitance_decls(),
     laws: wasm_model_core_law_obligations(),
-    effects: wasm_effect_semantics_wave2b(),
-    partiality: wasm_partiality_semantics_wave2b()
+    effects: wasm_effect_semantics(),
+    partiality: wasm_partiality_semantics()
   }
 }
 
-fn wasm_model_core_wave1() -> ModelCore {
-  wasm_model_core_wave2b()
-}
-
-fn wasm_language_model_wave2b() -> LanguageModel {
+fn wasm_language_model() -> LanguageModel {
   LanguageModel {
-    lex: wasm_wave1_lex(),
-    grammar: wasm_wave1_grammar(),
+    lex: wasm_lex(),
+    grammar: wasm_grammar(),
     language_identity: ^wasm_language_model_surface_id,
     canonical_symbols: wasm_language_model_canonical_symbols(),
-    core: wasm_model_core_wave2b()
+    core: wasm_model_core()
   }
 }
 
-fn wasm_language_model_wave1() -> LanguageModel {
-  wasm_language_model_wave2b()
-}

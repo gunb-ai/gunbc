@@ -13,6 +13,11 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Absent,
@@ -27,6 +32,7 @@ import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -52,6 +58,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Value,
   SyntheticOccurrence,
 }
 import v2.std.runtime {
@@ -82,6 +89,10 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import std.algebra { FreeMonoid }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn lazy_arm_atom(s: Symbol) -> Node {
   Node {
@@ -147,31 +158,55 @@ fn lazy_arm_kw_false() -> Node {
   lazy_arm_atom(s: ^dag_token_kw_false)
 }
 
+fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
+        occurrence_id: SyntheticOccurrence,
+        children: []
+      }
+  }
+}
+
 fn lazy_arm_lit_one() -> Node {
-  lazy_arm_atom(s: ^lazy_arm_lit_one_sym)
+  lazy_arm_int_literal_from_lexeme(lexeme: "1")
 }
 
 fn lazy_arm_lit_two() -> Node {
-  lazy_arm_atom(s: ^lazy_arm_lit_two_sym)
+  lazy_arm_int_literal_from_lexeme(lexeme: "2")
+}
+
+data lazy_arm_divergent_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
+}
+
+data lazy_arm_counted_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
 }
 
 fn lazy_arm_divergent() -> Node {
-  lazy_arm_atom(s: ^lazy_arm_divergent_sym)
+  lazy_arm_divergent_value_node
 }
 
 fn lazy_arm_counted() -> Node {
-  lazy_arm_atom(s: ^lazy_arm_counted_sym)
+  lazy_arm_counted_value_node
 }
 
 fn lazy_arm_counted_slot_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: lazy_arm_atom(s: ^lazy_arm_counted_slot_sym)
+    identity: ^lazy_arm_counted_slot_sym
   }
 }
 
 fn lazy_arm_touch_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: lazy_arm_atom(s: ^lazy_arm_touch_counter_sym)
+    identity: ^lazy_arm_touch_counter_sym
   }
 }
 
@@ -179,7 +214,7 @@ fn lazy_arm_binding_keys_equal(
   a: EnvironmentBindingKey,
   b: EnvironmentBindingKey
 ) -> Bool {
-  a.declaration == b.declaration
+  a.identity == b.identity
 }
 
 fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
@@ -190,7 +225,7 @@ fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn lazy_arm_touch_from_env(env: EvaluationEnvironment) -> Int {
-  match map_get(m: env.bindings, key: lazy_arm_touch_key()) {
+  match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => lazy_arm_int_from_runtime(value: v)
@@ -226,24 +261,42 @@ fn lazy_arm_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn lazy_arm_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == lazy_arm_lit_one() {
-    outcome_accepted(value: lazy_arm_one_value())
-  } else if node == lazy_arm_lit_two() {
-    outcome_accepted(value: lazy_arm_two_value())
-  } else if node == lazy_arm_kw_true() {
-    outcome_accepted(value: lazy_arm_bool_value(is_true: true))
-  } else if node == lazy_arm_kw_false() {
-    outcome_accepted(value: lazy_arm_bool_value(is_true: false))
-  } else if node == lazy_arm_divergent() {
-    outcome_rejected(d: lazy_arm_diagnostic(n: node))
-  } else if node == lazy_arm_counted() {
-    if lazy_arm_touch_from_env(env: env) >= 1 {
-      outcome_rejected(d: lazy_arm_diagnostic(n: node))
-    } else {
-      outcome_accepted(value: lazy_arm_one_value())
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: lazy_arm_one_value())
+        } else if mag == 2 {
+          outcome_accepted(value: lazy_arm_two_value())
+        } else {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
   } else {
-    outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_token_kw_true {
+          outcome_accepted(value: lazy_arm_bool_value(is_true: true))
+        } else if id == ^dag_token_kw_false {
+          outcome_accepted(value: lazy_arm_bool_value(is_true: false))
+        } else {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        }
+      ComputationNode { behavior: Value } =>
+        if node == lazy_arm_counted_value_node {
+          if lazy_arm_touch_from_env(env: env) >= 1 {
+            outcome_rejected(d: lazy_arm_diagnostic(n: node))
+          } else {
+            outcome_accepted(value: lazy_arm_one_value())
+          }
+        } else if node == lazy_arm_divergent_value_node {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        } else {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        }
+      _ => outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    }
   }
 }
 
@@ -380,7 +433,7 @@ fn lazy_arm_bind_node(
 
 fn lazy_arm_counted_bind_arm() -> Node {
   lazy_arm_bind_node(
-    key_decl: lazy_arm_counted_slot_key().declaration,
+    key_decl: lazy_arm_atom(s: ^lazy_arm_counted_slot_sym),
     value: lazy_arm_counted(),
     body: lazy_arm_lit_one()
   )

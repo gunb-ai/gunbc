@@ -1,19 +1,5 @@
 module v2.lens.complexity_lowering
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.lens.cost {
-  AsymptoticClass,
-  ClassLinear,
-  ClassPolynomial,
-  SymbolicCost,
-  asymptotic_class_dominates,
-  asymptotic_class_of_cost,
-  polynomial_degree_two
-}
-import v2.std.algebra { FreeMonoid, any, fold_list, for_all }
-import v2.std.node { Symbol }
-import v2.std.logic { Bool }
 
 type ComplexityLowering {
   name: Symbol

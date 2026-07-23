@@ -1,23 +1,5 @@
 module v2.test.manual.verilog_concurrency_anchor
 
-import v2.extdeps.languages.verilog {
-  AlwaysBlock,
-  AlwaysBlockSensitivity,
-  AnsiModuleItem,
-  AttributeInstanceClause,
-  ContinuousAssign,
-  DelayClause,
-  DriveStrengthClause,
-  EdgeTrigger,
-  ModuleKeyword,
-  ModuleParameterPortList,
-  NetAssignment,
-  SensitivityItem,
-  VerilogCost,
-  VerilogModule
-}
-import v2.std.nat { Nat }
-import v2.std.node { Symbol }
 
 type verilog_anchor_module = VerilogModule
 data verilog_anchor_comb_assign: NetAssignment = NetAssignment {
@@ -41,7 +23,7 @@ data verilog_anchor_cost: VerilogCost = VerilogCost {
   gate_cost: 1,
   area_cost: 1
 }
-data verilog_anchor_module_wave0: verilog_anchor_module = NoPortListModule {
+data verilog_anchor_module_fixture: verilog_anchor_module = NoPortListModule {
   attributes: NoAttributeInstances,
   module_keyword: ModuleKw,
   name: ^verilog_anchor_q,

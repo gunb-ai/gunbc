@@ -1,14 +1,5 @@
 module extdeps.cpu.types
 
-import std.measure { HardwareThreadCount, Hertz, Watt }
-import std.types { Int, NonEmptyStr }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-
-import extdeps.toolchain.types { Architecture }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,6 +15,27 @@ type CpuSocket {
   contact_count: Int
 }
 
+type CpuL1CacheGeometry {
+  data_capacity_per_core: ByteSize
+  instruction_capacity_per_core: ByteSize
+  line_size: ByteSize
+}
+
+type CpuL2CacheGeometry {
+  capacity_per_core: ByteSize
+  line_size: ByteSize
+}
+
+type CpuL3CacheGeometry {
+  capacity: ByteSize
+  line_size: ByteSize
+}
+
+type CacheGeometryCitation {
+  field: NonEmptyStr
+  authority: ExternalAuthority
+}
+
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
@@ -34,7 +46,12 @@ type CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
   tdp_watts: Watt
-
+  l1_cache: CpuL1CacheGeometry
+  l1_cache_citations: List<CacheGeometryCitation>
+  l2_cache: CpuL2CacheGeometry
+  l2_cache_citations: List<CacheGeometryCitation>
+  l3_cache: CpuL3CacheGeometry
+  l3_cache_citations: List<CacheGeometryCitation>
 }
 
 type CpuDeploymentFacts {

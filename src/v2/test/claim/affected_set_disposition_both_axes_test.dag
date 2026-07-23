@@ -1,15 +1,7 @@
 module v2.test.claim.affected_set_disposition_both_axes
 
-import v2.std.logic { Bool }
-import v2.workflow.affected_set_floor_runner {
-  DiffPathsProduced,
-  FrontierProduced,
-  RunWitness,
-  SkipAssumedGreen,
-  floor_kernel_would_skip,
-  floor_witness_run_disposition
-}
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disposition_fixture_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disposition_fixture_symbol } },
@@ -25,7 +17,8 @@ fn disposition_node_frontier_only_skips_holds() -> Bool {
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: false,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   )
 }
 
@@ -35,7 +28,8 @@ fn disposition_node_frontier_only_runs_holds() -> Bool {
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: true,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   )
 }
 
@@ -45,7 +39,8 @@ fn disposition_function_edited_only_runs_holds() -> Bool {
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: false,
     function_edited: true,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   )
 }
 
@@ -55,10 +50,12 @@ fn disposition_both_axes_false_skips_holds() -> Bool {
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
     touches_frontier: false,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
@@ -68,20 +65,24 @@ fn disposition_either_axis_runs_holds() -> Bool {
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
     touches_frontier: false,
     function_edited: true,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   ) {
     RunWitness { reason: _ } => true
     SkipAssumedGreen => false
+    Refused { cause: _ } => false
   }
     && match floor_witness_run_disposition(
       diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
       frontier: FrontierProduced { nodes: [disposition_fixture_node] },
       touches_frontier: true,
       function_edited: false,
-      entry_file_touched: false
+      entry_file_touched: false,
+      runtime_data_dependency_touched: false
     ) {
       RunWitness { reason: _ } => true
       SkipAssumedGreen => false
+      Refused { cause: _ } => false
     }
 }
 

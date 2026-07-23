@@ -7,7 +7,7 @@ import v2.std.refinement {
   StructurallyUnordered,
   refine_ordered_iteration,
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -32,6 +32,7 @@ import v2.test.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj,
 }
+
 fn ordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
   IterationClassifier { classify: fn(_) { StructurallyOrdered } }
 }

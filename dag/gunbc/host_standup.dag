@@ -1,24 +1,5 @@
 module gunbc.host_standup
 
-import std.types { List, String, NonEmptyStr, Bool, Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import gunbc.host_effect { Policy, OneShotIdempotent, ConvergeToFixpoint }
-import gunbc.bmc_onboarding {
-  FactoryDefault,
-  CredentialsRotated,
-  bmc_credential_probe_to_phase,
-  BmcCredentialProbeResult,
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-}
-import gunbc.os_install_mechanism {
-  NbdProxyVirtualMediaInstall,
-  srv3_install_mechanism,
-}
-import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import product.placement_supply { HostIdentity }
 
 type HostStandupPrefixPhase
   = BmcCredentialConverge
@@ -30,6 +11,7 @@ type HostStandupAssimilationPhase
   = HostIdentityConverge
   | ReachSecretsNetwork
   | RunnerDeploySlot
+  | BuildCacheProvision
   | ComputeFabricEnroll
   | GreenPlaceReadiness
   | SessionPlacementEnrollment
@@ -50,7 +32,7 @@ type HostStandupStep {
   phase: HostStandupPhase
   label: NonEmptyStr
   disposition: PhaseDisposition
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 }
 
 type GapLedgerRow {
@@ -140,13 +122,13 @@ fn host_standup_prefix_step(
   phase: HostStandupPrefixPhase,
   label: NonEmptyStr,
   authorities: List<DeclarationRef>,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },
     label: label,
     disposition: ModeledCompose { authorities: authorities },
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -154,13 +136,13 @@ fn host_standup_assimilation_step(
   phase: HostStandupAssimilationPhase,
   label: NonEmptyStr,
   disposition: PhaseDisposition,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Assimilation { phase: phase },
     label: label,
     disposition: disposition,
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -177,7 +159,7 @@ fn host_standup_prefix_gap_step(
   label: NonEmptyStr,
   interim_realization: String,
   refusal: String,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },
@@ -186,7 +168,7 @@ fn host_standup_prefix_gap_step(
       interim_realization: interim_realization,
       refusal: refusal,
     },
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -198,7 +180,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.bmc_onboarding", decl_name: "bmc_credential_probe_to_phase"),
       decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
     ],
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
     phase: OsInstallMechanismResolved,
@@ -208,14 +190,14 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "srv3_install_mechanism"),
       decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan"),
     ],
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + extdeps.bmc.webui.nbd_proxy_serve ShellProgram transport (bash_emit dissolve-on) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
+    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; extdeps.bmc.webui.nbd_proxy_serve transport shape; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
     phase: HostConvergePolicyDerived,
@@ -224,7 +206,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.host_converge", decl_name: "fleet_converge_policy"),
       decl_ref(module_path: "gunbc.fleet_converge_emit", decl_name: "expected_fleet_converge_sh"),
     ],
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
   host_standup_assimilation_step(
     phase: HostIdentityConverge,
@@ -243,7 +225,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.deployed_intent_v1", decl_name: "deployed_intent_v1_srv1"),
       ]
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: ReachSecretsNetwork,
@@ -252,20 +234,34 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dag/test/fixture/tailscale_acl_reference.hujson); Phase 2 credential design: gunbc.tailscale_acl_phase2_credential (operator user-principal Secret Accessor, ADC-only, no repo WIF); ctrl interim: grant_host_reach.mjs, spawn_github_token.mjs; bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
       refusal: "host_standup:P0:reach-secrets-network:partial — ACL modeled+emit; Phase 2 credential design landed (DESIGN_ONLY); refuse live upsert until operator sign-off on tailscale_acl_upsert_wet"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: RunnerDeploySlot,
     label: "P1:runner-deploy-slot",
     disposition: ModeledCompose {
       authorities: [
+        decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "gunbc_runner_slot_desired"),
+        decl_ref(module_path: "gunbc.host_runner_memory_provision", decl_name: "provision_runner_memory_caps"),
         decl_ref(module_path: "gunbc.runner_spec_from_offer", decl_name: "runner_spec_from_offer"),
         decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest"),
         decl_ref(module_path: "gunbc.runner_slot_enforcement", decl_name: "reconcile_runner_slot"),
         decl_ref(module_path: "gunbc.ci_runner_placement", decl_name: "runner_deployment_plan"),
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
+  ),
+  host_standup_assimilation_step(
+    phase: BuildCacheProvision,
+    label: "P1b:build-cache-provision",
+    disposition: ModeledCompose {
+      authorities: [
+        decl_ref(module_path: "gunbc.host_build_cache_provision", decl_name: "provision_build_cache"),
+        decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_local_facts"),
+        decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "realize_provision_build_cache"),
+      ]
+    },
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: ComputeFabricEnroll,
@@ -274,7 +270,7 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ctrl:scripts/session-dashboard/lib/node_registry.mjs",
       refusal: "host_standup:P2:compute-fabric-enroll:enroll-act-unmodeled — product.compute_fabric.connect shapes the need/opportunity match but the enroll act is interim ctrl only"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: GreenPlaceReadiness,
@@ -287,7 +283,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.host_converge", decl_name: "gunbc_pinned_tree_knob"),
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
   host_standup_assimilation_step(
     phase: SessionPlacementEnrollment,
@@ -296,7 +292,7 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ctrl:scripts/session-dashboard/lib/spawn_placement.mjs;scripts/session-dashboard/lib/placement_query.mjs",
       refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority (interim ctrl .mjs only)"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: StandupAssimilationComplete,
@@ -310,7 +306,7 @@ data host_standup_spine: List<HostStandupStep> = [
         host_standup_p5_desired_pin_authority,
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
 ]
 
@@ -328,7 +324,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
-    authority_or_interim: "gunbc.srv3_os_install_actuate + extdeps.bmc.webui.nbd_proxy_serve (ShellProgram + bash_emit dissolve-on) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
+    authority_or_interim: "gunbc.srv3_os_install_actuate + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",
@@ -348,7 +344,12 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P1:runner-deploy-slot",
     modeling: "modeled",
-    authority_or_interim: "gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
+    authority_or_interim: "gunbc.runner_slot_allocation.gunbc_runner_slot_desired + gunbc.host_runner_memory_provision.provision_runner_memory_caps (MemoryMax/MemoryHigh modeled ConvergePlan; live apply on PerSlotMemoryCap realize frontier — path (b) plan-emit + verify-only) + gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
+  },
+  GapLedgerRow {
+    phase_label: "P1b:build-cache-provision",
+    modeling: "modeled",
+    authority_or_interim: "gunbc.host_build_cache_provision.provision_build_cache → gunbc.host_toolchain_ensure.host_toolchain_ensure(BuildCache) + extdeps.cache.sccache.sccache_local_facts + gunbc.host_effect_realize.realize_provision_build_cache"
   },
   GapLedgerRow {
     phase_label: "P2:compute-fabric-enroll",
@@ -386,11 +387,38 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
 }
 
 fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
+  host_standup_step_is_effective_gap_at_actuation_verdict(
+    step: step,
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
+  )
+}
+
+fn host_standup_step_is_effective_gap_at_actuation_verdict(
+  step: HostStandupStep,
+  verdict: ObservationVerdict,
+) -> Bool {
   match step.phase {
+    Prefix { phase: OsInstallActuated } =>
+      !deduce_os_install_actuated_satisfied(verdict: verdict)
+        && host_standup_step_is_gap(step: step)
+    Prefix { phase: _ } => host_standup_step_is_gap(step: step)
     Assimilation { phase: GreenPlaceReadiness } =>
       !host_standup_p3_gunbc_pinned_tree_landed || host_standup_step_is_gap(step: step)
-    _ => host_standup_step_is_gap(step: step)
+    Assimilation { phase: _ } => host_standup_step_is_gap(step: step)
   }
+}
+
+fn host_standup_gap_count_at_actuation_verdict(verdict: ObservationVerdict) -> Int {
+  fold(
+    host_standup_spine,
+    init: 0,
+    f: (acc, s) =>
+      if host_standup_step_is_effective_gap_at_actuation_verdict(step: s, verdict: verdict) {
+        acc + 1
+      } else {
+        acc
+      }
+  )
 }
 
 fn host_standup_p3_green_place_input_witness() -> GreenPlacePinCoherentWitness {
@@ -462,10 +490,8 @@ fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
 }
 
 fn host_standup_gap_count() -> Int {
-  fold(
-    host_standup_spine,
-    init: 0,
-    f: (acc, s) => if host_standup_step_is_effective_gap(step: s) { acc + 1 } else { acc }
+  host_standup_gap_count_at_actuation_verdict(
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
   )
 }
 

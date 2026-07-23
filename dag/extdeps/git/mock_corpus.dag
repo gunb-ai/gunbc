@@ -30,6 +30,13 @@ data git_core_mock_case_diff: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_core_mock_case_diff_unified0: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffUnified0",
+  service: "git.Core",
+  operation: "DiffUnified0",
+  case_id: 0
+}
+
 data git_core_mock_case_diff_name_only: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.DiffNameOnly",
   service: "git.Core",
@@ -41,6 +48,13 @@ data git_core_mock_case_diff_name_only_merge: PublishedMockCase = PublishedMockC
   operation_key: "git.Core.DiffNameOnlyMerge",
   service: "git.Core",
   operation: "DiffNameOnlyMerge",
+  case_id: 0
+}
+
+data git_core_mock_case_diff_name_status: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffNameStatus",
+  service: "git.Core",
+  operation: "DiffNameStatus",
   case_id: 0
 }
 
@@ -65,14 +79,56 @@ data git_core_mock_case_show: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_core_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.ShowTree",
+  service: "git.Core",
+  operation: "ShowTree",
+  case_id: 0
+}
+
+data git_core_mock_case_fetch_no_tags: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.FetchNoTags",
+  service: "git.Core",
+  operation: "FetchNoTags",
+  case_id: 0
+}
+
+data git_core_mock_case_fetch_prune: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.FetchPrune",
+  service: "git.Core",
+  operation: "FetchPrune",
+  case_id: 0
+}
+
+data git_core_mock_case_head_commit_short: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.HeadCommitShort",
+  service: "git.Core",
+  operation: "HeadCommitShort",
+  case_id: 0
+}
+
+data git_core_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.Toplevel",
+  service: "git.Core",
+  operation: "Toplevel",
+  case_id: 0
+}
+
 data git_published_mock_corpus: List<PublishedMockCase> = [
+  git_core_mock_case_toplevel,
   git_core_mock_case_current_branch,
   git_core_mock_case_remote_branches,
   git_core_mock_case_ls_files,
   git_core_mock_case_diff,
+  git_core_mock_case_diff_unified0,
   git_core_mock_case_diff_name_only,
   git_core_mock_case_diff_name_only_merge,
+  git_core_mock_case_diff_name_status,
   git_core_mock_case_rev_list,
   git_core_mock_case_rev_list_before,
-  git_core_mock_case_show
+  git_core_mock_case_show,
+  git_core_mock_case_show_tree,
+  git_core_mock_case_fetch_no_tags,
+  git_core_mock_case_fetch_prune,
+  git_core_mock_case_head_commit_short
 ]

@@ -1,0 +1,133 @@
+module v2.test.claim.interface_summary.interface_summary_firewall
+
+import std.interface_summary { export_entry_fingerprint }
+import std.types { ContentHash, NonEmptyStr, List }
+import std.disposition { Scaffold, Terminal }
+import v2.lens.interface_summary {
+  interface_summary_for_module,
+  import_interface_hashes_for_module
+}
+import v2.lens.module_graph { ImportResolutionFact }
+import std.algebra { Empty }
+import v2.std.collection { Present, Absent, optional_absent }
+import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data firewall_fixture_roots: List<String> = ["src/v2/test/fixture/interface_summary"]
+
+fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
+  match interface_summary_for_module(
+    module_path: module_path,
+    pool_roots: firewall_fixture_roots
+  ) {
+    Present { value: summary } =>
+      fold(summary.exports, init: optional_absent(), f: fn(found, entry) {
+        match found {
+          Present { value: _ } => found
+          Absent =>
+            match entry.name == "firewall_gate" {
+              true => Present { value: export_entry_fingerprint(entry: entry) }
+              false => found
+            }
+        }
+      })
+    Absent => Absent
+  }
+}
+
+fn firewall_body_v1_fingerprint_receipt() -> String {
+  match export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
+  ) {
+    Present { value: fp } => fp
+    Absent => "absent"
+  }
+}
+
+fn firewall_body_v2_fingerprint_receipt() -> String {
+  match export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_body_v2"
+  ) {
+    Present { value: fp } => fp
+    Absent => "absent"
+  }
+}
+
+fn firewall_sig_variant_fingerprint_receipt() -> String {
+  match export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_sig_variant"
+  ) {
+    Present { value: fp } => fp
+    Absent => "absent"
+  }
+}
+
+fn body_only_edit_preserves_export_fingerprint() -> Bool {
+  let v1 = export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
+  )
+  let v2 = export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_body_v2"
+  )
+  match v1 {
+    Present { value: fp1 } =>
+      match v2 {
+        Present { value: fp2 } => fp1 == fp2
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn signature_edit_changes_export_fingerprint() -> Bool {
+  let baseline = export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
+  )
+  let variant = export_fingerprint_for_gate(
+    module_path: "v2.test.fixture.interface_summary.firewall_sig_variant"
+  )
+  match baseline {
+    Present { value: fp1 } =>
+      match variant {
+        Present { value: fp2 } => fp1 != fp2
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn interface_summary_firewall_body_only_edit_is_green() -> Bool {
+  body_only_edit_preserves_export_fingerprint()
+}
+
+test fn interface_summary_firewall_signature_edit_is_red() -> Bool {
+  signature_edit_changes_export_fingerprint()
+}
+
+test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool {
+  match export_signature_facts_host_scaffold_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
+  let edges = [
+    ImportResolutionFact {
+      path: "src/mod.dag",
+      import_module: "missing.other",
+      target_declared: true
+    }
+  ]
+  match import_interface_hashes_for_module(
+    rel_path: "src/mod.dag",
+    edges: edges,
+    summaries: Empty
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

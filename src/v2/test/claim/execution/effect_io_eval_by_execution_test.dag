@@ -27,6 +27,7 @@ import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map }
 import v2.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   diagnostics_singleton
@@ -73,6 +74,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn effect_io_eval_atom(s: Symbol) -> Node {
   Node {

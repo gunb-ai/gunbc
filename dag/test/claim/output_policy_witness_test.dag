@@ -1,27 +1,7 @@
 module test.claim.output_policy_witness
 
-import gunbc.output_policy {
-  ChannelPolicy,
-  ClaimResult,
-  Condensed,
-  Diagnostic,
-  Full,
-  Instrumentation,
-  Normal,
-  OutputDecision,
-  Progress,
-  Quiet,
-  ShellTrace,
-  Suppressed,
-  Verbose,
-  Verbosity,
-  VerbosityEnv,
-  channel_decision,
-  env_var_for,
-  resolve_channel_policy,
-  resolve_verbosity,
-  shell_trace_summary_max_columns
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
   match d {
@@ -44,9 +24,9 @@ fn verbosity_is_normal(v: Verbosity) -> Bool {
 }
 
 fn w_diagnostic_never_hidden() -> Bool {
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
 }
 
 fn w_instrumentation_is_debug_only() -> Bool {
@@ -100,6 +80,108 @@ fn w_resolve_channel_policy_verbose_all_full() -> Bool {
   dec_is(d: p.shell_trace, suppressed: false, condensed: false, full: true) &&
   dec_is(d: p.instrumentation, suppressed: false, condensed: false, full: true) &&
   dec_is(d: p.progress, suppressed: false, condensed: false, full: true)
+}
+
+fn disp_is(d: StreamDisposition, surface: Bool, counts: Bool, suppressed: Bool) -> Bool {
+  match d {
+    SurfaceContent => surface
+    SummarizeCounts => counts
+    StreamSuppressed => suppressed
+  }
+}
+
+fn shell_stream(verbosity: Verbosity, expected: ExpectedOutcome, observed: ObservedOutcome) -> StreamDisposition {
+  effect_stream_disposition(channel: ShellTrace, verbosity: verbosity, expected: expected, observed: observed)
+}
+
+fn surfaced_text_or_marker(d: StreamDisposition, text: String) -> String {
+  match surface_effect_stream(disposition: d, text: text) {
+    Present { value: surfaced } => surfaced
+    Absent => "<omitted>"
+  }
+}
+
+fn w_divergence_surfaces_agreement_counts_at_normal() -> Bool {
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: ObservedSuccess),
+          surface: false, counts: true, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+          surface: false, counts: true, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: ObservedSuccess),
+          surface: true, counts: false, suppressed: false)
+}
+
+fn w_red_control_failing_as_declared_does_not_replay_content() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+    text: "::error::build verification: declared artifact absent"
+  ) == "<omitted>"
+}
+
+fn w_red_control_that_unexpectedly_succeeds_surfaces() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: ObservedSuccess),
+    text: "wall did not fire"
+  ) == "| wall did not fire"
+}
+
+fn w_surfaced_subject_text_cannot_mint_annotations() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+    text: "::error::boom\n::warning::next"
+  ) == "| ::error::boom\n| ::warning::next"
+}
+
+fn w_neutralization_is_the_only_route_to_surfaced_text() -> Bool {
+  neutralize_workflow_commands(text: "::endgroup::") == "| ::endgroup::" &&
+  subject_text_line_guard == "| "
+}
+
+fn w_quiet_suppresses_and_verbose_surfaces_regardless_of_outcome() -> Bool {
+  disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectFailure, observed: ObservedSuccess),
+          surface: false, counts: false, suppressed: true) &&
+  disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+          surface: false, counts: false, suppressed: true) &&
+  disp_is(d: shell_stream(verbosity: Verbose, expected: ExpectSuccess, observed: ObservedSuccess),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Verbose, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+          surface: true, counts: false, suppressed: false)
+}
+
+fn w_effect_stream_disposition_is_exit_invariant() -> Bool {
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 137)),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 137)),
+          surface: false, counts: true, suppressed: false)
+}
+
+fn w_expectation_axis_is_load_bearing_red_control() -> Bool {
+  let agree = shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1))
+  let diverge = shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1))
+  disp_is(d: agree, surface: true, counts: false, suppressed: false) == false &&
+  disp_is(d: diverge, surface: false, counts: true, suppressed: false) == false
+}
+
+fn w_shell_trace_stream_policy_projects_the_four_corners() -> Bool {
+  let p = resolve_shell_trace_stream_policy(verbose: false, quiet: false)
+  disp_is(d: p.expect_success_observed_success, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.expect_success_observed_failure, surface: true, counts: false, suppressed: false) &&
+  disp_is(d: p.expect_failure_observed_success, surface: true, counts: false, suppressed: false) &&
+  disp_is(d: p.expect_failure_observed_failure, surface: false, counts: true, suppressed: false) &&
+  p.subject_line_guard == "| "
+}
+
+test fn output_policy_effect_stream_witnesses() -> Bool {
+  w_divergence_surfaces_agreement_counts_at_normal() &&
+  w_red_control_failing_as_declared_does_not_replay_content() &&
+  w_red_control_that_unexpectedly_succeeds_surfaces() &&
+  w_surfaced_subject_text_cannot_mint_annotations() &&
+  w_neutralization_is_the_only_route_to_surfaced_text() &&
+  w_quiet_suppresses_and_verbose_surfaces_regardless_of_outcome() &&
+  w_effect_stream_disposition_is_exit_invariant() &&
+  w_expectation_axis_is_load_bearing_red_control() &&
+  w_shell_trace_stream_policy_projects_the_four_corners()
 }
 
 test fn output_policy_witnesses() -> Bool {

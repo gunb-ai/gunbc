@@ -1,0 +1,28 @@
+module extdeps.os.exec_arg_limit
+
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.nat { Nat }
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_architecture_profile }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man2/execve.2.html"
+  }
+}
+
+data linux_execve_max_arg_strlen_page_factor: Nat = 32
+
+fn host_exec_arg_max_strlen_from_page(page: ByteSize, page_factor: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(page) * page_factor)
+}
+
+data host_exec_arg_max_strlen: ByteSize = host_exec_arg_max_strlen_from_page(
+  page: x86_64_linux_architecture_profile.page_size,
+  page_factor: linux_execve_max_arg_strlen_page_factor,
+)
+
+data host_exec_arg_max_strlen_note: String = "Linux execve(2) per-argument ceiling: MAX_ARG_STRLEN = linux_execve_max_arg_strlen_page_factor (32) * PAGE_SIZE. host_exec_arg_max_strlen is DERIVED from extdeps.runtime.architecture.x86_64_linux.page_size — not an independent 131072 literal. A single argv or envp string longer than this makes execve fail with E2BIG (\"Argument list too long\") — the opaque os error 7 the srv1 deploy hit when a >128KB script was embedded in one sh -c argv element. Distinct from ARG_MAX (~2 MiB total argv+envp; getconf ARG_MAX) — not modeled here (using MAX_ARG_STRLEN as ARG_MAX would be an over-approximation, §5). Consumer seam: extdeps.shell shell.Exec.Check embeds the command input as one argv token (sh -c); shell.Exec.Run routes payload via stdin (sh -s) and does not hit this ceiling. The v1 interpreter shell dispatch (dispatch_shell) realizes the wall: refuse with InterpError::ArgvExceedsHostArgMax before spawn. Part A (route deploy scripts through Run/stdin) is #6711; this authority is the general host-boundary guard for every remaining argv-embedding site."

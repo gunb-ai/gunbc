@@ -1,24 +1,7 @@
 module test.claim.go_module_versioning_witness
 
-import std.logic { Bool }
-import std.types { Int, List }
-import std.algebra { Ordering, Less, Equal, Greater }
-import extdeps.languages.go.emit { go_manifest_file }
-import extdeps.languages.go.module {
-  GoMvsProperty,
-  GoMajorVersionSuffix,
-  GoSemVer,
-  MajorV0OrV1,
-  MajorV2Plus,
-  go_major_suffix_str,
-  go_semver_label,
-  go_semver_to_version_identity,
-  go_semver_compare,
-  go_module_version_scheme,
-  go_mvs_properties,
-  emit_host_min_go_language_version,
-  emit_host_bootstrap_toolchain,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_go_manifest_file() -> Bool {
   go_manifest_file == "go.mod"

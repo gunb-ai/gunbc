@@ -2,15 +2,19 @@
 // Source module: std.integer
 
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
+pub use crate::std_induction::int_pow_bounded;
 pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
+pub use crate::std_measure::{
+    bit_width, bit_width_count, uint8_channel_bit_width, uint8_channel_inclusive_max,
+};
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub type Int8 =
@@ -59,4 +63,15 @@ pub type UIntPlatform = crate::std_machine_constraints::Compose<
 
 pub type NonNegativeInt = i64;
 
-pub type PositiveInt = Nat;
+pub type PositiveInt = i64;
+
+pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
+    match int_pow_bounded(2, uint8_channel_bit_width()) {
+        Some(two_pow) => Some((two_pow.clone() - 1)),
+        None => None,
+    }
+}
+
+pub fn uint8_channel_inclusive_max_value() -> Int {
+    uint8_channel_inclusive_max()
+}

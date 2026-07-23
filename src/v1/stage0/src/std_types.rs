@@ -12,10 +12,10 @@ pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
@@ -37,7 +37,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v1_rt::map_get(&kernel_type_set(), name) {
+    match v1_rt::map_get(&kernel_type_set(), name.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -58,14 +58,14 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match container_expected_arity(name) {
+    match container_expected_arity(name.clone()) {
         Some(_) => true,
         None => false,
     }
 }
 
 pub fn container_expected_arity(name: String) -> Option<i64> {
-    v1_rt::map_get(&container_type_arity(), name)
+    v1_rt::map_get(&container_type_arity(), name.clone())
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
@@ -81,13 +81,14 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
-        let names = container_param_names_for(kind_name);
+        let names = container_param_names_for(kind_name.clone());
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
                 let mut __result = Vec::new();
                 for pair in Rc::new(
                     names
+                        .clone()
                         .iter()
                         .cloned()
                         .enumerate()
@@ -131,7 +132,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
-    v1_rt::map_contains_key(&ordered_element_collections(), name)
+    v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
 pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
@@ -173,11 +174,11 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_algebra_rows(), name)
+    v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_alias_rows(), name)
+    v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
@@ -201,11 +202,9 @@ pub enum Bool {
     False,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Json(pub std::marker::PhantomData<()>);
+pub type Json = serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Bytes(pub std::marker::PhantomData<()>);
+pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
@@ -215,8 +214,8 @@ pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
 
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 
-pub fn list_length<T>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
+pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
+    items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 
 pub type CommitSha = String;

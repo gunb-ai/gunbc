@@ -1,33 +1,7 @@
 module test.claim.hardware_selection
 
-import std.logic { Bool }
-import std.types { Int, List }
-import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
-import product.hardware_selection { milliwatt }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
-import extdeps.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
-import extdeps.vendor.sk_hynix { sk_hynix }
-import extdeps.vendor.ampere { ampere }
-import extdeps.memory.jedec { ddr4_generation_catalog, jedec_ddr_generation_catalog_row }
-import std.pareto { verdict_dominates, verdict_is_incomparable }
-import product.hardware_selection {
-  Platform,
-  MemoryConfig,
-  CpuCandidate,
-  Motherboard,
-  PsuModel,
-  SystemConfig,
-  HardwareAxes,
-  effective_data_rate_mts,
-  config_axes,
-  wall_draw_watts,
-  psu_is_adequate,
-  dominates,
-  axes_on_front,
-  config_is_realizable,
-  cost_micros_per_gib,
-  bandwidth_per_watt
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data altra8: Platform = Platform {
   label: "altra-8ch-ddr4-3200",
@@ -105,7 +79,13 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
-  tdp_watts: watt(250)
+  tdp_watts: watt(250),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_max_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_max_l3_cache_citations,
 }
 
 data cpu_fast: CpuCandidate = CpuCandidate {

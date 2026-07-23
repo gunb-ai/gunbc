@@ -1,5 +1,7 @@
 module test.claim.wet_hermetic_equivalence_witness
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 data wet_hermetic_equivalence_representative_prefix: String = "src/v2/test/lens_mock_totality/"
 
 test fn wet_hermetic_equivalence_roster_authority_is_pinned() -> Bool {

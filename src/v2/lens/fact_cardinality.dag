@@ -1,11 +1,5 @@
 module v2.lens.fact_cardinality
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.algebra { FreeMonoid, fold_list, length, contains, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 type FactCardinalityTree
   = Dag
@@ -51,13 +45,6 @@ fn fact_cardinality_cross_tree_diverged_fork(
 ) -> Bool {
   fact_cardinality_cross_tree_coexistence(left: left, right: right)
     && left.content_hash != right.content_hash
-}
-
-fn fact_cardinality_cross_tree_variant_mismatch(
-  left: FactCardinalityDeclFact,
-  right: FactCardinalityDeclFact
-) -> Bool {
-  fact_cardinality_cross_tree_diverged_fork(left: left, right: right)
 }
 
 fn any_pair_coexistence_for_key(

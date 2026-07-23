@@ -12,7 +12,7 @@ import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { empty_map }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
@@ -24,7 +24,8 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+
 data empty_lenses_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },

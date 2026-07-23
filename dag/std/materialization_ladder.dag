@@ -1,0 +1,982 @@
+module std.materialization_ladder
+
+import std.types { Bool, Int, List, String }
+import std.realization {
+  Materialization, Recompute, Memoize, Share,
+  Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
+}
+import std.disposition { Disposition, Terminal }
+
+data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
+}
+
+data materialization_ladder_provider_tier_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct readers over ProviderTier/CacheProvider (provider_is_*, provider_covers_identity, tier_axes, addressing_spans_isolation) — closed by declared tier/keying variants; not interim scaffolds."
+}
+
+data materialization_ladder_verdict_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct readers over LadderVerdict (ladder_verdict_is_*, verdict_is_*, materialization_ladder_holds, group_* helpers) — closed by declared verdict variants; witnesses cover every arm."
+}
+
+data materialization_ladder_value_binding_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct readers over ValueMaterialization/AccessMode (value_verdict_is_*, value_materialization_*, access_is_*) — closed by the value-tier vocabulary; discriminating corpus: materialization_ladder_witness_test value_* cells."
+}
+
+data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
+
+data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (eviction) is by construction, not by check: CacheProvider cannot be written without an EvictionClass (the REQUIRED eviction class - distinct from std.cache_interface.EvictionPolicy, the cited upstream mechanism; distinct concepts carry distinct names, DESIGN 3) — ScopeExit for scoped carriers (eviction = frame exit, derived) or SpacePacked for the persistent tier (dropping pure facts is always sound, only ever costs recompute). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
+
+type FrameKind
+  = SharedStateFrame
+  | IsolatedChildrenFrame
+  | ReplayedFrame { attempts: Int }
+  | UnboundedSiblingsFrame
+
+type Frame {
+  name: String
+  kind: FrameKind
+}
+
+type DemandNature
+  = PureComputation
+  | IdempotentEffect
+  | WorldRead { staleness_envelope_declared: Bool }
+  | FreshEffect
+
+type FrameDemand {
+  identity: String
+  site: List<Frame>
+  nature: DemandNature
+}
+
+type CacheKeying = ContentKeyed | ExistenceKeyed
+
+type EvictionClass
+  = ScopeExit
+  | SpacePacked { budget: String }
+
+type CacheCoverage
+  = CoversAllComputations
+  | CoversIdentities { identities: List<String> }
+
+type ProviderTier
+  = ReferenceTier
+  | CopyTier
+  | MemoTier { keying: CacheKeying }
+  | ArtifactTier { keying: CacheKeying }
+  | CasTier { keying: CacheKeying }
+
+type CacheProvider {
+  id: String
+  scope: List<Frame>
+  coverage: CacheCoverage
+  tier: ProviderTier
+  eviction: EvictionClass
+}
+
+data vacuity_lens_design_doc_provenance: String = "docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens carrier's link): its load-bearing review correction is about THIS file's AuthoredDuplication verdict — share f(x) in f(x)==f(x) makes the test MORE tautological; vacuity needs its own VacuityEvidence, not LadderVerdict. Migrates to the vacuity lens .dag carrier when it lands."
+
+data provider_tier_note: String = "Share is ONE verdict; the provider TIER is its layer-aware handler (operator, 2026-07-09): ReferenceTier = same-carrier readonly pointer (the cheapest cache — point at it, no copy, no destroyed memory; keyless BY SHAPE, so an existence-keyed reference is unwritable); CopyTier = clone-per-consumer, the PRICED demotion when reference requirements fail (silent demotion is the #6249 clone-fallback pathology); MemoTier/ArtifactTier/CasTier = store tiers carrying their keying. Frame obligations at isolation LCAs are dischargeable only by store tiers — a reference cannot cross an isolation boundary; Reference/Copy live at shared-state (eval) frames. That tier x frame compatibility is rule 4's no-provider-available-at-this-layer arm made structural — and it is DERIVED, not listed: see tier_axes."
+
+data provider_tier_decomposition_note: String = "The tiers are NOT fundamental arms and NOT heuristics (operator question, 2026-07-09): they are five NAMED POINTS in a product of three grounded axes — the Int8..Int128 = Compose<Int, MachineWidth> pattern (DESIGN section 2). Axis 1 placement (where the bytes live) REUSES std.realization.Placement — this projection repairs the section-3 nickname the first draft minted beside it. Axis 2 addressing (how a demand finds the materialization): EdgeAddressed — the dependency edge itself is the address (a pointer / direct hand-off; no key exists because the graph edge is the linkage) vs KeyAddressed — symbolic lookup, which is where CacheKeying lives (an edge needs no key; that is WHY ReferenceTier was keyless by shape). Axis 3 aliasing: AliasOne (all demands alias the single materialization — requires readonly, the borrow gate) vs ReplicatePerConsumer. Two orders EMERGE rather than being modeled: the cost order (reference < copy < memo < artifact < cas) is a discharge PREFERENCE, not semantics; the reach relation is the derived law — EdgeAddressed cannot span an isolation boundary (the edge does not exist across it), KeyAddressed spans exactly the boundaries its placement persists across. provider_is_store_tier derives from addressing_spans_isolation, so the store-tiers-only-at-isolation-LCAs rule is a consequence, never a listed rule."
+
+type ProviderAddressing
+  = EdgeAddressed
+  | KeyAddressed { keying: CacheKeying }
+
+type ProviderAliasing
+  = AliasOne
+  | ReplicatePerConsumer
+
+type ProviderAxes {
+  placement: Placement
+  addressing: ProviderAddressing
+  aliasing: ProviderAliasing
+}
+
+fn tier_axes(t: ProviderTier) -> ProviderAxes {
+  match t {
+    ReferenceTier => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: EdgeAddressed,
+      aliasing: AliasOne
+    }
+    CopyTier => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: EdgeAddressed,
+      aliasing: ReplicatePerConsumer
+    }
+    MemoTier { keying: k } => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+    ArtifactTier { keying: k } => ProviderAxes {
+      placement: LocalFilesystem,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+    CasTier { keying: k } => ProviderAxes {
+      placement: RemoteNetwork,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+  }
+}
+
+fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
+  match a {
+    EdgeAddressed => false
+    KeyAddressed { keying: _ } => true
+  }
+}
+
+fn scope_exit_eviction() -> EvictionClass {
+  ScopeExit
+}
+
+fn space_packed_eviction(budget: String) -> EvictionClass {
+  SpacePacked { budget: budget }
+}
+
+fn provider_row(
+  id: String,
+  scope: List<Frame>,
+  coverage: CacheCoverage,
+  tier: ProviderTier,
+  eviction: EvictionClass
+) -> CacheProvider {
+  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, eviction: eviction }
+}
+
+type LadderVerdict
+  = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
+  | DeadComputation { identity: String }
+  | Discharged { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedNoProvider { identity: String, lca: List<Frame> }
+  | RefusedScopeTooNarrow { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedExistenceKeyed { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedUnmodeledWorldRead { identity: String, lca: List<Frame> }
+  | ExemptFreshEffect { identity: String }
+  | AcceptedBelowCostFloor { identity: String }
+  | AcceptedSingleRecompute { identity: String }
+  | AcceptedEffectIsTheUse { identity: String }
+  | RefusedNatureConflict { identity: String }
+
+type DeclaredComputation {
+  identity: String
+  frame: List<Frame>
+  nature: DemandNature
+}
+
+data empty_frame_path: List<Frame> = []
+data no_cache_providers: List<CacheProvider> = []
+data no_cost_floor_exemptions: List<String> = []
+
+fn frame_kind_eq(a: FrameKind, b: FrameKind) -> Bool {
+  match a {
+    SharedStateFrame => match b {
+      SharedStateFrame => true
+      IsolatedChildrenFrame => false
+      ReplayedFrame { attempts: _ } => false
+      UnboundedSiblingsFrame => false
+    }
+    IsolatedChildrenFrame => match b {
+      SharedStateFrame => false
+      IsolatedChildrenFrame => true
+      ReplayedFrame { attempts: _ } => false
+      UnboundedSiblingsFrame => false
+    }
+    ReplayedFrame { attempts: la } => match b {
+      SharedStateFrame => false
+      IsolatedChildrenFrame => false
+      ReplayedFrame { attempts: rb } => la == rb
+      UnboundedSiblingsFrame => false
+    }
+    UnboundedSiblingsFrame => match b {
+      SharedStateFrame => false
+      IsolatedChildrenFrame => false
+      ReplayedFrame { attempts: _ } => false
+      UnboundedSiblingsFrame => true
+    }
+  }
+}
+
+fn frame_eq(a: Frame, b: Frame) -> Bool {
+  (a.name == b.name) && frame_kind_eq(a: a.kind, b: b.kind)
+}
+
+fn frame_path_is_prefix(prefix: List<Frame>, path: List<Frame>) -> Bool {
+  match prefix.first() {
+    Absent => true
+    Present { value: ph } => match path.first() {
+      Absent => false
+      Present { value: xh } =>
+        frame_eq(a: ph, b: xh)
+          && frame_path_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
+    }
+  }
+}
+
+fn frame_path_lca(a: List<Frame>, b: List<Frame>) -> List<Frame> {
+  match a.first() {
+    Absent => empty_frame_path
+    Present { value: ah } => match b.first() {
+      Absent => empty_frame_path
+      Present { value: bh } =>
+        if frame_eq(a: ah, b: bh) {
+          concat([ah], frame_path_lca(a: a.skip(n: 1), b: b.skip(n: 1)))
+        } else {
+          empty_frame_path
+        }
+    }
+  }
+}
+
+fn frame_declares_emergent(f: Frame) -> Bool {
+  match f.kind {
+    SharedStateFrame => false
+    IsolatedChildrenFrame => false
+    ReplayedFrame { attempts: n } => n > 1
+    UnboundedSiblingsFrame => true
+  }
+}
+
+fn declared_emergent_prefix(site: List<Frame>) -> List<Frame> {
+  match site.first() {
+    Absent => empty_frame_path
+    Present { value: h } =>
+      if frame_declares_emergent(f: h) {
+        [h]
+      } else {
+        let rest = declared_emergent_prefix(site: site.skip(n: 1))
+        if rest.count() == 0 {
+          empty_frame_path
+        } else {
+          concat([h], rest)
+        }
+      }
+  }
+}
+
+fn frame_path_last_is_shared_state(path: List<Frame>) -> Bool {
+  if path.count() == 0 {
+    false
+  } else {
+    match path.skip(n: path.count() - 1).first() {
+      Absent => false
+      Present { value: last_frame } => match last_frame.kind {
+        SharedStateFrame => true
+        IsolatedChildrenFrame => false
+        ReplayedFrame { attempts: _ } => false
+        UnboundedSiblingsFrame => false
+      }
+    }
+  }
+}
+
+fn string_list_contains(xs: List<String>, wanted: String) -> Bool {
+  xs |> fold(init: false, f: (acc, s) => acc || (s == wanted))
+}
+
+fn provider_covers_identity(p: CacheProvider, identity: String) -> Bool {
+  match p.coverage {
+    CoversAllComputations => true
+    CoversIdentities { identities: ids } => string_list_contains(xs: ids, wanted: identity)
+  }
+}
+
+fn provider_is_store_tier(p: CacheProvider) -> Bool {
+  let axes = tier_axes(t: p.tier)
+  addressing_spans_isolation(a: axes.addressing)
+}
+
+fn provider_is_content_keyed(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => true
+    CopyTier => true
+    MemoTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+    ArtifactTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+    CasTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+  }
+}
+
+fn provider_is_reference_tier(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => true
+    CopyTier => false
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn provider_is_copy_tier(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => false
+    CopyTier => true
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn ladder_distinct_identities(demands: List<FrameDemand>) -> List<String> {
+  reverse(demands |> fold(init: [], f: fn(acc, d) {
+    if string_list_contains(xs: acc, wanted: d.identity) {
+      acc
+    } else {
+      concat([d.identity], acc)
+    }
+  }))
+}
+
+fn ladder_group(demands: List<FrameDemand>, identity: String) -> List<FrameDemand> {
+  demands |> filter(d => d.identity == identity)
+}
+
+fn group_has_declared_emergent_site(group: List<FrameDemand>) -> Bool {
+  group |> fold(init: false, f: (acc, d) =>
+    acc || (declared_emergent_prefix(site: d.site).count() > 0)
+  )
+}
+
+fn group_is_redundant(group: List<FrameDemand>) -> Bool {
+  (group.count() > 1) || group_has_declared_emergent_site(group: group)
+}
+
+fn group_obligation_lca(group: List<FrameDemand>) -> List<Frame> {
+  match group.first() {
+    Absent => empty_frame_path
+    Present { value: head_demand } =>
+      if group.count() == 1 {
+        declared_emergent_prefix(site: head_demand.site)
+      } else {
+        group.skip(n: 1) |> fold(
+          init: head_demand.site,
+          f: (acc, d) => frame_path_lca(a: acc, b: d.site)
+        )
+      }
+  }
+}
+
+fn group_nature(group: List<FrameDemand>) -> DemandNature {
+  match group.first() {
+    Absent => PureComputation
+    Present { value: head_demand } => head_demand.nature
+  }
+}
+
+fn nature_eq(a: DemandNature, b: DemandNature) -> Bool {
+  match a {
+    PureComputation => match b {
+      PureComputation => true
+      IdempotentEffect => false
+      WorldRead { staleness_envelope_declared: _ } => false
+      FreshEffect => false
+    }
+    IdempotentEffect => match b {
+      PureComputation => false
+      IdempotentEffect => true
+      WorldRead { staleness_envelope_declared: _ } => false
+      FreshEffect => false
+    }
+    WorldRead { staleness_envelope_declared: da } => match b {
+      PureComputation => false
+      IdempotentEffect => false
+      WorldRead { staleness_envelope_declared: db } => da == db
+      FreshEffect => false
+    }
+    FreshEffect => match b {
+      PureComputation => false
+      IdempotentEffect => false
+      WorldRead { staleness_envelope_declared: _ } => false
+      FreshEffect => true
+    }
+  }
+}
+
+fn group_has_nature_conflict(group: List<FrameDemand>) -> Bool {
+  let head_nature = group_nature(group: group)
+  group |> fold(init: false, f: (acc, d) => acc || !nature_eq(a: d.nature, b: head_nature))
+}
+
+fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
+  let content_covering = providers |> filter(p =>
+    provider_is_store_tier(p: p)
+      && provider_covers_identity(p: p, identity: identity)
+      && frame_path_is_prefix(prefix: p.scope, path: lca)
+      && provider_is_content_keyed(p: p)
+  )
+  match content_covering.first() {
+    Present { value: chosen } => Discharged { identity: identity, lca: lca, provider_id: chosen.id }
+    Absent => {
+      let scope_covering = providers |> filter(p =>
+        provider_is_store_tier(p: p)
+          && provider_covers_identity(p: p, identity: identity)
+          && frame_path_is_prefix(prefix: p.scope, path: lca)
+      )
+      match scope_covering.first() {
+        Present { value: existence_one } =>
+          RefusedExistenceKeyed { identity: identity, lca: lca, provider_id: existence_one.id }
+        Absent => {
+          let narrow = providers |> filter(p =>
+            provider_is_store_tier(p: p) && provider_covers_identity(p: p, identity: identity)
+          )
+          match narrow.first() {
+            Present { value: narrow_one } =>
+              RefusedScopeTooNarrow { identity: identity, lca: lca, provider_id: narrow_one.id }
+            Absent => RefusedNoProvider { identity: identity, lca: lca }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn group_redundant_verdict(
+  identity: String,
+  group: List<FrameDemand>,
+  providers: List<CacheProvider>
+) -> LadderVerdict {
+  let lca = group_obligation_lca(group: group)
+  if frame_path_last_is_shared_state(path: lca) {
+    AuthoredDuplication { identity: identity, lca: lca, site_count: group.count() }
+  } else {
+    discharge_verdict(identity: identity, lca: lca, providers: providers)
+  }
+}
+
+fn group_verdict(
+  identity: String,
+  group: List<FrameDemand>,
+  providers: List<CacheProvider>,
+  cost_floor_exempt: List<String>
+) -> LadderVerdict {
+  if group_has_nature_conflict(group: group) {
+    RefusedNatureConflict { identity: identity }
+  } else if string_list_contains(xs: cost_floor_exempt, wanted: identity) {
+    AcceptedBelowCostFloor { identity: identity }
+  } else {
+    match group_nature(group: group) {
+      FreshEffect => ExemptFreshEffect { identity: identity }
+      WorldRead { staleness_envelope_declared: declared } =>
+        if !group_is_redundant(group: group) {
+          AcceptedSingleRecompute { identity: identity }
+        } else if declared {
+          group_redundant_verdict(identity: identity, group: group, providers: providers)
+        } else {
+          RefusedUnmodeledWorldRead { identity: identity, lca: group_obligation_lca(group: group) }
+        }
+      PureComputation =>
+        if group_is_redundant(group: group) {
+          group_redundant_verdict(identity: identity, group: group, providers: providers)
+        } else {
+          AcceptedSingleRecompute { identity: identity }
+        }
+      IdempotentEffect =>
+        if group_is_redundant(group: group) {
+          group_redundant_verdict(identity: identity, group: group, providers: providers)
+        } else {
+          AcceptedSingleRecompute { identity: identity }
+        }
+    }
+  }
+}
+
+fn materialization_ladder(
+  demands: List<FrameDemand>,
+  providers: List<CacheProvider>,
+  cost_floor_exempt: List<String>
+) -> List<LadderVerdict> {
+  ladder_distinct_identities(demands: demands) |> map(identity =>
+    group_verdict(
+      identity: identity,
+      group: ladder_group(demands: demands, identity: identity),
+      providers: providers,
+      cost_floor_exempt: cost_floor_exempt
+    )
+  )
+}
+
+fn ladder_verdict_is_green(v: LadderVerdict) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => true
+    Discharged { identity: _, lca: _, provider_id: _ } => true
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => true
+    AcceptedBelowCostFloor { identity: _ } => true
+    AcceptedSingleRecompute { identity: _ } => true
+  }
+}
+
+fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
+  match v {
+    RefusedNatureConflict { identity: _ } => Recompute
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => Share
+    DeadComputation { identity: _ } => Recompute
+    AcceptedEffectIsTheUse { identity: _ } => Recompute
+    Discharged { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedNoProvider { identity: _, lca: _ } => Memoize
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => Recompute
+    ExemptFreshEffect { identity: _ } => Recompute
+    AcceptedBelowCostFloor { identity: _ } => Recompute
+    AcceptedSingleRecompute { identity: _ } => Recompute
+  }
+}
+
+fn materialization_ladder_holds(
+  demands: List<FrameDemand>,
+  providers: List<CacheProvider>,
+  cost_floor_exempt: List<String>
+) -> Bool {
+  materialization_ladder(demands: demands, providers: providers, cost_floor_exempt: cost_floor_exempt)
+    |> fold(init: true, f: (acc, v) => acc && ladder_verdict_is_green(v: v))
+}
+
+fn verdict_is_refused_nature_conflict(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: i } => i == identity
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+  }
+}
+
+fn verdict_is_authored_duplication(v: LadderVerdict, identity: String, site_count: Int) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: i, lca: _, site_count: n } => (i == identity) && (n == site_count)
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_discharged_by(v: LadderVerdict, identity: String, provider_id: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: i, lca: _, provider_id: p } => (i == identity) && (p == provider_id)
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_no_provider(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: i, lca: _ } => i == identity
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_scope_too_narrow(v: LadderVerdict, provider_id: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: p } => p == provider_id
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_existence_keyed(v: LadderVerdict, provider_id: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: p } => p == provider_id
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_unmodeled_world_read(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: i, lca: _ } => i == identity
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_exempt_fresh(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: i } => i == identity
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_accepted_below_cost_floor(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: i } => i == identity
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_accepted_single_recompute(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: i } => i == identity
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn demands_contain_identity(demands: List<FrameDemand>, identity: String) -> Bool {
+  demands |> fold(init: false, f: (acc, d) => acc || (d.identity == identity))
+}
+
+fn zero_demand_verdict(decl: DeclaredComputation) -> LadderVerdict {
+  match decl.nature {
+    PureComputation => DeadComputation { identity: decl.identity }
+    WorldRead { staleness_envelope_declared: _ } => DeadComputation { identity: decl.identity }
+    IdempotentEffect => AcceptedEffectIsTheUse { identity: decl.identity }
+    FreshEffect => AcceptedEffectIsTheUse { identity: decl.identity }
+  }
+}
+
+fn ladder_zero_demand_verdicts(
+  declared: List<DeclaredComputation>,
+  demands: List<FrameDemand>
+) -> List<LadderVerdict> {
+  declared
+    |> filter(decl => !demands_contain_identity(demands: demands, identity: decl.identity))
+    |> map(decl => zero_demand_verdict(decl: decl))
+}
+
+fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: i } => i == identity
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+data value_tier_note: String = "The VALUE tier: v1.compiler.ownership refactored onto materialization (operator-directed first consolidation, 2026-07-09). A value binding inside one shared-state frame is the smallest materialization site, and the ownership decision IS provider selection: single take = move the value (no provider); plural readonly access = discharge by ReferenceTier (point at it — 'if a value is readonly and in context, provide a reference; do not destroy the memory to build a cache'); a take alongside borrows = the PRICED demotion to CopyTier (v1: excluded from build_movable_set, the emitter clones — the #6249 clone-fallback made explicit and priced; v1's FoldAccUnwrapProof is the escape that re-earns the move for fold accumulators); plural takes = affine refusal (v1 SharedError — a double-consume is a modeling bug, not a caching opportunity). Faithful to v1's THREE distinct plurality readings: take_count mirrors semantic_consumer_count (Consumed only — the affine axis); value_access_plurality mirrors binding_fan_out (CarryAccess/Threaded excluded — the reference-eligibility axis, the reduce-spine exclusion); borrow_count mirrors whole_value_borrow_count (Read + Carry, NOT Project — the movability axis). Witnesses assert cell-by-cell agreement with make_decision / build_movable_set / build_read_only_params semantics; corpus-level equivalence against live v1 ownership folds is the C4 receipt."
+
+type AccessMode
+  = ReadAccess
+  | ConsumeAccess
+  | CarryAccess
+  | ProjectAccess
+
+type ValueConsumerEdge {
+  access: AccessMode
+  site: String
+}
+
+type ValueUsage {
+  identity: String
+  consumers: List<ValueConsumerEdge>
+}
+
+type ValueMaterialization
+  = ValueDead { identity: String }
+  | ValueMoved { identity: String }
+  | ValueSharedByReference { identity: String, provider_id: String, reader_count: Int }
+  | ValueDemotedToCopy { identity: String, copies: Int, provider_id: String }
+  | ValueRefusedAffine { identity: String, take_count: Int }
+  | ValueRefusedNoCarrierProvider { identity: String, needed: ProviderTier }
+
+fn access_is_consume(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => false
+    ConsumeAccess => true
+    CarryAccess => false
+    ProjectAccess => false
+  }
+}
+
+fn access_is_carry(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => false
+    ConsumeAccess => false
+    CarryAccess => true
+    ProjectAccess => false
+  }
+}
+
+fn access_is_whole_value_borrow(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => true
+    ConsumeAccess => false
+    CarryAccess => true
+    ProjectAccess => false
+  }
+}
+
+fn value_take_count(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => access_is_consume(a: c.access)) |> count
+}
+
+fn value_access_plurality(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => !access_is_carry(a: c.access)) |> count
+}
+
+fn value_borrow_count(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => access_is_whole_value_borrow(a: c.access)) |> count
+}
+
+fn first_provider_where(providers: List<CacheProvider>, wanted: fn(CacheProvider) -> Bool) -> CacheProvider? {
+  let hits = providers |> filter(p => wanted(p))
+  hits.first()
+}
+
+fn value_materialization(usage: ValueUsage, providers: List<CacheProvider>) -> ValueMaterialization {
+  let takes = value_take_count(usage: usage)
+  let plurality = value_access_plurality(usage: usage)
+  let carries = usage.consumers |> filter(c => access_is_carry(a: c.access)) |> count
+  if (plurality == 0) && (carries == 0) {
+    ValueDead { identity: usage.identity }
+  } else if takes > 1 {
+    ValueRefusedAffine { identity: usage.identity, take_count: takes }
+  } else if takes == 1 {
+    if value_borrow_count(usage: usage) == 0 {
+      ValueMoved { identity: usage.identity }
+    } else {
+      match first_provider_where(providers: providers, wanted: p => provider_is_copy_tier(p: p)) {
+        Present { value: copier } =>
+          ValueDemotedToCopy { identity: usage.identity, copies: 1, provider_id: copier.id }
+        Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: CopyTier }
+      }
+    }
+  } else {
+    match first_provider_where(providers: providers, wanted: p => provider_is_reference_tier(p: p)) {
+      Present { value: referencer } =>
+        ValueSharedByReference {
+          identity: usage.identity,
+          provider_id: referencer.id,
+          reader_count: plurality
+        }
+      Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: ReferenceTier }
+    }
+  }
+}
+
+fn value_materialization_is_green(v: ValueMaterialization) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => true
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => true
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => true
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_moved(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: i } => i == identity
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_shared_by_reference(v: ValueMaterialization, identity: String, provider_id: String, reader_count: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: i, provider_id: p, reader_count: n } =>
+      (i == identity) && (p == provider_id) && (n == reader_count)
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_demoted_to_copy(v: ValueMaterialization, identity: String, copies: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: i, copies: n, provider_id: _ } => (i == identity) && (n == copies)
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_refused_affine(v: ValueMaterialization, identity: String, take_count: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: i, take_count: n } => (i == identity) && (n == take_count)
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_refused_needing_reference(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: i, needed: t } =>
+      (i == identity) && provider_tier_is_reference_kind(t: t)
+  }
+}
+
+fn value_verdict_is_refused_needing_copy(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: i, needed: t } =>
+      (i == identity) && provider_tier_is_copy_kind(t: t)
+  }
+}
+
+fn value_verdict_is_dead(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: i } => i == identity
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn provider_tier_is_reference_kind(t: ProviderTier) -> Bool {
+  match t {
+    ReferenceTier => true
+    CopyTier => false
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn provider_tier_is_copy_kind(t: ProviderTier) -> Bool {
+  match t {
+    ReferenceTier => false
+    CopyTier => true
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn verdict_is_accepted_effect_is_the_use(v: LadderVerdict, identity: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: i } => i == identity
+  }
+}

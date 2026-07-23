@@ -1,27 +1,7 @@
 module test.claim.html_markup_xss_witness
 
-import std.markup {
-  escape_url,
-  MarkupAttr,
-  MarkupNode,
-  ElementNode,
-  TextNode,
-}
-import extdeps.uri_validation {
-  validate_href,
-  SafeHref,
-  RejectedHref,
-  DangerousScheme,
-  SchemeNotAllowlisted,
-  JavascriptScheme,
-  DataScheme,
 
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  EmitOk,
-  EmitRejected,
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_javascript_href_rejects() -> Bool {
   match validate_href(url: "javascript:alert(1)") {

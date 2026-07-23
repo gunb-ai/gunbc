@@ -1,25 +1,7 @@
 module test.claim.measure_magnitude_carrier
 
-import std.measure {
-  Measure,
-  ByteSize,
-  byte_size,
-  byte_size_count,
-  Mebibyte,
-  mebibyte,
-  mebibyte_count,
-  Millicore,
-  millicore,
-  millicore_count,
-  ElectricPotential,
-  Micro,
-  celsius,
-  celsius_count,
-  money_amount_micro,
-  money_amount_micro_count,
-}
-import std.types { Int }
-import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
   byte_size_count(byte_size(42)) == 42

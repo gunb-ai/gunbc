@@ -1,0 +1,503 @@
+module v2.test.execution.pick_ingested_structural_lowering
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_v4_evaluator,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_language_model,
+  dag_node_is_int_literal_atom
+}
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, optional_present }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.node_query { find_arrow_body_child, find_named_child }
+import v2.std.runtime { RuntimeValue }
+import v2.std.witness { Holds, Witness }
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pick_ingested_source: String = "module m\n\nfn pick() -> Int { if true { 1 } else { 2 } }\n"
+
+data pick_ingested_false_source: String = "module m\n\nfn pick() -> Int { if false { 1 } else { 2 } }\n"
+
+data pick_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if true { 2 } else { 1 } }\n"
+
+data pick2_ingested_source: String = "module m\n\nfn pick() -> Int { if true { 3 } else { 4 } }\n"
+
+data pick2_ingested_false_source: String = "module m\n\nfn pick() -> Int { if false { 3 } else { 4 } }\n"
+
+data pick2_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if true { 4 } else { 3 } }\n"
+
+fn pick_eval_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn pick_eval_int_type_node() -> Node {
+  pick_eval_atom(s: ^dag_binding_type_int)
+}
+
+fn pick_eval_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^pick_eval_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn pick_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => Present { value: node }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn pick_eval_kw_true_node() -> Node {
+  pick_eval_atom(s: ^dag_token_kw_true)
+}
+
+fn pick_eval_kw_false_node() -> Node {
+  pick_eval_atom(s: ^dag_token_kw_false)
+}
+
+fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
+fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          normalize(parse_tree: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
+fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => pick_ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
+  match pick_ingested_normalized_module_from_source(source: source) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: normalized) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match body.kind {
+                ComputationNode { behavior: Branch } => true
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_deep_unwrap(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => pick_ingested_deep_unwrap(node: child)
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn pick_ingested_int_literal_node_optional(node: Node) -> Optional<Node> {
+  let unwrapped = pick_ingested_deep_unwrap(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    optional_present(value: unwrapped)
+  } else {
+    fold(unwrapped.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => pick_ingested_int_literal_node_optional(node: e.target)
+      }
+    })
+  }
+}
+
+fn pick_ingested_branch_arm_magnitude_optional(body: Node, arm_index: Int) -> Optional<Int> {
+  match list_at_optional(xs: body.children, index: arm_index) {
+    Present { value: edge } =>
+      match edge {
+        Edge { label: _, target: arm } =>
+          match pick_ingested_int_literal_node_optional(node: arm) {
+            Present { value: literal } =>
+              match dag_int_literal_magnitude_int_from_node(node: literal) {
+                Accepted { value: magnitude, diagnostics: _ } => Present { value: magnitude }
+                Rejected { diagnostics: _ } => Absent
+              }
+            Absent => Absent
+          }
+      }
+    Absent => Absent
+  }
+}
+
+fn pick_ingested_normalized_branch_arms_magnitude_holds(
+  source: String,
+  then_mag: Int,
+  else_mag: Int
+) -> Bool {
+  match pick_ingested_normalized_module_from_source(source: source) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: normalized) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match pick_ingested_branch_arm_magnitude_optional(body: body, arm_index: 1) {
+                Present { value: then_found } =>
+                  match pick_ingested_branch_arm_magnitude_optional(body: body, arm_index: 2) {
+                    Present { value: else_found } =>
+                      (then_found == then_mag) && (else_found == else_mag)
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
+  pick_ingested_normalized_branch_arms_magnitude_holds(
+    source: pick_ingested_source,
+    then_mag: 1,
+    else_mag: 2
+  ) && pick_ingested_normalized_branch_arms_magnitude_holds(
+    source: pick_ingested_swapped_source,
+    then_mag: 2,
+    else_mag: 1
+  )
+}
+
+fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: pick_ingested_resolved_module_from_source(source: source),
+    f: fn(resolved) {
+      match pick_ingested_find_arrow_in_module(root: resolved) {
+        Present { value: arrow } => outcome_accepted(value: arrow)
+        Absent =>
+          outcome_rejected(
+            d: pick_eval_runtime_diagnostic(
+              n: pick_eval_atom(s: ^pick_ingested_arrow_miss)
+            )
+          )
+      }
+    }
+  )
+}
+
+fn pick_eval_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: callee }
+    ]
+  }
+}
+
+fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^pick_eval_actual }, target: call },
+      Edge { label: Named { name: ^pick_eval_expected }, target: expected }
+    ]
+  }
+}
+
+fn pick_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: pick_eval_int_type_node(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn pick_eval_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: pick_eval_facts_lookup
+    }
+  }
+}
+
+fn pick_eval_inferred_run_tree(call: Node, expected: Node) -> Outcome<InferredTree> {
+  let root = pick_eval_tree_root(call: call, expected: expected)
+  outcome_accepted(value: pick_eval_admitted_tree(root: root))
+}
+
+fn pick_eval_claim(input: Node, expected: Node) -> TestClaim {
+  CompilesClaim {
+    label: "execution/pick-ingested: if_expr→Branch structural lowering + eval-equals on default v2_evaluator",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: input,
+    expected_value: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+fn pick_eval_subject(
+  tree: InferredTree,
+  input: Node,
+  expected: Node
+) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: pick_eval_claim(input: input, expected: expected),
+    context: eval_context_v4_evaluator(),
+    tree: tree,
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: ^pick_eval_pick_call_pin
+    )
+  }
+}
+
+fn pick_eval_run(
+  callee: Node,
+  expected_lexeme: String
+) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  match pick_eval_int_literal_optional(lexeme: expected_lexeme) {
+    Present { value: expected } => {
+      let call_node = pick_eval_pick_call(callee: callee)
+      bind_outcome(
+        o: pick_eval_inferred_run_tree(call: call_node, expected: expected),
+        f: fn(tree) {
+          outcome_accepted(
+            value: run_test_claim(
+              subject: pick_eval_subject(tree: tree, input: call_node, expected: expected)
+            )
+          )
+        }
+      )
+    }
+    Absent =>
+      outcome_rejected(
+        d: pick_eval_runtime_diagnostic(n: pick_eval_atom(s: ^pick_eval_literal_miss))
+      )
+  }
+}
+
+fn pick_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_pick_true_executes_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick_ingested_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "1"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_pick_false_executes_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "2"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_swapped_arms_red_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "1"
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_pipeline_resolves_holds() -> Bool {
+  match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick2_ingested_pick_true_executes_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "3"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick2_ingested_pick_false_executes_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick2_ingested_false_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "4"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick2_ingested_swapped_arms_red_holds() -> Bool {
+  match pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      pick_eval_run_passes(
+        run: pick_eval_run(
+          callee: arrow,
+          expected_lexeme: "3"
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pick_ingested_equals_eval_keystone_holds() -> Bool {
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
+    && pick_ingested_normalized_swapped_arms_structural_red_holds()
+    && pick_ingested_pipeline_resolves_holds()
+    && pick_ingested_pick_true_executes_holds()
+    && pick_ingested_pick_false_executes_holds()
+    && pick_ingested_swapped_arms_red_holds()
+}
+
+test fn pick2_ingested_equals_eval_generality_holds() -> Bool {
+  pick2_ingested_pick_true_executes_holds()
+    && pick2_ingested_pick_false_executes_holds()
+    && pick2_ingested_swapped_arms_red_holds()
+}

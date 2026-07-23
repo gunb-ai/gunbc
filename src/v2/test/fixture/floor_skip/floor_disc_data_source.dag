@@ -1,0 +1,9 @@
+module v2.test.fixture.floor_skip.floor_disc_data_source
+
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+
+data floor_disc_cross_file_data: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^floor_disc_cross_file_data_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}

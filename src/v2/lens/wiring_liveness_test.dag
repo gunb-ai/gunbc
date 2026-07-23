@@ -1,21 +1,7 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_test
 
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  Symbol,
-  TypeNode,
-  resolve_type_node
-}
-import v2.std.node_query { node_labeled_child_edges }
-import v2.lens.wiring_liveness { wiring_input_is_wired }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn wl_atom(identity: Symbol) -> Node {
   Node {

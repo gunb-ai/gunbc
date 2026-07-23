@@ -1,26 +1,58 @@
 module v2.std.verdict
 
-import v2.std.algebra { Magma, Monoid, Semigroup, is_empty }
+import std.algebra { Monoid }
+import v2.std.algebra { is_empty }
 import v2.std.collection { List, Optional, Absent }
 import v2.std.diagnostic { Diagnostic, Outcome }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.test_claim_falsification { FalsificationReceipt }
+import v2.std.logic { Bool }
 
 type Verdict<Subj, T>
   = Pass
-  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
+  | SemanticMismatch {
+      actual: Outcome<T>,
+      falsification: Optional<FalsificationReceipt<Subj, T>>
+    }
+  | BuildFailed { actual: Outcome<T>, diagnostic: Diagnostic }
+  | RunFailed { actual: Outcome<T>, diagnostic: Diagnostic }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
+fn verdict_semantic_mismatch<Subj, T>(
+  actual: Outcome<T>,
+  falsification: Optional<FalsificationReceipt<Subj, T>>
+) -> Verdict<Subj, T> {
+  SemanticMismatch { actual: actual, falsification: falsification }
+}
+
+fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+  BuildFailed { actual: actual, diagnostic: diagnostic }
+}
+
+fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+  RunFailed { actual: actual, diagnostic: diagnostic }
+}
+
 fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
-  Fail { actual: actual, falsification: Absent }
+  verdict_semantic_mismatch(actual: actual, falsification: Absent)
 }
 
 fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {
   match a {
     Pass => b
-    Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
+    SemanticMismatch { actual: fa, falsification: ff } =>
+      SemanticMismatch { actual: fa, falsification: ff }
+    BuildFailed { actual: fa, diagnostic: d } =>
+      BuildFailed { actual: fa, diagnostic: d }
+    RunFailed { actual: fa, diagnostic: d } =>
+      RunFailed { actual: fa, diagnostic: d }
     Deferred { actual: da, diagnostic: diag } => match b {
-      Fail { actual: fb, falsification: bf } => Fail { actual: fb, falsification: bf }
+      SemanticMismatch { actual: fb, falsification: bf } =>
+        SemanticMismatch { actual: fb, falsification: bf }
+      BuildFailed { actual: fb, diagnostic: bd } =>
+        BuildFailed { actual: fb, diagnostic: bd }
+      RunFailed { actual: fb, diagnostic: rd } =>
+        RunFailed { actual: fb, diagnostic: rd }
       Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
       Pass => Deferred { actual: da, diagnostic: diag }
     }
@@ -29,7 +61,7 @@ fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict
 
 fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
   Monoid {
-    semigroup: Semigroup { magma: Magma { op: verdict_combine } },
+    op: verdict_combine,
     identity: Pass
   }
 }
@@ -45,7 +77,11 @@ data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, 
 fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
     Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
-    Fail { actual: _, falsification: _ } =>
+    SemanticMismatch { actual: _, falsification: _ } =>
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    BuildFailed { actual: _, diagnostic: _ } =>
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    RunFailed { actual: _, diagnostic: _ } =>
       VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     Deferred { actual: _, diagnostic: _ } =>
       VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }

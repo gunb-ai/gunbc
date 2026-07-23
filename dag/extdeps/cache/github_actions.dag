@@ -5,10 +5,10 @@ import extdeps.cache.types {
   HandAuthored,
   UpsertSubject,
   FilePaths,
+  CatalogOpaqueStringEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  OpaqueStringEncoding,
   PrefixFallback,
   OverwriteAllowed,
   WriteThenCommit,
@@ -41,7 +41,7 @@ data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
 data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   identity: gha_actions_cache_id
   backing_surface: "github-actions-cache-api"
-  transport_encoding: OpaqueStringEncoding
+  transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
     key_inputs: HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }

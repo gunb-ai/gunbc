@@ -1,0 +1,11 @@
+module tools.self_host_curated_probe_cargo
+
+import extdeps.git
+import tools.self_host_curated_seed_linked_harness { cssl_v1_compiled_probe_lib_cargo_toml }
+
+data curated_probe_cargo_scaffold_note: String = "SCAFFOLD — dissolve-on: deletes when cssl exposes probe-lib manifest projection or bash-emit #5828 realizes curated_cargo_probe_one transport. Single authority: cssl_v1_compiled_probe_lib_cargo_toml (tools.self_host_curated_seed_linked_harness)."
+
+fn curated_probe_cargo_toml_from_cssl_authority() -> String {
+  let root = git.Core.Toplevel()
+  cssl_v1_compiled_probe_lib_cargo_toml(root: root.path)
+}

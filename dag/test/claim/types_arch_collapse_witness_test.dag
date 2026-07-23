@@ -11,8 +11,10 @@ import extdeps.container.oci.types {
   image_config_goarch_label,
   parse_image_config_goarch,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-type FilesystemReadResult { content: String }
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
 
 data std_types_path: String = "dag/std/types.dag"
 data cpu_types_path: String = "dag/extdeps/cpu/types.dag"

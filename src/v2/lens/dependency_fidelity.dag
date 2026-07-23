@@ -1,0 +1,43 @@
+module v2.lens.dependency_fidelity
+
+
+data law_note: String = "dependency-fidelity §2: correctness = declared dependency structure equals witnessed (by-execution) structure. This module is the single authority for the fidelity verdict; each arm reports its located discrepancies into ONE verdict lattice, and the FidelityDiscrepancy variant IS the §3 surface it lives on (UnreachedDeclaredInput = input-reachability, UnreachedDeclaredOutput = output-reachability, UnderClaimedEdge/OverClaimedCoupling = interaction fidelity). Input-reachability is consumed from v2.lens.unused_parameters (no re-mint, §3 single authority). Output-reachability and the under-claim/over-claim edge arms are staged slots (docs/plans/dependency-fidelity-design.md §5, §8)."
+
+type FidelityDiscrepancy
+  = UnreachedDeclaredInput { declaration: Node }
+  | UnreachedDeclaredOutput { arm: Symbol }
+  | UnderClaimedEdge { source: Node, dependent: Node }
+  | OverClaimedCoupling { left: Node, right: Node }
+
+type FidelityVerdict
+  = Faithful
+  | Discrepant { findings: List<FidelityDiscrepancy> }
+
+fn verdict_from_discrepancies(findings: List<FidelityDiscrepancy>) -> FidelityVerdict {
+  if is_empty(xs: findings) {
+    Faithful
+  } else {
+    Discrepant { findings: findings }
+  }
+}
+
+fn verdict_is_faithful(v: FidelityVerdict) -> Bool {
+  match v {
+    Faithful => true
+    Discrepant { findings: _ } => false
+  }
+}
+
+fn input_reachability_discrepancies(fact: UnusedParametersFact) -> List<FidelityDiscrepancy> {
+  fold(fact.unused, init: Empty, f: fn(acc, u) {
+    list_snoc_item(xs: acc, item: UnreachedDeclaredInput { declaration: u.declaration })
+  })
+}
+
+fn input_reachability_verdict(fact: UnusedParametersFact) -> FidelityVerdict {
+  verdict_from_discrepancies(findings: input_reachability_discrepancies(fact: fact))
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

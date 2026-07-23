@@ -1,0 +1,204 @@
+module gunbc.plans.wave2_prep_design
+
+import gunbc.plan { Plan, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
+
+fn status_block() -> MarkdownBlock {
+  quote(blocks: [
+    p(text: "**Status: design/scoping (checkpoint 0)** — Wave 2 prep for first real module self-emit flips. Design-first; NO load-bearing pipeline edits in this plan. Authored as a .dag Plan and NOT yet enrolled as a generated docs/plans md (no PlanArtifact, no plan_registry entry, no roadmap node) — enrollment is checkpoint 1; until then this module is reviewable from its own source. Authority chain: gunbc.plans.v2_self_hosting (wave sequencer) · general-body-producer-design (FLAG E / body producer) · namespace-resolution-design · type-env-single-authority-design (SymbolIndex index half) · **census carrier** v2.compiler.self_host.frontier (`frontier.dag`). DESIGN §2/§6: census counts and per-module ranks live on the carrier — this plan cites symbols, never a parallel ledger."),
+  ])
+}
+
+fn section_1() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Module-flip census — cite the carrier"),
+    p(text: "All census facts are execution-measured or knowledge-attributed on `src/v2/compiler/self_host/frontier.dag`. Read them there; do not transcribe counts into this plan."),
+    ul(items: [
+      li(text: "**Roster authority:** `compiler_frontier_roster` (27 rows) + `compiler_frontier_module_count_expected`."),
+      li(text: "**Self-emitted baseline:** `compiler_frontier_self_emitted_baseline` and witness `compiler_frontier_self_emitted_baseline_holds`."),
+      li(text: "**Census attribution:** `compiler_frontier_census_attribution` (wave label `^wave2_post_resolver_6451_body_stage_a_6443`)."),
+      li(text: "**Sweep order:** `compiler_frontier_sweep_order` — tractability-ranked flip sequence; monotonicity witness `compiler_frontier_sweep_order_matches_tractability_rank_holds`."),
+      li(text: "**Aggregate census gate:** `compiler_frontier_census_holds`."),
+      li(text: "**Per-module facts:** each `compiler_frontier_row_*` carries `disposition`, `measured_probe.blocker_class`, `tractability_rank`, and `SeedRetained.migration_trigger` — the only per-module ledger."),
+    ]),
+    h3(text: "1.1 Wave 2 prefix (first ~11 in sweep order)"),
+    p(text: "The Wave 2 tractability frontier is the **first eleven entries** of `compiler_frontier_sweep_order` on the frontier carrier. For each path, look up the matching `compiler_frontier_row_*` roster row for `closure_reads`, `tractability_rank`, blocker class, and `migration_trigger` — do not duplicate those fields here."),
+    ol(items: [
+      li(text: "`src/v2/compiler/parse_engine_hooks.dag` — row `compiler_frontier_row_parse_engine_hooks`"),
+      li(text: "`src/v2/compiler/use_site_verdict.dag` — row `compiler_frontier_row_use_site_verdict`"),
+      li(text: "`src/v2/compiler/discovery_enumeration.dag` — row `compiler_frontier_row_discovery_enumeration`"),
+      li(text: "`src/v2/compiler/self_host.dag` — row `compiler_frontier_row_self_host`"),
+      li(text: "`src/v2/compiler/materialization_carriers.dag` — row `compiler_frontier_row_materialization_carriers`"),
+      li(text: "`src/v2/compiler/07_target_carriers.dag` — row `compiler_frontier_row_07_target_carriers`"),
+      li(text: "`src/v2/compiler/fold_lowering.dag` — row `compiler_frontier_row_fold_lowering`"),
+      li(text: "`src/v2/compiler/03_normalize.dag` — row `compiler_frontier_row_03_normalize`"),
+      li(text: "`src/v2/compiler/03_resolve.dag` — row `compiler_frontier_row_03_resolve`"),
+      li(text: "`src/v2/compiler/03_name_resolve.dag` — row `compiler_frontier_row_03_name_resolve`"),
+      li(text: "`src/v2/compiler/04_infer.dag` — row `compiler_frontier_row_04_infer`"),
+    ]),
+    p(text: "**Interpretation (qualitative, carrier-grounded):** the prefix rows are `EmitSurfaceGap` with low `closure_reads` relative to the roster tail; the three `NameResolutionGap` rows (`compiler_frontier_row_00_compile`, `compiler_frontier_row_01_tokenize`, `compiler_frontier_row_03_body_producer`) sit at the back of `compiler_frontier_sweep_order`."),
+  ]
+}
+
+fn section_2() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Flip order and Wave 1 exit gates"),
+    h3(text: "2.1 Wave 1 exit (must be green before Wave 2 opens)"),
+    p(text: "From gunbc.plans.v2_self_hosting Wave 1 — all four gates green-by-execution:"),
+    ol(items: [
+      li(text: "**General body producer** — real ingested fn bodies via forward grammar rows (Stage A FACT layer landed #6443; Stages A remainder / B / C / D in flight)."),
+      li(text: "**Namespace SymbolIndex** — B1 merged + containment fill; unblocks rows whose `migration_trigger` is `^migrate_when_namespace_only_resolution_lands`."),
+      li(text: "**FLAG D** — `EnvironmentBindingKey` identity re-grounding (required before feature closes)."),
+      li(text: "**Weak self-host behavioral receipt** — e.g. `std/logic` emit → compile → run ≡ seed."),
+    ]),
+    p(text: "**No v1 deletion in Wave 1.**"),
+    h3(text: "2.2 Wave 2 flip sequencing — three bands"),
+    p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier_band_a_emit_readiness` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`; wired into `compiler_frontier_census_holds` on `frontier`) — cite the carrier, do not transcribe counts here."),
+    ul(items: [
+      li(text: "**Band A — leaf emit modules** (`parse_engine_hooks`, `use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
+      li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land (SymbolIndex-gated per general-body-producer Stage A note)."),
+      li(text: "**Band C — resolution-dependent pipeline** (`03_name_resolve` → `03_resolve` → `04_infer`, serial): hard-gated on Wave 1 SymbolIndex / namespace; fill before lookup before inference."),
+    ]),
+    h3(text: "2.3 Census ratchet discipline"),
+    p(text: "Each flip updates the matching `compiler_frontier_row_*`: `SeedRetained` → `SelfEmitted` with a measured `FrontierProbeReceipt` when `^migrate_when_frontier_per_module_probe_receipt_binds` lands. Until then, disposition updates require a linked behavioral receipt — do not hand-edit blocker classes without probe execution."),
+  ]
+}
+
+fn section_3() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. FLAG E — row-fold design (dissolve `body_lowering_fold.dag`)"),
+    h3(text: "3.1 What landed vs what remains"),
+    p(text: "**LANDED (#6443) — FLAG E one table for sugar:** `SugarKey = SurfaceAtomKey | ProductionIdentityKey` (`v2.std.compilers.sugar`); `type_alias_rhs` migrated as proof row; normalize pipeline child-fold → `body_lower_finish` → `normalize_sugar_finish` (`03_normalize.dag`)."),
+    p(text: "**LANDED (ingest reparse) — token-spine forward row selection:** `grammar_relation_row_forward_selection` in `v2.compiler.ingest` (`03_ingest.dag:202`) via `ForwardRowSelection` (`ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany`) → `Outcome<Node>`; live round-trip consumers. Keys on token-spine frontier — **not** the body-producer seam; do not duplicate."),
+    p(text: "**LANDED (emit) — backward row selection:** `grammar_relation_row_reverse_parse_selection` in `v2.std.grammar`, consumed by `06_translate.dag`."),
+    p(text: "**INTERIM — hand-walker (`v2.compiler.body_lowering_fold`, ~1.5k LOC):** production-identity dispatch in `body_lower_production_emitted` / `body_lower_finish`. Dissolution contract on carrier: **do NOT port arms into `SugarRule` rows** — dissolve into **GrammarRelationRow forward fold** (general-body-producer-design §3)."),
+    p(text: "**Two layers (clarifies `body_lowering_fold_note` ambiguity):**"),
+    TableBlock {
+      header: row(cells: [cell(text: "layer"), cell(text: "mechanism"), cell(text: "owns")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Sugar"), cell(text: "`SugarKey` → `SugarRule` table"), cell(text: "surface connective sugar, coproduct pipe chains")]),
+        row(cells: [cell(text: "Body producer"), cell(text: "`GrammarRelationRow` forward selection + slot map"), cell(text: "fn bodies → `Behavior` substrate")]),
+      ],
+    },
+    p(text: "The hand-walker dissolves into the **body-producer layer**, not into `SugarRule` extensions."),
+    h3(text: "3.2 Target architecture"),
+    ol(items: [
+      li(text: "**Select** exactly one `GrammarRelationRow` by **production emitted identity** on the parse-tree node (mirror the exactly-one discipline of `grammar_relation_row_reverse_parse_selection` and ingest's `ForwardRowSelection`, but keyed on `^grammar_production_identity_node_projection` — not token spine)."),
+      li(text: "**Apply** row forward slot map: captured/bound slots → core `NodeKind` + edges."),
+      li(text: "**Delegate** fold-family **calls** → `fold_lowering.dag` (`fold_call_to_loop`); pass-through expr wrappers unwrap; metadata wrappers preserve shell."),
+    ]),
+    p(text: "**Placement:** normalize, after child-fold, before sugar — same `body_lower_finish` seam; implementation replaces call target with forward row fold."),
+    h3(text: "3.3 Production-identity forward fold at normalize (Slice 0 — REMAINS)"),
+    p(text: "Slice 0 does **not** add `grammar_relation_row_forward_selection` — that name is **already landed** in `03_ingest.dag` for reparse (token-spine keyed). `ObligationForwardDeterminism` / `ObligationSlotBijection` in `grammar.dag` remain unconsumed at the normalize/body-producer seam."),
+    p(text: "**Slice 0 remains:** production-identity-keyed forward row select + slot-map apply at `body_lower_finish`, reusing the `ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany` exactly-one pattern (or a shared helper extracted from ingest/backward — never a third selection authority). Wire `ObligationForwardDeterminism` + `ObligationSlotBijection` as the body-producer's first consumer."),
+    h3(text: "3.4 Row inventory (hand-walker arms → rows)"),
+    TableBlock {
+      header: row(cells: [cell(text: "slice"), cell(text: "productions"), cell(text: "core target"), cell(text: "dissolves")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "1"), cell(text: "fn_decl, fn_literal"), cell(text: "Arrow + domain + ^arrow_body_edge"), cell(text: "body_lower_fn_decl_to_arrow, param collectors")]),
+        row(cells: [cell(text: "1b"), cell(text: "expr wrappers (pass-through)"), cell(text: "unwrap only"), cell(text: "body_lower_unwrap_*")]),
+        row(cells: [cell(text: "2"), cell(text: "let_expr, if_expr, match_expr"), cell(text: "Bind / Branch / Match"), cell(text: "new rows; match arm patterns = honest residue")]),
+        row(cells: [cell(text: "3"), cell(text: "primary/call, infix, postfix"), cell(text: "Transform"), cell(text: "body_lower_primary/postfix/infix_*; field access refused until namespace `.` lands")]),
+        row(cells: [cell(text: "—"), cell(text: "fn_body, metadata, unmapped"), cell(text: "deferred / preserve / wrapper-retained refusal"), cell(text: "honest residue frontier")]),
+      ],
+    },
+    p(text: "**Fold-call path:** delegate to `fold_call_to_loop` — callee-head keyed semantic desugar, not a grammar row."),
+    h3(text: "3.5 SugarRule vs forward row — decision rule"),
+    p(text: "If lowering needs per-production captured-slot bijection from the grammar relation, it is a **forward row**, not a `SugarRule` arm — prevents re-widening the sugar fork."),
+    h3(text: "3.6 Implementation slices and acceptance"),
+    TableBlock {
+      header: row(cells: [cell(text: "slice"), cell(text: "PR scope"), cell(text: "accept")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "0"), cell(text: "production-identity forward select + apply at normalize (`03_normalize` / body-producer seam); reuse ingest ForwardRowSelection discipline — NOT duplicate `03_ingest.dag` token-spine selection"), cell(text: "None/Many refuse; One selects + slot map applies; obligation carriers consumed; RED on duplicate-row / missing-row")]),
+        row(cells: [cell(text: "1"), cell(text: "fn_decl/fn_literal rows + normalize hook"), cell(text: "MVP produce_* parity; FLAG D conform param refs; RED wrapper-retained")]),
+        row(cells: [cell(text: "2"), cell(text: "let/if/match rows"), cell(text: "branch/match witnesses; RED stmt-seq refuses")]),
+        row(cells: [cell(text: "3"), cell(text: "call/infix/postfix rows"), cell(text: "binop + call witnesses; RED field access refuses")]),
+        row(cells: [cell(text: "4"), cell(text: "delete body_lowering_fold.dag"), cell(text: "file absent; corpus green; wrapper-retained ≤ residue frontier")]),
+      ],
+    },
+    h3(text: "3.7 Dependencies blocking Slice 1"),
+    ul(items: [
+      li(text: "**SymbolIndex / namespace (Wave 1 gate 2):** fn_decl binding via module-root edges — Stage A gated in general-body-producer-design §6."),
+      li(text: "**FLAG D:** occurrence-normalized param refs until binding-key re-grounding; witness `bind_eval_occurrence_identity_defect_note` documents flip trigger."),
+    ]),
+  ]
+}
+
+fn section_4() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. SymbolIndex dependency map (sweep-order prefix)"),
+    h3(text: "4.1 Substrate facts (single authority)"),
+    ul(items: [
+      li(text: "`SymbolIndex` — `v2.std.symbol_index` (`Map<QualifiedName, Node>`)."),
+      li(text: "Fill — `v2.compiler.symbol_index_fill` (containment tree materialized)."),
+      li(text: "Lookup — `symbol_index_lexical_lookup` (lexical up ancestor chain)."),
+      li(text: "Consumer — `03_resolve.dag` (`try_symbol_index_atom_identity`)."),
+      li(text: "Orchestrator — `03_name_resolve.dag` (`symbol_index_fill_module_roots`)."),
+    ]),
+    p(text: "**One-index invariant:** fill is policy-agnostic; `ResolutionPolicy` gates lookup only (namespace-resolution-design §7.5 + type-env-single-authority §7.5)."),
+    h3(text: "4.2 Per-module tiers (prefix modules only)"),
+    TableBlock {
+      header: row(cells: [cell(text: "module (sweep prefix)"), cell(text: "SymbolIndex tier"), cell(text: "namespace flip gate?")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "parse_engine_hooks … 07_target_carriers, fold_lowering (Band A+B leaf)"), cell(text: "none"), cell(text: "no")]),
+        row(cells: [cell(text: "03_normalize"), cell(text: "indirect (fn_decl rows need module-root decl binding)"), cell(text: "yes for Slice 1 rows")]),
+        row(cells: [cell(text: "03_name_resolve"), cell(text: "direct fill"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
+        row(cells: [cell(text: "03_resolve"), cell(text: "direct consumer"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
+        row(cells: [cell(text: "04_infer"), cell(text: "transitive (ResolvedTree)"), cell(text: "yes")]),
+      ],
+    },
+    h3(text: "4.3 Band dependency order"),
+    p(text: "Band A: no SymbolIndex work. Band B: `fold_lowering` blocked on `^migrate_when_body_lowering_generalizes`, not namespace. Band C: `symbol_index_fill` → `03_name_resolve` → `03_resolve` → `04_infer`; gates in §4.4 must land before Band C flips."),
+    h3(text: "4.4 Band C gates"),
+    TableBlock {
+      header: row(cells: [cell(text: "gate"), cell(text: "deliverable"), cell(text: "unblocks")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "B1 fill complete"), cell(text: "symbol_index_fill_containment_node promoted; variant-alias witnesses green"), cell(text: "03_name_resolve")]),
+        row(cells: [cell(text: "B1 lookup wired"), cell(text: "symbol_index_lexical_lookup on import-scoped policy"), cell(text: "03_resolve")]),
+        row(cells: [cell(text: "namespace Stage A"), cell(text: "scope_with_fn_decl_params dissolved"), cell(text: "03_normalize fn_decl rows + 03_resolve")]),
+        row(cells: [cell(text: "FLAG D"), cell(text: "binding-key identity re-grounding"), cell(text: "eval param-ref parity")]),
+        row(cells: [cell(text: "resolve scaffold removal"), cell(text: "dag_fn_decl_param_binding_atoms deleted"), cell(text: "03_resolve emit flip")]),
+      ],
+    },
+  ]
+}
+
+fn section_5() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Risks and escalation"),
+    TableBlock {
+      header: row(cells: [cell(text: "risk"), cell(text: "signal"), cell(text: "action")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Port hand-walker into SugarRule"), cell(text: "new SugarLowering variants mirroring body_lower_*"), cell(text: "hard reject")]),
+        row(cells: [cell(text: "Dual index"), cell(text: "separate fill per ResolutionPolicy"), cell(text: "escalate — Rule 1 violation")]),
+        row(cells: [cell(text: "Flip before Wave 1 gates"), cell(text: "Band C flip with namespace debt open"), cell(text: "defer; keep SeedRetained honest")]),
+        row(cells: [cell(text: "Parallel census ledger"), cell(text: "hand-authored docs/plans md with transcribed counts"), cell(text: "reject — cite frontier.dag carrier")]),
+        row(cells: [cell(text: "Probe debt"), cell(text: "blocker class edited without frontier_probe"), cell(text: "keep KnowledgeAttributed until #6464 binds")]),
+      ],
+    },
+  ]
+}
+
+fn wave2_prep_design_body() -> List<MarkdownBlock> {
+  concat([status_block()],
+    concat(section_1(),
+      concat(section_2(),
+        concat(section_3(),
+          concat(section_4(), section_5())))))
+}
+
+data wave2_prep_design_plan: Plan = Plan {
+  slug: "wave2-prep-design",
+  title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
+  body: wave2_prep_design_body(),
+  dissolution: HasTrigger {
+    text: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection."
+  }
+}

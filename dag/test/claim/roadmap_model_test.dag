@@ -1,11 +1,11 @@
 module test.claim.roadmap_model
 
-import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
@@ -15,10 +15,13 @@ import gunbc.roadmap_model {
   node_status_drift,
 }
 import gunbc.roadmap_status { Signoff, Unsigned }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data parent_node: ProcessNodeId = "invert-hand-maintained"
-data child_node: ProcessNodeId = "pr-checkbox-status"
-data orphan_node: ProcessNodeId = "no-parent-node"
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data parent_node: RoadmapNodeId = "invert-hand-maintained"
+data child_node: RoadmapNodeId = "pr-checkbox-status"
+data orphan_node: RoadmapNodeId = "no-parent-node"
 
 fn edges() -> List<RoadmapEdge> {
   [RoadmapEdge { child: child_node, parent: parent_node }]

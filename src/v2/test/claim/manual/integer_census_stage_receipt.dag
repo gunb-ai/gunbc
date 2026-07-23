@@ -1,0 +1,159 @@
+module v2.test.manual.integer_census_stage_receipt
+
+
+data ics_path: String = "src/v2/std/integer.dag"
+data ics_anchor: Symbol = ^ics_anchor
+
+data ics_trunc_eighth_path: String = "src/v2/test/fixture/integer_census_trunc/eighth.txt"
+data ics_trunc_quarter_path: String = "src/v2/test/fixture/integer_census_trunc/quarter.txt"
+data ics_trunc_half_path: String = "src/v2/test/fixture/integer_census_trunc/half.txt"
+data ics_trunc_full_path: String = "src/v2/test/fixture/integer_census_trunc/full.txt"
+
+data ics_content_through_compose_path: String = "src/v2/test/fixture/integer_census_trunc/through_compose_types.txt"
+data ics_content_through_decimal_path: String = "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
+data ics_content_through_match_path: String = "src/v2/test/fixture/integer_census_trunc/through_standard_type_match.txt"
+data ics_content_through_decode_path: String = "src/v2/test/fixture/integer_census_trunc/through_decode_if_chain.txt"
+
+data ics_pathology_name: String = "parse-packrat-superlinear-on-nested-match-fn-bodies"
+
+fn ics_tokenize_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ics_tokenize_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_tokenize_text_accepts(source_text: source)
+}
+
+fn ics_tokenize_parse_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn ics_tokenize_parse_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_tokenize_parse_text_accepts(source_text: source)
+}
+
+fn ics_ingest_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+fn ics_ingest_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_ingest_text_accepts(source_text: source)
+}
+
+fn ics_stage_tokenize_full_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_path)
+}
+
+fn ics_stage_tokenize_parse_full_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_path)
+}
+
+fn ics_stage_ingest_full_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_path)
+}
+
+fn ics_stage_judge_full_holds() -> Bool {
+  match cost_coverage_file_receipt(rel_path: ics_path).ingest_verdict {
+    IngestParsedClean => true
+    IngestRejected { stage: _, reason: _ } => false
+  }
+}
+
+fn ics_stage_census_tree_holds() -> Bool {
+  let receipt = cost_coverage_tree_census(
+    tree_root: "src/v2",
+    paths: Cons { head: ics_path, tail: Empty }
+  )
+  (receipt.files_attempted == 1) && (receipt.files_parsed_clean == 1)
+}
+
+fn ics_trunc_eighth_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_trunc_eighth_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_trunc_eighth_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_content_through_compose_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_compose_path)
+}
+
+fn ics_content_through_decimal_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_decimal_path)
+}
+
+fn ics_content_through_match_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_match_path)
+}
+
+fn ics_content_through_decode_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_decode_path)
+}

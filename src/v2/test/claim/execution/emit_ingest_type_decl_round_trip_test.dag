@@ -16,7 +16,8 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_formal_productions,
   dag_type_decl_structural_target_model
 }
-import v2.std.algebra { Empty, fold_list, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.compilers.target_model {
@@ -29,6 +30,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   bind_outcome,
@@ -37,6 +39,7 @@ import v2.std.diagnostic {
 import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Conj,
   Edge,
   Named,
   Node,
@@ -46,6 +49,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { find_named_child }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 data type_decl_round_trip_source_file: Symbol = ^type_decl_round_trip_source_file

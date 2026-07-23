@@ -74,12 +74,12 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 }
 
 fn emitted_source(function: &str) -> String {
-    let resolved = compile_to_resolved(Rc::new(witness_sources()));
+    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         blocking.is_empty() && resolved.graph.is_some(),

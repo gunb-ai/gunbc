@@ -1,0 +1,173 @@
+module std.effect_grant
+
+import std.types { Bool, String, List }
+import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
+import std.materialization_ladder { Frame }
+
+data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect now GATES real dispatch at the landed P-B enforcement seams (the emit-host build transport, the effect-io host write, the artifact-store scratch store, and the cli_run repo gate). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C; see derived_projections_landed_note). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
+
+type Verb = Read | Write | Execute
+
+data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the verb set is Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel grant vocabulary (DESIGN 3). Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. dissolve-on = none (landed authority; operator may amend verb set)."
+
+data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
+
+fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
+  match shape {
+    ReadEffect => Read
+    UpsertEffect { key_source: key_source } => Write
+    DeleteEffect { key_source: key_source } => Write
+    CreateEffect { cause: cause } => Write
+    AppendEffect => Write
+    ExecuteEffect => Execute
+  }
+}
+
+type NamespaceTree
+  = FilesystemPathTree
+  | UriTree
+  | ProcTree
+  | ServiceOpTree { service: String }
+  | CodeNameTree
+
+data namespace_tree_note: String = "Q2 (PROVISIONAL, pending operator ruling): effect targets are positions in CITED trees (DESIGN 3, not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the code-name containment tree the namespace-resolution lane makes the single naming authority (CodeNameTree). INTERIM realization: path-string prefixes (position_under below). CONVERGENCE -- the anti-fork commitment: NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes, termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim."
+
+type NamespacePosition {
+  tree: NamespaceTree
+  path: List<String>
+}
+
+fn namespace_tree_eq(a: NamespaceTree, b: NamespaceTree) -> Bool {
+  match a {
+    FilesystemPathTree => match b { FilesystemPathTree => true, _ => false }
+    UriTree => match b { UriTree => true, _ => false }
+    ProcTree => match b { ProcTree => true, _ => false }
+    ServiceOpTree { service: sa } => match b { ServiceOpTree { service: sb } => sa == sb, _ => false }
+    CodeNameTree => match b { CodeNameTree => true, _ => false }
+  }
+}
+
+fn path_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
+  match prefix.first() {
+    Absent => true
+    Present { value: ph } => match path.first() {
+      Absent => false
+      Present { value: xh } =>
+        ph == xh && path_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
+    }
+  }
+}
+
+fn position_under(target: NamespacePosition, root: NamespacePosition) -> Bool {
+  namespace_tree_eq(a: target.tree, b: root.tree)
+    && path_is_prefix(prefix: root.path, path: target.path)
+}
+
+type HandlerBinding
+  = RealTransport
+  | Replay { fixture_store: String }
+
+type LifecycleGrade
+  = LifecycleByConstruction
+  | LifecycleByConvention
+
+data lifecycle_grade_note: String = "The containment law (operator, 2026-07-16): a write is frame-contained iff (target under a namespace the frame controls) AND (target lifecycle under frame lifecycle). LifecycleByConstruction = persistence unwritable past the frame (ephemeral container fs, netns loopback receiver -- teardown erases it). LifecycleByConvention = a cleanup that can fail or be forgotten (/tmp scratch + trap). The grade is CARRIED on the grant, an honest weaker grade, never conflated with the strong one."
+
+type Grant {
+  verb: Verb
+  root: NamespacePosition
+  binding: HandlerBinding
+  lifecycle: LifecycleGrade
+}
+
+type Envelope {
+  frame: Frame
+  grants: List<Grant>
+}
+
+fn verb_eq(a: Verb, b: Verb) -> Bool {
+  match a {
+    Read => match b { Read => true, Write => false, Execute => false }
+    Write => match b { Write => true, Read => false, Execute => false }
+    Execute => match b { Execute => true, Read => false, Write => false }
+  }
+}
+
+fn filesystem_position(path: List<String>) -> NamespacePosition {
+  NamespacePosition {
+    tree: FilesystemPathTree,
+    path: path
+  }
+}
+
+type EffectAdmission
+  = Admitted { via_root: NamespacePosition }
+  | EffectOutsideGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+
+fn grant_verb(g: Grant) -> Verb {
+  g.verb
+}
+
+fn grant_root(g: Grant) -> NamespacePosition {
+  g.root
+}
+
+fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
+  verb_eq(a: grant.verb, b: verb) && position_under(target: target, root: grant.root)
+}
+
+type CoveringGrant
+  = CoveredBy { grant: Grant }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+
+data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
+
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+  if grants.count() == 0 {
+    NoCoveringGrant { verb: verb, target: target, frame: frame }
+  } else {
+    let g = grants.first()
+    if grant_covers(grant: g, verb: verb, target: target) {
+      CoveredBy { grant: g }
+    } else {
+      covering_grant_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
+    }
+  }
+}
+
+fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> CoveringGrant {
+  covering_grant_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
+}
+
+fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> EffectAdmission {
+  match covering_grant(env: env, verb: verb, target: target) {
+    CoveredBy { grant: g } => Admitted { via_root: grant_root(g: g) }
+    NoCoveringGrant { verb: v, target: t, frame: f } => EffectOutsideGrant { verb: v, target: t, frame: f }
+  }
+}
+
+fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
+  if parent_grants.count() == 0 {
+    false
+  } else {
+    let pg = parent_grants.first()
+    (verb_eq(a: grant_verb(g: pg), b: grant_verb(g: child_grant)) && position_under(target: grant_root(g: child_grant), root: grant_root(g: pg)))
+      || parent_covers_grant(parent_grants: parent_grants.skip(n: 1), child_grant: child_grant)
+  }
+}
+
+fn all_child_grants_bounded(child_grants: List<Grant>, parent_grants: List<Grant>) -> Bool {
+  if child_grants.count() == 0 {
+    true
+  } else {
+    let cg = child_grants.first()
+    parent_covers_grant(parent_grants: parent_grants, child_grant: cg)
+      && all_child_grants_bounded(child_grants: child_grants.skip(n: 1), parent_grants: parent_grants)
+  }
+}
+
+fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
+  all_child_grants_bounded(child_grants: child.grants, parent_grants: parent.grants)
+}
+
+data derived_projections_landed_note: String = "LANDED in P-C (was DEFERRED here per operator steer 2026-07-17; trigger fired): the derived projections replayable / isolated / live_tree_intersects are modeled in std.effect_axes as pure folds over this Envelope -- the EffectRegion (substrate-closure / repo-tree / frame-scratch / unclassified) is DERIVED from a grant root via canonical region roots + position_under (the same containment relation admit_effect walks), not a stamped marker. The Hermetic / Wet / Record envelope PRESETS and the first envelope-derived consumer (derive_live_tree_disposition) live in v2.std.execution_envelope. This note is the cross-reference, not a second authority; std.effect_axes is where the projections live."

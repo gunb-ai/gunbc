@@ -1,7 +1,7 @@
 module extdeps.os.proc_meminfo
 
 import std.types { NonEmptyStr }
-import std.list { List }
+import std.types { List }
 import std.measure { Kibibyte }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

@@ -1,7 +1,7 @@
 module v2.test.claim.algebra.generic_alias_coproduct_instantiation
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, length }
-import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type SymbolPath = FreeMonoid<Symbol>
 

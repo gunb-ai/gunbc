@@ -14,10 +14,29 @@ import v2.compiler.translate {
   translate_project_transform_in_arrow_scope
 }
 import v2.lens.application { subterm_at }
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
-import v2.std.collection { List, Map }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Optional,
+  Present,
+  optional_present
+}
 import v2.std.compilers.target_model {
   TargetModel,
+  TargetOwnershipUseSite,
+  TargetUseSiteOwnershipRealization,
+  OwnershipAtBindingProjection,
+  OwnershipAtFunctionParameter,
+  OwnershipAtFunctionReturn,
+  OwnershipAtStructField,
+  ReferenceLayerOwned,
+  UseSiteOwnershipExactCarrier,
+  target_carrier_type_node,
+  target_model_augment_use_site_ownership_catalog,
+  target_model_augment_value_semantics_carriers,
   target_project_arrow_body_to_value_expression,
   target_value_expr_arrow_has_value_expression_body,
   target_value_expression_projection_from_target,
@@ -37,9 +56,16 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node {
+  Atom,
   ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Named,
   Node,
+  Symbol,
   Transform,
+  TypeNode,
   node_subtree_nodes,
   well_formed
 }
@@ -60,6 +86,259 @@ type ProgramPartition {
   segment: ProgramSegment
   root: Node
   boundary: PartitionBoundaryPolicy
+}
+
+type PartitionUserSemanticType {
+  name: Symbol
+  semantic: Node
+}
+
+fn partition_user_semantic_type_shape(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Disj } => true
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
+  if partition_user_semantic_type_shape(node: root) {
+    optional_present(value: root)
+  } else {
+    match root.kind {
+      TypeNode { connective: Conj } =>
+        fold(
+          root.children,
+          init: Absent,
+          f: fn(acc, edge) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => partition_semantic_type_search_subtree(root: edge.target)
+            }
+          }
+        )
+      _ => Absent
+    }
+  }
+}
+
+fn partition_semantic_type_from_decl_target(target: Node) -> Optional<Node> {
+  if partition_user_semantic_type_shape(node: target) {
+    optional_present(value: target)
+  } else {
+    partition_semantic_type_search_subtree(root: target)
+  }
+}
+
+fn partition_snoc_user_semantic_type_unique(
+  acc: List<PartitionUserSemanticType>,
+  item: PartitionUserSemanticType
+) -> List<PartitionUserSemanticType> {
+  if any(xs: acc, predicate: fn(d) { d.name == item.name }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn partition_collect_user_semantic_type_edge(
+  acc: List<PartitionUserSemanticType>,
+  edge: Edge
+) -> List<PartitionUserSemanticType> {
+  match edge.label {
+    Named { name: sym } =>
+      match partition_semantic_type_from_decl_target(target: edge.target) {
+        Present { value: semantic } =>
+          partition_snoc_user_semantic_type_unique(
+            acc: acc,
+            item: PartitionUserSemanticType { name: sym, semantic: semantic }
+          )
+        Absent => acc
+      }
+    _ => acc
+  }
+}
+
+fn partition_collect_user_semantic_types_from_module(
+  module: Node,
+  acc: List<PartitionUserSemanticType>
+) -> List<PartitionUserSemanticType> {
+  match module.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: module.children,
+        empty: acc,
+        cons: fn(a, edge) {
+          partition_collect_user_semantic_type_edge(acc: a, edge: edge)
+        }
+      )
+    _ => acc
+  }
+}
+
+fn partition_user_semantic_types_from_root(root: Node) -> List<PartitionUserSemanticType> {
+  partition_collect_user_semantic_types_from_module(module: root, acc: Empty)
+}
+
+fn partition_user_type_ownership_realization(
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite,
+  display_name: Symbol
+) -> TargetUseSiteOwnershipRealization {
+  TargetUseSiteOwnershipRealization {
+    source_carrier: source_carrier,
+    source_projection: UseSiteOwnershipExactCarrier,
+    use_site: use_site,
+    reference_layer: ReferenceLayerOwned,
+    display_name: display_name
+  }
+}
+
+fn partition_user_type_ownership_realizations_for_carrier(
+  source_carrier: Node,
+  display_name: Symbol
+) -> List<TargetUseSiteOwnershipRealization> {
+  [
+    partition_user_type_ownership_realization(
+      source_carrier: source_carrier,
+      use_site: OwnershipAtFunctionReturn,
+      display_name: display_name
+    ),
+    partition_user_type_ownership_realization(
+      source_carrier: source_carrier,
+      use_site: OwnershipAtFunctionParameter,
+      display_name: display_name
+    ),
+    partition_user_type_ownership_realization(
+      source_carrier: source_carrier,
+      use_site: OwnershipAtBindingProjection,
+      display_name: display_name
+    ),
+    partition_user_type_ownership_realization(
+      source_carrier: source_carrier,
+      use_site: OwnershipAtStructField,
+      display_name: display_name
+    )
+  ]
+}
+
+fn partition_user_type_ownership_realizations_for_decl(
+  decl: PartitionUserSemanticType
+) -> List<TargetUseSiteOwnershipRealization> {
+  list_append(
+    left: partition_user_type_ownership_realizations_for_carrier(
+      source_carrier: target_carrier_type_node(identity: decl.name),
+      display_name: decl.name
+    ),
+    right: partition_user_type_ownership_realizations_for_carrier(
+      source_carrier: decl.semantic,
+      display_name: decl.name
+    )
+  )
+}
+
+fn partition_user_type_ownership_realizations_from_decls(
+  decls: List<PartitionUserSemanticType>
+) -> List<TargetUseSiteOwnershipRealization> {
+  fold_list(
+    xs: decls,
+    empty: Empty,
+    cons: fn(acc, decl) {
+      list_append(
+        left: acc,
+        right: partition_user_type_ownership_realizations_for_decl(decl: decl)
+      )
+    }
+  )
+}
+
+fn partition_user_type_atom_names_from_decls(
+  decls: List<PartitionUserSemanticType>
+) -> List<Symbol> {
+  fold_list(
+    xs: decls,
+    empty: Empty,
+    cons: fn(acc, decl) {
+      list_snoc_item(xs: acc, item: decl.name)
+    }
+  )
+}
+
+fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if any(xs: acc, predicate: fn(s) { s == sym }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: sym)
+  }
+}
+
+fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      partition_symbol_snoc_unique(acc: acc, sym: id)
+    _ => acc
+  }
+}
+
+fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
+  fold_list(
+    xs: node_subtree_nodes(root: semantic),
+    empty: Empty,
+    cons: fn(acc, node) {
+      partition_carrier_identity_snoc(acc: acc, node: node)
+    }
+  )
+}
+
+data partition_structural_value_carriers_dissolution_trigger: String = "🟡 dissolve-on: the whole-program emit applies use-site ownership to the module-surface wrapper node (carrier ^dag_surface_module), which is always by-value (a module is never reference-wrapped) — this returns the fixed set of such structural surface carriers. Currently one entry (module surface); expand as further synthetic surface carriers surface. DISSOLVES WHEN the emit stops running use-site ownership over non-value structural surfaces (06_translate scopes the ownership fold to genuine type carriers), at which point no structural-surface value-carrier enrollment is needed."
+
+fn partition_program_structural_value_carriers() -> List<Symbol> {
+  [^dag_surface_module]
+}
+
+fn partition_user_type_carrier_identities_from_decls(
+  decls: List<PartitionUserSemanticType>
+) -> List<Symbol> {
+  fold_list(
+    xs: decls,
+    empty: Empty,
+    cons: fn(acc, decl) {
+      fold_list(
+        xs: partition_carrier_identities_in_semantic(semantic: decl.semantic),
+        empty: acc,
+        cons: fn(inner, sym) {
+          partition_symbol_snoc_unique(acc: inner, sym: sym)
+        }
+      )
+    }
+  )
+}
+
+fn partition_derive_target_for_emit(
+  partition: ProgramPartition,
+  target: TargetModel
+) -> Outcome<TargetModel> {
+  let decls = partition_user_semantic_types_from_root(root: partition.ambient.root)
+  let ownership_rows = partition_user_type_ownership_realizations_from_decls(decls: decls)
+  let atom_names = list_append(
+    left: list_append(
+      left: partition_user_type_atom_names_from_decls(decls: decls),
+      right: partition_user_type_carrier_identities_from_decls(decls: decls)
+    ),
+    right: partition_program_structural_value_carriers()
+  )
+  bind_outcome(
+    o: target_model_augment_use_site_ownership_catalog(
+      target: target,
+      derived_rows: ownership_rows
+    ),
+    f: fn(ownership_target) {
+      target_model_augment_value_semantics_carriers(
+        target: ownership_target,
+        extra_atoms: atom_names
+      )
+    }
+  )
 }
 
 fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
@@ -316,7 +595,7 @@ fn emit_partition_arrow_body_behavior_source(
   )
 }
 
-fn emit_partition(
+fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
@@ -338,6 +617,18 @@ fn emit_partition(
       }
     )
   }
+}
+
+fn emit_partition(
+  partition: ProgramPartition,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: partition_derive_target_for_emit(partition: partition, target: target),
+    f: fn(derived_target) {
+      emit_partition_with_target(partition: partition, target: derived_target)
+    }
+  )
 }
 
 fn emit_for_target(

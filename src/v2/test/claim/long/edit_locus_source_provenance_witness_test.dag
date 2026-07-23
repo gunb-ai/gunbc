@@ -1,0 +1,21 @@
+module v2.test.long.edit_locus_source_provenance_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.lens_affected_set.edit_locus_resolver {
+  edit_locus_source_provenance_affected_set_wire_holds,
+  edit_locus_source_provenance_producer_rejects_malformed_source_holds
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data edit_locus_source_provenance_long_note: String = "Edit-locus source provenance ingest witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
+
+test fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
+  edit_locus_source_provenance_affected_set_wire_holds()
+}
+
+test fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
+  edit_locus_source_provenance_producer_rejects_malformed_source_holds()
+}

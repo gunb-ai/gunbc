@@ -1,0 +1,30 @@
+module v2.lens.inert_lens
+
+
+fn inert_lens_unreached_clean_for_count(unreached_count: Int) -> Bool {
+  unreached_count == 0
+}
+
+fn inert_lens_universe_nonempty_for_count(module_count: Int) -> Bool {
+  module_count > 0
+}
+
+fn inert_lens_unreached_module_count() -> Int {
+  inert_lens_unreached_module_count()
+}
+
+fn inert_lens_top_level_module_count() -> Int {
+  inert_lens_top_level_module_count()
+}
+
+fn inert_lens_hygiene_has_no_unreached_modules_holds() -> Bool {
+  inert_lens_unreached_clean_for_count(unreached_count: inert_lens_unreached_module_count())
+}
+
+fn inert_lens_hygiene_universe_is_nonempty_holds() -> Bool {
+  inert_lens_universe_nonempty_for_count(module_count: inert_lens_top_level_module_count())
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

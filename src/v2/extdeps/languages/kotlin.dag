@@ -82,17 +82,8 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  BooleanAlgebra,
-  approximate_field_node,
-  boolean_algebra_node,
-  Cons,
-  Empty,
-  fold_list,
-  list_append,
-  list_snoc_item,
-  ordered_ring_node
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { BooleanAlgebra, approximate_field_node, boolean_algebra_node, fold_list, list_append, list_snoc_item, ordered_ring_node }
 import v2.std.text { String }
 
 type KotlinIntWidth
@@ -102,8 +93,8 @@ type KotlinIntWidth
   | Bits64
 
 type KotlinFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type KotlinRuntimeRepresentation {}
 
@@ -138,8 +129,8 @@ type KotlinIntegerPrimitiveFacts {
 }
 
 type KotlinOrderedRingIntWidth
-  = Bits32
-  | Bits64
+  = OrderedRingBits32
+  | OrderedRingBits64
 
 type KotlinOrderedRingIntegerFacts
   = KotlinOrderedRingIntFacts {
@@ -224,14 +215,14 @@ data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
 
 data kotlin_facts_float: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: ^kotlin_surface_spelling_float,
-  width: Bits32,
+  width: FloatBits32,
   value_format: Ieee754Binary32Precision,
   representation: kotlin_platform_specific_runtime_representation,
 }
 
 data kotlin_facts_double: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: ^kotlin_surface_spelling_double,
-  width: Bits64,
+  width: FloatBits64,
   value_format: Ieee754Binary64Precision,
   representation: kotlin_platform_specific_runtime_representation,
 }
@@ -295,9 +286,9 @@ data kotlin_nonnumeric_facts_catalog: List<KotlinNonNumericPrimitiveFacts> = [
   kotlin_facts_nothing
 ]
 
-data kotlin_mvp1_concrete_token_head: ConcreteSyntaxToken = FixedToken { token_class: ^kotlin_token_kw_fun }
+data kotlin_concrete_token_head: ConcreteSyntaxToken = FixedToken { token_class: ^kotlin_token_kw_fun }
 
-fn kotlin_mvp1_concrete_token_tail() -> List<ConcreteSyntaxToken> {
+fn kotlin_concrete_token_tail() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_fn_add },
     FixedToken { token_class: ^kotlin_token_lparen },
@@ -320,14 +311,14 @@ fn kotlin_mvp1_concrete_token_tail() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn kotlin_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn kotlin_concrete_tokens() -> List<ConcreteSyntaxToken> {
   Cons {
-    head: kotlin_mvp1_concrete_token_head,
-    tail: kotlin_mvp1_concrete_token_tail()
+    head: kotlin_concrete_token_head,
+    tail: kotlin_concrete_token_tail()
   }
 }
 
-data kotlin_mvp1_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
+data kotlin_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
 
 data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
@@ -354,8 +345,8 @@ fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
 
 fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
   match width {
-    Bits32 => kotlin_atom(id: ^kotlin_tag_bits32)
-    Bits64 => kotlin_atom(id: ^kotlin_tag_bits64)
+    FloatBits32 => kotlin_atom(id: ^kotlin_tag_bits32)
+    FloatBits64 => kotlin_atom(id: ^kotlin_tag_bits64)
   }
 }
 
@@ -688,7 +679,7 @@ fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn kotlin_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn kotlin_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: kotlin_primitive_bundles_from_integer_catalog(),
@@ -967,11 +958,11 @@ fn kotlin_declared_inhabitants_root() -> Node {
 }
 }
 
-fn kotlin_mvp1_selection_policy_node() -> Node {
+fn kotlin_selection_policy_node() -> Node {
   kotlin_inhabitant_int_node()
 }
 
-fn kotlin_mvp1_param_binding_node(binding: Symbol) -> Node {
+fn kotlin_param_binding_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -988,7 +979,7 @@ fn kotlin_mvp1_param_binding_node(binding: Symbol) -> Node {
 }
 }
 
-fn kotlin_mvp1_add_fn_signature_arrow() -> Node {
+fn kotlin_add_fn_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -1000,7 +991,7 @@ fn kotlin_mvp1_add_fn_signature_arrow() -> Node {
 }
 }
 
-fn kotlin_mvp1_return_add_expr_node() -> Node {
+fn kotlin_return_add_expr_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -1018,7 +1009,7 @@ fn kotlin_mvp1_return_add_expr_node() -> Node {
 }
 }
 
-fn kotlin_mvp1_emitted_add_fn_node() -> Node {
+fn kotlin_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -1032,27 +1023,27 @@ fn kotlin_mvp1_emitted_add_fn_node() -> Node {
       ),
       kotlin_named_edge(
         name: ^kotlin_binding_param_x,
-        target: kotlin_mvp1_param_binding_node(binding: ^kotlin_binding_param_x)
+        target: kotlin_param_binding_node(binding: ^kotlin_binding_param_x)
       ),
       kotlin_named_edge(
         name: ^kotlin_binding_param_y,
-        target: kotlin_mvp1_param_binding_node(binding: ^kotlin_binding_param_y)
+        target: kotlin_param_binding_node(binding: ^kotlin_binding_param_y)
       ),
       kotlin_named_edge(
         name: ^kotlin_emitted_field_signature,
-        target: kotlin_mvp1_add_fn_signature_arrow()
+        target: kotlin_add_fn_signature_arrow()
       ),
       kotlin_named_edge(
         name: ^kotlin_emitted_field_return_expr,
-        target: kotlin_mvp1_return_add_expr_node()
+        target: kotlin_return_add_expr_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_mvp1_source_text_authority() -> String {
-  kotlin_mvp1_source_text
+fn kotlin_source_text_authority() -> String {
+  kotlin_source_text
 }
 
 fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -1060,30 +1051,30 @@ fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn kotlin_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+fn kotlin_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
     head: kotlin_named_edge(
       name: ^serialize_source_field_source_text,
-      target: kotlin_atom(id: ^kotlin_mvp1_source_literal)
+      target: kotlin_atom(id: ^kotlin_source_literal)
     ),
     tail: Cons {
       head: kotlin_named_edge(
         name: ^serialize_source_field_source_grammar,
-        target: kotlin_atom(id: ^kotlin_production_mvp1_fn_add)
+        target: kotlin_atom(id: ^kotlin_production_fn_add)
       ),
       tail: Empty
     }
   }
 }
 
-fn kotlin_mvp1_serialize_source_children() -> List<Edge> {
+fn kotlin_serialize_source_children() -> List<Edge> {
   list_append(
-    left: kotlin_mvp1_serialize_source_prefix_edges(),
+    left: kotlin_serialize_source_prefix_edges(),
     right: [
       kotlin_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: kotlin_mvp1_concrete_tokens(),
+          tokens: kotlin_concrete_tokens(),
           token_to_node: kotlin_concrete_token_node
         )
       )
@@ -1091,11 +1082,11 @@ fn kotlin_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn kotlin_mvp1_serialize_source_node() -> Node {
-  let _authority = kotlin_mvp1_source_text_authority()
+fn kotlin_serialize_source_node() -> Node {
+  let _authority = kotlin_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: kotlin_mvp1_serialize_source_children(),
+    children: kotlin_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
@@ -1132,16 +1123,16 @@ fn kotlin_grammar_production_from_nonempty(
   tail: List<ConcreteSyntaxToken>
 ) -> GrammarProduction {
   GrammarProduction {
-    name: ^kotlin_production_mvp1_fn_add,
+    name: ^kotlin_production_fn_add,
     expression: kotlin_grammar_sequence_from_nonempty(head: head, tail: tail),
-    emitted: kotlin_mvp1_emitted_add_fn_node()
+    emitted: kotlin_emitted_add_fn_node()
   }
 }
 
-fn kotlin_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn kotlin_grammar_production_fn_add() -> GrammarProduction {
   kotlin_grammar_production_from_nonempty(
-    head: kotlin_mvp1_concrete_token_head,
-    tail: kotlin_mvp1_concrete_token_tail()
+    head: kotlin_concrete_token_head,
+    tail: kotlin_concrete_token_tail()
   )
 }
 
@@ -1289,10 +1280,10 @@ fn kotlin_grammar_production_primary_expr() -> GrammarProduction {
   }
 }
 
-fn kotlin_mvp1_grammar_relation_row() -> KotlinGrammarRelationRow {
+fn kotlin_grammar_relation_row() -> KotlinGrammarRelationRow {
   KotlinGrammarRelationRow {
-    head: kotlin_mvp1_concrete_token_head,
-    tail: kotlin_mvp1_concrete_token_tail()
+    head: kotlin_concrete_token_head,
+    tail: kotlin_concrete_token_tail()
   }
 }
 
@@ -1322,26 +1313,26 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
 }
 }
 
-fn kotlin_mvp1_translation_rules_node() -> Node {
+fn kotlin_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
-        name: ^kotlin_relation_rule_mvp1_fn_add,
-        target: kotlin_grammar_relation_row_node(row: kotlin_mvp1_grammar_relation_row())
+        name: ^kotlin_relation_rule_fn_add,
+        target: kotlin_grammar_relation_row_node(row: kotlin_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_mvp1_target_model_node() -> Node {
+fn kotlin_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: kotlin_mvp1_selection_policy_node()
+        target: kotlin_selection_policy_node()
       ),
       kotlin_named_edge(
         name: ^target_model_edge_declared_inhabitants,
@@ -1349,18 +1340,18 @@ fn kotlin_mvp1_target_model_node() -> Node {
       ),
       kotlin_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: kotlin_mvp1_translation_rules_node()
+        target: kotlin_translation_rules_node()
       ),
       kotlin_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: kotlin_mvp1_serialize_source_node()
+        target: kotlin_serialize_source_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn kotlin_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -1376,13 +1367,13 @@ fn kotlin_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn kotlin_mvp1_target_model() -> TargetModel {
+fn kotlin_target_model() -> TargetModel {
   TargetModel {
-    bundle: kotlin_mvp1_target_model_node(),
-    lex: kotlin_wave1_lex(),
-    binding_spellings: kotlin_mvp1_binding_spellings(),
+    bundle: kotlin_target_model_node(),
+    lex: kotlin_lex(),
+    binding_spellings: kotlin_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: kotlin_mvp1_source_text_authority(),
+    authority_source_text: kotlin_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -1584,7 +1575,7 @@ fn kotlin_string_literal_lex_rule() -> LexRule {
   }
 }
 
-fn kotlin_wave1_lex_rules() -> LexRuleSet {
+fn kotlin_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       kotlin_whitespace_trivia_rule(),
@@ -1627,8 +1618,8 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn kotlin_wave1_lex() -> LexRules {
-  ModeledLexRules { root: kotlin_wave1_lex_rules() }
+fn kotlin_lex() -> LexRules {
+  ModeledLexRules { root: kotlin_lex_rules() }
 }
 
 fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -1644,14 +1635,14 @@ fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Form
   )
 }
 
-fn kotlin_formal_production_mvp1_fn_add() -> FormalProduction {
+fn kotlin_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^kotlin_production_mvp1_fn_add,
-    rhs: kotlin_formal_rhs_from_tokens(tokens: kotlin_mvp1_concrete_tokens())
+    lhs: ^kotlin_production_fn_add,
+    rhs: kotlin_formal_rhs_from_tokens(tokens: kotlin_concrete_tokens())
   )
 }
 
-fn kotlin_wave1_formal_productions() -> List<FormalProduction> {
+fn kotlin_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^kotlin_production_type_expr, rhs: [grammar_formal_terminal(identity: ^kotlin_token_ident)]),
     grammar_formal_production(
@@ -2117,7 +2108,7 @@ fn kotlin_wave1_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
-    kotlin_formal_production_mvp1_fn_add()
+    kotlin_formal_production_fn_add()
   ]
 }
 
@@ -2477,8 +2468,8 @@ fn kotlin_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-fn kotlin_wave1_grammar_root() -> GrammarRoot {
-  let start = kotlin_grammar_production_mvp1_fn_add()
+fn kotlin_grammar_root() -> GrammarRoot {
+  let start = kotlin_grammar_production_fn_add()
   let fn_decl = kotlin_grammar_production_fn_decl()
   let typed_param = kotlin_grammar_production_typed_param()
   let param_list = kotlin_grammar_production_param_list()
@@ -2524,13 +2515,13 @@ fn kotlin_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn kotlin_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: kotlin_wave1_grammar_root() }
+fn kotlin_grammar() -> ParseGrammar {
+  ModeledGrammar { root: kotlin_grammar_root() }
 }
 
-fn kotlin_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn kotlin_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: kotlin_wave1_lex_rules(),
+    rules: kotlin_lex_rules(),
     token_class: sym
   )
 }
@@ -2539,11 +2530,11 @@ fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       kotlin_catalog_surface_symbol(sym: sym) ||
-        kotlin_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: kotlin_wave1_grammar(), sym: sym) ||
+        kotlin_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: kotlin_grammar(), sym: sym) ||
         sym == ^kotlin_surface_fn_item ||
-        sym == ^kotlin_production_mvp1_fn_add ||
-        sym == ^kotlin_mvp1_source_literal ||
+        sym == ^kotlin_production_fn_add ||
+        sym == ^kotlin_source_literal ||
         sym == ^kotlin_emitted_field_binding ||
         sym == ^kotlin_emitted_field_param_type ||
         sym == ^kotlin_emitted_field_signature ||
@@ -2552,9 +2543,9 @@ fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn kotlin_model_core_wave1() -> ModelCore {
+fn kotlin_model_core() -> ModelCore {
   ModelCore {
-    primitives: kotlin_wave1_primitive_fact_bundles(),
+    primitives: kotlin_primitive_fact_bundles(),
     inhabitance: kotlin_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -2562,12 +2553,12 @@ fn kotlin_model_core_wave1() -> ModelCore {
   }
 }
 
-fn kotlin_language_model_wave1() -> LanguageModel {
+fn kotlin_language_model() -> LanguageModel {
   LanguageModel {
-    lex: kotlin_wave1_lex(),
-    grammar: kotlin_wave1_grammar(),
+    lex: kotlin_lex(),
+    grammar: kotlin_grammar(),
     language_identity: ^kotlin_language_model_surface_id,
     canonical_symbols: kotlin_language_model_canonical_symbols(),
-    core: kotlin_model_core_wave1()
+    core: kotlin_model_core()
   }
 }

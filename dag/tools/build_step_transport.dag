@@ -1,42 +1,162 @@
 module tools.build_step_transport
 
-import extdeps.shell
-import extdeps.languages.bash.program { var_ref }
-import tools.build_step { BuildArtifact, verifications_script }
 
-fn probe_var_artifact() -> BuildArtifact {
-  BuildArtifact {
-    path: var_ref(name: "PROBE_BIN"),
-    name: "probe_bin"
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.git
+import extdeps.gunbc
+import gunbc.cli_invoke { claim_executor_bin_name }
+import gunbc.cli_services
+import std.logic { Bool }
+import tools.host_prelude {
+  WitnessBinArtifactAbsent,
+  WitnessBinArtifactEmpty,
+  WitnessBinArtifactNotExecutable,
+  WitnessBinReadiness,
+  WitnessBinReady,
+  WitnessBinRefusalReason,
+  WitnessBinRefused,
+  witness_bin,
+  witness_bin_artifact_readiness,
+  witness_bin_ensure_built_typed,
+  witness_bin_readiness_is_ready,
+  witness_bin_release_path
+}
+
+
+
+data bst_typed_transport_doc: String = "Build-artifact corruption-probe transport, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on /bin/chmod and claim_executor --verify-build-artifacts, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former verifications_script serialize_bash harness dissolved with the flip: the probe exercises the same claim_executor verification path the CI floor uses, so the spelling-drift class between substrate shell AST and production verification is unwritable (DESIGN 5, construction over validation)."
+
+fn probe_bin_path(tmp_dir: String) -> String {
+  concat(tmp_dir, "/probe_bin")
+}
+
+fn claim_executor_readiness(root: String) -> WitnessBinReadiness {
+  witness_bin_ensure_built_typed(
+    root: root,
+    bin: witness_bin(var_name: "CLAIM_EXECUTOR", bin_name: claim_executor_bin_name)
+  )
+}
+
+fn claim_executor_ready(root: String) -> Bool {
+  witness_bin_readiness_is_ready(readiness: claim_executor_readiness(root: root))
+}
+
+fn claim_executor_path(root: String) -> String {
+  witness_bin_release_path(root: root, bin_name: claim_executor_bin_name)
+}
+
+fn make_probe_executable(path: String) -> Bool {
+  let chmod = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/chmod", args: ["+x", path])
+  chmod.success
+}
+
+fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
+  let result = claim_executor.Executor.VerifyBuildArtifacts(
+    workdir: root,
+    bin_path: claim_executor_path(root: root),
+    artifact_paths: paths
+  )
+  result.success
+}
+
+fn corruption_probe_with_content(content: String, expect_verify_success: Bool) -> Bool {
+  let root = git.Core.Toplevel()
+  if claim_executor_ready(root: root.path) {
+    let tmp = shell.Mktemp.Dir()
+    if tmp.success {
+      let path = probe_bin_path(tmp_dir: tmp.path)
+      let wrote = Filesystem.Write(path: path, content: content)
+      let executable = make_probe_executable(path: path)
+      let verified = verify_artifacts_typed(root: root.path, paths: [path])
+      let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+      wrote.success && executable && cleaned.success && (verified == expect_verify_success)
+    } else {
+      false
+    }
+  } else {
+    false
   }
 }
 
-fn probe_verification_script() -> String {
-  verifications_script(produces: [probe_var_artifact()])
+data witness_bin_readiness_probe_note: String = "DISCRIMINATING controls for the typed witness-binary readiness carrier (tools.host_prelude). Each probe builds a real fixture on disk and asserts the arm it must produce, so the carrier cannot regress to answering one verdict for every input — the failure mode that made the previous Bool shape useless for diagnosis. Every assertion checks the LOCATION too (the refusal must carry the path it probed), because a typed refusal that does not say where is only marginally better than a false.
+
+The four arms are exercised against genuinely distinct on-disk states: no file at all; a written file never marked executable; a zero-byte file marked executable — the shape the sccache exit-0-no-binary flake actually leaves behind, which is why it is a separate arm from absent; and a non-empty executable, the only Ready state. The BuildFailed arm is deliberately NOT probed here: producing it requires a failing cargo build, which this harness cannot stage without minutes of wall time, and it is the one arm whose trigger is unambiguous in the code path. Recorded rather than silently omitted.
+
+These run in the wet bin-witness batch (live Mktemp/Write/chmod effects), alongside the corruption probes they sit next to."
+
+fn readiness_probe_path(tmp_dir: String) -> String {
+  concat(tmp_dir, "/readiness_probe_bin")
 }
 
-fn corruption_probe_zero_byte_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "touch \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n")),
-    concat("! (\n", concat(verify, "\n)\n"))
-  )
+fn readiness_refusal_locates(readiness: WitnessBinReadiness, path: String, reason: WitnessBinRefusalReason) -> Bool {
+  match readiness {
+    WitnessBinReady { path: _ } => false
+    WitnessBinRefused { bin_name: _, path: p, reason: r } => p == path && r == reason
+  }
 }
 
-fn corruption_probe_nonempty_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("set -e\n", concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "printf 'x' > \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n"))),
-    verify
-  )
+fn readiness_is_ready_at(readiness: WitnessBinReadiness, path: String) -> Bool {
+  match readiness {
+    WitnessBinReady { path: p } => p == path
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+  }
+}
+
+fn witness_readiness_absent_refuses_located() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  let path = readiness_probe_path(tmp_dir: tmp.path)
+  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+  tmp.success
+    && cleaned.success
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactAbsent)
+}
+
+fn witness_readiness_not_executable_refuses_located() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  let path = readiness_probe_path(tmp_dir: tmp.path)
+  let wrote = Filesystem.Write(path: path, content: "not executable")
+  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+  tmp.success
+    && wrote.success
+    && cleaned.success
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactNotExecutable)
+}
+
+fn witness_readiness_empty_artifact_refuses_located() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  let path = readiness_probe_path(tmp_dir: tmp.path)
+  let wrote = Filesystem.Write(path: path, content: "")
+  let executable = make_probe_executable(path: path)
+  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+  tmp.success
+    && wrote.success
+    && executable
+    && cleaned.success
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactEmpty)
+}
+
+fn witness_readiness_nonempty_executable_is_ready() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  let path = readiness_probe_path(tmp_dir: tmp.path)
+  let wrote = Filesystem.Write(path: path, content: "x")
+  let executable = make_probe_executable(path: path)
+  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+  tmp.success
+    && wrote.success
+    && executable
+    && cleaned.success
+    && readiness_is_ready_at(readiness: readiness, path: path)
 }
 
 fn witness_zero_byte_artifact_rejected_by_execution() -> Bool {
-  let result = shell.Exec.Run(script: corruption_probe_zero_byte_harness())
-  result.success
+  corruption_probe_with_content(content: "", expect_verify_success: false)
 }
 
 fn witness_nonempty_executable_accepted_by_execution() -> Bool {
-  let result = shell.Exec.Run(script: corruption_probe_nonempty_harness())
-  result.success
+  corruption_probe_with_content(content: "x", expect_verify_success: true)
 }

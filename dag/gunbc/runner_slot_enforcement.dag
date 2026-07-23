@@ -19,6 +19,13 @@ import gunbc.ci_floor_measurement {
   CapEffective,
   CapUnbounded,
 }
+import gunbc.fleet_show_effective_read { gunbc_fleet_runner_slice_cap_show_effective_read }
+import gunbc.host_converge { gunbc_runner_slot_unit_placeholder }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_enforcement_expected_cap }
+import gunbc.runner_unit_live_read {
+  RunnerUnitMemoryLiveRead,
+  memory_limit_to_cap_effectiveness,
+}
 
 
 type RunnerSlotEnforcement
@@ -92,16 +99,30 @@ fn runner_slot_enforcement_evidence(
   )
 }
 
-data gunbc_runner_slot_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
-  reason: "no live systemctl show -p MemoryMax / cgroup memory.max read has run on the fleet runner slots yet; pure .dag model, the live verify-effective read is threaded in at the apply increment (committed posture is fail-closed: RunnerSlotUnenforced)"
-}
 
-data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
+
+fn runner_slot_enforcement_from_unit_read(read: RunnerUnitMemoryLiveRead) -> RunnerSlotEnforcement {
+  let expected_cap = gunbc_runner_slot_enforcement_expected_cap()
+  match memory_limit_to_cap_effectiveness(lim: read.memory_max) {
+    Present { value: eff } =>
+      runner_slot_enforcement_evidence(
+        slot_unit: read.unit,
+        expected_cap: expected_cap,
+        read: ReadObserved { value: eff }
+      )
+    Absent =>
+      RunnerSlotUnenforced { reason: "per-slot MemoryMax read absent: fail-closed, no fabricated cap" }
+  }
+}
 
 fn gunbc_runner_slot_enforcement_committed(expected_cap: ByteSize) -> RunnerSlotEnforcement {
   runner_slot_enforcement_evidence(
     slot_unit: gunbc_runner_slot_unit_placeholder,
     expected_cap: expected_cap,
-    read: gunbc_runner_slot_show_effective_read
+    read: gunbc_fleet_runner_slice_cap_show_effective_read
   )
+}
+
+fn gunbc_runner_per_slot_enforcement_committed() -> RunnerSlotEnforcement {
+  gunbc_runner_slot_enforcement_committed(expected_cap: gunbc_runner_slot_enforcement_expected_cap())
 }

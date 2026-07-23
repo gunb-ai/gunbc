@@ -3,10 +3,9 @@ module extdeps.realization.parse_table_memo
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  CasContentEncoding,
   ContentAddressLookup,
   OverwriteAllowed,
   MissThenCreate,
@@ -21,6 +20,17 @@ import std.cache_interface {
   ManualPurge,
   Repo,
 }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data parse_table_memo_seed_handler_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.materialization_carriers",
+    decl_name: "materialization_allows_memo_store",
+    field: WholeDeclaration
+  }
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -34,7 +44,7 @@ data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
 data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
   identity: parse_table_memo_id
   backing_surface: "gunbc-parse-table-in-process"
-  transport_encoding: CasContentEncoding
+  transport_encoding: CatalogCasContentEncoding
   key_derivation: {
 
     key_inputs: ContentAddressed

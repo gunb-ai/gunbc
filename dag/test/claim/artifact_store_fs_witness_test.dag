@@ -1,0 +1,104 @@
+module test.claim.artifact_store_fs_witness
+
+import std.logic { Bool }
+import std.types { ContentHash, String }
+import std.content_hash { content_hash_atom }
+import std.artifact_store { ArtifactKey, artifact_key_hash }
+import std.effect_grant { Read, verb_eq }
+import std.artifact_store_scratch_grant { artifact_store_scratch_frame }
+import extdeps.realization.artifact_store_fs {
+  artifact_fs_put, artifact_fs_get, artifact_fs_delete, artifact_fs_list,
+  ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
+  ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
+  ArtifactFsDeleteOk, ArtifactFsDeleteRefused, ArtifactFsDeleteFailed,
+  ArtifactFsListOk, ArtifactFsListRefused, ArtifactFsListFailed,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service (wet lane; hermetic runs replay the service mock). Store root under /tmp per the filesystem_write_closure_scale_witness precedent. Grant refusals surface as typed ArtifactFs*Refused variants — never widened to miss/false/[] (review 40162). RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."
+
+data fs_store_root: String = "/tmp/gunbc_artifact_store_witness"
+data non_scratch_store_root: String = "/tmp/other_scratch"
+
+fn stored_key(toolchain: String) -> ContentHash {
+  artifact_key_hash(key: ArtifactKey {
+    closure_digest: content_hash_atom(value: "fs-transport-closure-fixture"),
+    emitter_identity: "v1-seed",
+    target_language: "rust",
+    toolchain: toolchain
+  })
+}
+
+test fn artifact_fs_roundtrip_holds() -> Bool {
+  let key = stored_key(toolchain: "1.93.0")
+  let payload = "artifact-payload-bytes-fixture"
+  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: payload) {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let served = match artifact_fs_get(store_root: fs_store_root, key: key) {
+    ArtifactFsHit { payload: p } => p == payload
+    ArtifactFsMiss { path: _ } => false
+    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  }
+  put_ok && served
+}
+
+test fn artifact_fs_refuses_non_scratch_store_root_holds() -> Bool {
+  let key = stored_key(toolchain: "refused-root")
+  match artifact_fs_get(store_root: non_scratch_store_root, key: key) {
+    ArtifactFsRefused { verb: v, target: t, frame: f } =>
+      verb_eq(a: v, b: Read) && f == artifact_store_scratch_frame
+    ArtifactFsHit { payload: _ } => false
+    ArtifactFsMiss { path: _ } => false
+  }
+}
+
+test fn artifact_fs_delete_then_misses_holds() -> Bool {
+  let key = stored_key(toolchain: "delete-case")
+  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted") {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let listed = match artifact_fs_list(store_root: fs_store_root) {
+    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, key))
+    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsListFailed { path: p } => false
+  }
+  let deleted = match artifact_fs_delete(store_root: fs_store_root, key: key) {
+    ArtifactFsDeleteOk => true
+    ArtifactFsDeleteRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsDeleteFailed { path: p } => false
+  }
+  let missed = match artifact_fs_get(store_root: fs_store_root, key: key) {
+    ArtifactFsHit { payload: _ } => false
+    ArtifactFsMiss { path: _ } => true
+    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  }
+  let unlisted = match artifact_fs_list(store_root: fs_store_root) {
+    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, key))) == false
+    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsListFailed { path: p } => false
+  }
+  put_ok && listed && deleted && missed && unlisted
+}
+
+test fn artifact_fs_mutated_input_misses_holds() -> Bool {
+  let key = stored_key(toolchain: "1.93.0")
+  let mutated = stored_key(toolchain: "1.94.0")
+  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "original-toolchain-artifact") {
+    ArtifactFsPutOk => true
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let miss = match artifact_fs_get(store_root: fs_store_root, key: mutated) {
+    ArtifactFsHit { payload: _ } => false
+    ArtifactFsMiss { path: _ } => true
+    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  }
+  put_ok && miss && (key == mutated) == false
+}

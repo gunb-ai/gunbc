@@ -1,0 +1,154 @@
+module v2.test.long.typescript_import_pipeline
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport v2.std.algebra { Cons, Empty }\n"
+data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
+
+data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.collection { Cons, Empty }\n"
+data ts_import_pipeline_other_text: String = "import { Cons, Empty } from \"v2/std/collection\";"
+
+fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            ^v2, "v2"
+          ),
+          ^std, "std"
+        ),
+        third_seg, third_spell
+      ),
+      ^Cons, "Cons"
+    ),
+    ^Empty, "Empty"
+  )
+}
+
+fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetModel {
+  TargetModel {
+    bundle: ts_target_model_node(),
+    lex: ts_lex(),
+    binding_spellings: ts_import_pipeline_spellings(
+      third_seg: third_seg,
+      third_spell: third_spell
+    ),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn ts_import_pipeline_find_import_node_children(tree: Node) -> Optional<Node> {
+  fold(tree.children, init: optional_absent(), f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => ts_import_pipeline_find_import_node(tree: edge.target)
+    }
+  })
+}
+
+fn ts_import_pipeline_find_import_node(tree: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: tree) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        optional_present(value: tree)
+      } else {
+        ts_import_pipeline_find_import_node_children(tree: tree)
+      }
+    Absent => ts_import_pipeline_find_import_node_children(tree: tree)
+  }
+}
+
+fn ts_import_pipeline_parse_import_node(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: ^ts_import_pipeline_probe,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(tree) {
+          match ts_import_pipeline_find_import_node(tree: tree) {
+            Absent =>
+              outcome_rejected(Diagnostic {
+                reason: ^ts_import_pipeline_no_import_found,
+                at: port_locus(port: ^ts_import_pipeline_probe),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            Present { value: import_node } =>
+              outcome_accepted(value: import_node)
+          }
+        }
+      )
+    }
+  )
+}
+
+fn ts_import_pipeline_emit(
+  source: String,
+  third_seg: Symbol,
+  third_spell: String
+) -> Outcome<String> {
+  bind_outcome(
+    o: ts_import_pipeline_parse_import_node(source: source),
+    f: fn(import_node) {
+      bind_outcome(
+        o: translate_import_production_to_carrier(import_node: import_node),
+        f: fn(carrier) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: ts_import_pipeline_target(
+                third_seg: third_seg,
+                third_spell: third_spell
+              ),
+              emitted: carrier
+            ),
+            f: fn(medium) {
+              outcome_accepted(value: medium.carried)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+test fn ts_import_pipeline_exact_holds() -> Bool {
+  match ts_import_pipeline_emit(
+    source: ts_import_pipeline_source,
+    third_seg: ^algebra,
+    third_spell: "algebra"
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == ts_import_pipeline_canonical_text
+  }
+}
+
+test fn ts_import_pipeline_discriminating_red_holds() -> Bool {
+  match ts_import_pipeline_emit(
+    source: ts_import_pipeline_source,
+    third_seg: ^algebra,
+    third_spell: "algebra"
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: canonical, diagnostics: _ } =>
+      match ts_import_pipeline_emit(
+        source: ts_import_pipeline_other_source,
+        third_seg: ^collection,
+        third_spell: "collection"
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: other, diagnostics: _ } =>
+          (canonical == ts_import_pipeline_canonical_text)
+            && (other == ts_import_pipeline_other_text)
+            && (canonical != other)
+      }
+  }
+}

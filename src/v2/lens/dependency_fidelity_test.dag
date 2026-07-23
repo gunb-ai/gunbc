@@ -1,0 +1,19 @@
+module v2.test.lens_dependency_fidelity.dependency_fidelity_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn a_synthetic_param() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^p } }, children: Empty)
+}
+
+test fn clean_input_surface_is_faithful() -> Bool {
+  return verdict_is_faithful(v: input_reachability_verdict(fact: UnusedParametersFact { unused: Empty }))
+}
+
+test fn one_unused_param_flips_to_discrepant() -> Bool {
+  let fact = UnusedParametersFact {
+    unused: list_snoc_item(xs: Empty, item: UnusedParameterFact { declaration: a_synthetic_param() })
+  }
+  return !verdict_is_faithful(v: input_reachability_verdict(fact: fact))
+}

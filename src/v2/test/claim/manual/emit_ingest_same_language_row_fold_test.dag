@@ -1,48 +1,7 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
-import v2.compiler.ingest { grammar_relation_row_forward_selection }
-import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_grammar_relation_row_node,
-  dag_mvp1_translation_rules_node
-}
-import v2.extdeps.languages.python {
-  python_grammar_relation_row_node,
-  python_mvp1_emitted_add_fn_node,
-  python_mvp1_grammar_relation_row,
-  python_mvp1_translation_rules_node
-}
-import v2.std.algebra { Empty, list_append }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
@@ -153,25 +112,25 @@ fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: Node) -> Bool {
 }
 
 fn emit_ingest_fold_dag_add_rules() -> Node {
-  dag_mvp1_translation_rules_node()
+  dag_translation_rules_node()
 }
 
 fn emit_ingest_fold_python_add_rules() -> Node {
-  python_mvp1_translation_rules_node()
+  python_translation_rules_node()
 }
 
 fn emit_ingest_fold_dag_add_row() -> Node {
-  dag_mvp1_grammar_relation_row_node()
+  dag_add_grammar_relation_row_node()
 }
 
 fn emit_ingest_fold_python_add_row() -> Node {
-  python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
+  python_grammar_relation_row_node(row: python_grammar_relation_row())
 }
 
 fn emit_ingest_fold_perturbed_dag_row() -> Node {
   match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_dag_add_row(),
-    emitted: python_mvp1_emitted_add_fn_node()
+    emitted: python_emitted_add_fn_node()
   ) {
     Accepted { value: perturbed, diagnostics: _ } => perturbed
     Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
@@ -181,7 +140,7 @@ fn emit_ingest_fold_perturbed_dag_row() -> Node {
 fn emit_ingest_fold_perturbed_python_row() -> Node {
   match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_python_add_row(),
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: perturbed, diagnostics: _ } => perturbed
     Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()

@@ -1,22 +1,20 @@
 module test.claim.ci_runner_seam_witness
 
-import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec }
-import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_yaml_emit { expected_ci_yml }
-import extdeps.github.actions { SelfHosted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_ci_runner_spec_derives_from_fleet_offer() -> Bool {
   gunbc_ci_runner_spec() == runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-fn witness_ci_workflow_runner_matches_fleet_offer() -> Bool {
-  ci_workflow.jobs.first().runner == gunbc_ci_runner_spec()
+fn witness_ci_workflow_runner_matches_selected_target() -> Bool {
+  ci_workflow.jobs.first().runner == gunbc_ci_selected_runner_spec()
 }
 
-fn witness_ci_yaml_runs_on_projects_fleet_labels() -> Bool {
+fn witness_ci_yaml_runs_on_projects_selected_labels() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64]")
+    && !string_contains(s: yaml, pattern: "    runs-on: [ubicloud-standard-16-arm]")
 }
 
 fn witness_ci_runner_spec_is_self_hosted_arm64_linux() -> Bool {
@@ -30,9 +28,14 @@ fn witness_ci_runner_spec_is_self_hosted_arm64_linux() -> Bool {
   }
 }
 
+fn witness_selected_target_is_operator_fleet_routing() -> Bool {
+  gunbc_ci_selected_runner_spec() == gunbc_ci_runner_spec()
+}
+
 test fn ci_runner_seam_holds() -> Bool {
-  witness_ci_runner_spec_derives_from_fleet_offer()
-    && witness_ci_workflow_runner_matches_fleet_offer()
-    && witness_ci_yaml_runs_on_projects_fleet_labels()
+  witness_selected_target_is_operator_fleet_routing()
+    && witness_ci_runner_spec_derives_from_fleet_offer()
+    && witness_ci_workflow_runner_matches_selected_target()
+    && witness_ci_yaml_runs_on_projects_selected_labels()
     && witness_ci_runner_spec_is_self_hosted_arm64_linux()
 }

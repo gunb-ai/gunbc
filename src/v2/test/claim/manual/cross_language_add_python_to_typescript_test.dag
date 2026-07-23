@@ -1,7 +1,7 @@
 module v2.test.manual.cross_language_add_python_to_typescript
 
-import v2.test.manual.python_wave1_grammar_claim {
-  python_wave1_grammar_parse_fixture
+import v2.test.manual.python_grammar_claim {
+  python_grammar_parse_fixture
 }
 import v2.test.manual.typescript_effect_io_emit {
   ts_effect_io_emit_holds
@@ -11,7 +11,7 @@ import v2.test.manual.ingest_bridge {
 }
 
 import v2.std.text { string_is_empty }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
   parse_tree_to_emitted_node,
@@ -22,10 +22,10 @@ import v2.compiler.infer { infer }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.compiler.emit { emit }
 import v2.extdeps.languages.python {
-  python_mvp1_emitted_add_fn_node,
-  python_mvp1_target_model
+  python_emitted_add_fn_node,
+  python_target_model
 }
-import v2.extdeps.languages.typescript { ts_mvp1_target_model }
+import v2.extdeps.languages.typescript { ts_target_model }
 
 import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
@@ -52,6 +52,10 @@ import v2.std.verification {
   UnifiedTestClaim,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.effects { atom_node }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 type ParseTreeToTargetModelBridge {
   source_parse_tree: Symbol
@@ -96,9 +100,9 @@ fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
 }
 
 fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
-  match infer(tree: python_mvp1_emitted_add_fn_node()) {
+  match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
-      match emit(tree: inferred, target: ts_mvp1_target_model()) {
+      match emit(tree: inferred, target: ts_target_model()) {
         Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
@@ -108,13 +112,13 @@ fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
 
 fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   match neutralize_core_for_target(
-    core: python_mvp1_emitted_add_fn_node(),
-    target: ts_mvp1_target_model()
+    core: python_emitted_add_fn_node(),
+    target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: ts_mvp1_target_model()) {
+          match emit(tree: inferred, target: ts_target_model()) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -126,15 +130,15 @@ fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
 
 fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
 
-  match python_wave1_grammar_parse_fixture() {
+  match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
 
       match parse_tree_to_target_model_bridge(
         parse_tree: python_parse_tree,
-        source_model: python_mvp1_target_model()
+        source_model: python_target_model()
       ) {
         Accepted { value: python_core, diagnostics: _ } =>
-          python_core == python_mvp1_emitted_add_fn_node()
+          python_core == python_emitted_add_fn_node()
 
             && cross_language_compile_on_real_tree_holds(parse_tree: python_parse_tree)
             && ts_effect_io_emit_holds()
@@ -147,8 +151,8 @@ fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
 fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
   match cross_language_compile(
     parse_tree: parse_tree,
-    source_model: python_mvp1_target_model(),
-    target_model: ts_mvp1_target_model()
+    source_model: python_target_model(),
+    target_model: ts_target_model()
   ) {
     Accepted { value: ts_source, diagnostics: _ } =>
       string_is_empty(s: ts_source.carried) == false
@@ -157,11 +161,11 @@ fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
 }
 
 fn cross_language_chain_discriminates_on_real_tree() -> Bool {
-  match python_wave1_grammar_parse_fixture() {
+  match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: python_parse_tree,
-        source_model: ts_mvp1_target_model()
+        source_model: ts_target_model()
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
@@ -213,8 +217,8 @@ fn cross_language_bridge_realized_input(ok: Bool) -> Symbol {
 data claim_cross_language_add_python_to_typescript_module_compiles: TestClaim = CompilesClaim {
   label: "manual/cross_language: python->ts add-slice end-to-end matrix claim compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ^ingest_bridge_hermetic_fixture_parse_tree,
-  expected_value: ^ingest_bridge_hermetic_fixture_parse_tree,
+  input: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
+  expected_value: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -222,6 +226,6 @@ data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim 
   label: "manual/cross_language: ParseTree->TargetModel bridge realized (#4801) — typed check Holds (was fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cross_language_bridge_realized_input(ok: parse_tree_to_target_model_bridge_realized()),
-  expected_value: ^cross_language_bridge_realized,
+  expected_value: atom_node(s: ^cross_language_bridge_realized),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

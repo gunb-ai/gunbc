@@ -26,21 +26,21 @@ import v2.extdeps.languages.cpp {
   cpp_int_inhabitant_node,
   cpp_integer_facts_node,
   cpp_integer_scalar_fact_node,
-  cpp_mvp1_binding_spellings,
-  cpp_mvp1_emitted_add_fn_node,
-  cpp_mvp1_source_text,
-  cpp_mvp1_target_model,
-  cpp_mvp1_target_model_node,
-  cpp_mvp1_target_profile,
+  cpp_binding_spellings,
+  cpp_emitted_add_fn_node,
+  cpp_source_text,
+  cpp_target_model,
+  cpp_target_model_node,
+  cpp_target_profile,
   cpp_signed_integer_facts,
   cpp_signed_integer_spelling_node,
-  cpp_wave1_lex
+  cpp_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -82,6 +82,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data cpp_add_target_profile: Node = Node {
@@ -93,12 +96,12 @@ data cpp_add_target_profile: Node = Node {
 data cpp_add_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
   spelling: Int,
   surface_spelling: ^cpp_surface_spelling_int,
-  target_profile: cpp_mvp1_target_profile
+  target_profile: cpp_target_profile
 )
 
-data cpp_add_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_mvp1_target_profile)
+data cpp_add_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_target_profile)
 
-data cpp_add_emitted_root: Node = cpp_mvp1_emitted_add_fn_node(target_profile: cpp_mvp1_target_profile)
+data cpp_add_emitted_root: Node = cpp_emitted_add_fn_node(target_profile: cpp_target_profile)
 
 data cpp_add_int_facts_node: Node = cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
 
@@ -108,12 +111,12 @@ data cpp_add_int_width_node: Node = cpp_add_int_primitive_facts.width_fact
 
 data cpp_add_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
 
-data cpp_add_target_model: TargetModel = cpp_mvp1_target_model()
+data cpp_add_target_model: TargetModel = cpp_target_model()
 
 data cpp_add_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: cpp_mvp1_target_model_node(target_profile: cpp_mvp1_target_profile),
-  lex: cpp_wave1_lex(),
-  binding_spellings: cpp_mvp1_binding_spellings(),
+  bundle: cpp_target_model_node(target_profile: cpp_target_profile),
+  lex: cpp_lex(),
+  binding_spellings: cpp_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: cpp_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
@@ -127,7 +130,7 @@ data cpp_add_empty_translation_rules_bundle: Node = Node {
 
 data cpp_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: cpp_add_empty_translation_rules_bundle,
-  lex: cpp_wave1_lex(),
+  lex: cpp_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -249,7 +252,7 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: cpp_add_int_width_node
       )
     }
-  } else if node == cpp_mvp1_target_profile {
+  } else if node == cpp_target_profile {
     Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -327,7 +330,7 @@ data cpp_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_cpp_add_c
 fn cpp_add_emit_claim_outcome() -> Outcome<Node> {
   match cpp_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == cpp_mvp1_source_text) && (d == None) {
+      if (source.carried == cpp_source_text) && (d == None) {
         Accepted { value: cpp_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -349,7 +352,7 @@ fn cpp_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == cpp_mvp1_source_text) && (d == None) {
+          if (source.carried == cpp_source_text) && (d == None) {
             Accepted { value: cpp_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
@@ -378,7 +381,7 @@ fn cpp_add_compile_inferred_claim_outcome() -> Outcome<Node> {
 }
 
 data claim_cpp_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_cpp_add_emit_accepts with canonical cpp_mvp1 add-fn source",
+  label: "manual/rust_add_emit: anchor_cpp_add_emit_accepts with canonical cpp_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cpp_add_emitted_root,
   expected_value: cpp_add_emitted_root,
@@ -386,7 +389,7 @@ data claim_cpp_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_cpp_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical cpp_mvp1 add-fn source through grammar inverse",
+  label: "manual/rust_add_emit: compile_inferred emits canonical cpp_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cpp_add_emitted_root,
   expected_value: cpp_add_emitted_root,
@@ -399,7 +402,7 @@ data subject_cpp_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaim
   tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: cpp_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -418,7 +421,7 @@ data subject_cpp_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
   tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: cpp_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -451,7 +454,7 @@ data subject_cpp_add_serialize_rejects_missing_translation_rules: TestClaimEvalS
   tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: cpp_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 

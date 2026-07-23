@@ -95,6 +95,8 @@ The reading: the **schedule/width** arm of the realization layer is now wired; t
 
 ## 8. Generalization — one rule, N substrates (code · docs · lenses)
 
+> **Kin families (§2/§3, distinct invariants).** Inertness is *"not reached from a live root"* — a **root-relative reachability** verdict (§1, not authority count) — and its structural kin is the **authority/oracle-provenance axis** surfaced by the [vacuity lens](vacuity-lens-design.md) (whether a test carries independent information or duplicates what the code already expresses). Both are redundancy-adjacent §2/§3 concerns sharing the counted-relation **mechanism** (per [lens consolidation](lens-consolidation-design.md): consolidate mechanisms, not meanings), but their **verdicts and remedies diverge**: inertness → reachability gate or exception roster; vacuity → oracle provenance (`VacuityEvidence`: `ProvenDuplicate | ProvenIndependent | Unknown`) with distinct remedy (independent oracle, construction, or deletion—not `Share`). Same root (minimize redundancy), opposite endpoints of distinct invariants.
+
 Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph — and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges *needed for the dangling half*, and far simpler than the code substrate):
 
 | substrate | nodes | edges | roots | inert = | dangling = |

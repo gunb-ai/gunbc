@@ -1,0 +1,207 @@
+module v2.test.claim.wrap_decision_predicate
+
+import v2.compiler.wrap_decision { wrap_decision_gate }
+import v2.extdeps.languages.rust {
+  rust_named_edge,
+  rust_sg2_type_expr_target_model,
+  rust_sg_rc_use_site_ownership_catalog
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetOwnershipUseSite,
+  OwnershipAtFunctionParameter,
+  OwnershipAtFunctionReturn,
+  ReferenceLayerRc,
+  WrapByReference,
+  WrapByValue,
+  WrapGateDecided,
+  WrapGateInapplicable,
+  target_carrier_diagnostics_node,
+  target_carrier_probe_heap_node,
+  target_carrier_use_site_verdict_node,
+  target_use_site_ownership_catalog_node
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.text { String }
+
+data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. UseSiteVerdict enrolled (owned-at-all-sites). RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
+
+fn wrap_decision_sg_rc_target() -> TargetModel {
+  rust_sg2_type_expr_target_model()
+}
+
+fn wrap_decision_bundle_absent_target() -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: wrap_decision_sg_rc_target().lex,
+    binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
+    token_class_emit_transforms: wrap_decision_sg_rc_target().token_class_emit_transforms,
+    authority_source_text: wrap_decision_sg_rc_target().authority_source_text,
+    runtime_row: wrap_decision_sg_rc_target().runtime_row
+  }
+}
+
+fn wrap_decision_partial_bundle_target() -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_use_site_ownership_realizations,
+          target: target_use_site_ownership_catalog_node(
+            rows: rust_sg_rc_use_site_ownership_catalog()
+          )
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: wrap_decision_sg_rc_target().lex,
+    binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
+    token_class_emit_transforms: wrap_decision_sg_rc_target().token_class_emit_transforms,
+    authority_source_text: wrap_decision_sg_rc_target().authority_source_text,
+    runtime_row: wrap_decision_sg_rc_target().runtime_row
+  }
+}
+
+fn wrap_decision_gate_is_by_value(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site
+  ) {
+    Accepted {
+      value: WrapGateDecided { decision: WrapByValue },
+      diagnostics: _
+    } => true
+    _ => false
+  }
+}
+
+fn wrap_decision_gate_is_rc_reference(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site
+  ) {
+    Accepted {
+      value: WrapGateDecided { decision: WrapByReference { layer: ReferenceLayerRc } },
+      diagnostics: _
+    } => true
+    _ => false
+  }
+}
+
+fn wrap_decision_gate_rejects(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site
+  ) {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
+
+fn wrap_decision_gate_is_inapplicable(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site
+  ) {
+    Accepted { value: WrapGateInapplicable, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
+  wrap_decision_gate_is_rc_reference(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    use_site: OwnershipAtFunctionReturn
+  )
+}
+
+test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
+  wrap_decision_gate_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    use_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
+  wrap_decision_gate_rejects(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_probe_heap_node(),
+    use_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
+  wrap_decision_gate_is_inapplicable(
+    target: wrap_decision_bundle_absent_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    use_site: OwnershipAtFunctionReturn
+  )
+}
+
+test fn wrap_decision_bundle_partial_rejects() -> Bool {
+  wrap_decision_gate_rejects(
+    target: wrap_decision_partial_bundle_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    use_site: OwnershipAtFunctionReturn
+  )
+}
+
+test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
+  wrap_decision_gate_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_use_site_verdict_node(),
+    use_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
+  wrap_decision_gate_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_use_site_verdict_node(),
+    use_site: OwnershipAtFunctionReturn
+  )
+}
+
+test fn wrap_decision_predicate_witness_holds() -> Bool {
+  wrap_decision_diagnostics_return_is_rc()
+    && wrap_decision_diagnostics_param_is_owned()
+    && wrap_decision_probe_heap_param_miss_rejects()
+    && wrap_decision_bundle_absent_inapplicable()
+    && wrap_decision_bundle_partial_rejects()
+    && wrap_decision_use_site_verdict_param_is_owned()
+    && wrap_decision_use_site_verdict_return_is_owned()
+}

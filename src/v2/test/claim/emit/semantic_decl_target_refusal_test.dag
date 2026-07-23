@@ -1,0 +1,46 @@
+module v2.test.emit.semantic_decl_target_refusal
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import std.algebra { Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data semantic_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) at F7 Inc1 ready — CI-gated fail-closed refusal receipt for unwired targets."
+
+fn sdtr_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn sdtr_variant_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdtr_empty_conj() }
+}
+
+fn sdtr_bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ sdtr_variant_edge(name: ^True), sdtr_variant_edge(name: ^False) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sdtr_unwired_target_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Bool,
+    params: Empty,
+    node: sdtr_bool_coproduct(),
+    target: cpp_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn semantic_decl_unwired_target_refuses() -> Bool {
+  sdtr_unwired_target_refuses()
+}

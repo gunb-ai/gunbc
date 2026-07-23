@@ -1,14 +1,13 @@
 module test.claim.extdeps_version_base
 
-import extdeps.version { VersionIdentity, VersionConstraint }
-import extdeps.gnu_coreutils { min_coreutils_version }
-import std.algebra { Ordering, Less, Equal, Greater }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn identity_1_0_0() -> VersionIdentity { "1.0.0" }
 fn identity_2_0_0() -> VersionIdentity { "2.0.0" }
 fn constraint_ge_1() -> VersionConstraint { ">= 1.0.0" }
 
-fn mk_equal() -> Ordering { Equal }
+fn mk_equal() -> std.algebra.Ordering { std.algebra.Equal }
 
 fn w_identity_label_preserved() -> Bool {
   identity_1_0_0() == "1.0.0"

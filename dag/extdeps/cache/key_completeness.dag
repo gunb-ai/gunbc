@@ -13,15 +13,8 @@ import extdeps.cache.types {
   catalog_has_vendor_only_key_inputs,
   invalidation_triggers_on_toolchain_change,
 }
-import std.lens_verdict {
-  LensVerdict,
-  Holds,
-  Violation,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-}
 import std.types { Bool }
-import std.list { List }
+import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -40,19 +33,6 @@ fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
       } else {
         true
       }
-  }
-}
-
-fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name: String) -> LensVerdict {
-  if cache_key_derivation_complete(facts: facts) {
-    Holds
-  } else {
-    Violation {
-      diagnostic: LensVerdictDiagnostic {
-        reason: "cited NativeInternal key declares ToolchainChange invalidation but its cited_inputs omit a toolchain axis (RustcInvocation/ToolchainSpec); the citation is self-contradictory — a toolchain-sensitive key that omits the toolchain",
-        at: ModuleWholeFile { module_name: module_name },
-      }
-    }
   }
 }
 

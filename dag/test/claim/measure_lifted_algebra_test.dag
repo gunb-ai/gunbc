@@ -1,15 +1,7 @@
 module test.claim.measure_lifted_algebra
 
-import std.measure {
-  byte_size,
-  byte_size_count,
-  hertz,
-  hertz_count,
-  measure_scale_fraction_floor,
-  measure_fit_count_floor,
-  measure_scale_fraction_ceil,
-}
-import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn scale_fraction_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(10), num: 4, den: 5)) == 8

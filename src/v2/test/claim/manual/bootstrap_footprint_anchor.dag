@@ -1,13 +1,13 @@
 module v2.test.manual.bootstrap_footprint_anchor
 
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
-  v2_eval_wave1_boundary_allowance,
-  v2_evaluator_execution_wave1,
-  v2_evaluator_model_core_wave1,
-  v2_evaluator_runtime_wave1,
-  v2_evaluator_value_representation_wave1
+  v2_eval_boundary_allowance,
+  v2_evaluator_execution,
+  v2_evaluator_model_core,
+  v2_evaluator_runtime,
+  v2_evaluator_value_representation
 }
 import v2.std.runtime { ResourceEffectBoundary }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
@@ -33,6 +33,7 @@ import v2.workflow.bootstrap {
   seed_capability_language_model,
   v2_stage0_hash
 }
+
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
@@ -59,8 +60,8 @@ fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInpu
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
-    runtime_model: v2_evaluator_runtime_wave1()
+    target_model: rust_target_model(),
+    runtime_model: v2_evaluator_runtime()
   }
 }
 
@@ -103,8 +104,8 @@ fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> BootstrapP
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
-    runtime_model: v2_evaluator_runtime_wave1()
+    target_model: rust_target_model(),
+    runtime_model: v2_evaluator_runtime()
   }
 }
 
@@ -118,20 +119,20 @@ fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
 
 fn bootstrap_footprint_anchor_bad_runtime_boundary() -> ResourceEffectBoundary {
   ResourceEffectBoundary {
-    ffi: v2_eval_wave1_boundary_allowance(allowed: true),
-    exceptions: v2_eval_wave1_boundary_allowance(allowed: false),
-    async: v2_eval_wave1_boundary_allowance(allowed: false),
-    concurrency: v2_eval_wave1_boundary_allowance(allowed: false),
-    identity_reference: v2_eval_wave1_boundary_allowance(allowed: false)
+    ffi: v2_eval_boundary_allowance(allowed: true),
+    exceptions: v2_eval_boundary_allowance(allowed: false),
+    async: v2_eval_boundary_allowance(allowed: false),
+    concurrency: v2_eval_boundary_allowance(allowed: false),
+    identity_reference: v2_eval_boundary_allowance(allowed: false)
   }
 }
 
 fn bootstrap_footprint_anchor_bad_runtime_model() -> V4EvaluatorRuntime {
   V4EvaluatorRuntime {
     runtime_identity: ^v2_evaluator_runtime_id,
-    core: v2_evaluator_model_core_wave1(),
-    values: v2_evaluator_value_representation_wave1(),
-    execution: v2_evaluator_execution_wave1(),
+    core: v2_evaluator_model_core(),
+    values: v2_evaluator_value_representation(),
+    execution: v2_evaluator_execution(),
     boundary: bootstrap_footprint_anchor_bad_runtime_boundary()
   }
 }
@@ -146,14 +147,14 @@ fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> BootstrapProjec
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
+    target_model: rust_target_model(),
     runtime_model: bootstrap_footprint_anchor_bad_runtime_model()
   }
 }
 
 fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
   let bad_runtime = bootstrap_footprint_anchor_bad_runtime_model()
-  let canonical_runtime = v2_evaluator_runtime_wave1()
+  let canonical_runtime = v2_evaluator_runtime()
   (bad_runtime.runtime_identity == canonical_runtime.runtime_identity)
     && (bad_runtime != canonical_runtime)
     && (match bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
@@ -187,7 +188,7 @@ data claim_bootstrap_footprint_bad_content_hash_violates: TestClaim = CompilesCl
 }
 
 data claim_bootstrap_footprint_bad_runtime_violates: TestClaim = CompilesClaim {
-  label: "T-20 bootstrap_footprint: same runtime_identity with non-wave1 boundary fails closed",
+  label: "T-20 bootstrap_footprint: same runtime_identity with a foreign boundary fails closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_runtime_same_identity_violates()),
   expected_value: bootstrap_footprint_anchor_pass_node(),

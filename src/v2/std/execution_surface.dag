@@ -1,0 +1,162 @@
+module v2.std.execution_surface
+
+import v2.std.algebra { filter, list_head, HeadFound, HeadAbsent }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+type ForeignExecutorKind
+  = GitHubActionsRunStep
+  | CronEntryLine
+  | GitHookScript
+  | AutoinstallLateCommand
+
+type ExecutorCapability
+  = ShellPayloadRequired { foreign: ForeignExecutorKind }
+  | TypedArgv
+  | TypedRest
+  | TypedPlanInterpretation
+
+type AvailabilityFact
+  = Absent
+  | Present
+  | Unknown { cause: String }
+
+type RuntimeAvailabilityGate {
+  gunbc_binary: AvailabilityFact
+  typed_transport: AvailabilityFact
+  plan_interpreter: AvailabilityFact
+}
+
+type ProvisioningWindow
+  = BootstrapBeforeRuntime { until: RuntimeAvailabilityGate }
+  | SteadyState
+
+type ShellEmissionSiteId = Symbol
+
+type ShellEmissionRosterEntry {
+  site: ShellEmissionSiteId
+  roster_key: String
+  dissolve_trigger: String
+}
+
+type ShellEmissionJustification
+  = ForeignExecutorMandated { capability: ExecutorCapability }
+  | BootstrapProvisioned { window: ProvisioningWindow, site: ShellEmissionSiteId }
+  | RosterException { roster_key: String, dissolve_trigger: String }
+
+type ShellEmissionRefusal
+  = RuntimePresentRequiresTypedRealization { capability: ExecutorCapability }
+  | UnknownAvailability { gate: RuntimeAvailabilityGate }
+  | UndeclaredSite
+
+type ShellEmissionAuthorization
+  = Authorized { justification: ShellEmissionJustification }
+  | Refused { cause: ShellEmissionRefusal }
+
+fn availability_fact_is_unknown(fact: AvailabilityFact) -> Bool {
+  match fact {
+    Absent => false
+    Present => false
+    Unknown { cause: _ } => true
+  }
+}
+
+fn runtime_availability_gate_has_unknown(gate: RuntimeAvailabilityGate) -> Bool {
+  availability_fact_is_unknown(fact: gate.gunbc_binary)
+    || availability_fact_is_unknown(fact: gate.typed_transport)
+    || availability_fact_is_unknown(fact: gate.plan_interpreter)
+}
+
+fn shell_emission_site_id_eq(left: ShellEmissionSiteId, right: ShellEmissionSiteId) -> Bool {
+  left == right
+}
+
+fn shell_emission_roster_lookup(
+  roster: List<ShellEmissionRosterEntry>,
+  site: ShellEmissionSiteId
+) -> List<ShellEmissionRosterEntry> {
+  filter(
+    xs: roster,
+    predicate: fn(entry) { shell_emission_roster_entry_matches(entry: entry, site: site) }
+  )
+}
+
+fn shell_emission_roster_entry_matches(
+  entry: ShellEmissionRosterEntry,
+  site: ShellEmissionSiteId
+) -> Bool {
+  shell_emission_site_id_eq(left: entry.site, right: site)
+}
+
+fn shell_emission_authorize_bootstrap(
+  window: ProvisioningWindow,
+  site: ShellEmissionSiteId,
+  gate: RuntimeAvailabilityGate
+) -> ShellEmissionAuthorization {
+  if runtime_availability_gate_has_unknown(gate: gate) {
+    Refused { cause: UnknownAvailability { gate: gate } }
+  } else {
+    Authorized { justification: BootstrapProvisioned { window: window, site: site } }
+  }
+}
+
+fn shell_emission_authorize_steady_state(
+  capability: ExecutorCapability,
+  roster: List<ShellEmissionRosterEntry>,
+  site: ShellEmissionSiteId
+) -> ShellEmissionAuthorization {
+  match list_head(xs: shell_emission_roster_lookup(roster: roster, site: site)) {
+    HeadFound { value: entry } =>
+      Authorized {
+        justification: RosterException {
+          roster_key: entry.roster_key,
+          dissolve_trigger: entry.dissolve_trigger
+        }
+      }
+    HeadAbsent =>
+      Refused { cause: RuntimePresentRequiresTypedRealization { capability: capability } }
+  }
+}
+
+data authorize_shell_emission_doc: String = "The sign-off predicate — docs/plans/provisioning-window-executor-capability-design.md §3.3. Foreign-executor demand is authorized unconditionally (the payload class IS shell); a bootstrap window authorizes only when runtime availability is fully known (Unknown is a fail-closed bottom, never treated as Absent); steady state authorizes only a shrinking, named roster exception — everything else refuses, typed and located."
+
+fn authorize_shell_emission(
+  capability: ExecutorCapability,
+  window: ProvisioningWindow,
+  site: ShellEmissionSiteId,
+  roster: List<ShellEmissionRosterEntry>
+) -> ShellEmissionAuthorization {
+  match capability {
+    ShellPayloadRequired { foreign: _ } =>
+      Authorized { justification: ForeignExecutorMandated { capability: capability } }
+    TypedArgv =>
+      shell_emission_authorize_by_window(capability: capability, window: window, site: site, roster: roster)
+    TypedRest =>
+      shell_emission_authorize_by_window(capability: capability, window: window, site: site, roster: roster)
+    TypedPlanInterpretation =>
+      shell_emission_authorize_by_window(capability: capability, window: window, site: site, roster: roster)
+  }
+}
+
+fn shell_emission_authorize_by_window(
+  capability: ExecutorCapability,
+  window: ProvisioningWindow,
+  site: ShellEmissionSiteId,
+  roster: List<ShellEmissionRosterEntry>
+) -> ShellEmissionAuthorization {
+  match window {
+    BootstrapBeforeRuntime { until: gate } =>
+      shell_emission_authorize_bootstrap(window: window, site: site, gate: gate)
+    SteadyState =>
+      shell_emission_authorize_steady_state(capability: capability, roster: roster, site: site)
+  }
+}
+
+fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) -> Bool {
+  match auth {
+    Authorized { justification: _ } => true
+    Refused { cause: _ } => false
+  }
+}

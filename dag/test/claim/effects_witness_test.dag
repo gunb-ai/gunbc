@@ -9,7 +9,7 @@ import extdeps.uri_path {
 }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
-  CreateCause, PostAlways, CreateIfAbsent,
+  CreateCause, PostAlways, CreateIfAbsent, KeylessFallback,
   KeySource, PathParam, InputField,
   DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
   derive_op_effect, check_modifier_vs_derivation,
@@ -19,8 +19,9 @@ import std.effects {
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data effects_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/effects.rs (5-test-migration lane): pure std.effects derivation/idempotency/modifier/compose behavior. Live extdep REST-transport collection is in effects_rest_transport_parse_witness_test.dag (host physics until modeled)."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type ReadonlyGetCase {
   name: String
@@ -92,35 +93,90 @@ fn derived_raw_modifier_unknown(name: String, method: HttpMethod, raw: String, d
   }
 }
 
-fn is_read(shape: EffectShape) -> Bool {
+fn is_read(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     ReadEffect => true
     _ => false
   }
 }
 
-fn is_create(shape: EffectShape) -> Bool {
+fn is_create(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } => true
     _ => false
   }
 }
 
-fn is_create_always(shape: EffectShape) -> Bool {
+fn is_create_always(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: PostAlways } => true
     _ => false
   }
 }
 
-fn is_upsert(shape: EffectShape) -> Bool {
+data keyless_fallback_witness_note: String = "Discriminating control for the PostAlways state-space conflation (std.effects.keyless_fallback_cause_note). Pre-fix, derive_effect_shape answered CreateEffect{PostAlways} for a real POST AND for a keyless PUT/PATCH/DELETE, so this projection was inexpressible and the originating method was lost. These rows go RED if the two causes ever collapse back together, and the negative arms prove the method is genuinely carried rather than defaulted."
+
+fn derived_cause_is_keyless_with_method(shape: EffectShape<KeySource>, expected: HttpMethod) -> Bool {
+  match shape {
+    CreateEffect { cause: cause } =>
+      match cause {
+        KeylessFallback { method: m } =>
+          match m {
+            GET => match expected { GET => true, _ => false }
+            POST => match expected { POST => true, _ => false }
+            PUT => match expected { PUT => true, _ => false }
+            DELETE => match expected { DELETE => true, _ => false }
+            _ => false
+          }
+        PostAlways => false
+        CreateIfAbsent { key_source: key_source } => false
+      }
+    _ => false
+  }
+}
+
+fn derived_cause_is_post_always(shape: EffectShape<KeySource>) -> Bool {
+  match shape {
+    CreateEffect { cause: cause } =>
+      match cause {
+        PostAlways => true
+        KeylessFallback { method: m } => false
+        CreateIfAbsent { key_source: key_source } => false
+      }
+    _ => false
+  }
+}
+
+fn derived_raw_cause_is_keyless_with_method(name: String, method: HttpMethod, raw: String, expected: HttpMethod) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } =>
+      match derive_op_effect(operation_name: name, method: method, path: path) {
+        DerivedEffect { effect: effect } => derived_cause_is_keyless_with_method(shape: effect.shape, expected: expected)
+        MalformedPathInput => false
+      }
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_cause_is_post_always(name: String, method: HttpMethod, raw: String) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } =>
+      match derive_op_effect(operation_name: name, method: method, path: path) {
+        DerivedEffect { effect: effect } => derived_cause_is_post_always(shape: effect.shape)
+        MalformedPathInput => false
+      }
+    MalformedPathTemplate => false
+  }
+}
+
+fn is_upsert(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     UpsertEffect { key_source: key_source } => true
     _ => false
   }
 }
 
-fn is_delete(shape: EffectShape) -> Bool {
+fn is_delete(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     DeleteEffect { key_source: key_source } => true
     _ => false
@@ -224,6 +280,17 @@ test fn effects_derivation_witnesses() -> Bool {
         }
       MalformedPathTemplate => false
     }
+}
+
+test fn effects_keyless_fallback_is_not_post_witnesses() -> Bool {
+  derived_raw_cause_is_keyless_with_method(name: "Update", method: PUT, raw: "/config", expected: PUT)
+    && derived_raw_cause_is_keyless_with_method(name: "Purge", method: DELETE, raw: "/cache", expected: DELETE)
+    && !derived_raw_cause_is_keyless_with_method(name: "Update", method: PUT, raw: "/config", expected: DELETE)
+    && derived_raw_cause_is_post_always(name: "Messages", method: POST, raw: "/v1/messages")
+    && !derived_raw_cause_is_keyless_with_method(name: "Messages", method: POST, raw: "/v1/messages", expected: POST)
+    && !derived_raw_cause_is_post_always(name: "Update", method: PUT, raw: "/config")
+    && derived_raw_is_upsert(name: "Update", method: PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
+    && derived_raw_is_delete(name: "DeleteItem", method: DELETE, raw: "/items/\{id\}")
 }
 
 test fn effects_compose_witnesses() -> Bool {

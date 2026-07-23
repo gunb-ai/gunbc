@@ -1,6 +1,7 @@
 module v2.test.manual.posix_output_capture
 
 import v2.extdeps.posix { CapturedOutputPipes }
+import std.algebra { FreeMonoid }
 import v2.std.algebra { is_empty }
 import v2.std.node { Node }
 import v2.std.verification {

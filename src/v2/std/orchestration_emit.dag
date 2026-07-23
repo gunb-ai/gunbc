@@ -1,6 +1,7 @@
 module v2.std.orchestration_emit
 
 import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Outcome }
 import v2.std.node { Symbol }
 import v2.std.orchestration { Run }
 import v2.std.text { String }
@@ -10,6 +11,17 @@ data orch_construct_run_env_prefixed: Symbol = ^orch_construct_run_env_prefixed
 data orch_construct_run_env_unset: Symbol = ^orch_construct_run_env_unset
 data orch_construct_seq2: Symbol = ^orch_construct_seq2
 data orch_construct_retry: Symbol = ^orch_construct_retry
+data orch_construct_retry_1level: Symbol = ^orch_construct_retry_1level
+data orch_construct_retry_escalation_final: Symbol = ^orch_construct_retry_escalation_final
+data orch_construct_retry_escalation_step: Symbol = ^orch_construct_retry_escalation_step
+data orch_construct_if: Symbol = ^orch_construct_if
+data orch_construct_if_else: Symbol = ^orch_construct_if_else
+data orch_construct_while: Symbol = ^orch_construct_while
+data orch_construct_bounded_poll: Symbol = ^orch_construct_bounded_poll
+data orch_construct_procedure: Symbol = ^orch_construct_procedure
+data orch_construct_call: Symbol = ^orch_construct_call
+data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
+data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
 
 type OrchRunEmitPlan {
   construct_tag: Symbol
@@ -27,6 +39,19 @@ type OrchestrationEmitMedium {
     String,
     String,
     String,
+    String,
+    String,
     String
   ) -> TargetModel
+  realize_retry_1level: fn(String, String, String, String, String) -> TargetModel
+  realize_retry_escalation_final: fn(String, String) -> TargetModel
+  realize_retry_escalation_step: fn(String, String, String, String, String) -> TargetModel
+  realize_if: fn(String, String) -> Outcome<TargetModel>
+  realize_if_else: fn(String, String, String) -> Outcome<TargetModel>
+  realize_while: fn(String, String) -> Outcome<TargetModel>
+  realize_bounded_poll: fn(String, String, String) -> Outcome<TargetModel>
+  realize_procedure: fn(String, String) -> TargetModel
+  realize_call: fn(String, String) -> TargetModel
+  realize_cmdsubst_assign: fn(String, String) -> TargetModel
+  realize_let_assign: fn(String, String) -> TargetModel
 }

@@ -1,0 +1,54 @@
+module v2.test.long.variant_visibility
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data variant_vis_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_vis_artifact,
+  file_path: "src/v2/pilot/variant_vis.dag"
+}
+
+fn variant_vis_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: variant_vis_artifact,
+      compilation_unit: ^variant_vis_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn variant_vis_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn variant_vis_accepts(src: String) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: variant_vis_ingest_for(src: src),
+    admission: variant_vis_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data variant_vis_doc: String = "End-to-end wire proof: resolution ACCEPTS when SymbolIndex fill-time unique-variant aliases make bare match-arm variants resolvable (Classical-only Yes/No), REJECTS when aliases are withheld (Mood+Classical both declare Yes). SymbolIndex-path-alone equivalence is in symbol_index/containment_test.dag (symbol_index_variant_visibility_equivalence_holds + without_alias RED control)."
+
+data src_unique_variants: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
+
+data src_ambiguous_variant: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\ntype Mood = Yes | Meh\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
+
+test fn variant_visibility_unique_resolves_holds() -> Bool {
+  variant_vis_accepts(src: src_unique_variants)
+}
+
+test fn variant_visibility_ambiguous_refuses_holds() -> Bool {
+  !variant_vis_accepts(src: src_ambiguous_variant)
+}

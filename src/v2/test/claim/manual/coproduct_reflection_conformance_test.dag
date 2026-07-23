@@ -1,17 +1,7 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-import v2.std.algebra { bag_eq, Empty, list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Behavior,
-  Symbol
-}
-import v2.std.node_query {
-  coproduct_arm_keys,
-  coproduct_nullary_inhabitants
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
@@ -29,22 +19,22 @@ test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
 }
 
 fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
-  fold(
+  fold_list(
     xs: inhabitants,
-    init: Empty,
-    f: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
+    empty: Empty,
+    cons: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
   )
 }
 
 fn symbol_in_list(sym: Symbol, xs: List<Symbol>) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
 }
 
 fn all_inhabitant_discriminants_are_reflected_arms(
   inhabitants: List<Behavior>,
   arm_keys: List<Symbol>
 ) -> Bool {
-  fold(inhabitants, init: true, f: fn(acc, v) {
+  fold_list(xs: inhabitants, empty: true, cons: fn(acc, v) {
     acc && symbol_in_list(sym: discriminant(v: v), xs: arm_keys)
   })
 }

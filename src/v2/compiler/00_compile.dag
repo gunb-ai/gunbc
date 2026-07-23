@@ -10,20 +10,30 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.normalize { normalize, NormalizedTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
-import v2.std.staging { then_outcome, cached_stage, CacheProbe, Miss }
+import v2.std.staging { then_outcome, CacheProbe, Miss }
+import v2.compiler.materialization_carriers {
+  cached_stage_realization,
+  cached_stage_governed,
+}
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { TargetModel }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.target_model { TargetModel }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
+import v2.lens.determinism { determinism_compile_gate }
+import v2.lens.machine_shape { machine_shape_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
-import v2.std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { list_append, list_reverse }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -111,6 +121,38 @@ fn always_required_lenses() -> List<CompileLens> {
   [fact_density_lens, unit_modeling_lens]
 }
 
+data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
+
+data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_root_gate }
+
+data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
+
+data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_gate }
+
+data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
+
+data door_roster_tree_grain_note: String = "always_required_root_lenses is TREE-GRAIN only: every enrolled gate is a pure fold over the InferredTree being compiled (accumulator_copy, determinism, machine_shape, mandatory_tag all read tree.root and nothing else). lens_module_gate was DE-ENROLLED here (census follow-on to run 29892063728 receipts): its compile_gate wrapper discarded the tree argument and ran the nullary corpus scan lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, which made every compile-importing entry reach a live-read carrier and put 31 SubstrateInputsOnly witness stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement is NOT reduced: the same invariant executes per-PR via its own honestly-stamped consumer, v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never predict-skips), which reds the floor when registry completeness breaks. A corpus-grain invariant enrolls on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door - re-enrolling a nullary gate here re-opens the census class."
+
+fn always_required_root_lenses() -> List<CompileLens> {
+  [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
+}
+
+fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  accumulator_copy_compile_gate(node: tree.root)
+}
+
+fn determinism_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  determinism_compile_gate(node: tree.root)
+}
+
+fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  machine_shape_compile_gate(node: tree.root)
+}
+
+fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  mandatory_tag_compile_gate(node: tree.root)
+}
+
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
 }
@@ -149,17 +191,11 @@ fn apply_compile_lens(
   }
 }
 
-fn append_lens_gate_witness(
+fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
 ) -> List<LensGateWitness> {
-  fold(
-    [LensGateWitness { witness: witness }],
-    init: witnesses,
-    f: fn(acc, item) {
-      list_snoc_item(xs: acc, item: item)
-    }
-  )
+  Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
 }
 
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
@@ -170,29 +206,32 @@ fn run_required_lens_gates(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  fold(
-    lenses,
-    init: outcome_accepted(value: empty_lens_gate_witnesses()),
-    f: fn(acc_outcome, lens) {
-      match acc_outcome {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: witnesses, diagnostics: od } =>
-          bind_outcome_accepted(
-            od: od,
-            inner: bind_outcome(
-              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
-              f: fn(w) {
-                outcome_accepted(
-                  value: append_lens_gate_witness(
-                    witnesses: witnesses,
-                    witness: w
+  bind_outcome(
+    o: fold(
+      lenses,
+      init: outcome_accepted(value: empty_lens_gate_witnesses()),
+      f: fn(acc_outcome, lens) {
+        match acc_outcome {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: witnesses, diagnostics: od } =>
+            bind_outcome_accepted(
+              od: od,
+              inner: bind_outcome(
+                o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
+                f: fn(w) {
+                  outcome_accepted(
+                    value: prepend_lens_gate_witness(
+                      witnesses: witnesses,
+                      witness: w
+                    )
                   )
-                )
-              }
+                }
+              )
             )
-          )
+        }
       }
-    }
+    ),
+    f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )
 }
 
@@ -200,26 +239,29 @@ fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  fold_node(
-    n: inferred.root,
-    algebra: NodeFold {
-      init: fn(n0) {
-        run_required_lens_gates(
-          inferred: InferredTree { root: n0, facts: inferred.facts },
-          lenses: lenses
-        )
-      },
-      step: fn(acc, _, child) {
-        bind_outcome(o: acc, f: fn(ws) {
-          bind_outcome(
-            o: child,
-            f: fn(child_ws) {
-              outcome_accepted(value: list_append(left: ws, right: child_ws))
-            }
+  bind_outcome(
+    o: fold_node(
+      n: inferred.root,
+      algebra: NodeFold {
+        init: fn(n0) {
+          run_required_lens_gates(
+            inferred: InferredTree { root: n0, facts: inferred.facts },
+            lenses: lenses
           )
-        })
+        },
+        step: fn(acc, _, child) {
+          bind_outcome(o: acc, f: fn(ws) {
+            bind_outcome(
+              o: child,
+              f: fn(child_ws) {
+                outcome_accepted(value: list_append(left: child_ws, right: ws))
+              }
+            )
+          })
+        }
       }
-    }
+    ),
+    f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )
 }
 
@@ -296,7 +338,10 @@ fn validate_then_compile(
         o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
         f: fn(required_lens_witnesses) {
           bind_outcome(
-            o: run_required_lens_gates(inferred: inferred, lenses: lenses),
+            o: run_required_lens_gates(
+              inferred: inferred,
+              lenses: list_append(left: always_required_root_lenses(), right: lenses)
+            ),
             f: fn(caller_lens_witnesses) {
               bind_outcome(
                 o: compile_inferred(
@@ -329,7 +374,7 @@ fn compile_ingest_with_admission(
   peer_roots: FreeMonoid<Node>,
   admission: Admission
 ) -> Outcome<Medium<String>> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
       text: source.carried,
@@ -385,7 +430,7 @@ fn compile_source_root_ingest_with_admission(
   admission: Admission,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
     f: fn(resolved) {
@@ -463,7 +508,7 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
 }
 
 fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let pipeline = then_outcome(
       f: stage_tokenize(lm: lm),
       g: then_outcome(
@@ -471,7 +516,11 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
         g: then_outcome(
           f: stage_normalize(),
           g: then_outcome(
-            f: cached_stage(lookup: resolve_cache_miss, stage: stage_resolve(lm: lm)),
+            f: cached_stage_governed(
+              realization: cached_stage_realization(),
+              lookup: resolve_cache_miss,
+              stage: stage_resolve(lm: lm)
+            ),
             g: stage_translate(target: target)
           )
         )

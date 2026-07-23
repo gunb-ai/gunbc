@@ -1,0 +1,89 @@
+module v2.test.compile_door_ledger_ownership
+
+
+data ownership_witness_note: String = "Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed = false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION."
+
+fn lane_ok_this_lane(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => true
+        SharedSelfHostCriticalPath => false
+        MigrationOwned => false
+      }
+    Absent => false
+  }
+}
+
+fn lane_ok_shared(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => false
+        SharedSelfHostCriticalPath => true
+        MigrationOwned => false
+      }
+    Absent => false
+  }
+}
+
+fn lane_ok_migration(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => false
+        SharedSelfHostCriticalPath => false
+        MigrationOwned => true
+      }
+    Absent => false
+  }
+}
+
+test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
+  lane_ok_this_lane(cause: ^fact_density_hollow_alias_locus)
+    && lane_ok_shared(cause: ^resolve_reason_unbound_symbol)
+    && lane_ok_migration(cause: ^resolve_ambiguous_export)
+    && lane_ok_migration(cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
+  cause_is_attributed(cause: ^some_unmodeled_future_frontier_cause) == false
+    && cause_is_attributed(cause: ^fact_density_hollow_alias_locus) == true
+}
+
+data affected_filter_note: String = "dag_module_paths is the .dag filter door_ledger_over_affected_set applies to the diff's changed_paths before ledgering — the live-diff path itself (git observation → filter → door) composes floor_diff_observe (own witnesses) with door_ledger (histogram witness), so this pins the one piece of new deterministic logic: only .dag modules are kept, non-.dag changes and the empty diff produce no rows (never a fabricated whole-corpus widen — that lives in the AffectedDiffRefused arm, exercised structurally by the door_ledger_over_affected_set resolve)."
+
+test fn dag_module_paths_keeps_only_dag_modules() -> Bool {
+  length(xs: dag_module_paths(paths: ["a.dag", "b.rs", "sub/c.dag", "d.yml", "e.dag"])) == 3
+    && length(xs: dag_module_paths(paths: ["x.rs", "y.txt"])) == 0
+    && length(xs: dag_module_paths(paths: [])) == 0
+}
+
+data affected_arms_note: String = "Both arms of affected_ledger_from_diff proven by execution over synthetic diff data (no shell, no interpreted door): a diff-observation FAILURE refuses fail-closed carrying the observation's reason and NEVER reaches door_ledger (no whole-corpus widen — the §5 absorbing-fallback guard); a diff OK with only non-.dag changes filters to zero modules and ledgers empty. The live git-observation half is floor_diff_observe's own tested code; this pins the ledger's wiring logic, which is all the affected-set entry adds over the door_ledger histogram."
+
+test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
+  match affected_ledger_from_diff(
+    diff: NameStatusDiffFail { reason: "invalid ref or not a git repository" },
+    pool_roots: []
+  ) {
+    AffectedDiffRefused { reason: r } => string_eq(a: r, b: "invalid ref or not a git repository")
+    AffectedLedgered { rows: _ } => false
+  }
+}
+
+test fn affected_set_non_dag_changes_ledger_empty() -> Bool {
+  match affected_ledger_from_diff(
+    diff: NameStatusDiffOk {
+      changed_paths: ["src/v1/stage0/src/cli_run.rs", "docs/plans/x.md"],
+      departed_paths: ["dag/std/gone.dag"]
+    },
+    pool_roots: []
+  ) {
+    AffectedDiffRefused { reason: _ } => false
+    AffectedLedgered { rows: rows } => ledger_refused_count(rows: rows) == 0 && length(xs: rows) == 0
+  }
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}

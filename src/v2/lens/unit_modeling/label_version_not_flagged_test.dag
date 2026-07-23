@@ -22,6 +22,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data int_leaf_target_label: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },

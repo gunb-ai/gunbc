@@ -1,60 +1,7 @@
 module v2.test.manual.sg_rc_layering
 
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_apply_use_site_ownership_to_value_expression,
-  translate_apply_use_site_ownership_to_projected_type,
-  translate_coerced_shell,
-  translate_type_expression_project,
-  translate_coerced_shell_at_use_site
-}
-import v2.extdeps.languages.rust {
-  rust_reference_layer_tokens,
-  rust_sg2_binding_spellings,
-  rust_sg2_type_expr_target_model,
-  rust_type_expression_projection
-}
-import v2.std.compilers.target_model {
-  TargetModel,
-  TargetReferenceLayer,
-  TargetValueExpression,
-  TargetValueExprReferenceRcNew,
-  TargetValueExprSymbolIdentity,
-  OwnershipAtBindingProjection,
-  OwnershipAtFunctionParameter,
-  OwnershipAtFunctionReturn,
-  OwnershipAtStructField,
-  ReferenceLayerOwned,
-  ReferenceLayerProbe,
-  ReferenceLayerProbeNotWrapped,
-  ReferenceLayerRc,
-  target_carrier_diagnostics_node,
-  target_carrier_node_node,
-  target_carrier_probe_heap_node,
-  target_reference_layer_apply_type_emitted,
-  target_reference_layer_apply_value_expression,
-  target_reference_layer_probe_from_emitted_type,
-  target_type_expr_atom_emitted,
-  target_value_expression_symbol_identity,
-  target_value_expression_node
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, SyntheticOccurrence }
-import v2.std.witness { Holds, Violates }
-import v2.std.text { String }
-import v2.std.verification {
-  Boundary,
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
 data sg_rc_expected_owned_diagnostics: String = "Diagnostics"
@@ -380,7 +327,7 @@ fn sg_rc_f6_round_trip_rc() -> Bool {
     projection: rust_type_expression_projection(),
     tokens: rust_reference_layer_tokens()
   ) {
-    ReferenceLayerProbe { value: ReferenceLayerRc } => true
+    ReferenceLayerProbe { value: WrappedReferenceLayerRc } => true
     _ => false
   }
 }

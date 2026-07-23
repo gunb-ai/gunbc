@@ -1,35 +1,5 @@
 module v2.lens.fact_density
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
 
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  Connective,
-  Atom,
-  Conj,
-  Disj,
-  Arrow,
-  Cardinality,
-  Instantiation,
-  TypeNode,
-  ComputationNode,
-  Symbol
-}
-import v2.std.nat { Nat, Zero, Succ }
-import v2.std.cardinality { NonZeroNat }
-import v2.std.witness { Holds, Witness }
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
     s == ^fact_density_kernel_ambient_int ||
@@ -83,6 +53,8 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
       connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
   }
 }
+data hollow_alias_gate_cost_note: String = "Node-local predicate (DESIGN 6 bare-minimum-cost): carrier_spec_fact reads only the node's direct children (named_fact_count is O(degree), not a subtree walk). Enrollment is the per-subtree-node roster in validate_then_compile (run_required_lens_gates_on_subtree visits each node exactly once); a rooted whole-tree walk inside the gate would stack with that fold and be O(n^2). Witness accumulation on the roster fold uses prepend+reverse, not append-in-step."
+
 fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>

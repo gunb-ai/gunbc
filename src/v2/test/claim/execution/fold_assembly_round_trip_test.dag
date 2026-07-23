@@ -1,23 +1,7 @@
 module v2.test.execution.fold_assembly_round_trip
 
-import v2.std.fold_assembly {
-  apply_fills, assemble_fold, expand_fold,
-  fold_template_of, fold_per_element_of,
-  fold_template_edge, encode_per_element
-}
-import v2.std.anti_unification {
-  ChainGeneralization, anti_unify_chain, hole_node, extract_fillings
-}
-import v2.std.node {
-  Node, Edge, EdgeLabel, Positional, Named,
-  NodeKind, TypeNode, Connective, Atom, Conj,
-  Symbol, node_synthetic, name_occurrences
-}
-import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
-import v2.std.algebra { FreeMonoid, zip_eq, length, list_snoc_item, freemonoid_empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

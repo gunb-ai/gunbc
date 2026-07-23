@@ -1,21 +1,10 @@
 module v2.lens.testgen
+
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 import v2.std.collection { List }
-import v2.std.algebra {
-  FreeMonoid,
-  Empty,
-  Cons,
-  count_where,
-  filter,
-  fold_list,
-  fold_list_right,
-  length,
-  list_append,
-  non_empty,
-  list_snoc_item,
-  zip_eq
-}
+import std.algebra { FreeMonoid, Empty, Cons }
+import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, non_empty, list_snoc_item, zip_eq }
 import v2.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -889,6 +878,8 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
     ExternalContractUnknown =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
+    CorrectionNotModeled =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
   }
 }
 

@@ -1,0 +1,86 @@
+module test.claim.typed_witness_invocation
+
+import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
+import gunbc.cli_services
+import tools.host_prelude { run_witness_bin }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn typed_git_toplevel_resolves_holds() -> Bool {
+  let result = git.Core.Toplevel()
+  result.path != ""
+}
+
+test fn typed_is_executable_positive_holds() -> Bool {
+  let result = shell.Test.IsExecutable(path: "/bin/sh")
+  result.executable
+}
+
+test fn typed_is_executable_negative_red_control_holds() -> Bool {
+  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary")
+  result.executable == false
+}
+
+test fn typed_witness_bin_run_argv_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/true")
+  result.success
+}
+
+test fn typed_witness_bin_run_nonzero_red_control_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false")
+  result.success == false
+}
+
+test fn typed_witness_bin_run_args_splice_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/echo", args: ["alpha", "beta"])
+  result.success && result.stdout == "alpha beta"
+}
+
+test fn typed_witness_bin_run_workdir_anchors_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/tmp", bin_path: "/bin/pwd")
+  result.success && result.stdout == "/tmp"
+}
+
+test fn typed_witness_bin_run_workdir_anchors_root_control_holds() -> Bool {
+  let toplevel = git.Core.Toplevel()
+  let result = gunbc.WitnessBin.Run(workdir: toplevel.path, bin_path: "/bin/pwd")
+  result.success && result.stdout == toplevel.path
+}
+
+test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {
+  run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
+}
+
+test fn typed_is_nonempty_positive_holds() -> Bool {
+  let result = shell.Test.IsNonEmpty(path: "/bin/sh")
+  result.nonempty
+}
+
+test fn typed_is_nonempty_zero_byte_red_control_holds() -> Bool {
+  let result = shell.Test.IsNonEmpty(path: "/dev/null")
+  result.nonempty == false
+}
+
+test fn typed_gunbc_cli_run_claim_holds() -> Bool {
+  let result = gunbc.Cli.Run(
+    workdir: "/",
+    bin_path: "/bin/true",
+    source_roots: ["dag"],
+    entry: "noop.dag",
+    function: "noop",
+    claim_run: false
+  )
+  result.success
+}
+
+test fn typed_claim_executor_verify_build_artifacts_red_control_holds() -> Bool {
+  let result = claim_executor.Executor.VerifyBuildArtifacts(
+    workdir: "/",
+    bin_path: "/bin/false",
+    artifact_paths: ["/bin/sh"]
+  )
+  result.success == false
+}

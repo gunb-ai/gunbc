@@ -2,12 +2,14 @@
 // Source module: std.realization_schedule
 
 use self::CostBasis::*;
+use self::NodeFrontierSelection::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
-use self::ScheduleLensViolation::*;
-use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
-use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
-pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
+use self::WitnessKind::*;
+use self::WitnessSpan::*;
+pub use crate::std_execution_mode::execution_mode_eq;
+pub use crate::std_execution_mode::ExecutionMode;
+use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
 pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
@@ -17,11 +19,12 @@ use crate::std_pareto::AxisGoal::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, ContentHash, List};
 use crate::v1_rt;
-use crate::v1_rt::Witness::Violates;
+use crate::v1_rt::Witness;
+use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -36,8 +39,8 @@ pub enum CostBasis {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
     pub time: Rc<Measure<(), S, Nat>>,
-    pub space: Box<ByteSize>,
-    pub power: Box<Watt>,
+    pub space: ByteSize,
+    pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
@@ -45,8 +48,8 @@ pub struct CostAccount<S> {
 pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time_measure(0),
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
     })
@@ -54,9 +57,9 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
 
 pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
-        time: time,
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        time: time.clone(),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
     })
@@ -71,88 +74,109 @@ pub struct RealizationObjective {
     pub goals: Rc<Vec<AxisGoal>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ScheduleWitnessEntry {
-    pub entry: String,
-    pub function: String,
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessKind {
+    CorpusWitnessKind,
+    ExecutionWitnessKind,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RunnableMemoryPeak {
-    pub predicted_peak: Box<ByteSize>,
+pub struct WitnessSeam {
+    pub producer: String,
+    pub consumer: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum RunnableMemoryClass {
-    RunnableMemoryNegligible,
-    RunnableMemorySubstantial { peak: Rc<RunnableMemoryPeak> },
+pub enum WitnessSpan {
+    SpanUndeclared,
+    SpanSeams { seams: Rc<Vec<Rc<WitnessSeam>>> },
 }
-impl RunnableMemoryClass {
-    pub fn peak(&self) -> Rc<RunnableMemoryPeak> {
+impl WitnessSpan {
+    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
         match self {
-            RunnableMemoryClass::RunnableMemoryNegligible => panic!("no peak on unit variant"),
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: __val, .. } => __val.clone(),
+            WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
+            WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
         }
     }
+}
+
+pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
+    match a.clone() {
+        WitnessKind::CorpusWitnessKind => match b.clone() {
+            WitnessKind::CorpusWitnessKind => true,
+            WitnessKind::ExecutionWitnessKind => false,
+        },
+        WitnessKind::ExecutionWitnessKind => match b.clone() {
+            WitnessKind::ExecutionWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduleWitnessEntry {
+    pub entry: String,
+    pub function: String,
+    pub kind: WitnessKind,
+}
+
+pub fn runnable_memory_class_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Memory class is a structural marker, not a quantity (operator ruling 2026-07-12): the former RunnableMemoryPeak predicted_peak bytes were hand-edited calibration constants — pins freezing derivations, the July OOM regime's root — and the width folds that consumed them are retired. Realization concurrency is now governed adaptively at run time (v1_compiler::memory_governor: AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts), so the model keeps only the honest structural fact: Negligible vs Substantial residency, which co-residence structure keys on. Quantified per-runnable demand returns when it is derivable from the graph (CostAccount.space measured/derived), not as authored literals.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum RunnableMemoryClass {
+    RunnableMemoryNegligible,
+    RunnableMemorySubstantial,
+}
+
+pub fn runnable_profile_execution_mode_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the runner binds the injector the profile declares — Hermetic replays published mocks/recorded fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports, Record dispatches and captures fixtures. The declaration lives on the profile so every runnable kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default: runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn / network / out-of-root disk IO) beneath the interpreter seam.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableResourceProfile {
     pub heavy_whole_tree_resolve: bool,
     pub spawns_host_compiler: bool,
-    pub memory: Rc<RunnableMemoryClass>,
+    pub memory: RunnableMemoryClass,
+    pub execution_mode: ExecutionMode,
 }
 
-pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
+pub fn runnable_memory_negligible() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemoryNegligible
 }
 
-pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
-        peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: Box::new(predicted_peak),
-        }),
-    })
+pub fn runnable_memory_substantial() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemorySubstantial
 }
 
-pub fn runnable_memory_class_eq(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> bool {
-    match (*left).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => match (*right).clone() {
+pub fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClass) -> bool {
+    match left.clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => match right.clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => true,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => false,
+            RunnableMemoryClass::RunnableMemorySubstantial => false,
         },
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
+        RunnableMemoryClass::RunnableMemorySubstantial => match right.clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => false,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                (byte_size_count((*lp.predicted_peak).clone())
-                    == byte_size_count((*rp.predicted_peak).clone()))
-            }
+            RunnableMemoryClass::RunnableMemorySubstantial => true,
         },
-    }
-}
-
-pub fn runnable_memory_substantial_sum(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> Rc<RunnableMemoryClass> {
-    {
-        let left_count = match (*left).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
-            }
-        };
-        let right_count = match (*right).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
-            }
-        };
-        runnable_memory_substantial(byte_size((left_count + right_count)))
     }
 }
 
@@ -160,9 +184,10 @@ pub fn runnable_resource_profile_eq(
     left: Rc<RunnableResourceProfile>,
     right: Rc<RunnableResourceProfile>,
 ) -> bool {
-    (((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
+    ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
         && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
+        && execution_mode_eq(left.execution_mode.clone(), right.execution_mode.clone()))
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
@@ -170,25 +195,28 @@ pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
+        execution_mode: ExecutionMode::Hermetic,
     })
 }
 
 pub fn runnable_resource_profile(
     heavy_whole_tree_resolve: bool,
     spawns_host_compiler: bool,
-    memory: Rc<RunnableMemoryClass>,
+    memory: RunnableMemoryClass,
+    execution_mode: ExecutionMode,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
-        heavy_whole_tree_resolve: heavy_whole_tree_resolve,
-        spawns_host_compiler: spawns_host_compiler,
-        memory: memory,
+        heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
+        spawns_host_compiler: spawns_host_compiler.clone(),
+        memory: memory.clone(),
+        execution_mode: execution_mode.clone(),
     })
 }
 
 pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
-    match (*profile.memory.clone()).clone() {
+    match profile.memory.clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => true,
+        RunnableMemoryClass::RunnableMemorySubstantial => true,
     }
 }
 
@@ -196,17 +224,8 @@ pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
-    match (*profile.memory.clone()).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-            (*p.predicted_peak).clone()
-        }
-    }
-}
-
 pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
         Runnable::RunnableKernelWorkload {
@@ -216,7 +235,7 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
 }
 
 pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
@@ -224,6 +243,39 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
         } => false,
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NodeFrontierSelection {
+    SelectionOff,
+    SelectionApplied,
+    SelectionPredictOnly,
+}
+
+pub fn node_frontier_selection_eq(
+    left: NodeFrontierSelection,
+    right: NodeFrontierSelection,
+) -> bool {
+    match left.clone() {
+        NodeFrontierSelection::SelectionOff => match right.clone() {
+            NodeFrontierSelection::SelectionOff => true,
+            NodeFrontierSelection::SelectionApplied => false,
+            NodeFrontierSelection::SelectionPredictOnly => false,
+        },
+        NodeFrontierSelection::SelectionApplied => match right.clone() {
+            NodeFrontierSelection::SelectionOff => false,
+            NodeFrontierSelection::SelectionApplied => true,
+            NodeFrontierSelection::SelectionPredictOnly => false,
+        },
+        NodeFrontierSelection::SelectionPredictOnly => match right.clone() {
+            NodeFrontierSelection::SelectionOff => false,
+            NodeFrontierSelection::SelectionApplied => false,
+            NodeFrontierSelection::SelectionPredictOnly => true,
+        },
     }
 }
 
@@ -239,10 +291,9 @@ pub enum Runnable {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-        skip_unaffected_node_frontier: bool,
+        node_frontier_selection: NodeFrontierSelection,
         exclude_substrings: Rc<Vec<String>>,
         discovery_scope_dirs: Rc<Vec<String>>,
-        spawn_width_cap: i64,
         profile: Rc<RunnableResourceProfile>,
     },
     RunnableKernelWorkload {
@@ -250,13 +301,25 @@ pub enum Runnable {
     },
 }
 
-pub fn runnable_kernel_workload_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: execution lane attaches extdeps.languages kernel_surface rows to RunnableKernelWorkload when fused_op_count alone is insufficient; op_count is structural on substrate (not a string-label nickname).".to_string()
-        };
+pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
+    match sel.clone() {
+        NodeFrontierSelection::SelectionApplied => true,
+        NodeFrontierSelection::SelectionOff => false,
+        NodeFrontierSelection::SelectionPredictOnly => false,
     }
-    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
+    match (*r.clone()).clone() {
+        Runnable::RunnableDiscoveryBatch {
+            node_frontier_selection: sel,
+            ..
+        } => node_frontier_selection_applied(sel.clone()),
+        Runnable::RunnableSingleClaim { .. } => false,
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => false,
+    }
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
@@ -265,13 +328,13 @@ pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 pub struct RealizationPlan<S> {
     pub target: ContentHash,
     pub objective: Rc<RealizationObjective>,
-    pub schedule: Box<Schedule>,
+    pub schedule: Schedule,
     pub total: Rc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
 pub fn runnable_step_label(r: Rc<Runnable>) -> String {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
         Runnable::RunnableKernelWorkload {
@@ -282,142 +345,24 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
 
 pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
     batch
+        .clone()
         .iter()
         .cloned()
-        .fold(false, |acc: bool, r: Rc<Runnable>| {
+        .fold(false, |acc: bool, r: _| {
             (acc || (runnable_step_label(r.clone()) == target.clone()))
         })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ScheduleLensViolation {
-    EmptySchedule,
-    CompileGateNotFirst { expected: String },
-    CorpusBeforeCompile,
-    SingleBatchOnly,
-}
-impl ScheduleLensViolation {
-    pub fn expected(&self) -> String {
-        match self {
-            ScheduleLensViolation::EmptySchedule => panic!("no expected on unit variant"),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: __val, ..
-            } => __val.clone(),
-            ScheduleLensViolation::CorpusBeforeCompile => panic!("no expected on unit variant"),
-            ScheduleLensViolation::SingleBatchOnly => panic!("no expected on unit variant"),
-        }
-    }
-}
-
-pub fn schedule_lens_module() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "std.realization_schedule".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn schedule_lens_violation_diagnostic(
-    kind: Rc<ScheduleLensViolation>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdictDiagnostic> {
-    {
-        let at = Rc::new(LensVerdictLocus::ModuleWholeFile {
-            module_name: schedule_lens_module(),
-        });
-        match (*kind).clone() {
-            ScheduleLensViolation::EmptySchedule => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_empty_schedule".to_string(),
-                at: at,
-            }),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: expected, ..
-            } => Rc::new(LensVerdictDiagnostic {
-                reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
-                at: at,
-            }),
-            ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_corpus_before_compile".to_string(),
-                at: at,
-            }),
-            ScheduleLensViolation::SingleBatchOnly => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_single_batch_only".to_string(),
-                at: at,
-            }),
-        }
-    }
-}
-
-pub fn schedule_lens_verdict_for_ci_floor<S>(
-    plan: Rc<RealizationPlan<S>>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdict> {
-    if (((*plan.schedule).clone().len() as i64) == 0) {
-        Rc::new(LensVerdict::Violation {
-            diagnostic: schedule_lens_violation_diagnostic(
-                Rc::new(ScheduleLensViolation::EmptySchedule),
-                compile_gate_fn.clone(),
-            ),
-        })
-    } else {
-        if (((*plan.schedule).clone().len() as i64) < 2) {
-            Rc::new(LensVerdict::Violation {
-                diagnostic: schedule_lens_violation_diagnostic(
-                    Rc::new(ScheduleLensViolation::SingleBatchOnly),
-                    compile_gate_fn.clone(),
-                ),
-            })
-        } else {
-            {
-                let batch0 = (*plan.schedule).clone().first().cloned();
-                if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
-                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                } else {
-                    if !schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
-                        Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                    } else {
-                        if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
-                            Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
-})
-                        } else {
-                            {
-                                let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
-if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
-                                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
-})
-                                } else {
-                                    Rc::new(LensVerdict::Holds)
-                                }
-}
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
-    (((*left.schedule).clone().len() as i64) == ((*right.schedule).clone().len() as i64))
+    ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
-    ((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+    (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+        && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
 pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
@@ -476,13 +421,13 @@ continue;
 }
 
 pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
-    match (*left).clone() {
+    match (*left.clone()).clone() {
         Runnable::RunnableSingleClaim {
             entry: le,
             function: lf,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim {
                 entry: re,
                 function: rf,
@@ -501,32 +446,29 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             source_roots: lsr,
             scan_dirs: lsd,
             explicit_entries: lex,
-            skip_unaffected_node_frontier: lskip,
+            node_frontier_selection: lskip,
             exclude_substrings: lex2,
             discovery_scope_dirs: lsc,
-            spawn_width_cap: lwc,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch {
                 source_roots: rsr,
                 scan_dirs: rsd,
                 explicit_entries: rex,
-                skip_unaffected_node_frontier: rskip,
+                node_frontier_selection: rskip,
                 exclude_substrings: rex2,
                 discovery_scope_dirs: rsc,
-                spawn_width_cap: rwc,
                 profile: rp,
                 ..
             } => {
-                (((((((string_list_eq(lsr.clone(), rsr.clone())
+                ((((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
-                    && (lskip.clone() == rskip.clone()))
+                    && node_frontier_selection_eq(lskip.clone(), rskip.clone()))
                     && string_list_eq(lex2.clone(), rex2.clone()))
                     && string_list_eq(lsc.clone(), rsc.clone()))
-                    && (lwc.clone() == rwc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableKernelWorkload {
@@ -536,7 +478,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
         Runnable::RunnableKernelWorkload {
             fused_op_count: lleft,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
@@ -602,10 +544,24 @@ pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
-    schedule_eq((*plan.schedule).clone(), schedule)
+    schedule_eq(plan.schedule.clone(), schedule.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Predicted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Measured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutionWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemoryNegligible;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemorySubstantial;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SelectionOff;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SelectionApplied;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SelectionPredictOnly;

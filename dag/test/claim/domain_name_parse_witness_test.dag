@@ -1,22 +1,7 @@
 module test.claim.domain_name_parse
 
-import std.logic { Bool }
-import std.error_primitives { Ok, Err }
-import extdeps.dns.domain_name {
-  parse_host_name,
-  host_name_eq,
-  host_name_label_count,
-  FullyQualified,
-  PartiallyQualified,
-  EmptyName,
-  LabelTooLong,
-  NameTooLong,
-  BadLabelChar,
-  EdgeHyphen,
-  Ok,
-  Err,
-}
-import std.render { repeat_string }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn domain_name_parse_fqdn_srv1_tailnet() -> Bool {
   match parse_host_name(raw: "srv1.tailecbe08.ts.net.") {
@@ -69,7 +54,7 @@ test fn domain_name_parse_rejects_edge_hyphen() -> Bool {
 }
 
 test fn domain_name_parse_rejects_label_too_long() -> Bool {
-  let long_label = repeat_string(s: "a", n: 64)
+  let long_label = std.render.repeat_string(s: "a", n: 64)
   match parse_host_name(raw: long_label) {
     Err { value: LabelTooLong } => true
     Ok { value: _ } => false

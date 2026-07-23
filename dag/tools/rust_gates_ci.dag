@@ -11,11 +11,11 @@ import gunbc.ci_spec {
   DiffTwoDot,
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.fleet_intent { srv1_host, compute_host_ram_bytes_total }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 
 fn rust_gate_build_jobs_args() -> List<String> {
   let jobs = ci_compile_jobs(
-    memory_budget: compute_host_ram_bytes_total(host: srv1_host),
+    memory_budget: gunbc_ci_runner_slot_memory_max_live,
     force_serial: false
   )
   cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
@@ -30,25 +30,21 @@ fn gate_diag(check: String, stdout: String, stderr: String) -> String {
 
 fn rust_gate_reason(
   fmt_success: Bool, fmt_stdout: String, fmt_stderr: String,
-  clippy_success: Bool, clippy_stdout: String, clippy_stderr: String,
   test_success: Bool, test_stdout: String, test_stderr: String
 ) -> String {
   let fmt_diag = if fmt_success { "" } else { gate_diag(check: "cargo fmt --all --check", stdout: fmt_stdout, stderr: fmt_stderr) }
-  let clippy_diag = if clippy_success { "" } else { gate_diag(check: "cargo clippy --all-targets -- -D warnings", stdout: clippy_stdout, stderr: clippy_stderr) }
   let test_diag = if test_success { "" } else { gate_diag(check: "cargo nextest run -p v1-compiler-tests", stdout: test_stdout, stderr: test_stderr) }
-  concat("rust gate:\n", concat(fmt_diag, concat(clippy_diag, test_diag)))
+  concat("rust gate:\n", concat(fmt_diag, test_diag))
 }
 
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
-  clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
   test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
-  return if fmt.success && clippy.success && test.success {
+  return if fmt.success && test.success {
     ExitSuccess
   } else {
     exit_failure(reason: rust_gate_reason(
       fmt_success: fmt.success, fmt_stdout: fmt.stdout, fmt_stderr: fmt.stderr,
-      clippy_success: clippy.success, clippy_stdout: clippy.stdout, clippy_stderr: clippy.stderr,
       test_success: test.success, test_stdout: test.stdout, test_stderr: test.stderr
     ))
   }

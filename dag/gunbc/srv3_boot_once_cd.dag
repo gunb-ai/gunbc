@@ -1,5 +1,6 @@
 module gunbc.srv3_boot_once_cd
 
+<<<<<<< HEAD
 import extdeps.bmc.http
 import extdeps.filesystem.filesystem_io
 import std.types { NonEmptyStr, String }
@@ -42,6 +43,8 @@ import gunbc.srv3_bmc_credential_resolve {
   CredentialResolutionRefused,
   BmcCredentialResolution,
 }
+=======
+>>>>>>> origin/main
 
 data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -57,22 +60,40 @@ data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
 
 data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
 data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
+data srv3_boot_cd_mode: RedfishBootSourceOverrideMode = BootOverrideModeUefi
 data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
 
+fn srv3_boot_cd_override_mode_valid_for_arm64(mode: RedfishBootSourceOverrideMode) -> Bool {
+  match mode {
+    BootOverrideModeUefi => true
+    BootOverrideModeLegacy => false
+  }
+}
+
+fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> String? {
+  if srv3_boot_cd_override_mode_valid_for_arm64(mode: mode) {
+    none
+  } else {
+    Present {
+      value: "boot-once-cd: arm64 UEFI-only — BootSourceOverrideMode=Legacy refused (CD override is a no-op)"
+    }
+  }
+}
+
 func srv3_boot_once_cd() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
 }
 
 func srv3_boot_once_cd_operator_approved() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
 }
 
 func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
   let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
@@ -89,7 +110,7 @@ func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
 }
 
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let plan = srv3_onboarding_plan
   let host = plan.bmc.host
@@ -109,40 +130,45 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
     return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
   }
 
-  let boot_body = boot_override_body(
-    target: redfish_boot_target_wire(t: srv3_boot_cd_target),
-    enabled: redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled)
-  )
-  let boot_write = Filesystem.Write(path: srv3_boot_cd_body_path, content: boot_body)
-  if boot_write.success == false {
-    return exit_failure(reason: concat("boot-once-cd: boot body write failed: ", boot_write.error))
-  }
+  match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {
+    Present { value: r } =>
+      return exit_failure(reason: r)
+    Absent =>
+      let boot_body = boot_override_body(
+        target: redfish_boot_target_wire(t: srv3_boot_cd_target),
+        enabled: redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled),
+        mode: redfish_boot_override_mode_wire(m: srv3_boot_cd_mode),
+      )
+      let boot_write = Filesystem.Write(path: srv3_boot_cd_body_path, content: boot_body)
+      if boot_write.success == false {
+        return exit_failure(reason: concat("boot-once-cd: boot body write failed: ", boot_write.error))
+      }
+      let patch = redfish.Http.SetBootSourceOverride(
+        bmc_host: host,
+        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        system_id: asrock_altrad8ud_redfish_system_id,
+        request_body_file: srv3_boot_cd_body_path as NonEmptyStr
+      )
+      if patch.success == false {
+        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
+      }
 
-  let patch = redfish.Http.SetBootSourceOverride(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
-    system_id: asrock_altrad8ud_redfish_system_id,
-    request_body_file: srv3_boot_cd_body_path as NonEmptyStr
-  )
-  if patch.success == false {
-    return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
-  }
+      let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
+      let rst_write = Filesystem.Write(path: srv3_reset_body_path, content: rst_body)
+      if rst_write.success == false {
+        return exit_failure(reason: concat("boot-once-cd: reset body write failed: ", rst_write.error))
+      }
 
-  let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
-  let rst_write = Filesystem.Write(path: srv3_reset_body_path, content: rst_body)
-  if rst_write.success == false {
-    return exit_failure(reason: concat("boot-once-cd: reset body write failed: ", rst_write.error))
-  }
-
-  let rst = redfish.Http.ResetSystem(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
-    system_id: asrock_altrad8ud_redfish_system_id,
-    request_body_file: srv3_reset_body_path as NonEmptyStr
-  )
-  return if rst.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.body))
+      let rst = redfish.Http.ResetSystem(
+        bmc_host: host,
+        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        system_id: asrock_altrad8ud_redfish_system_id,
+        request_body_file: srv3_reset_body_path as NonEmptyStr
+      )
+      return if rst.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.body))
+      }
   }
 }

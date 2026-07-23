@@ -6,9 +6,10 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.source_authority {
   SourceRootIngest,
+  SourceRootManifestAbsent,
   SourceRootProvenanceCoverageReceipt,
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 
 import v2.std.text { String }
 
@@ -17,7 +18,7 @@ data host_source_root_ingest_content_hash: String = ""
 data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
   ingest_read_count: 0,
   produced_row_count: 0,
-  coverage_complete: false
+  coverage: SourceRootManifestAbsent
 }
 
 data host_source_root_ingest: SourceRootIngest = Empty
@@ -31,3 +32,5 @@ data host_compiler_closure_admission: Admission = Admission {
   },
   imports: Empty
 }
+
+data frontier_probe_entry_module_path: String = ""

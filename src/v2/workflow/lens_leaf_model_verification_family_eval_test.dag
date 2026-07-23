@@ -15,6 +15,9 @@ import v2.std.leaf_model_verification {
   TargetCompileAccepted,
   TargetCompileRejected
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn leaf_model_pair_happy_accepts(pair: LeafModelFixturePair) -> Bool {
   match pair.expected_happy_verdict {

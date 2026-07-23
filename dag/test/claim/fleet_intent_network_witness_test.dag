@@ -1,18 +1,7 @@
 module test.claim.fleet_intent_network
 
-import std.logic { Bool }
-import std.types { list_length }
-import product.network_topology {
-  ContainerRunner,
-  HostLan,
-  BmcManagement,
-  network_reachability,
-}
-import gunbc.fleet_intent_network {
-  fleet_intent_network,
-  srv1_bmc_endpoint,
-  srv1_host_lan_endpoint,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
   network_reachability(from: ContainerRunner, to: BmcManagement)

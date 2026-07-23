@@ -4,34 +4,129 @@ import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_ci_floor_batches, corpus_runnable,
-  gunbc_ci_floor_schedule_without_serialization,
+  gunbc_falsifier_batches,
+  gunbc_ci_floor_batches,
+  floor_schedule_for,
+  corpus_runnable_for, execution_corpus_runnable_for,
+  corpus_witness_entries, execution_witness_entries,
+  floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
-  gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
+  floor_plan_serializes_heavy_resolves_for,
+  floor_plan_co_runs_heavy_without_serialization_for,
   gate_runnable,
+  gunbc_ci_cheap_floor_gate_membership,
+  gate_in_cheap_floor_membership,
+  floor_batch_has_any_cheap_gate,
+  gate_node,
+  floor_resource_anchor_node,
   witness_floor_corpus_exclusion_edges_exist,
   witness_floor_compile_gate_honest_heavy_profile,
   witness_floor_no_corpus_resource_edge_to_compile_anchor,
-  witness_floor_tight_budget_backs_off_envelope,
-  witness_floor_fail_open_would_exceed_budget,
-  witness_floor_width_governed_by_budget_tree,
-  witness_floor_width_derived_from_tree_is_positive,
-  witness_floor_spawn_width_tight_budget_backs_off,
-  witness_corpus_effective_widths_fit_runner_cap,
-  witness_floor_derived_width_leaves_headroom_at_cap,
+  witness_ci_corpus_discovery_is_live,
+  witness_ci_corpus_discovery_flip_authored,
+  witness_floor_discovery_flip_serializes_gates_after_corpus,
+  witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
+  witness_regen_spec_carries_no_witness_corpus,
+  gunbc_floor_arm_time_budget_refusal_applies,
+  witness_floor_arm_time_budget_refusal_plan_roster_authority,
+  witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed,
+  witness_cheap_gates_precede_all_corpus_batches,
+  witness_floor_schedule_preserves_enrolled_set,
+  witness_non_cheap_gate_absent_from_early_batch,
+  witness_floor_stop_policy_pr_is_fail_fast,
+  witness_floor_stop_policy_push_is_full_ledger,
+  witness_floor_stop_policy_unknown_defaults_full_ledger,
+  witness_floor_batch_stop_policy_plan_roster_enrolled,
+  gunbc_falsifier_self_host_wet_receipt_wall_budget_ms,
+  gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
+  gunbc_ci_fast_lane_eval_budget_ms,
+  falsifier_known_red_probe_batch_enrolled,
+  falsifier_silent_pick_gate_batch_enrolled,
+  gunbc_ci_floor_schedule_lens_holds,
 }
-import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
-import gunbc.ci_spec { gunbc_ci_spec, EmitHostGate, LayeringImportsGate }
-import std.realization_schedule { runnable_forbids_corpus_co_residence }
-import v2.std.algebra { length, list_snoc_item }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
+import std.realization_schedule {
+  SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
+  runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
+  ScheduleWitnessEntry, schedule_witness_entry_eq,
+  CorpusWitnessKind, ExecutionWitnessKind
+}
+import std.execution_mode { Hermetic, Wet, execution_mode_eq }
+import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
+import std.types { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_sentinel: String = "__corpus__"
+
+data synthetic_corpus_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "dag/test/claim/synthetic_optin_corpus_witness_test.dag",
+  function: "synthetic_optin_corpus_witness",
+  kind: CorpusWitnessKind
+}
+
+data synthetic_execution_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "src/v2/test/claim/execution/synthetic_optin_exec_witness_test.dag",
+  function: "synthetic_optin_exec_witness",
+  kind: ExecutionWitnessKind
+}
+
+data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "dag/test/claim/synthetic_kind_wins_over_path_witness_test.dag",
+  function: "synthetic_kind_wins_over_path_witness",
+  kind: ExecutionWitnessKind
+}
+
+data synthetic_specs_discovery_free_note: String = "Synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage) with discovery dirs zeroed via discovery_free_base_spec. Live gunbc_ci_spec enrolls witness_discovery_scan_dirs (#6438); flip isolation edges are witnessed on gunbc_ci_spec and discovery_flip_enrolled_spec."
+
+data discovery_flip_enrolled_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
+  spec: gunbc_ci_spec,
+  dirs: witness_discovery_scan_dirs
+)
+
+data discovery_free_base_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
+  spec: gunbc_ci_spec,
+  dirs: []
+)
+
+data optin_spec: CiSpec = ci_spec_with_witness_entries(
+  spec: discovery_free_base_spec,
+  entries: [synthetic_corpus_row, synthetic_execution_row]
+)
+
+data corpus_only_spec: CiSpec = ci_spec_with_witness_entries(
+  spec: discovery_free_base_spec,
+  entries: [synthetic_corpus_row]
+)
+
+data heavy_pair_spec_note: String = "Phase D (2026-07-14) DELETED EmitDeterminismGate along with its x2 sampling oracle (tools.emit_determinism_gate/_transport) and the GithubActionsEmitDeterminismJob surface. DagCompileCleanGate remains the production floor heavy-whole-tree-resolve runnable, so the production spec cannot exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically (optin_spec + RegenVerifyGate as a second heavy row — heavy_whole_tree_resolve, host-compiler-spawning, off the ci-floor surface: the faithful analog of the removed EmitDeterminismGate, preserving the exact heavy count the deleted gate contributed): the property under witness is the scheduler serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor."
+
+fn ci_spec_with_extra_heavy_gate(spec: CiSpec) -> CiSpec {
+  CiSpec {
+    gates: concat(spec.gates, [RegenVerifyGate]),
+    witness_entries: spec.witness_entries,
+    discovery_scan_dirs: spec.discovery_scan_dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
+data heavy_pair_spec: CiSpec = ci_spec_with_extra_heavy_gate(spec: optin_spec)
+
+data zero_roster_spec: CiSpec = ci_spec_with_witness_entries(
+  spec: discovery_free_base_spec,
+  entries: []
+)
 
 fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => corpus_sentinel
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => corpus_sentinel
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -44,10 +139,48 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
 }
 
-fn witness_compile_root_runs_first() -> Bool {
+fn schedule_discovery_batch_count(batches: List<List<Runnable>>) -> Int {
+  fold(batches, init: 0, f: fn(acc, b) {
+    fold(b, init: acc, f: fn(inner, r) {
+      if runnable_function(r: r) == corpus_sentinel { inner + 1 } else { inner }
+    })
+  })
+}
+
+fn batch_index_of(batches: List<List<Runnable>>, target: String) -> Int {
+  if length(xs: batches) == 0 {
+    0 - 1
+  } else if list_contains_str(xs: batch_functions(b: batches.first()), target: target) {
+    0
+  } else {
+    let rest = batch_index_of(batches: skip(xs: batches, n: 1), target: target)
+    if rest < 0 { rest } else { rest + 1 }
+  }
+}
+
+fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
+  let live_count = schedule_discovery_batch_count(batches: gunbc_ci_floor_batches())
+  if length(xs: gunbc_ci_spec.witness_entries) == 0 && length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0 {
+    live_count == 0
+  } else {
+    live_count > 0
+  }
+}
+
+fn witness_cheap_gates_precede_compile_root() -> Bool {
   let batches = gunbc_ci_floor_batches()
-  (batches.first().length() == 1) &&
-    list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
+  let compile_idx = batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes")
+  (compile_idx == 1)
+    && floor_batch_has_any_cheap_gate(batch: batches.first())
+    && !list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
+}
+
+fn witness_cheap_gate_membership_declared() -> Bool {
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
+    && gate_in_cheap_floor_membership(g: LayeringImportsGate)
+    && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
+    && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
+    && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
 }
 
 fn witness_corpus_not_before_compile() -> Bool {
@@ -56,56 +189,112 @@ fn witness_corpus_not_before_compile() -> Bool {
 }
 
 fn witness_independent_jobs_parallelize() -> Bool {
-  gunbc_ci_floor_batches().skip(n: 1).first().length() > 1
+  fold(gunbc_ci_floor_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
+    found_parallel || (length(xs: batch) > 1)
+  })
 }
 
-fn witness_discovery_scan_dirs_in_plan() -> Bool {
-  match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      list_contains_str(xs: dirs, target: "dag/test/claim")
-    _ => false
+fn runnable_is_heavy_discovery(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      runnable_heavy_whole_tree_resolve(profile: p)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
   }
 }
 
-fn witness_scan_dirs_match_layer_authority() -> Bool {
-  match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
-    _ => false
+fn batch_has_corpus_and_gate(b: List<Runnable>) -> Bool {
+  let fns = batch_functions(b: b)
+  let has_heavy_corpus = fold(b, init: false, f: fn(found, r) {
+    found || runnable_is_heavy_discovery(r: r)
+  })
+  let has_gate = fold(fns, init: false, f: fn(found, fn_name) {
+    found || ((fn_name != corpus_sentinel) && (fn_name != "__gunbc_ci_floor_unmapped__"))
+  })
+  has_heavy_corpus && has_gate
+}
+
+fn witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: CiSpec) -> Bool {
+  if length(xs: spec.discovery_scan_dirs) == 0 {
+    true
+  } else {
+    fold(floor_schedule_for(spec: spec, serialize_heavy: true), init: true, f: fn(ok, b) {
+      ok && !batch_has_corpus_and_gate(b: b)
+    })
   }
 }
 
-fn witness_corpus_has_no_explicit_entries() -> Bool {
-  match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      (length(xs: entries) == 0) &&
-        list_contains_str(xs: roots, target: "src/v2") &&
-        list_contains_str(xs: roots, target: "dag") &&
+fn witness_floor_discovery_flip_gates_isolated_from_corpus() -> Bool {
+  witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: discovery_flip_enrolled_spec)
+}
+
+fn witness_plan_serializes_heavy_resolves() -> Bool {
+  gunbc_ci_floor_plan_serializes_heavy_resolves() &&
+    floor_plan_co_runs_heavy_without_serialization_for(spec: heavy_pair_spec)
+}
+
+fn discovery_carries_exactly(r: Runnable, expected: ScheduleWitnessEntry) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: scope, profile: _ } =>
+      (length(xs: dirs) == 0) &&
+        (length(xs: scope) == 0) &&
+        (length(xs: entries) == 1) &&
+        schedule_witness_entry_eq(a: entries.first(), b: expected) &&
         list_contains_str(xs: roots, target: witness_layer_roots.first())
     _ => false
   }
 }
 
-fn witness_corpus_skip_node_frontier_enabled() -> Bool {
-  match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      enabled
-    _ => false
-  }
+fn witness_optin_corpus_carries_exactly_roster_rows() -> Bool {
+  discovery_carries_exactly(r: corpus_runnable_for(spec: optin_spec), expected: synthetic_corpus_row)
 }
 
-fn witness_source_ingest_serialized_after_corpus() -> Bool {
-  let batches = gunbc_ci_floor_batches()
-  let corpus_layer = batches.skip(n: 1).first()
-  let ingest_layer = batches.skip(n: 3).first()
-  list_contains_str(xs: batch_functions(b: corpus_layer), target: corpus_sentinel) &&
-    !list_contains_str(xs: batch_functions(b: corpus_layer), target: "source_root_ingest_gate_passes") &&
-    list_contains_str(xs: batch_functions(b: ingest_layer), target: "source_root_ingest_gate_passes")
+fn witness_optin_execution_partition() -> Bool {
+  discovery_carries_exactly(r: execution_corpus_runnable_for(spec: optin_spec), expected: synthetic_execution_row)
 }
 
-fn witness_plan_serializes_heavy_resolves() -> Bool {
-  gunbc_ci_floor_plan_serializes_heavy_resolves() &&
-    gunbc_ci_floor_plan_co_runs_heavy_without_serialization()
+fn witness_kind_wins_over_path() -> Bool {
+  let spec = ci_spec_with_witness_entries(
+    spec: gunbc_ci_spec,
+    entries: [synthetic_exec_kind_nonexec_path_row]
+  )
+  (length(xs: execution_witness_entries(spec: spec)) == 1) &&
+    (length(xs: corpus_witness_entries(spec: spec)) == 0) &&
+    discovery_carries_exactly(
+      r: execution_corpus_runnable_for(spec: spec),
+      expected: synthetic_exec_kind_nonexec_path_row
+    )
+}
+
+fn witness_optin_roster_drives_corpus_presence() -> Bool {
+  (schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0) &&
+    (schedule_discovery_batch_count(batches: floor_schedule_for(spec: corpus_only_spec, serialize_heavy: true)) == 1) &&
+    (schedule_discovery_batch_count(batches: floor_schedule_for(spec: optin_spec, serialize_heavy: true)) == 2)
+}
+
+fn witness_optin_plan_gates_corpus_after_compile() -> Bool {
+  let batches = floor_schedule_for(spec: optin_spec, serialize_heavy: true)
+  !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel) &&
+    (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1) &&
+    (batch_index_of(batches: batches, target: corpus_sentinel) >= 2)
+}
+
+fn witness_optin_source_ingest_serialized_after_corpus() -> Bool {
+  let batches = floor_schedule_for(spec: optin_spec, serialize_heavy: true)
+  let corpus_idx = batch_index_of(batches: batches, target: corpus_sentinel)
+  let ingest_idx = batch_index_of(batches: batches, target: "source_root_ingest_gate_passes")
+  (corpus_idx >= 1) && (ingest_idx > corpus_idx)
+}
+
+fn witness_optin_exclusion_edges_track_roster() -> Bool {
+  witness_floor_corpus_exclusion_edges_exist(spec: optin_spec) &&
+    (length(xs: floor_corpus_exclusion_resource_edges(spec: zero_roster_spec)) == 0) &&
+    witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: optin_spec)
+}
+
+fn witness_optin_plan_serializes_heavy_resolves() -> Bool {
+  floor_plan_serializes_heavy_resolves_for(spec: heavy_pair_spec) &&
+    floor_plan_co_runs_heavy_without_serialization_for(spec: heavy_pair_spec)
 }
 
 fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
@@ -114,16 +303,31 @@ fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
     list_contains_str(xs: fns, target: corpus_sentinel)
 }
 
-fn witness_emit_host_isolated_from_corpus() -> Bool {
-  fold(gunbc_ci_floor_batches(), init: true, f: fn(ok, b) {
+fn witness_optin_emit_host_isolated_from_corpus() -> Bool {
+  fold(floor_schedule_for(spec: optin_spec, serialize_heavy: true), init: true, f: fn(ok, b) {
     ok && !batch_has_both_emit_and_corpus(b: b)
   })
 }
 
-fn witness_emit_host_co_runs_corpus_without_serialization() -> Bool {
-  fold(gunbc_ci_floor_schedule_without_serialization(), init: false, f: fn(found, b) {
+fn witness_optin_emit_host_co_runs_corpus_without_serialization() -> Bool {
+  fold(floor_schedule_for(spec: optin_spec, serialize_heavy: false), init: false, f: fn(found, b) {
     found || batch_has_both_emit_and_corpus(b: b)
   })
+}
+
+fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      execution_mode_eq(left: p.execution_mode, right: Hermetic)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn witness_hermetic_floor_posture_declared() -> Bool {
+  discovery_batch_declares_hermetic(r: corpus_runnable_for(spec: gunbc_ci_spec))
+    && !discovery_batch_declares_hermetic(r: execution_corpus_runnable_for(spec: gunbc_ci_spec))
+    && discovery_batch_declares_hermetic(r: gunbc_falsifier_batches().first().first())
 }
 
 fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
@@ -134,40 +338,178 @@ fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
   !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
 }
 
+
+fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
+  match mode {
+    SelectionPredictOnly => true
+    SelectionApplied => false
+    SelectionOff => false
+  }
+}
+
+fn discovery_batch_declares_wet(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      execution_mode_eq(left: p.execution_mode, right: Wet)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn falsifier_predict_only_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      falsifier_batch_selection(mode: mode)
+        && (length(xs: entries) == 0)
+        && (length(xs: dirs) == 3)
+        && execution_mode_eq(left: p.execution_mode, right: Hermetic)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries()))
+        && discovery_batch_declares_wet(r: r)
+        && p.spawns_host_compiler
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: known_red_probe_entries))
+        && discovery_batch_declares_hermetic(r: r)
+        && (p.spawns_host_compiler == false)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn falsifier_silent_pick_gate_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: falsifier_silent_pick_gate_entries))
+        && discovery_batch_declares_wet(r: r)
+        && p.spawns_host_compiler
+        && p.heavy_whole_tree_resolve
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
+  gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() == 600000
+    && gunbc_falsifier_self_host_wet_interp_eval_budget_ms() == 120000
+    && gunbc_ci_fast_lane_eval_budget_ms() == 5000
+}
+
+fn falsifier_plan_structure_holds() -> Bool {
+  let batches = gunbc_falsifier_batches()
+  let predict_ok = (batches.first().length() == 1)
+    && falsifier_predict_only_batch_holds(r: batches.first().first())
+  let wet_enrolled = length(xs: falsifier_self_host_wet_entries()) > 0
+  let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
+  let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 })
+  let wet_ok = if wet_enrolled {
+    let wet_batch = skip(xs: batches, n: 1).first()
+    (wet_batch.length() == 1)
+      && falsifier_self_host_wet_batch_holds(r: wet_batch.first())
+  } else {
+    true
+  }
+  let probe_ok = if probe_enrolled {
+    let probe_offset = if wet_enrolled { 2 } else { 1 }
+    let probe_batch = skip(xs: batches, n: probe_offset).first()
+    (probe_batch.length() == 1)
+      && falsifier_known_red_probe_batch_holds(r: probe_batch.first())
+  } else {
+    true
+  }
+  let silent_pick_gate_ok = if silent_pick_gate_enrolled {
+    let silent_pick_gate_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 })
+    let silent_pick_gate_batch = skip(xs: batches, n: silent_pick_gate_offset).first()
+    (silent_pick_gate_batch.length() == 1)
+      && falsifier_silent_pick_gate_batch_holds(r: silent_pick_gate_batch.first())
+  } else {
+    true
+  }
+  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok
+}
+
+fn witness_cheap_gates_are_resource_anchors() -> Bool {
+  gate_in_cheap_floor_membership(g: LayeringImportsGate)
+    && floor_resource_anchor_node(node: gate_node(g: LayeringImportsGate))
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
-    witness_floor_no_corpus_resource_edge_to_compile_anchor() &&
-    witness_floor_corpus_exclusion_edges_exist() &&
-    witness_compile_root_runs_first() &&
+    witness_cheap_gate_membership_declared() &&
+    witness_cheap_gates_are_resource_anchors() &&
+    witness_live_floor_discovery_tracks_optin_roster() &&
+    witness_cheap_gates_precede_compile_root() &&
+    witness_cheap_gates_precede_all_corpus_batches() &&
+    witness_floor_schedule_preserves_enrolled_set() &&
+    witness_non_cheap_gate_absent_from_early_batch() &&
+    witness_floor_stop_policy_pr_is_fail_fast() &&
+    witness_floor_stop_policy_push_is_full_ledger() &&
+    witness_floor_stop_policy_unknown_defaults_full_ledger() &&
+    witness_floor_batch_stop_policy_plan_roster_enrolled() &&
+    gunbc_ci_floor_schedule_lens_holds() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
-    witness_discovery_scan_dirs_in_plan() &&
-    witness_scan_dirs_match_layer_authority() &&
-    witness_corpus_has_no_explicit_entries() &&
-    witness_corpus_skip_node_frontier_enabled() &&
-    witness_source_ingest_serialized_after_corpus() &&
-    witness_plan_serializes_heavy_resolves() &&
-    witness_emit_host_isolated_from_corpus() &&
-    witness_emit_host_co_runs_corpus_without_serialization() &&
+    witness_plan_serializes_heavy_resolves()
+    && falsifier_plan_structure_holds()
+    && falsifier_self_host_wet_budget_declared_holds()
+    && witness_hermetic_floor_posture_declared()
+    && witness_floor_arm_time_budget_refusal_plan_roster_authority()
+    && witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed()
+}
+
+test fn ci_floor_optin_roster_witnesses() -> Bool {
+  witness_optin_roster_drives_corpus_presence() &&
+    witness_optin_corpus_carries_exactly_roster_rows() &&
+    witness_optin_execution_partition() &&
+    witness_kind_wins_over_path() &&
+    witness_optin_plan_gates_corpus_after_compile() &&
+    witness_optin_source_ingest_serialized_after_corpus() &&
+    witness_optin_exclusion_edges_track_roster() &&
+    witness_optin_plan_serializes_heavy_resolves() &&
+    witness_optin_emit_host_isolated_from_corpus() &&
+    witness_optin_emit_host_co_runs_corpus_without_serialization() &&
     witness_emit_host_profile_forbids_corpus_co_residence() &&
     witness_light_gate_profile_allows_corpus_co_residence()
 }
 
-test fn ci_floor_run_envelope_witnesses() -> Bool {
-  witness_floor_tight_budget_backs_off_envelope() &&
-    witness_floor_fail_open_would_exceed_budget()
-}
-
-test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
-  witness_floor_width_governed_by_budget_tree() &&
-    witness_floor_width_derived_from_tree_is_positive()
-}
-
-test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
-  witness_floor_spawn_width_tight_budget_backs_off()
-}
-
-test fn ci_floor_honest_width_fold_witnesses() -> Bool {
-  witness_corpus_effective_widths_fit_runner_cap() &&
-    witness_floor_derived_width_leaves_headroom_at_cap()
+test fn ci_corpus_discovery_flip_witnesses() -> Bool {
+  witness_ci_corpus_discovery_is_live()
+    && witness_ci_corpus_discovery_flip_authored()
+    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_gates_isolated_from_corpus()
+    && witness_regen_spec_carries_no_witness_corpus()
+    && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
 }

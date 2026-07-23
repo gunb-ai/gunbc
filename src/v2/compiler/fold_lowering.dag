@@ -1,0 +1,160 @@
+module v2.compiler.fold_lowering
+
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  parse_subtree_find_production_captured
+}
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.node_query { find_named_child }
+
+data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_iteration_body finds the sole ^dag_surface_fn_literal argument and lifts its ^dag_surface_fn_body into the canonical seam Loop (matching body_producer_loop_body) bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to a terminating Loop. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
+
+fn fold_iteration_measure_atom() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^dag_surface_fold_iteration_measure } },
+    children: []
+  )
+}
+
+fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
+  match find_named_child(root: fold_call, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: head, diagnostics: _ } => node_atom_identity_optional(node: head)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn fold_family_head(sym: Symbol) -> Bool {
+  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
+}
+
+fn fold_call_step_fn(fold_call: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
+    ParseSubtreeFound { captured: fn_literal } => Present { value: fn_literal }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(
+    root: fn_literal,
+    emitted: ^dag_surface_fn_body
+  ) {
+    ParseSubtreeAbsent => Absent
+    ParseSubtreeFound { captured: body } => Present { value: body }
+  }
+}
+
+fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper = comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity. Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params), ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent), whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a carrier."
+
+fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
+  match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
+    Absent => Absent
+    Present { value: after_kw_fn } =>
+      match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
+        Absent => Absent
+        Present { value: after_lparen } =>
+          match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
+            Absent => Absent
+            Present { value: params } =>
+              match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
+                Absent => Absent
+                Present { value: first_param } => node_atom_identity_optional(node: first_param)
+              }
+          }
+      }
+  }
+}
+
+fn fold_lowering_not_a_fold_call_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^fold_lowering_not_a_fold_call,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn fold_lowering_shape_invalid_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^fold_lowering_shape_invalid,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn fold_carrier_binder_atom(binder: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: binder } },
+    children: []
+  )
+}
+
+fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: body },
+      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
+      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
+    ]
+  )
+}
+
+fn fold_call_to_loop(fold_call: Node) -> Outcome<Node> {
+  match fold_call_head_symbol(fold_call: fold_call) {
+    Absent =>
+      outcome_rejected(d: fold_lowering_not_a_fold_call_diagnostic(n: fold_call))
+    Present { value: head } =>
+      if fold_family_head(sym: head) {
+        match fold_call_step_fn(fold_call: fold_call) {
+          Absent =>
+            outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+          Present { value: fn_literal } =>
+            match step_fn_iteration_body(fn_literal: fn_literal) {
+              Absent =>
+                outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+              Present { value: body } =>
+                match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
+                  Absent =>
+                    outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+                  Present { value: carrier } =>
+                    outcome_accepted(value: fold_call_seam_loop(body: body, carrier: carrier))
+                }
+            }
+        }
+      } else {
+        outcome_rejected(d: fold_lowering_not_a_fold_call_diagnostic(n: fold_call))
+      }
+  }
+}

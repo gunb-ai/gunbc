@@ -1,0 +1,15 @@
+module v2.test.resolve.qualified_module_projection_g1b_fixture
+
+data item: v2.test.resolve.qualified_module_projection_provider.ProviderType = "g1b"
+
+fn consumer() -> v2.test.resolve.qualified_module_projection_provider.ProviderType {
+  let x: v2.test.resolve.qualified_module_projection_provider.ProviderType = "g1b"
+  x
+}
+
+fn pattern_consumer(x: v2.test.resolve.qualified_module_projection_provider.ProviderEnum) -> Int {
+  match x {
+    v2.test.resolve.qualified_module_projection_provider.TagA => 0
+    v2.test.resolve.qualified_module_projection_provider.TagB => 1
+  }
+}

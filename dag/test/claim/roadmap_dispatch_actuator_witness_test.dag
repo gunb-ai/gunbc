@@ -1,0 +1,349 @@
+module test.claim.roadmap_dispatch_actuator
+
+import std.types { NonEmptyStr, GitRef, FilePath }
+import std.disposition { Scaffold, Terminal }
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNode, RoadmapEdge,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  NodeSizing, Sized, Unsized,
+  SectionElement, Group, SectionGroup,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template }
+import std.upsert_decision {
+  Absent,
+  Apply,
+  Conflict,
+  Converged,
+  UnknownRefused,
+  Refuse,
+  UpsertClassification,
+}
+import extdeps.git { shape_git_worktree_add_argv }
+import extdeps.tmux { shape_tmux_new_session_argv }
+import extdeps.llm.cli { shape_claude_invoke_argv }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_tmux_session_name,
+  dispatch_tmux_session_prefix,
+  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+  fill_dispatch_brief,
+  dispatch_brief_fields,
+  claude_effort_for_intricacy,
+  claude_spawn_argv,
+  git_worktree_add_argv,
+  tmux_spawn_argv,
+  tmux_kill_session_argv,
+  tmux_ls_argv,
+  parse_tmux_ls_output,
+  filter_dispatch_tmux_sessions,
+  classify_dispatch_request,
+  classify_dispatch_lease_upsert,
+  classify_tmux_session,
+  dispatch_tmux_session_scope,
+  dispatch_live_sessions,
+  session_lease_reuses_process_port_classifier_shape,
+  hostile_node_id_stays_single_argv_token,
+  DispatchPermitted,
+  DispatchRefused,
+  TmuxLsEntry,
+  SessionAbsent,
+  SessionNameObserved,
+  SessionObserved,
+  SpawnSession,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nid(s: String) -> RoadmapNodeId { s }
+
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
+  RoadmapSection {
+    title: "Test",
+    elements: [Group { group: SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+  }
+}
+
+fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [fixture_section(nodes: nodes, edges: edges)],
+  }
+}
+
+fn witness_tmux_session_name_prefix() -> Bool {
+  dispatch_tmux_session_name(node_id: nid(s: "node-1")) == "gunbc-dispatch-node-1"
+}
+
+fn witness_brief_fill_includes_node_metadata() -> Bool {
+  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let brief = fill_dispatch_brief(
+    template: dispatch_brief_template,
+    fields: dispatch_brief_fields(node: node),
+  )
+  string_contains(s: brief, pattern: "Node: brief-node")
+    && string_contains(s: brief, pattern: "Brief Title")
+}
+
+fn witness_claude_effort_high_for_high_intricacy() -> Bool {
+  claude_effort_for_intricacy(i: IntricacyHigh) == "high"
+}
+
+fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
+  let argv = claude_spawn_argv(
+    effort: "high",
+    session_uuid: "uuid-1",
+    node_id: nid(s: "node-1"),
+    brief: "brief body",
+  )
+  string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "skipDangerousModePermissionPrompt")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
+    && !string_contains(s: join(argv, separator: "\0"), pattern: "--resume")
+}
+
+fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
+  let cmd = git_worktree_add_argv(
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
+    branch_name: "dispatch/node-1",
+    remote_ref: "origin/main",
+  )
+  cmd.program == "git"
+    && cmd.args == ["worktree", "add", "/opt/gunbc/dispatch-worktrees/node-1", "-b", "dispatch/node-1", "origin/main"]
+}
+
+fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
+  let claude = claude_spawn_argv(
+    effort: "medium",
+    session_uuid: "uuid-2",
+    node_id: nid(s: "node-2"),
+    brief: "brief",
+  )
+  let cmd = tmux_spawn_argv(
+    session_name: "gunbc-dispatch-node-2",
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-2",
+    claude_argv: claude,
+  )
+  cmd.program == "tmux"
+    && starts_with(s: join(cmd.args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-node-2")
+    && string_contains(s: join(cmd.args, separator: "\0"), pattern: "CLAUDE_CODE_NO_FLICKER=1")
+}
+
+fn witness_stop_argv_targets_session() -> Bool {
+  let cmd = tmux_kill_session_argv(session_name: "gunbc-dispatch-node-3")
+  cmd.args == ["kill-session", "-t", "gunbc-dispatch-node-3"]
+}
+
+fn witness_tmux_ls_parse_filters_prefix() -> Bool {
+  let output = "other: 1 windows (created Fri Jul  3 04:14:00 2026)\ngunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
+  let entries = filter_dispatch_tmux_sessions(entries: parse_tmux_ls_output(output: output))
+  count(entries) == 1
+    && entries.first().session_name == "gunbc-dispatch-node-4"
+    && entries.first().windows == 2
+}
+
+fn witness_not_ready_node_refused() -> Bool {
+  let parent = sized_derivable(id: "parent", prs: [100], title: "Parent")
+  let child = sized_derivable(id: "child", prs: [200], title: "Child")
+  let edges = [RoadmapEdge { child: nid(s: "child"), parent: nid(s: "parent") }]
+  let doc = fixture_doc(nodes: [parent, child], edges: edges)
+  let ready = next_spawnable(doc: doc, merged: [])
+  match classify_dispatch_request(node: child, ready: ready, tmux_entries: []) {
+    DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
+    _ => false
+  }
+}
+
+fn witness_ready_node_permitted_without_live_session() -> Bool {
+  let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let ready = next_spawnable(doc: doc, merged: [])
+  match classify_dispatch_request(node: node, ready: ready, tmux_entries: []) {
+    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, claude_effort: e } =>
+      s == "gunbc-dispatch-ready-node"
+        && string_contains(s: w, pattern: "ready-node")
+        && b == "dispatch/ready-node"
+        && string_contains(s: br, pattern: "Ready")
+        && e == "high"
+    _ => false
+  }
+}
+
+fn witness_live_lease_refused() -> Bool {
+  let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let ready = next_spawnable(doc: doc, merged: [])
+  let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
+  match classify_dispatch_request(node: node, ready: ready, tmux_entries: entries) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "name occupied")
+        && string_contains(s: r as String, pattern: "fingerprint unobserved")
+    _ => false
+  }
+}
+
+fn witness_absent_lease_classifies_spawn() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "lease-absent"))
+  match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
+    _ => false
+  }
+}
+
+fn witness_hostile_node_id_single_argv_token() -> Bool {
+  hostile_node_id_stays_single_argv_token(node_id: "foo;rm -rf /")
+}
+
+fn witness_live_sessions_panel_rows() -> Bool {
+  let output = "gunbc-dispatch-panel-a: 1 windows (created Fri Jul  3 04:14:00 2026)\n"
+  let rows = dispatch_live_sessions(tmux_ls_output: output)
+  count(rows) == 1
+    && rows.first().node_id == "panel-a"
+    && rows.first().session_name == "gunbc-dispatch-panel-a"
+    && rows.first().lease_verdict == UnknownRefused
+}
+
+fn witness_name_only_observation_not_converged() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "name-only"))
+  match classify_tmux_session(
+    scope: scope,
+    obs: SessionNameObserved {
+      session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
+      windows: 1,
+    },
+  ) {
+    UnknownRefused => true
+    Converged => false
+    _ => false
+  }
+}
+
+fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "foreign-proc"))
+  match classify_dispatch_lease_upsert(
+    scope: scope,
+    obs: SessionObserved {
+      session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
+      windows: 1,
+      process_fingerprint: "foreign-shell" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+    UpsertClassification { verdict: Converged, decision: _ } => false
+    _ => false
+  }
+}
+
+fn witness_fingerprint_scaffold_marker_present() -> Bool {
+  match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
+  let worktree_args = shape_git_worktree_add_argv(
+    path: "/opt/gunbc/dispatch-worktrees/bound-node" as FilePath,
+    branch: "dispatch/bound-node" as NonEmptyStr,
+    remote_ref: "origin/main" as GitRef,
+  )
+  let bound_worktree = git_worktree_add_argv(
+    worktree_path: "/opt/gunbc/dispatch-worktrees/bound-node",
+    branch_name: "dispatch/bound-node",
+    remote_ref: "origin/main",
+  )
+  let tmux_args = shape_tmux_new_session_argv(
+    session_name: "gunbc-dispatch-bound-node",
+    working_dir: "/opt/gunbc/dispatch-worktrees/bound-node",
+    inner_argv: ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+  )
+  let claude_args_dangerous = shape_claude_invoke_argv(
+    session_id: "uuid-bound",
+    node_id: "bound-node",
+    effort: "high",
+    settings_json: "{}",
+    append_system_prompt: "brief",
+    start_prompt: "go",
+    permission_args: ["--dangerously-skip-permissions"],
+  )
+  let claude_args_default = shape_claude_invoke_argv(
+    session_id: "uuid-bound",
+    node_id: "bound-node",
+    effort: "high",
+    settings_json: "{}",
+    append_system_prompt: "brief",
+    start_prompt: "go",
+    permission_args: [],
+  )
+  bound_worktree.args == worktree_args
+    && starts_with(s: join(tmux_args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-bound-node")
+    && string_contains(s: join(claude_args_dangerous, separator: "\0"), pattern: "--dangerously-skip-permissions")
+    && !string_contains(s: join(claude_args_default, separator: "\0"), pattern: "--dangerously-skip-permissions")
+}
+
+fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
+  let argv = claude_spawn_argv(
+    effort: "high",
+    session_uuid: "uuid-policy",
+    node_id: nid(s: "node-policy"),
+    brief: "brief",
+  )
+  string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
+    && dispatch_claude_permission_args == ["--dangerously-skip-permissions"]
+}
+
+fn witness_tmux_new_session_service_op_splices_inner_argv() -> Bool {
+  let via_service_shape = shape_tmux_new_session_argv(
+    session_name: "gunbc-dispatch-splice",
+    working_dir: "/opt/gunbc/dispatch-worktrees/splice",
+    inner_argv: ["claude", "--flag-a", "value with spaces", "--flag-b"],
+  )
+  via_service_shape == [
+    "new-session", "-d", "-s", "gunbc-dispatch-splice",
+    "-c", "/opt/gunbc/dispatch-worktrees/splice",
+    "claude", "--flag-a", "value with spaces", "--flag-b",
+  ]
+}
+
+fn witness_session_lease_shape_reused() -> Bool {
+  session_lease_reuses_process_port_classifier_shape()
+}
+
+test fn roadmap_dispatch_actuator_witnesses() -> Bool {
+  witness_tmux_session_name_prefix()
+    && witness_brief_fill_includes_node_metadata()
+    && witness_claude_effort_high_for_high_intricacy()
+    && witness_claude_argv_uses_dangerous_skip_permissions()
+    && witness_git_worktree_argv_is_execfile_safe()
+    && witness_tmux_spawn_argv_threads_claude_argv()
+    && witness_stop_argv_targets_session()
+    && witness_tmux_ls_parse_filters_prefix()
+    && witness_not_ready_node_refused()
+    && witness_ready_node_permitted_without_live_session()
+    && witness_live_lease_refused()
+    && witness_absent_lease_classifies_spawn()
+    && witness_hostile_node_id_single_argv_token()
+    && witness_live_sessions_panel_rows()
+    && witness_name_only_observation_not_converged()
+    && witness_foreign_process_fingerprint_is_conflict()
+    && witness_fingerprint_scaffold_marker_present()
+    && witness_claude_invoke_permission_args_are_gunbc_policy()
+    && witness_tmux_new_session_service_op_splices_inner_argv()
+    && witness_host_exec_argv_shapes_bound_to_extdeps()
+    && witness_session_lease_shape_reused()
+}

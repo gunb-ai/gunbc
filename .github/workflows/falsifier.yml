@@ -1,0 +1,123 @@
+name: affected-set-falsifier
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0,4,8,12,16,20 * * *
+permissions:
+  contents: read
+concurrency:
+  group: affected-set-falsifier
+  cancel-in-progress: false
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  falsifier:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 290
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain dirs
+        run: |
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
+          GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+          if sccache --show-stats >/dev/null 2>&1; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          fi
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+        env:
+          HOME: ${{ runner.temp }}
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+            target/
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build release bins (claim_executor + gunbc)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness) 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              RETRY_LOG=$(mktemp)
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness ) 2>&1 | tee "$RETRY_LOG"; then
+                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
+                  echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness || exit 1
+                else
+                  exit 1
+                fi
+              fi
+              rm -f "$RETRY_LOG"
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+          sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: Floor cgroup peak pre-read (calibration; reset if permitted)
+        run: |
+          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then if echo reset > "$d/memory.peak" 2>/dev/null; then echo "[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d"; else echo "[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat "$d/memory.peak") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)"; fi; else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
+        timeout-minutes: 5
+      - name: affected-set falsifier (predict-only cold run)
+        id: floor
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_batches
+        env:
+          GUNBC_CI_DIFF_BASE: HEAD~20
+          GUNBC_CI_DIFF_HEAD: HEAD
+        timeout-minutes: 170
+      - name: compile-clean whole-tree cold control (scoped-PR admission counterpart)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches
+        env:
+          GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL: 1
+        timeout-minutes: 30
+      - name: native-cache cold control (warm-tier admission counterpart)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_batches
+        env:
+          GUNBC_CI_NATIVE_CACHE_COLD_CONTROL: 1
+        timeout-minutes: 30
+      - name: Floor cgroup peak post-read (calibration; survives a killed floor)
+        run: |
+          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
+        if: always()
+        timeout-minutes: 5

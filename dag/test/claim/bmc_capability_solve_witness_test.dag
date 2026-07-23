@@ -1,37 +1,7 @@
 module test.claim.bmc_capability_solve
 
-import std.logic { Bool }
-import std.bmc { OpenBmc }
-import std.types { List, list_length }
-import extdeps.bmc.capability {
-  BmcCapability,
-  BmcFirmwareCapabilityRow,
-  BmcFirmwareVersion,
-  CapabilityPowerControl,
-  CapabilityBootSourceOverride,
-  CapabilityAccountManagement,
-  CapabilityFirmwareUpdate,
-  CapabilityVirtualMedia,
-  CapabilityNbdProxyVirtualMedia,
-  CapabilityBiosAttributeConfig,
-  firmware_has_capability,
-  catalog_has_vm_capable_firmware,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_openbmc_2_07_00_capabilities,
-  asrock_altrad8ud_openbmc_3_06_00_capabilities,
-  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
-}
-import gunbc.os_install_mechanism {
-  OsInstallMechanism,
-  VirtualMediaInstall,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  FirmwareUpdateThenVirtualMedia,
-  solve_install_mechanism,
-  srv3_firmware_catalog,
-  srv3_install_mechanism,
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_capabilities_are_grounded() -> Bool {
   firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)

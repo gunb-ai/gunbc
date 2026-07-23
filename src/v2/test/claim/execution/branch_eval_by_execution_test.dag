@@ -1,12 +1,9 @@
 module v2.test.execution.branch_eval_by_execution
 
-import v2.compiler.body_producer {
-  produce_mvp1_pick_if_arrow_with_body,
-  produce_mvp1_pick_if_arrow_with_body_swapped_arms
-}
-import v2.test.complexity_gate.source_bridged_branch_subject_producer {
-  source_bridged_pick_false_if_arrow_with_body,
-  source_bridged_pick_if_arrow_with_body
+import v2.test.complexity_gate.table_fixture_branch_subject_producer {
+  table_fixture_pick_if_arrow_with_body,
+  table_fixture_pick_if_arrow_with_body_swapped_arms,
+  table_fixture_pick_false_if_arrow_with_body
 }
 import v2.compiler.eval {
   EvalContext,
@@ -20,6 +17,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
+import std.algebra { Empty }
 import v2.std.collection {
   Absent,
   List,
@@ -30,10 +28,17 @@ import v2.std.collection {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one,
+  dag_int_literal_fixture_two,
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_int_literal_atom
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -73,7 +78,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -89,6 +96,9 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_atom(s: Symbol) -> Node {
   Node {
@@ -146,11 +156,11 @@ fn branch_two_value() -> RuntimeValue {
 }
 
 fn branch_literal_one_node() -> Node {
-  branch_atom(s: ^dag_mvp1_pick_lit_one)
+  dag_int_literal_fixture_one()
 }
 
 fn branch_literal_two_node() -> Node {
-  branch_atom(s: ^dag_mvp1_pick_lit_two)
+  dag_int_literal_fixture_two()
 }
 
 fn branch_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -202,10 +212,18 @@ fn branch_kw_false_node() -> Node {
 }
 
 fn branch_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == branch_literal_one_node() {
-    outcome_accepted(value: branch_one_value())
-  } else if node == branch_literal_two_node() {
-    outcome_accepted(value: branch_two_value())
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: branch_one_value())
+        } else if mag == 2 {
+          outcome_accepted(value: branch_two_value())
+        } else {
+          outcome_rejected(d: branch_runtime_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
   } else if node == branch_kw_true_node() {
     outcome_accepted(value: branch_bool_value(is_true: true))
   } else if node == branch_kw_false_node() {
@@ -286,6 +304,9 @@ fn branch_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: branch_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
@@ -410,14 +431,14 @@ fn branch_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
 }
 
 fn branch_source_pipeline_admits_holds() -> Bool {
-  match source_bridged_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn branch_source_driven_pick_true_executes_holds() -> Bool {
-  match source_bridged_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -430,7 +451,7 @@ fn branch_source_driven_pick_true_executes_holds() -> Bool {
 }
 
 fn branch_source_driven_pick_false_executes_holds() -> Bool {
-  match source_bridged_pick_false_if_arrow_with_body() {
+  match table_fixture_pick_false_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -443,7 +464,7 @@ fn branch_source_driven_pick_false_executes_holds() -> Bool {
 }
 
 fn branch_condition_perturbation_red_holds() -> Bool {
-  match source_bridged_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -456,7 +477,7 @@ fn branch_condition_perturbation_red_holds() -> Bool {
 }
 
 fn branch_direct_runtime_true_holds() -> Bool {
-  match source_bridged_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = branch_pick_call(callee: arrow)
       match branch_inferred_run_tree(
@@ -481,7 +502,7 @@ fn branch_direct_runtime_true_holds() -> Bool {
 }
 
 fn branch_swapped_arms_red_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
+  match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -494,7 +515,7 @@ fn branch_swapped_arms_red_holds() -> Bool {
 }
 
 fn branch_fixture_producer_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(

@@ -1,0 +1,174 @@
+module v2.compiler.self_host.frontier_probe_types
+
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
+
+type FrontierBlockerClass
+  = SelfEmitReady
+  | NameResolutionGap
+  | EmitSurfaceGap
+  | RealizationGap
+  | FixtureCemented
+  | UnknownProbeCause { reason: Symbol }
+
+type FrontierProbeStage
+  = ProbeStageAssemble
+  | ProbeStageEmit
+
+type FrontierProbeReceipt {
+  module_path: String
+  blocker_class: FrontierBlockerClass
+  located_stage: FrontierProbeStage
+  located_reason: Symbol
+}
+
+fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
+  reason == ^resolve_reason_unbound_symbol
+    || reason == ^resolve_ambiguous_export
+    || reason == ^resolve_reason_malformed_imported_root
+    || reason == ^resolve_duplicate_module_name
+    || reason == ^resolve_module_not_found
+    || reason == ^resolve_import_not_visible
+    || reason == ^resolve_cross_tree_import_denied
+    || reason == ^resolve_cross_tree_import_ambiguous
+    || reason == ^parse_g0_tokens_remain
+    || reason == ^normalize_rejected
+}
+
+fn frontier_blocker_is_emit_surface_reason(reason: Symbol) -> Bool {
+  reason == ^translate_target_bundle_malformed
+    || reason == ^translate_target_bundle_duplicate_edge
+    || reason == ^translate_grammar_relation_row_not_found
+    || reason == ^translate_grammar_inverse_not_realized
+    || reason == ^translate_conj_invalid_edge
+    || reason == ^translate_conj_named_child_missing
+    || reason == ^translate_concrete_token_class_missing
+    || reason == ^translate_binding_spelling_not_found
+    || reason == ^target_use_site_ownership_lookup_miss
+    || reason == ^target_use_site_ownership_lookup_ambiguous
+}
+
+fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
+  reason == ^compiler_import_closure_cyclic
+    || reason == ^self_host_runner_not_realized
+    || reason == ^emit_host_run_transport_unrealized
+}
+
+data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
+
+data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."
+
+fn frontier_blocker_is_probe_survey_host_reason(reason: Symbol) -> Bool {
+  reason == frontier_probe_survey_host_runtime_error_reason
+    || reason == frontier_probe_survey_host_oom_or_budget_reason
+    || reason == ^probe_emit_accept_self_host_bar_unbound
+}
+
+data frontier_probe_survey_host_runtime_error_reason: Symbol = ^frontier_probe_runtime_error
+
+data frontier_probe_survey_host_oom_or_budget_reason: Symbol = ^frontier_probe_oom_or_budget
+
+data gate_a_flip_probe_unresolved_compiler_error_reason: Symbol = ^gate_a_flip_probe_unresolved_compiler_error
+
+data gate_a_flip_probe_witness_std_dup_reason: Symbol = ^gate_a_flip_probe_witness_std_dup
+
+data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
+
+data curated_cargo_probe_namespace_qualified_rust_emit_reason: Symbol = ^curated_cargo_probe_namespace_qualified_rust_emit
+
+data curated_cargo_probe_import_closure_cargo_refuse_reason: Symbol = ^curated_cargo_probe_import_closure_cargo_refuse
+
+data curated_cargo_probe_emit_assemble_refuse_reason: Symbol = ^curated_cargo_probe_emit_assemble_refuse
+
+data curated_cargo_probe_generic_type_render_reason: Symbol = ^curated_cargo_probe_generic_type_render
+
+data curated_cargo_probe_type_ref_import_missing_reason: Symbol = ^curated_cargo_probe_type_ref_import_missing
+
+data curated_cargo_probe_emit_shape_reason: Symbol = ^curated_cargo_probe_emit_shape
+
+data curated_cargo_probe_struct_literal_body_reason: Symbol = ^curated_cargo_probe_struct_literal_body
+
+data honest_frontier_refresh_probe_note: String = "Honest frontier refresh 2026-07-20 (neat-swift-795 @ d904abdeae): reverted premature Gate-A flip-wave 6 from SelfEmitted→SeedRetained after CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh execution showed 0/6 cargo-green and 0/6 emit-clean post-#6848 merge. Current buckets by probe: curated_cargo_probe_namespace_qualified_rust_emit (emit+cargo dotted-path rustc refuse on 00_compile/02_parse/03_ingest/source_authority); curated_cargo_probe_import_closure_cargo_refuse (E0422 namespace on materialization_carriers + prior std_dup cargo residue on 01_tokenize/04_infer/program_partition); curated_cargo_probe_emit_assemble_refuse (program_assembly EMIT_REFUSE). Baseline 6 SelfEmitted (body_producer, normalize, target_carriers, discovery_enumeration, parse_engine_hooks, use_site_verdict). #6881 stays DRAFT until emit regression fixed and >=1 module cargo-green by execution."
+
+data gate_a_flip_probe_wave_note: String = "SUPERSEDED by honest_frontier_refresh_probe_note (2026-07-20): Jul-19 flip-wave claim retracted — never cargo-green by execution on current HEAD."
+data honest_frontier_refresh_2026_07_22_note: String = "Honest frontier refresh 2026-07-22 (sharp-bee-290, operator-directed: disentangle dependencies — a blocker edge without a named MEASURED reason is removed). The two resolver rows (03_resolve, 03_name_resolve) were the only knowledge_attributed rows carrying migration_trigger migrate_when_namespace_only_resolution_lands; probed by execution (CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh, empty shim per sr transport contract, gunbc rebuilt at the probe head) and the namespace-terminal trigger is REFUTED on both: (1) 03_resolve emits clean (45 files, 0 diagnostics) and cargo-refuses on E0425 cannot-find-type-T — the generic-T fold-lambda render class (crisp-fox-839 site map: emit_typed_fold_lambda -> lambda_param_type_strs -> render_rust_type), a DISTINCT class from import-closure, new reason row curated_cargo_probe_generic_type_render; re-probe after the generic-T guard lands. (2) 03_name_resolve refuses at ASSEMBLE: cssl_assemble unroutable closure dependency gunbc_plans_md_helpers — its reference closure is contaminated by a gunbc.plans reach (suspect edge: src/v2/compiler/self_host/frontier_probe_survey.dag imports gunbc.plans, a layer inversion per DESIGN section 3 strict layer DAG; own separate fix). Both rows re-declared execution_measured with trigger migrate_when_closure_self_emits_cargo_green (the 04_infer pattern). The pre-existing contradiction is itself a receipt: self_host_03_resolve_behavioral_transport.dag (Wave-2 flip machinery, already built) names its dependency as post-#6775 Rc/Optional emit surface greens — never the namespace terminal. The namespace-only-resolution terminal no longer appears anywhere in the v1-delete dependency graph."
+
+data honest_frontier_refresh_2026_07_22_post_merge_note: String = "Honest frontier refresh 2026-07-22 post-merge (sharp-bee-290), full re-sweep on main after #7033 (fold-closure generic-T + Witness prelude + value-qualified), #7045 (reference-closure over-pull fix: arrow-lambda params + pattern-value leaves) and #6990 (interpreter sorted_fields + durable native cache) all landed. Receipts: docs/probes/curated_cargo_frontier_probe_sweep.tsv (13 modules, CSSL_STD_SEED_LINK=1, empty shim, gunbc rebuilt at probe head). HEADLINE: the generic-T class (E0425 cannot-find-type-T) is DEAD on every module it previously blocked — curated_cargo_probe_generic_type_render has zero remaining rows. The dominant successor class, now first-error on FIVE modules (03_resolve E0422 RuntimePrimitiveValue, 04_infer + 05_eval E0433 NamedEdgeTargetLookup, 06_translate + program_partition E0433 UriScheme), is curated_cargo_probe_type_ref_import_missing: the emitted file references a type whose import/declaration the emitter never synthesizes — the collect_type_ref_names type-collector arm, in flight on PR 7057 (crisp-fox-839). Only ~3 distinct missing symbols cover all five modules, so one collector fix is expected to clear the class. Second class, emit-shape (statement-position brace after expression, 00_compile + 03_ingest, both 255 diagnostics — likely one root): curated_cargo_probe_emit_shape. Third: 01_tokenize struct-literal-body-without-path, curated_cargo_probe_struct_literal_body. Unchanged: 02_parse + source_authority remain dotted-in-struct (namespace_qualified); materialization_carriers ADVANCED off import-closure (its prior E0422 CacheEvidence gone) to E0425 cannot-find-value-v2, re-classed namespace_qualified; program_assembly still refuses at ASSEMBLE. 05_eval, 05_emit and 06_translate were knowledge_attributed rows — all three now MEASURED (same type-ref class as 04_infer; 05_emit E0433 UriScheme, TSV row landed by the resumed background sweep after the first 13-row read — roster corrected to match on review 41418), so their attributed triggers (v2-evaluator-host-effects, rust-body-emit-track-b, rust-value-expression-projection) are REMOVED as unproven edges per the 2026-07-22 disentangle ruling and replaced with migrate_when_closure_self_emits_cargo_green. NOT flipped: 03_normalize stays SelfEmitted — its probe red (E0423 expected-value-found-crate-std) matches the previously documented false-red harness artifact class and needs a harness-side diagnosis before any row change."
+
+data honest_frontier_refresh_2026_07_21_note: String = "Honest frontier refresh 2026-07-21 (warm-lark-815), re-probed on fresh main AFTER the Gate-1 import-closure root (PR 6960) merged. Method: CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh per module, first rustc error only. FLIPS: ZERO — the flip wave produced no SelfEmitted transition, and that negative result is the receipt.
+
+WHAT MOVED, and why three located_reason rows changed above: 01_tokenize, 04_infer and program_partition were recorded as curated_cargo_probe_import_closure_cargo_refuse, but all three now MEASURE as the namespace-qualified dotted-render class (rustc 'expected one of !, (, +, ::, ;, <, or where, found .'). Their rows are corrected to curated_cargo_probe_namespace_qualified_rust_emit_reason. This is a receipt correction, not a flip: the reason a module is seed-retained must match what was last measured, else the roster records a blocker that no longer explains the refusal.
+
+WHAT DID NOT MOVE: materialization_carriers stays on curated_cargo_probe_import_closure_cargo_refuse — still the genuine emit_imports case, but increment-2 (#6986) cleared the generic-argument axis: first error advanced from CacheEvidence E0422 to E0425 cannot find value extdeps (namespace/dotted-path class, distinct blocker; see data_field_struct_import_provider_note in v1.compiler.emit_rust).
+
+DOTTED IS THE DOMINANT BLOCKER, not import-closure: 4 of the 5 probed modules (01_tokenize, 02_parse, 04_infer, program_partition) refuse on it, and it is emitted into std.collection itself — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs, invalid Rust — so it sits in essentially every deep-module closure. PR 6934 ('6848 cleanup') is MERGED and the class is still live, so it is not a closed lane. Compounding it, emit REPORTS SUCCESS while producing that line ('compiled: 50 files emitted, 0 diagnostics') — a section-5 fail-open in which invalid Rust leaves the emitter with a clean bill of health and is caught only downstream by rustc."
+
+fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
+  if is_oom_or_budget {
+    frontier_probe_survey_host_oom_or_budget_reason
+  } else {
+    frontier_probe_survey_host_runtime_error_reason
+  }
+}
+
+fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
+  if frontier_blocker_is_name_resolution_reason(reason: reason) {
+    NameResolutionGap
+  } else if frontier_blocker_is_emit_surface_reason(reason: reason) {
+    EmitSurfaceGap
+  } else if frontier_blocker_is_realization_reason(reason: reason) {
+    RealizationGap
+  } else if frontier_blocker_is_probe_survey_host_reason(reason: reason) {
+    UnknownProbeCause { reason: reason }
+  } else {
+    UnknownProbeCause { reason: reason }
+  }
+}
+
+fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
+  match blocker {
+    SelfEmitReady => 0
+    EmitSurfaceGap => 1
+    NameResolutionGap => 2
+    RealizationGap => 3
+    FixtureCemented => 4
+    UnknownProbeCause { reason: _ } => 5
+  }
+}
+
+fn frontier_blocker_class_matches(
+  blocker: FrontierBlockerClass,
+  target: FrontierBlockerClass
+) -> Bool {
+  match blocker {
+    SelfEmitReady =>
+      match target {
+        SelfEmitReady => true
+        _ => false
+      }
+    NameResolutionGap =>
+      match target {
+        NameResolutionGap => true
+        _ => false
+      }
+    EmitSurfaceGap =>
+      match target {
+        EmitSurfaceGap => true
+        _ => false
+      }
+    RealizationGap =>
+      match target {
+        RealizationGap => true
+        _ => false
+      }
+    FixtureCemented =>
+      match target {
+        FixtureCemented => true
+        _ => false
+      }
+    UnknownProbeCause { reason: _ } => false
+  }
+}

@@ -1,27 +1,9 @@
 module test.claim.srv3_seeded_install_media
 
-import gunbc.srv3_seeded_install_media {
-  srv3_seeded_install_media_artifact,
-  srv3_seeded_ubuntu_install_media_install_path,
-  srv3_seeded_install_media_actuator_host_is_srv1,
-  srv3_seeded_install_media_install_path_is_versioned,
-  srv3_seeded_autoinstall_delivery_is_on_iso,
-  srv3_seeded_grub_cmdline_names_nocloud,
-  srv3_seeded_install_media_unattended_not_proven_yet,
-  srv3_autoinstall_user_data_body,
-  srv3_seeded_install_media_remaster_toolchain_is_modeled,
-  srv3_seeded_install_media_toolchain_ensure_is_privileged_gated,
-  install_media_remaster_toolchain_ensure_script,
-}
-import extdeps.os.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_bash_emit_dissolution_trigger,
-  install_media_remaster_script,
-  install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_classification_is_string_scaffolded_not_typed,
-  install_media_remaster_chmod_is_file_access_upsert_scaffold,
-}
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_split_doc: String = "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution moved to srv3_seeded_install_media_real_execution_witness_test.dag (no mock_response on shell.Mktemp.Dir/Filesystem.Write - dag/extdeps/shell/shell.dag - so it cannot run in CI's default Hermetic discovery corpus and is re-enrolled there as a declared Wet entry)."
 
 test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
   let ud = srv3_autoinstall_user_data_body as String
@@ -43,30 +25,29 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
     && srv3_seeded_install_media_actuator_host_is_srv1()
 }
 
-test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
-  string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "xorriso")
+test fn srv3_seeded_install_media_remaster_dissolution_trigger_is_terminal() -> Bool {
+  match install_media_remaster_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
+  }
 }
 
-test fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
-  install_media_remaster_classification_is_string_scaffolded_not_typed()
-    && install_media_remaster_chmod_is_file_access_upsert_scaffold()
+test fn install_media_remaster_probe_refusal_shape_doc_names_infra_failure() -> Bool {
+  string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterVerifyInfraFailure")
+    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterStale")
+    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "fail-closed")
 }
 
-test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool {
-  install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: srv3_seeded_install_media_artifact.grub_kernel_cmdline as String,
-    )
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: "gunbc-content-hash",
-    )
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: "StaleRefusal",
-    )
+test fn install_media_remaster_scaffolds_dissolved() -> Bool {
+  match install_media_remaster_classification_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
+  }
+    && match install_media_remaster_chmod_access_upsert_scaffold {
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
+    }
+    && install_media_remaster_probe_refusal_shape_doc_names_infra_failure()
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
@@ -76,10 +57,13 @@ test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
 test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool {
   srv3_seeded_install_media_remaster_toolchain_is_modeled()
     && srv3_seeded_install_media_toolchain_ensure_is_privileged_gated()
+    && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()
     && string_contains(
-      s: install_media_remaster_toolchain_ensure_script(),
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as NonEmptyStr),
       pattern: "InstallMediaRemasterToolchainReceipt",
     )
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y xorriso")
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "xorriso --version")
+    && string_contains(
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
+      pattern: "xorriso",
+    )
 }

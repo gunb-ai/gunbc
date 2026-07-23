@@ -37,7 +37,7 @@ type WorkflowRunConclusion
   | StartupFailure
 
 data dissolve_on_conclusion_authority_consolidation: List<String> = [
-  "closure:unify_run_and_check_conclusions|WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.actions) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today; dissolve when a shared conclusion authority is grounded that subsumes both (GitHub API evolution or a typed union representation)|trigger:GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"
+  "closure:unify_run_and_check_conclusions|WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.checks) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today; dissolve when a shared conclusion authority is grounded that subsumes both (GitHub API evolution or a typed union representation)|trigger:GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"
 ]
 
 type WorkflowRun {

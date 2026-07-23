@@ -6,15 +6,16 @@
     unused_mut,
     unused_parens,
     dead_code,
-    unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
     clippy::all
 )]
+#![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
+use im::{OrdSet as BTreeSet, Vector as Vec};
+
 pub mod cli_run;
-pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -35,26 +36,31 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
-pub mod external_authority_project;
+pub mod gunbc_stage0_crate_layout_generated;
+pub mod gunbc_stage0_crate_partition_generated;
+pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
-pub mod rest_transport_facts;
+pub mod shared_typecheck_store;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
 pub mod std_constructors;
+pub mod std_content_hash;
+pub mod std_currency;
 pub mod std_decl_ref;
+pub mod std_disposition;
 pub mod std_effects;
 pub mod std_emit_model;
 pub mod std_error_primitives;
+pub mod std_execution_mode;
 pub mod std_graph;
 pub mod std_http_path;
 pub mod std_induction;
 pub mod std_integer;
+pub mod std_interface_summary;
 pub mod std_iteration;
-pub mod std_lens_verdict;
-pub mod std_list;
 pub mod std_logic;
 pub mod std_machine_constraints;
 pub mod std_magnitude;
@@ -67,7 +73,12 @@ pub mod std_serialization;
 pub mod std_syntax;
 pub mod std_termination;
 pub mod std_types;
+pub mod usv_pilot_v2_std_algebra;
+pub mod usv_pilot_v2_std_collection;
+pub mod usv_pilot_v2_std_node;
 pub mod v1_compiler_artifact;
+pub mod v1_compiler_closure_stub_v2_std_integer_rust;
+pub mod v1_compiler_closure_stub_v2_std_text_rust;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
 pub mod v1_compiler_compiler_tests_rust;
@@ -109,25 +120,47 @@ pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
-pub mod wire_value_serialize;
+pub mod v2_compiler_body_producer;
+pub mod v2_compiler_discovery_enumeration;
+pub mod v2_compiler_infer;
+pub mod v2_compiler_normalize;
+pub mod v2_compiler_parse_engine_hooks;
+pub mod v2_compiler_program_partition;
+pub mod v2_compiler_resolve;
+pub mod v2_compiler_target_carriers;
+pub mod v2_compiler_tokenize;
+pub mod v2_compiler_use_site_verdict;
 pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
 
-#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
-impl<T> NonEmptyVec<T> {
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("NonEmptyVec").field(&self.0).finish()
+    }
+}
+
+impl<T: Clone> Clone for NonEmptyVec<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: Clone> NonEmptyVec<T> {
     pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyVec requires at least one element")
         } else {
             Ok(Self(items))
         }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
     }
 
     pub fn into_vec(self) -> Vec<T> {

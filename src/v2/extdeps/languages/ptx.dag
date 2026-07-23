@@ -2,7 +2,7 @@ module v2.extdeps.languages.ptx
 
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, Terminal, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -68,15 +68,15 @@ type BitsWidth
   | Bits128
 
 type IntegerWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
+  = IntBits8
+  | IntBits16
+  | IntBits32
+  | IntBits64
 
 type FloatWidth
-  = Bits16
-  | Bits32
-  | Bits64
+  = FloatBits16
+  | FloatBits32
+  | FloatBits64
 
 type RegisterScalarKind
   = Bits
@@ -139,7 +139,7 @@ fn ptx_identifier_pattern() -> LexPattern {
   }
 }
 
-fn ptx_wave1_lex() -> LexRules {
+fn ptx_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -174,7 +174,7 @@ fn ptx_entry_kernel_expr() -> GrammarExpr {
   )
 }
 
-fn ptx_wave1_grammar() -> ParseGrammar {
+fn ptx_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
@@ -205,8 +205,8 @@ fn ptx_entry_kernel_formal_production() -> FormalProduction {
 
 fn ptx_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: ptx_wave1_lex(),
-    grammar: ptx_wave1_grammar()
+    lex: ptx_lex(),
+    grammar: ptx_grammar()
   }
 }
 

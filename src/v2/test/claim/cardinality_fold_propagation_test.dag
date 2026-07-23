@@ -1,10 +1,7 @@
 module v2.test.claim.cardinality_fold_propagation
 
-import v2.std.refinement { Refined, Validation, refine }
-import v2.std.algebra { length, list_append, fold_list, FreeMonoid }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fold_locus() -> Locus { port_locus(port: ^cardinality_fold_propagation) }
 

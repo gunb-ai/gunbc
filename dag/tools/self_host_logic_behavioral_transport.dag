@@ -1,0 +1,85 @@
+module tools.self_host_logic_behavioral_transport
+
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+
+
+data slb_doc: String = "Wave 1 Gate 4 (weak self-host behavioral receipt) for dag/std/logic.dag: realize the v2 self-emit -> compile -> run -> equals-seed chain as typed host ops, mirroring run_rust_smoke's shape (shell.Mktemp/Filesystem.Write/cargo.Build.BuildManifest/gunbc.WitnessBin.Run) rather than serialized bash. The module content is read via Filesystem.Read at run time (reads-real-bytes, matching self_host_realized_comparison's provenance pattern) so the receipt cannot drift from the committed dag/std/logic.dag. The driver crate depends on the real v1-compiler crate as a path dependency and imports its std_logic module directly as the seed oracle -- no seed-runtime shim is reconstructed (single authority, DESIGN.md SS3), and the seed crate is not rebuilt in isolation since sccache keys on rustc invocation+source content, not target-dir location. The driver exercises the full Classical truth table for classical_not/classical_and/classical_or and supports --inject-fault, which deliberately calls the emitted side on a mismatched input so the receipt is proven discriminating (DESIGN.md SS5) rather than tautologically green."
+
+data slb_logic_source_rel: String = "dag/std/logic.dag"
+
+data slb_driver_main_source: String = "use v1_compiled::std_logic as emitted;\nuse v1_compiler::std_logic as seed;\n\nfn eq(e: emitted::Classical, s: seed::Classical) -> bool {\n    matches!(\n        (e, s),\n        (emitted::Classical::True, seed::Classical::True)\n            | (emitted::Classical::False, seed::Classical::False)\n    )\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let vals = [emitted::Classical::True, emitted::Classical::False];\n    let svals = [seed::Classical::True, seed::Classical::False];\n    let mut all_pass = true;\n\n    for i in 0..2 {\n        let call_on = if inject_fault && i == 0 { vals[1] } else { vals[i] };\n        let er = emitted::classical_not(call_on);\n        let sr = seed::classical_not(svals[i]);\n        let ok = eq(er, sr);\n        println!(\"not({:?}) emitted={:?} seed={:?} eq={}\", vals[i], er, sr, ok);\n        all_pass = all_pass && ok;\n    }\n\n    for i in 0..2 {\n        for j in 0..2 {\n            let er = emitted::classical_and(vals[i], vals[j]);\n            let sr = seed::classical_and(svals[i], svals[j]);\n            let ok = eq(er, sr);\n            println!(\"and({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er, sr, ok);\n            all_pass = all_pass && ok;\n\n            let er2 = emitted::classical_or(vals[i], vals[j]);\n            let sr2 = seed::classical_or(svals[i], svals[j]);\n            let ok2 = eq(er2, sr2);\n            println!(\"or({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er2, sr2, ok2);\n            all_pass = all_pass && ok2;\n        }\n    }\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
+
+data slb_scaffold_dissolution_trigger: String = "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then."
+
+data slb_receipt_pass_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS"
+
+fn slb_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+data slb_cargo_features_note: String = "The driver Cargo.toml declares [features] text_lookup_work_counter to mirror the seed crate (src/v1/stage0/Cargo.toml): the gunbc-emitted v1_rt.rs gates on #[cfg(feature = \"text_lookup_work_counter\")], and CI exports RUSTFLAGS=-D warnings, which promotes the unexpected_cfgs lint to a hard error when the consuming crate does not declare the referenced feature. Without this line the emit->compile step fails exit=101 (12 unexpected-cfg errors) under CI while passing a local build that omits -D warnings. Deeper root (separate emit lane): gunbc's own emitted Cargo.toml omits this [features] block, so any -D-warnings consumer of a gunbc-emitted crate breaks the same way."
+
+fn slb_cargo_toml(root: String) -> String {
+  concat(
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nclap = { version = \"4\", features = [\"derive\"] }\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    concat(root, "/src/v1/stage0\" }\n")
+  )
+}
+
+fn slb_behavioral_receipt_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
+
+  let scratch_src = shell.Mktemp.Dir()
+  let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
+  let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", scratch_src.path,
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: slb_cargo_toml(root: root.path))
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: slb_driver_main_source)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+
+  let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path)
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
+
+  logic_read.success
+    && scratch_src.success && scratch_src_std.success && logic_written.success
+    && out_dir.success && gunbc_built && emit.success
+    && manifest.success && main_rs.success
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: slb_receipt_pass_marker)
+    && (fault_run.success == false)
+    && cleanup_src.success && cleanup_out.success
+}

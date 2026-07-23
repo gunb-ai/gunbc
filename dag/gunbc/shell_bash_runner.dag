@@ -15,7 +15,11 @@ data shell_bash_runner_scaffold: Disposition = Scaffold {
   }
 }
 
+<<<<<<< HEAD
 data shell_bash_runner_dissolution_trigger: String = "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; heredoc delimiter GUNBC_BASH_EOF is a fixed literal — wrapped body must not contain it or the outer shell terminates the heredoc early (nonce delimiter or BashVarRef transport when bash_fold lands); shell_printf_line emits printf '%s\\n' with bash-double-quote escaping (not naive echo single-quote concat); DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing; retire medium_structure_exception_roster entry for dag/gunbc/shell_bash_runner.dag"
+=======
+data shell_bash_runner_dissolution_trigger: String = "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; heredoc delimiter GUNBC_BASH_EOF is a fixed literal — wrapped body must not contain it or the outer shell terminates the heredoc early (nonce delimiter or BashVarRef transport when bash_fold lands); shell_printf_line emits printf '%s\\n' with bash-double-quote escaping (not naive echo single-quote concat); DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing and dag/gunbc/shell_bash_runner.dag retires its concat-built transport"
+>>>>>>> origin/main
 
 fn bash_escape_for_double_quotes(s: String) -> String {
   let s1 = join(split(s: s, delimiter: "\\"), "\\\\")

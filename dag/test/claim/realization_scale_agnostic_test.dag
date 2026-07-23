@@ -1,18 +1,9 @@
 module test.claim.realization_scale_agnostic
 
-import std.types { Bool, List }
-import std.nat { Nat }
-import std.measure { Measure, Time, Milli, time_measure, measure_count }
-import std.realization_schedule { CostAccount, cost_account_time_count }
-import std.realization_measurement {
-  time_measure_seq,
-  time_measure_par,
-  schedule_critical_path_time,
-  cost_account_measured_from_schedule_critical_path,
-  witness_measured_rollup_differs_from_predicted_zero,
-}
 
-fn milli(count: Nat) -> Measure<Time, Milli, Nat> {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn milli(count: std.nat.Nat) -> Measure<Time, Milli, std.nat.Nat> {
   time_measure(count: count)
 }
 

@@ -1,0 +1,277 @@
+module v2.test.emit.rust_call_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust { rust_target_model_bundle_core }
+import v2.extdeps.languages.rust_test {
+  rust_call_binding_spellings,
+  rust_call_host_source_text,
+  rust_call_lex
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode,
+  Value,
+  node_synthetic
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_call_fold_canonical_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { acc + h }) }"
+
+data rust_call_fold_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { h + acc }) }"
+
+fn rust_call_type_atom(id: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  )
+}
+
+fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn rust_call_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn rust_call_add_domain_conj() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_call_named_edge(
+        name: ^dag_binding_param_x,
+        target: rust_call_type_atom(id: ^dag_binding_type_int)
+      ),
+      rust_call_named_edge(
+        name: ^dag_binding_param_y,
+        target: rust_call_type_atom(id: ^dag_binding_type_int)
+      )
+    ]
+  )
+}
+
+fn rust_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      rust_call_positional(
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            rust_call_named_edge(
+              name: ^rust_call_closure_acc,
+              target: rust_call_type_atom(id: ^dag_binding_type_int)
+            ),
+            rust_call_named_edge(
+              name: ^rust_call_closure_h,
+              target: rust_call_type_atom(id: ^dag_binding_type_int)
+            )
+          ]
+        )
+      ),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_named_edge(
+        name: ^arrow_body_edge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [
+            rust_call_positional(target: rust_call_type_atom(id: ^dag_token_plus)),
+            rust_call_positional(target: rust_call_type_atom(id: left_operand)),
+            rust_call_positional(target: rust_call_type_atom(id: right_operand))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn rust_call_fold_body(closure: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_fold)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_y)),
+      rust_call_positional(target: closure)
+    ]
+  )
+}
+
+fn rust_call_fold_arrow(closure: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      rust_call_positional(target: rust_call_add_domain_conj()),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_named_edge(
+        name: ^arrow_body_edge,
+        target: rust_call_fold_body(closure: closure)
+      )
+    ]
+  )
+}
+
+fn rust_call_fold_canonical_arrow() -> Node {
+  rust_call_fold_arrow(
+    closure: rust_call_closure_arrow(
+      left_operand: ^rust_call_closure_acc,
+      right_operand: ^rust_call_closure_h
+    )
+  )
+}
+
+fn rust_call_fold_swapped_arrow() -> Node {
+  rust_call_fold_arrow(
+    closure: rust_call_closure_arrow(
+      left_operand: ^rust_call_closure_h,
+      right_operand: ^rust_call_closure_acc
+    )
+  )
+}
+
+fn rust_call_helper_body() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_helper)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_y))
+    ]
+  )
+}
+
+fn rust_call_helper_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      rust_call_positional(target: rust_call_add_domain_conj()),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_named_edge(
+        name: ^arrow_body_edge,
+        target: rust_call_helper_body()
+      )
+    ]
+  )
+}
+
+data rust_call_helper_body_fixture: Node = rust_call_helper_body()
+
+data rust_call_eval_arg_literal: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data rust_call_helper_eval_subgraph: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: rust_call_eval_arg_literal },
+    Edge { label: Positional, target: rust_call_eval_arg_literal }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn rust_call_target_model(authority_source_text: String) -> TargetModel {
+  TargetModel {
+    bundle: rust_target_model_bundle_core(),
+    lex: rust_call_lex(),
+    binding_spellings: rust_call_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: authority_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn rust_call_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_call_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_call_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_call_facts_miss }
+  }
+}
+
+fn rust_call_emit_from_arrow(arrow: Node, authority: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: rust_call_inferred_tree_for(root: arrow),
+    target: rust_call_target_model(authority_source_text: authority)
+  )
+}
+
+fn rust_call_emit_matches(arrow: Node, authority: String) -> Bool {
+  match rust_call_emit_from_arrow(arrow: arrow, authority: authority) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == authority) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_call_fold_closure_emit_holds() -> Bool {
+  rust_call_emit_matches(
+    arrow: rust_call_fold_canonical_arrow(),
+    authority: rust_call_fold_canonical_source_text
+  )
+}
+
+test fn rust_call_fold_closure_swap_discriminates() -> Bool {
+  !rust_call_emit_matches(
+    arrow: rust_call_fold_swapped_arrow(),
+    authority: rust_call_fold_canonical_source_text
+  )
+  && rust_call_emit_matches(
+    arrow: rust_call_fold_swapped_arrow(),
+    authority: rust_call_fold_swapped_source_text
+  )
+}
+
+test fn rust_call_helper_emit_holds() -> Bool {
+  rust_call_emit_matches(
+    arrow: rust_call_helper_arrow(),
+    authority: rust_call_host_source_text
+  )
+}
+
+test fn rust_call_fold_closure_emit_keystone_holds() -> Bool {
+  rust_call_fold_closure_emit_holds() && rust_call_fold_closure_swap_discriminates()
+}

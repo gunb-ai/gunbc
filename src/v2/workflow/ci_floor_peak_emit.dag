@@ -1,0 +1,167 @@
+module v2.workflow.ci_floor_peak_emit
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  ExitZero,
+  FailFast,
+  If,
+  Pipeline,
+  PipelineStep,
+  Predicate,
+  Run,
+  While
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+
+data ci_floor_peak_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
+
+data ci_floor_peak_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]"
+
+data ci_floor_peak_test_f_memory_peak_command: String = "[ -f \"$d/memory.peak\" ]"
+
+data ci_floor_peak_echo_reset_redirect_command: String = "echo reset > \"$d/memory.peak\" 2>/dev/null"
+
+data ci_floor_peak_pre_reset_ok_command: String = "echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\""
+
+data ci_floor_peak_pre_reset_unsupported_command: String = "echo \"[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat \"$d/memory.peak\") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)\""
+
+data ci_floor_peak_pre_unavailable_command: String = "echo \"[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)\""
+
+data ci_floor_peak_post_ok_command: String = "echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") floor_outcome=$\{\{ steps.floor.outcome \}\} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\""
+
+data ci_floor_peak_post_unavailable_command: String = "echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\""
+
+fn ci_floor_peak_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn ci_floor_peak_do(command: String) -> PipelineStep {
+  Do { run: ci_floor_peak_run(command: command) }
+}
+
+fn ci_floor_peak_exit_zero(command: String) -> Predicate {
+  ExitZero { run: ci_floor_peak_run(command: command) }
+}
+
+fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+  }
+}
+
+data ci_floor_peak_while_body_command: String = "d=$(dirname \"$d\")"
+
+fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
+  While {
+    cond: ExitZero {
+      run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command)
+    },
+    body: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command)],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn ci_floor_peak_cgroup_locate_steps() -> List<PipelineStep> {
+  [
+    ci_floor_peak_do(command: ci_floor_peak_assign_cgroup_dir_command),
+    ci_floor_peak_cgroup_locate_while()
+  ]
+}
+
+fn ci_floor_peak_cgroup_locate_pipeline() -> Pipeline {
+  Pipeline {
+    steps: ci_floor_peak_cgroup_locate_steps(),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_peak_pre_reset_inner_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_echo_reset_redirect_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_ok_command)],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_unsupported_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_pre_peak_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_pre_reset_inner_if()],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_pre_unavailable_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_pre_pipeline() -> Pipeline {
+  Pipeline {
+    steps: concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_pre_peak_if()]),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_peak_post_peak_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_post_ok_command)],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_post_unavailable_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_post_pipeline() -> Pipeline {
+  Pipeline {
+    steps: concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_post_peak_if()]),
+    on_failure: FailFast
+  }
+}
+
+fn ci_cgroup_peak_locate_shell() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_cgroup_locate_pipeline())
+}
+
+fn ci_floor_peak_pre_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_pre_pipeline())
+}
+
+fn ci_floor_peak_post_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_post_pipeline())
+}

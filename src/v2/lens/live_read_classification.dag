@@ -1,0 +1,698 @@
+module v2.lens.live_read_classification
+
+
+data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data empty_carrier_list: List<LiveReadCarrier> = []
+data empty_decl_list: List<FnArrowDecl> = []
+data empty_string_list: List<String> = []
+data empty_symbol_list: List<Symbol> = []
+data empty_node_list: List<Node> = []
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn carrier_home_module(home: LiveReadCarrierHome) -> String {
+  home.module
+}
+
+fn carrier_homes_in_closure(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> List<LiveReadCarrierHome> {
+  filter(
+    xs: carrier_homes,
+    predicate: fn(home) {
+      contains(xs: closure_modules, item: carrier_home_module(home: home), eq: string_eq)
+    }
+  )
+}
+
+fn carrier_home_kind_to_g1_carrier(home: LiveReadCarrierHome) -> LiveReadCarrier {
+  match home.kind {
+    FilesystemReadCarrier =>
+      FilesystemReadPath { path_pattern: UnknownPath }
+    ModuleDeclarationFactsCarrier => ModuleDeclarationFactsScan
+    DeclFactsReflectionCarrier =>
+      DeclFactsReflection { home: home.module }
+  }
+}
+
+fn g1_carriers_from_homes(homes: List<LiveReadCarrierHome>) -> List<LiveReadCarrier> {
+  fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
+    list_snoc_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
+  })
+}
+
+fn live_read_classification_g1(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  let hits = carrier_homes_in_closure(
+    closure_modules: closure_modules,
+    carrier_homes: carrier_homes
+  )
+  if length(xs: hits) == 0 {
+    LocalRead
+  } else {
+    RuntimeRead { carriers: g1_carriers_from_homes(homes: hits) }
+  }
+}
+
+fn live_read_classification_from_facts(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  live_read_classification_g1(
+    closure_modules: witness_import_closure(root: entry_module, facts: facts),
+    carrier_homes: carrier_homes
+  )
+}
+
+fn live_read_classification_from_facts_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>
+) -> LiveReadClassification {
+  live_read_classification_from_facts(
+    entry_module: entry_module,
+    facts: facts,
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+fn decl_module_prefix(mod_path: String) -> String {
+  concat(mod_path, ".")
+}
+
+fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
+  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
+    || string_eq(a: decl.qualified_name, b: mod_path)
+}
+
+fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
+  filter(
+    xs: decls,
+    predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
+  )
+}
+
+fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
+  fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
+    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
+  })
+}
+
+fn is_path_like_lexeme(text: String) -> Bool {
+  string_contains(s: text, pattern: ".dag")
+    || starts_with(s: text, prefix: "src/")
+    || starts_with(s: text, prefix: "dag/")
+}
+
+fn callee_text_is_known_carrier(text: String) -> Bool {
+  contains(xs: live_read_carrier_callee_symbols_v0, item: text, eq: string_eq)
+}
+
+type AtomCollectState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn atom_collect_init(n: Node) -> AtomCollectState {
+  AtomCollectState { node: n, atoms: empty_symbol_list }
+}
+
+fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
+  let atoms = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } =>
+      if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
+        acc.atoms
+      } else {
+        list_snoc_item(xs: acc.atoms, item: sym)
+      }
+    Absent => acc.atoms
+  }
+  AtomCollectState { node: acc.node, atoms: atoms }
+}
+
+fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
+  NodeFold { init: atom_collect_init, step: atom_collect_step }
+}
+
+fn atom_identities_in_node(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      if contains(xs: from_descendants, item: sym, eq: symbol_eq) {
+        from_descendants
+      } else {
+        list_snoc_item(xs: from_descendants, item: sym)
+      }
+    Absent => from_descendants
+  }
+}
+
+fn param_names_of(decl: FnArrowDecl) -> List<String> {
+  fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
+    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  })
+}
+
+fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPattern {
+  if is_path_like_lexeme(text: text) {
+    LiteralPath { path: text }
+  } else if contains(xs: param_names, item: text, eq: string_eq) {
+    ParamRef { name: text }
+  } else {
+    UnknownPath
+  }
+}
+
+fn path_pattern_eq(a: PathPattern, b: PathPattern) -> Bool {
+  match a {
+    LiteralPath { path: pa } =>
+      match b {
+        LiteralPath { path: pb } => string_eq(a: pa, b: pb)
+        _ => false
+      }
+    ParamRef { name: na } =>
+      match b {
+        ParamRef { name: nb } => string_eq(a: na, b: nb)
+        _ => false
+      }
+    UnknownPath =>
+      match b {
+        UnknownPath => true
+        _ => false
+      }
+  }
+}
+
+fn live_read_carrier_eq(a: LiveReadCarrier, b: LiveReadCarrier) -> Bool {
+  match a {
+    FilesystemReadPath { path_pattern: pa } =>
+      match b {
+        FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
+        _ => false
+      }
+    ModuleDeclarationFactsScan =>
+      match b {
+        ModuleDeclarationFactsScan => true
+        _ => false
+      }
+    DeclFactsReflection { home: ha } =>
+      match b {
+        DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
+        _ => false
+      }
+  }
+}
+
+fn carrier_already_present(carriers: List<LiveReadCarrier>, candidate: LiveReadCarrier) -> Bool {
+  any(xs: carriers, predicate: fn(c) { live_read_carrier_eq(a: c, b: candidate) })
+}
+
+fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> List<LiveReadCarrier> {
+  fold_list(xs: right, empty: left, cons: fn(acc, c) {
+    if carrier_already_present(carriers: acc, candidate: c) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: c)
+    }
+  })
+}
+
+fn carrier_for_callee_text(
+  callee_text: String,
+  args: List<Symbol>,
+  param_names: List<String>
+) -> LiveReadCarrier {
+  if string_eq(a: callee_text, b: "filesystem_read") {
+    match list_head(xs: args) {
+      HeadFound { value: arg } =>
+        FilesystemReadPath {
+          path_pattern: path_pattern_from_lexeme(
+            text: symbol_lexeme(sym: arg),
+            param_names: param_names
+          )
+        }
+      HeadAbsent => FilesystemReadPath { path_pattern: UnknownPath }
+    }
+  } else if string_eq(a: callee_text, b: "module_declaration_facts")
+    || string_eq(a: callee_text, b: "module_declaration_facts_live") {
+    ModuleDeclarationFactsScan
+  } else if string_eq(a: callee_text, b: "decl_facts") {
+    DeclFactsReflection { home: "v2.std.decl_index" }
+  } else {
+    FilesystemReadPath { path_pattern: UnknownPath }
+  }
+}
+
+fn positional_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: empty_node_list, f: fn(acc, e) {
+    match e.label {
+      Positional => list_snoc_item(xs: acc, item: e.target)
+      Named { name: _ } => acc
+    }
+  })
+}
+
+fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
+  fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
+    match node_atom_identity_optional(node: n) {
+      Present { value: sym } => list_snoc_item(xs: acc, item: sym)
+      Absent => acc
+    }
+  })
+}
+
+fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
+  let targets = positional_child_targets(node: node)
+  match list_head(xs: targets) {
+    HeadFound { value: callee_node } =>
+      match node_atom_identity_optional(node: callee_node) {
+        Present { value: callee } =>
+          let callee_text = symbol_lexeme(sym: callee)
+          if callee_text_is_known_carrier(text: callee_text) {
+            let args = arg_symbols_from_nodes(
+              nodes: tail_nodes(xs: targets)
+            )
+            [carrier_for_callee_text(callee_text: callee_text, args: args, param_names: param_names)]
+          } else {
+            empty_carrier_list
+          }
+        Absent => empty_carrier_list
+      }
+    HeadAbsent => empty_carrier_list
+  }
+}
+
+fn tail_nodes(xs: List<Node>) -> List<Node> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => empty_node_list
+  }
+}
+
+fn literal_path_carrier(text: String) -> LiveReadCarrier {
+  FilesystemReadPath { path_pattern: LiteralPath { path: text } }
+}
+
+fn literal_path_carriers_from_atoms(
+  atoms: List<Symbol>,
+  param_names: List<String>
+) -> List<LiveReadCarrier> {
+  fold_list(xs: atoms, empty: empty_carrier_list, cons: fn(acc, sym) {
+    let text = symbol_lexeme(sym: sym)
+    if is_path_like_lexeme(text: text) {
+      let carrier = literal_path_carrier(text: text)
+      if carrier_already_present(carriers: acc, candidate: carrier) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: carrier)
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+type CarrierScanState {
+  node: Node
+  carriers: List<LiveReadCarrier>
+  param_names: List<String>
+}
+
+fn carrier_scan_init(n: Node, param_names: List<String>) -> CarrierScanState {
+  CarrierScanState { node: n, carriers: empty_carrier_list, param_names: param_names }
+}
+
+fn carrier_scan_step(
+  acc: CarrierScanState,
+  _edge: Edge,
+  child: CarrierScanState
+) -> CarrierScanState {
+  let from_call = carriers_from_call_node(node: child.node, param_names: acc.param_names)
+  let from_literals = literal_path_carriers_from_atoms(
+    atoms: atom_identities_in_node(node: child.node),
+    param_names: acc.param_names
+  )
+  CarrierScanState {
+    node: acc.node,
+    carriers: merge_carriers(
+      left: merge_carriers(left: acc.carriers, right: from_call),
+      right: from_literals
+    ),
+    param_names: acc.param_names
+  }
+}
+
+fn carrier_scan_algebra(param_names: List<String>) -> NodeFold<CarrierScanState> {
+  NodeFold {
+    init: fn(n) { carrier_scan_init(n: n, param_names: param_names) },
+    step: carrier_scan_step
+  }
+}
+
+fn carriers_in_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
+  let from_descendants = fold_node(n: node, algebra: carrier_scan_algebra(param_names: param_names)).carriers
+  merge_carriers(
+    left: from_descendants,
+    right: merge_carriers(
+      left: carriers_from_call_node(node: node, param_names: param_names),
+      right: literal_path_carriers_from_atoms(
+        atoms: atom_identities_in_node(node: node),
+        param_names: param_names
+      )
+    )
+  )
+}
+
+fn callees_from_node(node: Node) -> List<String> {
+  fold_list(
+    xs: atom_identities_in_node(node: node),
+    empty: empty_string_list,
+    cons: fn(acc, sym) {
+      let text = symbol_lexeme(sym: sym)
+      if callee_text_is_known_carrier(text: text) || is_path_like_lexeme(text: text) {
+        acc
+      } else if contains(xs: acc, item: text, eq: string_eq) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: text)
+      }
+    }
+  )
+}
+
+fn decls_matching_callee(
+  decls: List<FnArrowDecl>,
+  modules: List<String>,
+  callee: String
+) -> List<FnArrowDecl> {
+  filter(
+    xs: decls_in_modules(decls: decls, modules: modules),
+    predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
+  )
+}
+
+fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
+  string_eq(a: a.qualified_name, b: b.qualified_name)
+}
+
+fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
+  any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
+}
+
+fn call_reachable_decls_go(
+  seeds: List<FnArrowDecl>,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>,
+  reached: List<FnArrowDecl>
+) -> List<FnArrowDecl> {
+  match list_head(xs: seeds) {
+    HeadAbsent => reached
+    HeadFound { value: seed } =>
+      let rest = tail_decls(xs: seeds)
+      if decl_in_list(decl: seed, xs: reached) {
+        call_reachable_decls_go(
+          seeds: rest,
+          closure_modules: closure_modules,
+          decls: decls,
+          reached: reached
+        )
+      } else {
+        let next_reached = list_snoc_item(xs: reached, item: seed)
+        let callees = callees_from_node(node: seed.output)
+        let callee_decls = fold_list(xs: callees, empty: empty_decl_list, cons: fn(acc, callee) {
+          list_append(
+            left: acc,
+            right: decls_matching_callee(
+              decls: decls,
+              modules: closure_modules,
+              callee: callee
+            )
+          )
+        })
+        call_reachable_decls_go(
+          seeds: list_append(left: rest, right: callee_decls),
+          closure_modules: closure_modules,
+          decls: decls,
+          reached: next_reached
+        )
+      }
+  }
+}
+
+fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => empty_decl_list
+  }
+}
+
+fn call_reachable_decls(
+  entry_module: String,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> List<FnArrowDecl> {
+  call_reachable_decls_go(
+    seeds: decls_in_module(decls: decls, mod_path: entry_module),
+    closure_modules: closure_modules,
+    decls: decls,
+    reached: empty_decl_list
+  )
+}
+
+fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadCarrier> {
+  fold_list(xs: reachable, empty: empty_carrier_list, cons: fn(acc, decl) {
+    merge_carriers(
+      left: acc,
+      right: carriers_in_node(node: decl.output, param_names: param_names_of(decl: decl))
+    )
+  })
+}
+
+fn g1_carriers_from_classification(g1: LiveReadClassification) -> List<LiveReadCarrier> {
+  match g1 {
+    LocalRead => empty_carrier_list
+    RuntimeRead { carriers: cs } => cs
+  }
+}
+
+fn merge_g1_and_g2_carriers(
+  g1: LiveReadClassification,
+  g2_carriers: List<LiveReadCarrier>
+) -> List<LiveReadCarrier> {
+  merge_carriers(
+    left: g1_carriers_from_classification(g1: g1),
+    right: g2_carriers
+  )
+}
+
+fn live_read_classification_g2_from_facts(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  decls: List<FnArrowDecl>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
+  let g1 = live_read_classification_g1(
+    closure_modules: closure_modules,
+    carrier_homes: carrier_homes
+  )
+  let reachable = call_reachable_decls(
+    entry_module: entry_module,
+    closure_modules: closure_modules,
+    decls: decls
+  )
+  let g2_carriers = carriers_from_reachable_decls(reachable: reachable)
+  let carriers = merge_g1_and_g2_carriers(g1: g1, g2_carriers: g2_carriers)
+  if length(xs: carriers) == 0 {
+    LocalRead
+  } else {
+    RuntimeRead { carriers: carriers }
+  }
+}
+
+fn live_read_classification_g2_from_facts_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>
+) -> LiveReadClassification {
+  live_read_classification_g2_from_facts(
+    entry_module: entry_module,
+    facts: facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+fn live_read_classification(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  live_read_classification_g1(closure_modules: closure_modules, carrier_homes: carrier_homes)
+}
+
+fn classification_is_local(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => true
+    RuntimeRead { carriers: _ } => false
+  }
+}
+
+fn classification_has_runtime_read(classification: LiveReadClassification) -> Bool {
+  !classification_is_local(classification: classification)
+}
+
+fn classification_has_corpus_scan_carrier(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
+      any(
+        xs: carriers,
+        predicate: fn(carrier) {
+          match carrier {
+            ModuleDeclarationFactsScan => true
+            DeclFactsReflection { home: _ } => true
+            FilesystemReadPath { path_pattern: _ } => false
+          }
+        }
+      )
+  }
+}
+
+fn classification_has_filesystem_read_carrier(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
+      any(
+        xs: carriers,
+        predicate: fn(carrier) {
+          match carrier {
+            FilesystemReadPath { path_pattern: _ } => true
+            ModuleDeclarationFactsScan => false
+            DeclFactsReflection { home: _ } => false
+          }
+        }
+      )
+  }
+}
+
+fn classification_has_literal_path(
+  classification: LiveReadClassification,
+  path: String
+) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
+      any(xs: carriers, predicate: fn(carrier) {
+        match carrier {
+          FilesystemReadPath { path_pattern: LiteralPath { path: p } } => string_eq(a: p, b: path)
+          FilesystemReadPath { path_pattern: _ } => false
+          ModuleDeclarationFactsScan => false
+          DeclFactsReflection { home: _ } => false
+        }
+      })
+  }
+}
+
+fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> List<String> {
+  match classification {
+    LocalRead => empty_string_list
+    RuntimeRead { carriers: carriers } =>
+      fold_list(xs: carriers, empty: empty_string_list, cons: fn(acc, carrier) {
+        match carrier {
+          FilesystemReadPath { path_pattern: _ } => acc
+          ModuleDeclarationFactsScan => acc
+          DeclFactsReflection { home: home } =>
+            if contains(xs: acc, item: home, eq: string_eq) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: home)
+            }
+        }
+      })
+  }
+}
+
+fn string_is_empty(s: String) -> Bool {
+  s == ""
+}
+
+fn runtime_read_touched_by_path_g1(
+  classification: LiveReadClassification,
+  touched_path: String
+) -> Bool {
+  if string_is_empty(s: touched_path) {
+    false
+  } else {
+    match classification {
+      LocalRead => false
+      RuntimeRead { carriers: _ } => true
+    }
+  }
+}
+
+fn filesystem_path_carrier_touched(
+  path_pattern: PathPattern,
+  touched_path: String
+) -> Bool {
+  match path_pattern {
+    LiteralPath { path: p } => path_matches_touched(closure_path: p, touched_path: touched_path)
+    UnknownPath => true
+    ParamRef { name: _ } => true
+  }
+}
+
+fn live_read_carrier_touched_by_path(
+  carrier: LiveReadCarrier,
+  touched_path: String
+) -> Bool {
+  match carrier {
+    FilesystemReadPath { path_pattern: pa } =>
+      filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
+    ModuleDeclarationFactsScan => true
+    DeclFactsReflection { home: _ } => true
+  }
+}
+
+fn runtime_read_touched_by_path_g2(
+  classification: LiveReadClassification,
+  touched_path: String
+) -> Bool {
+  if string_is_empty(s: touched_path) {
+    false
+  } else {
+    match classification {
+      LocalRead => false
+      RuntimeRead { carriers: carriers } =>
+        any(xs: carriers, predicate: fn(carrier) {
+          live_read_carrier_touched_by_path(carrier: carrier, touched_path: touched_path)
+        })
+    }
+  }
+}
+
+fn runtime_read_touched_by_paths_g1(
+  classification: LiveReadClassification,
+  touched_paths: List<String>
+) -> Bool {
+  any(
+    xs: touched_paths,
+    predicate: fn(p) { runtime_read_touched_by_path_g1(classification: classification, touched_path: p) }
+  )
+}
+
+fn g2_implies_reads_live_tree(classification: LiveReadClassification) -> Bool {
+  classification_has_runtime_read(classification: classification)
+}

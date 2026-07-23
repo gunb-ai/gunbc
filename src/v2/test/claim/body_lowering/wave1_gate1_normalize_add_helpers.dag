@@ -1,0 +1,111 @@
+module v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  ComputationNode,
+  Node,
+  Transform,
+  TypeNode,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
+
+data wave1_gate1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn wave1_gate1_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn wave1_gate1_normalized_module_from_source(source: String, file: Symbol) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn wave1_gate1_normalized_add_module() -> Optional<Node> {
+  wave1_gate1_normalized_module_from_source(
+    source: wave1_gate1_add_module_source,
+    file: ^wave1_gate1_add_probe_file
+  )
+}
+
+fn wave1_gate1_normalized_add_resolves_holds() -> Bool {
+  match wave1_gate1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn wave1_gate1_normalized_add_yields_arrow_transform_holds() -> Bool {
+  match wave1_gate1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          well_formed(n: arrow)
+            && match find_arrow_body_child(root: arrow) {
+              Accepted { value: body, diagnostics: _ } =>
+                match body.kind {
+                  ComputationNode { behavior: Transform } => true
+                  _ => false
+                }
+              Rejected { diagnostics: _ } => false
+            }
+      }
+  }
+}
+
+fn wave1_gate1_resolved_add_arrow_transform_holds() -> Bool {
+  match wave1_gate1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: resolved, diagnostics: _ } =>
+          match wave1_gate1_find_arrow_in_module(root: resolved) {
+            Present { value: arrow } =>
+              match find_arrow_body_child(root: arrow) {
+                Accepted { value: body, diagnostics: _ } =>
+                  match body.kind {
+                    ComputationNode { behavior: Transform } => true
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}

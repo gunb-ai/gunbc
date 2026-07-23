@@ -1,0 +1,30 @@
+module v2.std.emit_on_demand
+
+import std.realize_pack {
+  HostBudget,
+  RealizeVerdict, realize_pack_width, BoundDerived,
+}
+import std.measure { ByteSize }
+import v2.std.spine { spine_receipt }
+import v2.std.node { Node }
+import v2.std.integer { Int }
+
+data emit_on_demand_scheduling_note: String = "Compiler-layer scheduling over the dag/std emit-on-demand artifact-store surface. witness_family_realize_width reads spine independence from a witness root and qualifies realize_pack width — lives here (not dag/std) so dag/std stays agnostic of v2.std.*."
+
+fn witness_family_realize_width(
+  bound_bytes: ByteSize,
+  budget: HostBudget,
+  witness_root: Node,
+  independence_override: Int
+) -> RealizeVerdict {
+  let independence = if independence_override > 0 {
+    independence_override
+  } else {
+    spine_receipt(root: witness_root).independence_width
+  }
+  realize_pack_width(
+    bound: BoundDerived { bytes: bound_bytes },
+    budget: budget,
+    independence_width: independence
+  )
+}

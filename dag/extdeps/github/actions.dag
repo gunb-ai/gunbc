@@ -59,6 +59,7 @@ type WorkflowTrigger
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
+  | MergeGroup
 
 type PullRequestActivity
   = Opened
@@ -66,6 +67,8 @@ type PullRequestActivity
   | Reopened
   | ReadyForReview
   | Closed
+
+data merge_group_event_citation_note: String = "merge_group is the event GitHub delivers when a merge queue needs checks on a queue-constructed tree (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#merge_group, read 2026-07-16). The variant is nullary because checks_requested is the ONLY documented activity type and GitHub's default when the types filter is omitted — a types parameter with exactly one inhabitant carries no information (the phantom-parameter collapse ruling); the day upstream documents a second activity, the field returns as a closed modeled enum and every serializer match must answer it, fail-closed."
 
 type DispatchInput {
   name: String
@@ -133,7 +136,9 @@ type RunnerSpec
 type RunnerLabel
   = UbuntuLatest
   | Ubuntu2404
+  | Ubuntu2404Arm
   | Ubuntu2204
+  | UbuntuSlim
   | MacosLatest
   | Macos14
   | WindowsLatest
@@ -192,14 +197,6 @@ type MatrixStrategy {
   max_parallel: Int?
 }
 
-type CheckConclusion
-  = Success
-  | Failure
-  | Cancelled
-  | Skipped
-  | TimedOut
-  | ActionRequired
-
 data checkout_action: ActionRef = ActionRef {
   owner: "actions", repo: "checkout", ref: "v5"
 }
@@ -214,6 +211,14 @@ data cache_action: ActionRef = ActionRef {
 
 data google_auth_action: ActionRef = ActionRef {
   owner: "google-github-actions", repo: "auth", ref: "v2"
+}
+
+data upload_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "upload-artifact", ref: "v4"
+}
+
+data download_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "download-artifact", ref: "v4"
 }
 
 data max_job_timeout_minutes: Int = 360

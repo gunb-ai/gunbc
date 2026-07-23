@@ -14,6 +14,9 @@ import v2.workflow.probe_selector_host_health {
   wf_host_health_enumerate_available,
   wf_host_health_select_probes
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe_selector_availability_conditioning_holds() -> Bool {
   probe_availability_conditioning_keystone_holds()

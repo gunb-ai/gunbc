@@ -1,0 +1,41 @@
+module v2.test.parse.lean
+
+fn lean_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^lean_parse_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^lean_parse_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn lean_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lean_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: lean_source_text,
+    file: ^lean_parse_fixture_file,
+    rules: lean_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: lean_grammar())
+  }
+}
+
+data claim_lean_source_parses: TestClaim = EqualsClaim {
+  label: "Lean lex/grammar accepts the PROOF-1 def+termination_by fixture via tokenize+parse",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean_parse_bool_atom(
+    b: lean_parse_accepted(out: lean_tokenize_and_parse())
+  ),
+  rhs: lean_parse_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

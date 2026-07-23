@@ -1,0 +1,85 @@
+module test.claim.long.reference_closure_equivalence
+
+
+data expected_conformance_closure: FreeMonoid<String> = [
+  "dag/test/claim/module_graph/conformance_imports_only.dag",
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/primitives.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/witness.dag"
+]
+
+data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
+
+data conformance_import_envelope_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.test.manual.coproduct_reflection_conformance",
+    decl_name: "reflect_connective_type",
+    field: WholeDeclaration
+  }
+}
+
+data conformance_import_envelope_dissolution_note: String = "conformance_imports_only.dag mirrors coproduct_reflection_conformance_test.dag import envelope only (no extra imports — closure goldens stay byte-identical). v2 parse_module rejects test fn bodies today, so equivalence gates use this pipeline-parseable stub. Dissolves when parse_module accepts fn bodies (repoint conformance_entry to src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag) or when a shared import-envelope fixture subsumes both."
+
+data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
+
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). reference_parsed_tree_facts_match_import_facts_at_path on the conformance entry exercises the parsed census path; reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live remain scaffold-only until interpreter parse-per-member cost is bounded (CI witness avoids them). Drift control and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds."
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+}
+
+fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
+}
+
+fn import_conformance_closure() -> FreeMonoid<String> {
+  import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
+fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
+  v2.lens.reference_deps.reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
+test fn reference_closure_b2_safety_wall_holds() -> Bool {
+  let parsed_entry_census_ok = v2.lens.reference_deps.reference_parsed_tree_facts_match_import_facts_at_path(
+    rel_path: conformance_entry,
+    pool_roots: witness_layer_roots,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+  match v2.lens.reference_deps.reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
+    Rejected { diagnostics: _ } =>
+      match reference_conformance_closure_outcome() {
+        Accepted { value: reference_closure, diagnostics: _ } =>
+          let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
+          let declared_without_entry = fold_list(
+            xs: expected_conformance_closure,
+            empty: no_paths,
+            cons: fn(acc, p) {
+              if string_eq(a: p, b: conformance_entry) {
+                acc
+              } else {
+                list_snoc_item(xs: acc, item: p)
+              }
+            }
+          )
+          parsed_entry_census_ok
+            && set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
+            && set_equal(xs: reference_closure, ys: expected_conformance_closure)
+            && set_equal(xs: reference_closure, ys: with_bogus) == false
+        Rejected { diagnostics: _ } => false
+      }
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

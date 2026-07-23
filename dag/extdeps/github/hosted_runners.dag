@@ -1,0 +1,98 @@
+module extdeps.github.hosted_runners
+
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import std.measure {
+  ByteSize,
+  byte_size,
+  HardwareThreadCount,
+  hardware_thread_count,
+}
+import extdeps.github.actions { RunnerLabel, Ubuntu2404, Ubuntu2404Arm, UbuntuSlim }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/reference/runners/github-hosted-runners"
+  }
+}
+
+data github_hosted_runner_catalog_citation_note: String = "Cited 2026-07-11 from the hosted-runner hardware tables (the anchor above). GitHub publishes DIFFERENT specs for the same label by repository visibility - standard Linux/Windows runners get 4 vCPU / 16GB on public repos and 2 vCPU / 8GB on private repos - so visibility is a first-class axis of the row, never folded into the label (a row without it would be a state-space conflation). Only the Ubuntu (Linux) family is modeled: it is the family this repo can select; Windows/macOS shapes extend on demand from the same tables. memory_bytes records the vendor's decimal-GB figure. The runs_on_label is a RunnerLabel row from the actions grammar (extdeps.github.actions) - the single hosted-label vocabulary, spelled once by runner_label_string - never a free string beside it (a string here would be a second representation of the same label, and hosted labels serialize as the SCALAR runs-on form, which only the HostedRunner variant carries). Version-pinned variants only (Ubuntu2404, Ubuntu2404Arm); ubuntu-latest is a vendor-floating alias of the current x64 row and is deliberately not a row here - pinning by alias would let the vendor move the fact."
+
+type RepoVisibility = PublicRepo | PrivateRepo
+
+type GithubHostedRunnerCatalogRow {
+  runs_on_label: RunnerLabel
+  visibility: RepoVisibility
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  storage_bytes: ByteSize
+  cpu_architecture: Architecture
+}
+
+data github_hosted_ubuntu_slim_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: UbuntuSlim,
+  visibility: PublicRepo,
+  vcpus: hardware_thread_count(1),
+  memory_bytes: byte_size(5000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: X86_64
+}
+
+data github_hosted_ubuntu_slim_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: UbuntuSlim,
+  visibility: PrivateRepo,
+  vcpus: hardware_thread_count(1),
+  memory_bytes: byte_size(5000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: X86_64
+}
+
+data github_hosted_ubuntu_2404_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: Ubuntu2404,
+  visibility: PublicRepo,
+  vcpus: hardware_thread_count(4),
+  memory_bytes: byte_size(16000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: X86_64
+}
+
+data github_hosted_ubuntu_2404_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: Ubuntu2404,
+  visibility: PrivateRepo,
+  vcpus: hardware_thread_count(2),
+  memory_bytes: byte_size(8000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: X86_64
+}
+
+data github_hosted_ubuntu_2404_arm_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: Ubuntu2404Arm,
+  visibility: PublicRepo,
+  vcpus: hardware_thread_count(4),
+  memory_bytes: byte_size(16000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: Aarch64
+}
+
+data github_hosted_ubuntu_2404_arm_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
+  runs_on_label: Ubuntu2404Arm,
+  visibility: PrivateRepo,
+  vcpus: hardware_thread_count(2),
+  memory_bytes: byte_size(8000000000),
+  storage_bytes: byte_size(14000000000),
+  cpu_architecture: Aarch64
+}
+
+fn github_hosted_ubuntu_catalog() -> List<GithubHostedRunnerCatalogRow> {
+  [
+    github_hosted_ubuntu_slim_public_catalog,
+    github_hosted_ubuntu_slim_private_catalog,
+    github_hosted_ubuntu_2404_public_catalog,
+    github_hosted_ubuntu_2404_private_catalog,
+    github_hosted_ubuntu_2404_arm_public_catalog,
+    github_hosted_ubuntu_2404_arm_private_catalog
+  ]
+}

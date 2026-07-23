@@ -1,6 +1,6 @@
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath, String, Bool }
+import std.types { NonEmptyStr, FilePath, String, Bool, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -24,17 +24,27 @@ data package_rustc: NonEmptyStr = "rustc"
 data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
 data package_tailscale: NonEmptyStr = "tailscale"
 data package_nodejs: NonEmptyStr = "nodejs"
+data package_tmux: NonEmptyStr = "tmux"
 data package_curl: NonEmptyStr = "curl"
 data package_nbdkit: NonEmptyStr = "nbdkit"
 data package_socat: NonEmptyStr = "socat"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"
+<<<<<<< HEAD
 data package_google_cloud_cli: NonEmptyStr = "google-cloud-cli"
 data package_busybox: NonEmptyStr = "busybox-static"
 data package_gcc_arm_linux_gnueabi: NonEmptyStr = "gcc-arm-linux-gnueabi"
+=======
+data package_jq: NonEmptyStr = "jq"
+
+data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+>>>>>>> origin/main
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
+fn apt_install_argv(package: NonEmptyStr) -> List<String> {
+  ["apt-get", "install", "--yes", package as String]
+}
 
 service apt.PackageManager {
   operation Install {

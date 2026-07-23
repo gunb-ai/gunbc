@@ -1,27 +1,12 @@
 module gunbc.roadmap_site_healthz_validate
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.roadmap_static_site { roadmap_site_healthz_body, sh_single_quote }
+import extdeps.languages.json.grammar { json_text_parseable, json_text_trim_trailing_lf }
+import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 
-data roadmap_site_healthz_parse_scratch: String = "/tmp/gunbc_roadmap_site_healthz.json"
-
-fn roadmap_site_healthz_json_parse_script(path: String) -> String {
-  concat(
-    concat("node -e ", sh_single_quote(s: "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))")),
-    concat(" ", sh_single_quote(s: path))
-  )
+fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
+  json_text_parseable(s: json_text_trim_trailing_lf(body: body))
 }
 
 fn roadmap_site_healthz_body_parses() -> Bool {
-  let body = roadmap_site_healthz_body()
-  let w = Filesystem.Write(path: roadmap_site_healthz_parse_scratch, content: body)
-  let result = shell.Exec.Run(script: roadmap_site_healthz_json_parse_script(path: roadmap_site_healthz_parse_scratch))
-  w.success && result.success
-}
-
-fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
-  let w = Filesystem.Write(path: roadmap_site_healthz_parse_scratch, content: body)
-  let result = shell.Exec.Run(script: roadmap_site_healthz_json_parse_script(path: roadmap_site_healthz_parse_scratch))
-  w.success && result.success
+  roadmap_site_healthz_json_string_parses(body: roadmap_site_healthz_body())
 }

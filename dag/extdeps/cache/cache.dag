@@ -20,23 +20,30 @@ import extdeps.cache.types {
   CargoFingerprint,
   SccacheInternalEncoding,
   CargoFingerprintEncoding,
+  CatalogOpaqueStringEncoding,
+  CatalogCasContentEncoding,
+  CatalogOpaqueStringKey,
+  CatalogCasContentDigest,
 }
 import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
+import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
+import extdeps.realization.reconcile_in_process {
+  parse_cache_facts,
+  typed_module_cache_facts,
+  parse_cache_id,
+  typed_module_cache_id,
+}
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
-import std.cache_identity { CacheInterfaceProduct }
+import std.cache_identity { CacheInterfaceId, CacheInterfaceProduct }
 import std.cache_interface {
   ArtifactIdentity,
   ProducerReceipt,
   CacheInterfaceFacts,
-  CacheInterfaceId,
   OpaqueStringEncoding,
   CasContentEncoding,
   NativeInternalEncoding,
-  OpaqueStringKey,
-  CasContentDigest,
 }
-import std.types { ContentHash }
-import std.list { List }
+import std.types { ContentHash, List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -62,8 +69,8 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
     identity: row.identity
     backing_surface: row.backing_surface
     transport_encoding: match row.transport_encoding {
-      OpaqueStringEncoding => OpaqueStringEncoding
-      CasContentEncoding => CasContentEncoding
+      CatalogOpaqueStringEncoding => OpaqueStringEncoding
+      CatalogCasContentEncoding => CasContentEncoding
       SccacheInternalEncoding => NativeInternalEncoding
       CargoFingerprintEncoding => CasContentEncoding
     }
@@ -96,9 +103,9 @@ fn cache_key_projection_provider_key<T>(
   backend: CacheInterfaceCatalogFacts,
 ) -> CatalogProviderKey {
   match backend.transport_encoding {
-    OpaqueStringEncoding => OpaqueStringKey { key: artifact.subject_digest }
+    CatalogOpaqueStringEncoding => CatalogOpaqueStringKey { key: artifact.subject_digest }
     SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
-    CasContentEncoding => CasContentDigest { digest: artifact.subject_digest }
+    CatalogCasContentEncoding => CatalogCasContentDigest { digest: artifact.subject_digest }
     CargoFingerprintEncoding => CargoFingerprint { digest: artifact.subject_digest }
   }
 }
@@ -134,6 +141,7 @@ data cargo_target_dir: CacheInterfaceCatalogFacts = cited_cache_interface_facts(
 data rustup_toolchain_store: CacheInterfaceCatalogFacts = cited_cache_interface_facts(RustupToolchainStore)
 data resolved_graph_cache: CacheInterfaceCatalogFacts = cited_cache_interface_facts(ResolvedGraphCache)
 data parse_table_memo: CacheInterfaceCatalogFacts = cited_cache_interface_facts(ParseTableMemo)
+data compile_stage_memo: CacheInterfaceCatalogFacts = compile_stage_memo_facts
 
 data cache_catalog: List<CacheInterfaceCatalogFacts> = [
   gha_actions_cache,
@@ -141,8 +149,11 @@ data cache_catalog: List<CacheInterfaceCatalogFacts> = [
   buildbuddy_cas,
   cargo_target_dir,
   rustup_toolchain_store,
+  parse_cache_facts,
+  typed_module_cache_facts,
   resolved_graph_cache,
   parse_table_memo,
+  compile_stage_memo_facts,
 ]
 
 data cache_catalog_rows: List<CacheInterfaceFacts> = cache_catalog
@@ -154,10 +165,13 @@ data cargo_target_dir_projected: CacheInterfaceFacts = cache_interface_facts_fro
 
 data cache_layer_default_order: List<CacheInterfaceId> = [
   parse_table_memo_id,
+  parse_cache_id,
+  typed_module_cache_id,
   cargo_target_dir_id,
   sccache_local_id,
   resolved_graph_cache_id,
   rustup_toolchain_store_id,
   buildbuddy_cas_id,
   gha_actions_cache_id,
+  compile_stage_memo_id,
 ]

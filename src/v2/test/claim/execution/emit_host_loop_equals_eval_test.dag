@@ -1,0 +1,297 @@
+module v2.test.execution.emit_host_loop_equals_eval
+
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body,
+  table_fixture_loop_wrong_value_arrow_with_body
+}
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_test_claim_subject
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_loop_body_fixture,
+  dag_node_is_int_literal_atom
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test { rust_loop_target_model_staging }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { List, Map, list_at_optional }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, Symbol }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
+}
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emit_loop_eval_subgraph_node: Node = dag_loop_body_fixture
+
+fn emit_loop_eval_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^emit_loop_eval_generic_descent }
+      }
+    }
+  )
+}
+
+fn emit_loop_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds { value: emit_loop_eval_generic_facts(node: key) }
+}
+
+fn emit_loop_eval_producer_tree() -> Outcome<InferredTree> {
+  match table_fixture_loop_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: emit_loop_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_loop_eval_wrong_value_producer_tree() -> Outcome<InferredTree> {
+  match table_fixture_loop_wrong_value_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: emit_loop_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_loop_eval_octet_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn emit_loop_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        outcome_accepted(value: emit_loop_eval_octet_value(n: mag))
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else {
+    outcome_rejected(
+      d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_literal_miss, node: node)
+    )
+  }
+}
+
+fn emit_loop_eval_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(
+    d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_call_primitive_miss, node: node)
+  )
+}
+
+fn emit_loop_eval_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_branch_miss, node: node)
+  )
+}
+
+fn emit_loop_eval_step_loop(
+  node: Node,
+  env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: body } =>
+      bind_outcome(
+        o: emit_loop_eval_allocate_literal(node: body, _env: env),
+        f: fn(value) {
+          outcome_accepted(value: Continue { value: value })
+        }
+      )
+    Absent =>
+      outcome_rejected(
+        d: emit_loop_eval_diagnostic(reason: ^emit_loop_eval_step_miss, node: node)
+      )
+  }
+}
+
+fn emit_loop_eval_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+fn emit_loop_eval_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: emit_loop_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: emit_loop_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: emit_loop_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: emit_loop_eval_step_loop },
+    bind: BindInterpreter { bind_value: emit_loop_eval_bind_value },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
+  }
+}
+
+fn emit_loop_eval_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^emit_loop_eval_allocate_literal_sym,
+    call_primitive: ^emit_loop_eval_call_primitive_sym,
+    choose_branch: ^emit_loop_eval_choose_branch_sym,
+    step_loop: ^emit_loop_eval_step_loop_sym,
+    bind_value: ^emit_loop_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn emit_loop_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^emit_loop_eval_interpretation_pin,
+    interpretation: emit_loop_eval_interpretation(),
+    structure_witness: emit_loop_eval_structure_witness()
+  )
+}
+
+fn emit_loop_eval_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "S2 B8: rust emit(loop-fn) host-run == eval(loop-body) via shared octet codec",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn emit_loop_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: emit_loop_eval_claim(rhs_result_node: emit_loop_eval_subgraph_node),
+    context: emit_loop_eval_context(),
+    tree: tree,
+    evaluator_pin: ^emit_loop_eval_evaluator_pin
+  )
+}
+
+fn emit_loop_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: emit_loop_eval_subject(tree: tree),
+    target: rust_loop_target_model_staging()
+  )
+}
+
+fn emit_loop_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn emit_loop_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn emit_host_loop_equals_eval_holds() -> Bool {
+  match emit_loop_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_loop_eval_verdict_is_pass(run: emit_loop_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool {
+  match emit_loop_eval_wrong_value_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_loop_eval_verdict_is_fail(run: emit_loop_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_loop_equals_eval_all_holds() -> Bool {
+  emit_host_loop_equals_eval_holds() && emit_host_loop_wrong_fixture_refuses_holds()
+}

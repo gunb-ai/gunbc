@@ -76,8 +76,6 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 | `src/v2/lens/parallelism.dag::parallelism_relation_eq` | 198 | `ParallelismRelation` | `_ => false` | Parallelism relation equality is diagonal. | Roster + `_relation_eq`. |
 | `src/v2/lens/registry.dag::lens_id_v0_eq` | 89 | `LensIdV0` | `_ => false` | Lens id v0 equal only on matching ids. | Roster + `_eq`. |
 | `src/v2/lens/unused_parameters.dag::use_relation_eq` | 138 | `UseRelation` | `_ => false` | Use-relation equality is diagonal on identical use shapes. | Roster + `_relation_eq`. |
-| `src/v2/std/determinism.dag::determinism_class_eq` | 47 | `DeterminismClass` | `_ => false` | Determinism class equality is diagonal. | Roster + `_eq`. |
-| `src/v2/std/determinism.dag::non_det_source_eq` | 26 | `NonDetSource` | `_ => false` | Non-det source tags equal only on same constructor. | Roster + `_eq`. |
 | `src/v2/std/node_minimal.dag::node_superset_field_eq` | 254 | `NodeSupersetField` | `_ => false` | Superset field tags equal only on same field. | Roster + `_eq`. |
 | `src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq` | 100 | `DiagnosticInterfaceKind` | `_ => false` (nested per left arm) | Per-kind nested equality: right must match left kind; off-diagonal false. | Roster + `_eq`; nested `match right` wildcards. |
 

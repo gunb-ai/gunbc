@@ -11,10 +11,10 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_mvp1_arrow_domain_conj_node,
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_target_model
+  dag_arrow_domain_conj_node,
+  dag_fixture_emitted_add_fn,
+  dag_fixture_int_inhabitant,
+  dag_target_model
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
@@ -44,9 +44,12 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-data dag_add_emitted_root: Node = dag_mvp1_fixture_emitted_add_fn
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data dag_add_target_model: TargetModel = dag_mvp1_target_model()
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data dag_add_emitted_root: Node = dag_fixture_emitted_add_fn
+
+data dag_add_target_model: TargetModel = dag_target_model()
 
 fn dag_add_canonical_grounding(
   node: Node,
@@ -68,14 +71,14 @@ fn dag_add_canonical_grounding(
 }
 
 fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_fixture_emitted_add_fn {
+  if node == dag_fixture_emitted_add_fn {
     Holds {
       value: dag_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == dag_mvp1_fixture_int_inhabitant {
+  } else if node == dag_fixture_int_inhabitant {
     Holds {
       value: dag_add_canonical_grounding(
         node: node,
@@ -86,14 +89,14 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds {
       value: dag_add_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
     Holds {
       value: dag_add_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else {
@@ -181,7 +184,7 @@ fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
     target: dag_add_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_add_fn)
+      (result.target == dag_fixture_emitted_add_fn)
         && dag_add_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false
@@ -190,7 +193,7 @@ fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
 
 fn dag_add_domain_coerce_accepts_holds() -> Bool {
   match coerce_grounded_node(
-    source: dag_mvp1_arrow_domain_conj_node(),
+    source: dag_arrow_domain_conj_node(),
     tree: dag_add_inferred_tree,
     target: dag_add_target_model
   ) {
@@ -202,7 +205,7 @@ fn dag_add_domain_coerce_accepts_holds() -> Bool {
 fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
     tree: InferredTree {
-      root: dag_mvp1_arrow_domain_conj_node(),
+      root: dag_arrow_domain_conj_node(),
       facts: Map { lookup: dag_add_facts_lookup }
     },
     target: dag_add_target_model

@@ -1,47 +1,502 @@
 module v2.test.claim.bash_program_fold
 
-import extdeps.languages.bash.program {
-  ShellProgram,
-  assign,
-  command,
-  lit,
-  serialize_bash
+import tools.build_step { BuildArtifact, emit_verifications }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_command_from_lits,
+  bash_build_command_from_word_nodes,
+  bash_build_command_words_pair,
+  bash_build_command_words_single,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_or_else,
+  bash_build_subshell_from_stmts,
+  bash_build_with_redir,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
 }
-import v2.workflow.bash_program_emit { bash_program_serialize }
+import v2.workflow.bash_emit {
+  BashEmitSpecial,
+  BashEmitStmt,
+  BashEmitTagged,
+  bash_emit_matches_golden,
+  bash_emit_program,
+  bash_emit_program_matches_golden
+}
+import v2.std.algebra { list_append, list_map }
+import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
 
-fn bash_program_fold_sample() -> ShellProgram {
-  ShellProgram {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_emit_program (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+
+data bash_program_fold_sample_set_e_golden: String = "set -e\n'echo' 'hi'\nX='1'\n"
+data bash_program_fold_sample_no_set_e_golden: String = "'echo' 'hi'\nX='1'\n"
+data bash_program_depth2_cmdsubst_golden: String = "ROOT=$('pwd')\n"
+data bash_program_depth2_redir_golden: String = "'git' 'rev-parse' 2>/dev/null\n"
+data bash_program_depth2_concat_golden: String = "BIN=\"$ROOT\"'/target/release/gunbc'\n"
+data bash_program_assign_root_golden: String = "ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\n"
+data bash_program_exit_subshell_golden: String = "('echo' 'hi'; exit 1)\n"
+data bash_program_exit_if_golden: String = "if 'true'; then 'echo' 'hi'; exit 1; fi\n"
+data bash_program_andor_exit_golden: String = "'true' || exit 1\n"
+
+data bash_program_mktemp_rm_golden: String = "set -e\nOUT=$('mktemp' '-d')\n'rm' '-rf' \"$OUT\"\n"
+data bash_program_metachars_quoted_golden: String = "'echo' '$(rm -rf /)'\n"
+data bash_program_varref_vs_lit_golden: String = "\"$ROOT\" 'ROOT'\n"
+
+data bash_program_real_witness_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nV1_DAG_PARSE=\"$ROOT\"'/target/release/v1srcdag_parse'\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'v1srcdag_parse') || exit 1; fi\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\nif '[' '!' '-s' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\n'cd' \"$ROOT\"\n\"$V1_DAG_PARSE\" '--entry' 'dag/std/algebra.dag'\n"
+
+data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nGUNBC=\"$ROOT\"'/target/release/gunbc'\nif '[' '!' '-x' \"$GUNBC\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'gunbc') || exit 1; fi\nif '[' '!' '-x' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\nif '[' '!' '-s' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\n\"$GUNBC\" 'run' '--source-root' 'src/v2' '--source-root' 'dag' '--entry' 'src/v2/test/claim/bash_program_fold_test.dag' '--function' 'bash_program_serialize_matches_golden_holds' '--claim-run'\n"
+
+data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
+
+fn bash_program_fold_tagged(
+  node: Node,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> BashEmitSpecial {
+  BashEmitTagged {
+    stmt: BashEmitStmt {
+      node: node,
+      production_binding: production_binding,
+      rule_name: rule_name
+    }
+  }
+}
+
+fn bash_program_fold_tag_command(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  )
+}
+
+fn bash_program_fold_tag_assign(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_assign,
+    rule_name: ^bash_relation_rule_fold_assign
+  )
+}
+
+fn bash_program_fold_tag_if(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_if,
+    rule_name: ^bash_relation_rule_fold_if
+  )
+}
+
+fn bash_program_fold_tag_exit(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_exit,
+    rule_name: ^bash_relation_rule_fold_exit
+  )
+}
+
+fn bash_program_fold_tag_subshell(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_subshell,
+    rule_name: ^bash_relation_rule_fold_subshell
+  )
+}
+
+fn bash_program_fold_tag_or_else(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_or_else,
+    rule_name: ^bash_relation_rule_fold_or_else
+  )
+}
+
+fn bash_program_fold_tag_with_redir(node: Node) -> BashEmitSpecial {
+  bash_program_fold_tagged(
+    node: node,
+    production_binding: ^bash_production_fold_with_redir,
+    rule_name: ^bash_relation_rule_fold_with_redir
+  )
+}
+
+fn bash_program_fold_tag_if_nodes(nodes: List<Node>) -> List<BashEmitSpecial> {
+  list_map(xs: nodes, f: fn(n) { bash_program_fold_tag_if(node: n) })
+}
+
+fn bash_program_fold_test_not_executable_node(path: Node) -> Node {
+  bash_build_command_from_word_nodes(words: [
+    bash_build_word_lit(text: "["),
+    bash_build_word_lit(text: "!"),
+    bash_build_word_lit(text: "-x"),
+    path,
+    bash_build_word_lit(text: "]")
+  ])
+}
+
+fn bash_program_fixture_assign_root_node() -> Node {
+  bash_build_assign(
+    name: "ROOT",
+    value: bash_build_word_cmdsubst(
+      body: bash_build_or_else(
+        left: bash_build_with_redir(
+          inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]),
+          redir: ^bash_production_fold_redir_stderr_null
+        ),
+        right: bash_build_command_from_lits(lits: ["pwd"])
+      )
+    )
+  )
+}
+
+fn bash_program_fixture_build_bin_if_absent(bin_path: Node, root: Node, bin_name: String) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_program_fold_test_not_executable_node(path: bin_path),
+    then_stmts: [
+      bash_build_or_else(
+        left: bash_build_subshell_from_stmts(stmts: [
+          bash_build_and_then(
+            left: bash_build_command_from_word_nodes(words: [
+              bash_build_word_lit(text: "cd"),
+              root
+            ]),
+            right: bash_build_command_from_lits(lits: [
+              "cargo", "build", "-p", "v1-compiler", "--release", "--bin", bin_name
+            ])
+          )
+        ]),
+        right: bash_build_exit(code: "1")
+      )
+    ]
+  )
+}
+
+fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) -> List<BashEmitSpecial> {
+  let root = bash_build_word_var(name: "ROOT")
+  let bin = bash_build_word_var(name: var_name)
+  let bin_path = bash_build_word_concat_from_nodes(parts: [
+    root,
+    bash_build_word_lit(text: concat("/target/release/", bin_name))
+  ])
+  let verify_nodes = emit_verifications(
+    produces: [BuildArtifact { path: bin_path, name: bin_name }]
+  )
+  list_append(
+    xs: [
+      bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node()),
+      bash_program_fold_tag_assign(
+        node: bash_build_assign(
+          name: var_name,
+          value: bash_build_word_concat(
+            parts: bash_build_command_words_pair(
+              left: bash_build_command_words_single(word: root),
+              right: bash_build_word_lit(text: concat("/target/release/", bin_name))
+            )
+          )
+        )
+      ),
+      bash_program_fold_tag_if(
+        node: bash_program_fixture_build_bin_if_absent(
+          bin_path: bin_path,
+          root: root,
+          bin_name: bin_name
+        )
+      )
+    ],
+    ys: bash_program_fold_tag_if_nodes(nodes: verify_nodes)
+  )
+}
+
+fn bash_program_fixture_witness_bin_specials(
+  var_name: String,
+  bin_name: String,
+  args: List<String>
+) -> List<BashEmitSpecial> {
+  let root = bash_build_word_var(name: "ROOT")
+  let invoke = bash_build_word_var(name: var_name)
+  list_append(
+    xs: bash_program_fixture_ensure_bin_specials(var_name: var_name, bin_name: bin_name),
+    ys: [
+      bash_program_fold_tag_command(
+        node: bash_build_command_from_word_nodes(words: [
+          bash_build_word_lit(text: "cd"),
+          root
+        ])
+      ),
+      bash_program_fold_tag_command(
+        node: bash_build_command_from_word_nodes(
+          words: list_append(
+            xs: [invoke],
+            ys: list_map(xs: args, f: fn(a) { bash_build_word_lit(text: a) })
+          )
+        )
+      )
+    ]
+  )
+}
+
+fn bash_program_fixture_gunbc_claims_specials() -> List<BashEmitSpecial> {
+  list_append(
+    xs: bash_program_fixture_ensure_bin_specials(var_name: "GUNBC", bin_name: "gunbc"),
+    ys: [
+      bash_program_fold_tag_command(
+        node: bash_build_command_from_word_nodes(words: [
+          bash_build_word_var(name: "GUNBC"),
+          bash_build_word_lit(text: "run"),
+          bash_build_word_lit(text: "--source-root"),
+          bash_build_word_lit(text: "src/v2"),
+          bash_build_word_lit(text: "--source-root"),
+          bash_build_word_lit(text: "dag"),
+          bash_build_word_lit(text: "--entry"),
+          bash_build_word_lit(text: "src/v2/test/claim/bash_program_fold_test.dag"),
+          bash_build_word_lit(text: "--function"),
+          bash_build_word_lit(text: "bash_program_serialize_matches_golden_holds"),
+          bash_build_word_lit(text: "--claim-run")
+        ])
+      )
+    ]
+  )
+}
+
+fn bash_program_fold_sample_specials() -> List<BashEmitSpecial> {
+  [
+    bash_program_fold_tag_command(node: bash_build_command_from_lits(lits: ["echo", "hi"])),
+    bash_program_fold_tag_assign(node: bash_build_assign_lit(name: "X", text: "1"))
+  ]
+}
+
+fn bash_program_depth2_cmdsubst_specials() -> List<BashEmitSpecial> {
+  [
+    bash_program_fold_tag_assign(
+      node: bash_build_assign(
+        name: "ROOT",
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_from_lits(lits: ["pwd"])
+        )
+      )
+    )
+  ]
+}
+
+fn bash_program_depth2_redir_specials() -> List<BashEmitSpecial> {
+  [
+    bash_program_fold_tag_with_redir(
+      node: bash_build_with_redir(
+        inner: bash_build_command_from_lits(lits: ["git", "rev-parse"]),
+        redir: ^bash_production_fold_redir_stderr_null
+      )
+    )
+  ]
+}
+
+fn bash_program_depth2_concat_specials() -> List<BashEmitSpecial> {
+  [
+    bash_program_fold_tag_assign(
+      node: bash_build_assign(
+        name: "BIN",
+        value: bash_build_word_concat(
+          parts: bash_build_command_words_pair(
+            left: bash_build_command_words_single(word: bash_build_word_var(name: "ROOT")),
+            right: bash_build_word_lit(text: "/target/release/gunbc")
+          )
+        )
+      )
+    )
+  ]
+}
+
+fn bash_program_mktemp_rm_specials() -> List<BashEmitSpecial> {
+  [
+    bash_program_fold_tag_assign(
+      node: bash_build_assign(
+        name: "OUT",
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_from_lits(lits: ["mktemp", "-d"])
+        )
+      )
+    ),
+    bash_program_fold_tag_command(
+      node: bash_build_command_from_word_nodes(words: [
+        bash_build_word_lit(text: "rm"),
+        bash_build_word_lit(text: "-rf"),
+        bash_build_word_var(name: "OUT")
+      ])
+    )
+  ]
+}
+
+test fn bash_program_mktemp_rm_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_mktemp_rm_specials(),
     set_e: true,
-    statements: [
-      command(words: [lit(text: "echo"), lit(text: "hi")]),
-      assign(name: "X", value: lit(text: "1"))
-    ]
-  }
+    golden: bash_program_mktemp_rm_golden
+  )
 }
 
-fn bash_program_fold_sample_no_set_e() -> ShellProgram {
-  ShellProgram {
+test fn bash_program_metachars_quoted_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_command(
+        node: bash_build_command_from_lits(lits: ["echo", "$(rm -rf /)"])
+      )
+    ],
     set_e: false,
-    statements: [
-      command(words: [lit(text: "echo"), lit(text: "hi")]),
-      assign(name: "X", value: lit(text: "1"))
-    ]
-  }
+    golden: bash_program_metachars_quoted_golden
+  )
 }
 
-test fn bash_program_serialize_matches_oracle_holds() -> Bool {
-  match bash_program_serialize(p: bash_program_fold_sample()) {
-    Accepted { value: folded, diagnostics: _ } =>
-      folded == serialize_bash(p: bash_program_fold_sample())
-    Rejected { diagnostics: _ } => false
-  }
+test fn bash_program_varref_vs_lit_quoting_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_command(
+        node: bash_build_command_from_word_nodes(words: [
+          bash_build_word_var(name: "ROOT"),
+          bash_build_word_lit(text: "ROOT")
+        ])
+      )
+    ],
+    set_e: false,
+    golden: bash_program_varref_vs_lit_golden
+  )
+}
+
+test fn bash_program_serialize_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_fold_sample_specials(),
+    set_e: true,
+    golden: bash_program_fold_sample_set_e_golden
+  )
 }
 
 test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
-  match bash_program_serialize(p: bash_program_fold_sample()) {
+  match bash_emit_program(statements: bash_program_fold_sample_specials(), set_e: true) {
     Accepted { value: folded, diagnostics: _ } =>
-      folded != serialize_bash(p: bash_program_fold_sample_no_set_e())
+      folded != bash_program_fold_sample_no_set_e_golden
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn bash_program_serialize_cmdsubst_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_depth2_cmdsubst_specials(),
+    set_e: false,
+    golden: bash_program_depth2_cmdsubst_golden
+  )
+}
+
+test fn bash_program_serialize_redir_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_depth2_redir_specials(),
+    set_e: false,
+    golden: bash_program_depth2_redir_golden
+  )
+}
+
+test fn bash_program_serialize_concat_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_depth2_concat_specials(),
+    set_e: false,
+    golden: bash_program_depth2_concat_golden
+  )
+}
+
+data bash_program_real_program_probe_note: String = "Real-program golden probes (witness_bin + gunbc_claims shapes) stay manual fns, not enrolled test fns: depth-7 node programs are expensive through bash_emit_program (bash_program_emit_cost_wall_note) and the floor prices witnesses by wall-clock. Goldens remain the oracle; run bash_program_real_witness_matches_golden_holds / bash_program_real_claims_matches_golden_holds locally or via gunbc run --claim-run."
+
+fn bash_program_real_witness_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_fixture_witness_bin_specials(
+      var_name: "V1_DAG_PARSE",
+      bin_name: "v1srcdag_parse",
+      args: ["--entry", "dag/std/algebra.dag"]
+    ),
+    set_e: true,
+    golden: bash_program_real_witness_golden
+  )
+}
+
+fn bash_program_real_claims_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_fixture_gunbc_claims_specials(),
+    set_e: true,
+    golden: bash_program_real_claims_golden
+  )
+}
+
+test fn bash_program_assign_root_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node())],
+    set_e: false,
+    golden: bash_program_assign_root_golden
+  )
+}
+
+test fn bash_program_exit_in_subshell_tail_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell_from_stmts(stmts: [
+          bash_build_command_from_lits(lits: ["echo", "hi"]),
+          bash_build_exit(code: "1")
+        ])
+      )
+    ],
+    set_e: false,
+    golden: bash_program_exit_subshell_golden
+  )
+}
+
+test fn bash_program_exit_in_if_body_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_if(
+        node: bash_build_if_from_stmts(
+          cond: bash_build_command_from_lits(lits: ["true"]),
+          then_stmts: [
+            bash_build_command_from_lits(lits: ["echo", "hi"]),
+            bash_build_exit(code: "1")
+          ]
+        )
+      )
+    ],
+    set_e: false,
+    golden: bash_program_exit_if_golden
+  )
+}
+
+test fn bash_program_exit_spelling_literal_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: BashEmitStmt {
+      node: bash_build_subshell_from_stmts(stmts: [
+        bash_build_command_from_lits(lits: ["echo", "hi"]),
+        bash_build_exit(code: "1")
+      ]),
+      production_binding: ^bash_production_fold_subshell,
+      rule_name: ^bash_relation_rule_fold_subshell
+    },
+    golden: "('echo' 'hi'; exit 1)"
+  )
+}
+
+test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_or_else(
+        node: bash_build_or_else(
+          left: bash_build_command_from_lits(lits: ["true"]),
+          right: bash_build_exit(code: "1")
+        )
+      )
+    ],
+    set_e: false,
+    golden: bash_program_andor_exit_golden
+  )
 }

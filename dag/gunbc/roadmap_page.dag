@@ -1,11 +1,13 @@
 module gunbc.roadmap_page
 
+import std.types { list_length }
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
+import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
   SectionElement, Prose, Group, SectionGroup,
   NodeSizing, Unsized, Sized,
@@ -16,14 +18,145 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
-import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_belt_actuate { belt_dispatch_ok_status_labels }
+import gunbc.v1_deletion_plan {
+  v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
+  PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
+  BrickState, Placed, InFlight, Gated,
+  BrickRole, BarBrick, SeedShrink,
+}
 
 fn roadmap_page_max_depth() -> Int { 8 }
+
+fn tg_gate_index(g: PlanGate) -> Int {
+  match g {
+    GateEmitterFixedPoint => 0
+    GateHonestFrontier => 1
+    GateLedgerGreen => 2
+    GateDeletion => 3
+  }
+}
+
+fn tg_gate_eq(a: PlanGate, b: PlanGate) -> Bool { tg_gate_index(g: a) == tg_gate_index(g: b) }
+
+fn tg_brick_is_placed(bs: BrickState) -> Bool {
+  match bs {
+    Placed => true
+    InFlight => false
+    Gated => false
+  }
+}
+
+fn tg_brick_is_remaining(bs: BrickState) -> Bool {
+  match bs {
+    Placed => false
+    InFlight => true
+    Gated => true
+  }
+}
+
+fn tg_brick_state_class(bs: BrickState) -> String {
+  match bs {
+    Placed => "placed"
+    InFlight => "inflight"
+    Gated => "gated"
+  }
+}
+
+fn tg_brick_state_label(bs: BrickState) -> String {
+  match bs {
+    Placed => "done"
+    InFlight => "in flight"
+    Gated => "gated"
+  }
+}
+
+fn tg_is_bar_brick(m: PlanMilestone) -> Bool {
+  match m.role {
+    BarBrick => true
+    SeedShrink => false
+  }
+}
+
+fn tg_gate_bricks(g: PlanGate) -> List<PlanMilestone> {
+  filter(v1_deletion_milestones, m => tg_gate_eq(a: m.gate, b: g) && tg_is_bar_brick(m: m))
+}
+
+fn tg_gate_total(g: PlanGate) -> Int { count(tg_gate_bricks(g: g)) }
+
+fn tg_gate_placed(g: PlanGate) -> Int {
+  count(filter(tg_gate_bricks(g: g), m => tg_brick_is_placed(bs: m.brick_state)))
+}
+
+fn tg_gate_percent(placed: Int, total: Int) -> Int {
+  if total == 0 { 0 } else { placed * 100 / total }
+}
+
+fn tg_gate_count_label(placed: Int, total: Int) -> String {
+  concat(to_string(placed), concat(" / ", to_string(total)))
+}
+
+fn tg_bar_fill(pct: Int) -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [
+      MarkupAttr { name: "class", value: "bar-fill" },
+      MarkupAttr { name: "style", value: concat("width: ", concat(to_string(pct), "%")) },
+    ],
+    children: [],
+  }
+}
+
+fn tg_brick_li(m: PlanMilestone) -> MarkupNode {
+  el_class("li", concat("brick brick-", tg_brick_state_class(bs: m.brick_state)), [
+    el_class("span", "brick-state", [ txt(tg_brick_state_label(bs: m.brick_state)) ]),
+    el_class("span", "brick-title", [ txt(m.title) ]),
+  ])
+}
+
+fn tg_gate_remaining_ul(g: PlanGate) -> MarkupNode {
+  el_class("ul", "bricks",
+    map(filter(tg_gate_bricks(g: g), m => tg_brick_is_remaining(bs: m.brick_state)), m => tg_brick_li(m: m)))
+}
+
+fn tg_gate_progress_row(spec: PlanGateSpec) -> MarkupNode {
+  let total = tg_gate_total(g: spec.gate)
+  let placed = tg_gate_placed(g: spec.gate)
+  el_class("section", "gate-row", [
+    el_class("div", "gate-head", [
+      el_class("span", "gate-name", [ txt(spec.name) ]),
+      el_class("span", "gate-count", [ txt(tg_gate_count_label(placed: placed, total: total)) ]),
+    ]),
+    el_class("div", "gate-bar", [ tg_bar_fill(pct: tg_gate_percent(placed: placed, total: total)) ]),
+    tg_gate_remaining_ul(g: spec.gate),
+  ])
+}
+
+fn tg_is_bar_gate(g: PlanGate) -> Bool {
+  match g {
+    GateEmitterFixedPoint => true
+    GateHonestFrontier => true
+    GateLedgerGreen => true
+    GateDeletion => false
+  }
+}
+
+fn three_gate_progress_markup() -> MarkupNode {
+  el_class("section", "three-gate-progress",
+    concat(
+      [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
+      map(filter(v1_deletion_gates, spec => tg_is_bar_gate(g: spec.gate)),
+          spec => tg_gate_progress_row(spec: spec))))
+}
 
 fn txt(s: String) -> MarkupNode { TextNode { text: s } }
 
 fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
   ElementNode { tag: tag, attrs: [], children: children }
+}
+
+fn roadmap_header(title: String) -> MarkupNode {
+  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]) ])
 }
 
 fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
@@ -90,7 +223,7 @@ fn carrier_links(carriers: List<Pointer>) -> List<MarkupNode> {
   map(carriers, p => pointer_link(p: p))
 }
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: ProcessNodeId) -> List<RoadmapNode> {
+fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
@@ -112,6 +245,54 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
   } else {
     [ el_class("span", "sizing", [ txt(label) ]) ]
   }
+}
+
+data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE and reads belt B's response contract: the `status` member of belt_dispatch_result_json_value, with the ok-set DERIVED from belt_dispatch_ok_status_labels (one authority with the serve JSON -- DESIGN section 3). The retired belt-A `ok`/`node` shape is gone: reading it while B answered `status` made EVERY successful click render 'failed' (found live 2026-07-23; the page witness holds a RED on `j.ok` so the fork cannot silently return). The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
+
+fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
+  if node_status_symbol(rn: rn, merged: merged) == "done" {
+    []
+  } else {
+    [
+      ElementNode {
+        tag: "button",
+        attrs: [
+          MarkupAttr { name: "class", value: "dispatch-btn" },
+          MarkupAttr { name: "type", value: "button" },
+          MarkupAttr { name: "data-node", value: rn.node as String },
+        ],
+        children: [ txt("dispatch") ],
+      },
+    ]
+  }
+}
+
+data belt_dispatch_path_prefix: String = "/dispatch/"
+
+fn dispatch_js_ok_predicate() -> String {
+  join(belt_dispatch_ok_status_labels |> map(l => concat(concat("j.status==='", l), "'")), "||")
+}
+
+fn dispatch_client_js() -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
+          belt_dispatch_path_prefix,
+        ),
+        "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{var ok=(",
+      ),
+      dispatch_js_ok_predicate(),
+    ),
+    ");b.textContent=ok?j.status:('failed: '+(j.status||'no status'));if(!ok)\{console.log('dispatch refused',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
+  )
+}
+
+data dispatch_client_js_scaffold_note: String = "dispatch_client_js is JS-as-concatenated-string -- a medium-as-string Scaffold INDEPENDENT of the server exec route. Belt B (cool-wolf-720, gunbc serve) retires the exec route in node_http_server_emit, but this CLIENT script SURVIVES: B serves roadmap_page in-process via roadmap_serve and inherits it unchanged. So its dissolution trigger is its own, not the exec route's: dissolves to a modeled browser-emit lane -- JS/TsProgram grammar rows read backward (DESIGN section 4, the same one-grammar-both-directions move as the bash and Node emitters), at which point this string concat becomes emit over modeled nodes. Marked on the carrier here (DESIGN section 6: the mark on the carrier is the authority) rather than in belt B, whose tree does not contain this function."
+
+fn dispatch_client_script() -> MarkupNode {
+  el("script", [ txt(dispatch_client_js()) ])
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
@@ -149,7 +330,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(head, child_block),
+    children: concat(concat(head, dispatch_button_nodes(rn: rn, merged: merged)), child_block),
   }
 }
 
@@ -194,7 +375,7 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: head,
+    children: concat(head, dispatch_button_nodes(rn: rn, merged: merged)),
   }
 }
 
@@ -217,7 +398,7 @@ fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Markup
   ])
 }
 
-fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<MarkupNode>) -> MarkupNode {
   let frontier = spawn_frontier(doc: doc, merged: merged)
   ElementNode {
     tag: "html",
@@ -229,19 +410,29 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
         el("title", [ txt("gunbc — daily workspace") ]),
       ]),
       el("body", [
-        el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
-        el_class("main", "daily-workspace", [
+        roadmap_header(title: "gunbc — daily workspace"),
+        el_class("main", "daily-workspace", concat(main_prefix, [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
-        ]),
+        ])),
+        dispatch_client_script(),
       ]),
     ],
   }
 }
 
-fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<MarkupNode>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
-  let main_children = concat(lead, secs)
+  let main_children = concat(main_prefix, concat(lead, secs))
+  let body_base = [
+    roadmap_header(title: "gunbc — roadmap"),
+    el_class("main", "roadmap", main_children),
+  ]
+  let body_children = if list_length(main_children) == 0 {
+    body_base
+  } else {
+    concat(body_base, [ dispatch_client_script() ])
+  }
   ElementNode {
     tag: "html",
     attrs: [],
@@ -251,18 +442,23 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
-      el("body", [
-        el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
-        el_class("main", "roadmap", main_children),
-      ]),
+      el("body", body_children),
     ],
   }
 }
 
+fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [])
+}
+
 fn roadmap_page_for_authority() -> MarkupNode {
-  roadmap_page(doc: roadmap_authority(), merged: authored_merged_prs())
+  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+}
+
+fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [])
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> MarkupNode {
-  roadmap_daily_workspace_page(doc: roadmap_authority(), merged: authored_merged_prs())
+  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
 }

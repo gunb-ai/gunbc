@@ -1,0 +1,9 @@
+module test.claim.module_graph.conformance_imports_only
+
+
+data reflect_connective_type: Symbol = ^Connective
+data reflect_behavior_type: Symbol = ^Behavior
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}

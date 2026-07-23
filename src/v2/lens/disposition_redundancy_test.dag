@@ -7,7 +7,6 @@ import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nes
 import std.bytes { bytes_seam_host_realization_marker }
 import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
 import gunbc.ci_floor_measurement {
-  gunbc_ci_floor_measured_peak_disposition,
   gunbc_ci_host_fixed_overhead_disposition,
   gunbc_ci_concurrent_runs_conservative_high_disposition,
   gunbc_ci_regime2_aggregate_dissolution_marker,
@@ -32,8 +31,6 @@ import gunbc.host_converge {
 }
 import tools.rust_stage0_gates {
   consumed_input_closure_concept_note,
-  consumed_input_closure_convergence_candidate,
-  consumed_input_closure_slice1_status,
   unit_must_run_failclosed_note,
   unit_must_run_staged_note,
   should_run_gates_coverage_note
@@ -41,6 +38,9 @@ import tools.rust_stage0_gates {
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data redundancy_present_successor_locator: DeclarationRef = DeclarationRef {
   module_path: "std.disposition",
@@ -134,14 +134,13 @@ test fn redundancy_region_bytes_fires_on_builtin_registry_present() -> Bool {
 }
 
 data redundancy_region_budget_marks: List<Disposition> = [
-  gunbc_ci_floor_measured_peak_disposition,
   gunbc_ci_host_fixed_overhead_disposition,
   gunbc_ci_concurrent_runs_conservative_high_disposition
 ]
 
-data redundancy_region_budget_job_peaks_locator: DeclarationRef = DeclarationRef {
+data redundancy_region_budget_per_service_overhead_locator: DeclarationRef = DeclarationRef {
   module_path: "gunbc.ci_floor_measurement",
-  decl_name: "gunbc_ci_job_peaks",
+  decl_name: "gunbc_ci_per_service_overhead",
   field: WholeDeclaration
 }
 
@@ -156,17 +155,15 @@ test fn redundancy_region_budget_green_against_nonmatching() -> Bool {
   ) == 0
 }
 
-test fn redundancy_region_budget_fires_on_job_peaks_present() -> Bool {
+test fn redundancy_region_budget_fires_on_per_service_overhead_present() -> Bool {
   disposition_redundancy_violation_count(
     dispositions: redundancy_region_budget_marks,
-    present: [redundancy_region_budget_job_peaks_locator]
+    present: [redundancy_region_budget_per_service_overhead_locator]
   ) == 1
 }
 
 data redundancy_region_rust_gates_marks: List<Disposition> = [
   consumed_input_closure_concept_note,
-  consumed_input_closure_convergence_candidate,
-  consumed_input_closure_slice1_status,
   unit_must_run_failclosed_note,
   unit_must_run_staged_note,
   should_run_gates_coverage_note
@@ -174,8 +171,8 @@ data redundancy_region_rust_gates_marks: List<Disposition> = [
 
 data redundancy_region_rust_gates_synthetic_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "std.consumed_input",
-    decl_name: "ConsumedInputClosure",
+    module_path: "tools.rust_stage0_gates",
+    decl_name: "per_unit_test_selector",
     field: WholeDeclaration
   }
 ]
@@ -191,7 +188,7 @@ test fn redundancy_region_rust_gates_green_against_nonmatching() -> Bool {
   ) == 0
 }
 
-test fn redundancy_region_rust_gates_fires_on_convergence_target_present() -> Bool {
+test fn redundancy_region_rust_gates_fires_on_staged_selector_present() -> Bool {
   disposition_redundancy_violation_count(
     dispositions: redundancy_region_rust_gates_marks,
     present: redundancy_region_rust_gates_synthetic_present
@@ -302,7 +299,7 @@ data redundancy_region_fleet_converge_marks: List<Disposition> = [
 
 data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "extdeps.ctrl.jobserver",
+    module_path: "extdeps.jobserver",
     decl_name: "jobserver_build_pool_bytes",
     field: WholeDeclaration
   },

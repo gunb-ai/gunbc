@@ -1,0 +1,8 @@
+module	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/00_compile.dag	1		131 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/01_tokenize.dag	1		22 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/04_infer.dag	1		49 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/materialization_carriers.dag	1		39 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/program_assembly.dag	1		101 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/program_partition.dag	1		64 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/source_authority.dag	1		99 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError

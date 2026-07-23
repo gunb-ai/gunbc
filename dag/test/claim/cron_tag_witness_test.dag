@@ -1,9 +1,7 @@
 module test.claim.cron_tag_witness_test
 
-import gunbc.tools.cron_tag { cron_tag_upsert_protocol_keystone_holds }
-import std.logic { Bool }
 
-data cron_tag_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/cron_tag_test.rs (5-test-migration lane): the cron-tag upsert protocol keystone, marker-discovered instead of the v1 Rust harness; the v1 module's in-memory mutation check (got == want -> got != want) is carried as the perturb->red receipt on the migration PR."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn cron_tag_upsert_protocol_keystone_witness() -> Bool {
   cron_tag_upsert_protocol_keystone_holds()

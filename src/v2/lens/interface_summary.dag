@@ -1,0 +1,181 @@
+module v2.lens.interface_summary
+
+
+fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {
+  match kind {
+    FnItem => Present { value: ExportFn }
+    FuncItem => Present { value: ExportFn }
+    TypeItem => Present { value: ExportType }
+    DataItem => Present { value: ExportData }
+    ServiceItem => Present { value: ExportService }
+    OtherItem => Absent
+  }
+}
+
+fn signature_fingerprint_of_node(node: Node) -> SignatureFingerprint {
+  content_hash_atom(value: content_hash(n: node))
+}
+
+fn export_entry_from_decl_fact(fact: DeclFact) -> ExportEntry? {
+  match decl_kind_to_export_kind(kind: fact.kind) {
+    Present { value: kind } =>
+      Present {
+        value: ExportEntry {
+          name: fact.name,
+          kind: kind,
+          contract: signature_contract(
+            signature: signature_fingerprint_of_node(node: fact.node)
+          )
+        }
+      }
+    Absent => Absent
+  }
+}
+
+fn export_entries_for_rel_path(rel_path: String, facts: List<DeclFact>) -> List<ExportEntry> {
+  fold(facts, init: Empty, f: fn(acc, fact) {
+    if fact.rel_path == rel_path {
+      match export_entry_from_decl_fact(fact: fact) {
+        Present { value: entry } => list_snoc_item(xs: acc, item: entry)
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn interface_summary_for_module_path(
+  module_path: NonEmptyStr,
+  rel_path: String,
+  facts: List<DeclFact>
+) -> InterfaceSummary {
+  let exports = export_entries_for_rel_path(rel_path: rel_path, facts: facts)
+  InterfaceSummary {
+    module_path: module_path,
+    exports: exports,
+    interface_hash: interface_summary_rollup(exports: exports)
+  }
+}
+
+fn interface_summaries_from_facts(
+  modules: List<ModuleDeclarationFact>,
+  facts: List<DeclFact>
+) -> List<InterfaceSummary> {
+  fold(modules, init: Empty, f: fn(acc, mod_fact) {
+    list_snoc_item(
+      xs: acc,
+      item: interface_summary_for_module_path(
+        module_path: mod_fact.module,
+        rel_path: mod_fact.path,
+        facts: facts
+      )
+    )
+  })
+}
+
+fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> {
+  interface_summaries_from_facts(
+    modules: module_declaration_facts_live(pool_roots: pool_roots),
+    facts: export_signature_facts(pool_roots: pool_roots)
+  )
+}
+
+fn interface_hash_for_module_path(
+  summaries: List<InterfaceSummary>,
+  module_path: String
+) -> InterfaceHash? {
+  fold(summaries, init: optional_absent(), f: fn(found, summary) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match summary.module_path == module_path {
+          true => Present { value: summary.interface_hash }
+          false => found
+        }
+    }
+  })
+}
+
+fn direct_import_modules(
+  rel_path: String,
+  edges: List<ImportResolutionFact>
+) -> List<String> {
+  fold(edges, init: Empty, f: fn(acc, edge) {
+    if edge.path == rel_path {
+      list_snoc_item(xs: acc, item: edge.import_module)
+    } else {
+      acc
+    }
+  })
+}
+
+fn import_interface_hashes_for_module(
+  rel_path: String,
+  edges: List<ImportResolutionFact>,
+  summaries: List<InterfaceSummary>
+) -> List<InterfaceHash>? {
+  fold(
+    direct_import_modules(rel_path: rel_path, edges: edges),
+    init: Present { value: Empty },
+    f: fn(acc, import_module) {
+      match acc {
+        Absent => Absent
+        Present { value: hashes } =>
+          match interface_hash_for_module_path(summaries: summaries, module_path: import_module) {
+            Present { value: hash } =>
+              Present { value: list_snoc_item(xs: hashes, item: hash) }
+            Absent => Absent
+          }
+      }
+    }
+  )
+}
+
+fn module_key_for_rel_path(
+  rel_path: String,
+  module_path: NonEmptyStr,
+  source_hash: ContentHash,
+  pool_roots: List<String>
+) -> ModuleKey? {
+  let summaries = interface_summaries_live(pool_roots: pool_roots)
+  let edges = import_resolution_facts_live(
+    pool_roots: pool_roots,
+    importer_roots: pool_roots,
+    exclude_substrings: []
+  )
+  match import_interface_hashes_for_module(
+    rel_path: rel_path,
+    edges: edges,
+    summaries: summaries
+  ) {
+    Present { value: import_hashes } =>
+      Present {
+        value: module_key(
+          source_hash: source_hash,
+          direct_import_interface_hashes: import_hashes
+        )
+      }
+    Absent => Absent
+  }
+}
+
+fn interface_summary_for_module(
+  module_path: NonEmptyStr,
+  pool_roots: List<String>
+) -> InterfaceSummary? {
+  fold(interface_summaries_live(pool_roots: pool_roots), init: optional_absent(), f: fn(found, summary) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match summary.module_path == module_path {
+          true => Present { value: summary }
+          false => found
+        }
+    }
+  })
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

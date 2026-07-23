@@ -1,0 +1,170 @@
+module test.claim.live_deploy.operations_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.os.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+  systemctl_disable_now_argv,
+}
+import gunbc.live_deploy.operations {
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_daemon_reload_command,
+  systemctl_enable_command,
+  systemctl_restart_command,
+  systemctl_disable_now_command,
+  privileged_command,
+}
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data apt_install_path: String = "dag/extdeps/package_managers/apt.dag"
+data apt_install_service: String = "apt.PackageManager"
+data apt_install_operation: String = "Install"
+
+data systemctl_path: String = "dag/extdeps/os/systemctl.dag"
+data systemctl_service: String = "systemd.Systemctl"
+
+fn argv_join(argv: List<String>) -> String {
+  join(argv, " ")
+}
+
+fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
+  let helper = dpkg_status_argv(package: package_tailscale)
+  let transport = shell_materialize_argv_for_operation(
+    "dag/extdeps/package_managers/dpkg.dag",
+    "dpkg.Package",
+    "Status",
+    package_tailscale as String,
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_apt_install_argv_matches_transport_row() -> Bool {
+  let helper = apt_install_argv(package: package_nodejs)
+  let transport = shell_materialize_argv_for_operation(
+    apt_install_path,
+    apt_install_service,
+    apt_install_operation,
+    package_nodejs as String,
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
+  let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "Restart",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
+  let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "DisableNow",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
+  let helper = systemctl_daemon_reload_argv()
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "DaemonReload",
+    "",
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
+  let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "Enable",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
+fn witness_dpkg_status_command_matches_transport() -> Bool {
+  dpkg_status_command(package: package_tailscale) == "dpkg -s tailscale"
+}
+
+fn witness_apt_install_command_matches_transport() -> Bool {
+  apt_install_command(package: package_nodejs, privileged: false) == "apt-get install --yes nodejs"
+}
+
+fn witness_privileged_apt_install_command() -> Bool {
+  apt_install_command(package: package_tailscale, privileged: true) == "sudo -n apt-get install --yes tailscale"
+}
+
+fn witness_systemctl_restart_command_matches_transport() -> Bool {
+  systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl restart gunbc-roadmap.service"
+}
+
+fn witness_systemctl_enable_command_matches_transport() -> Bool {
+  systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl enable gunbc-roadmap.service"
+}
+
+fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
+  systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl disable --now gunbc-roadmap.service"
+}
+
+fn witness_privileged_command_prefixes_sudo_n() -> Bool {
+  privileged_command(argv: systemctl_daemon_reload_argv()) == "sudo -n systemctl daemon-reload"
+}
+
+fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
+  systemctl_daemon_reload_command(privileged: true) == "sudo -n systemctl daemon-reload"
+}
+
+test fn live_deploy_operations_holds() -> Bool {
+  witness_dpkg_status_argv_matches_transport_row()
+    && witness_apt_install_argv_matches_transport_row()
+    &&   witness_systemctl_restart_argv_matches_transport_row()
+    && witness_systemctl_disable_now_argv_matches_transport_row()
+    && witness_systemctl_daemon_reload_argv_matches_transport_row()
+    && witness_systemctl_enable_argv_matches_transport_row()
+    && witness_dpkg_status_command_matches_transport()
+    && witness_apt_install_command_matches_transport()
+    && witness_privileged_apt_install_command()
+    && witness_systemctl_restart_command_matches_transport()
+    && witness_systemctl_enable_command_matches_transport()
+    && witness_systemctl_disable_now_command_matches_transport()
+    && witness_privileged_command_prefixes_sudo_n()
+    && witness_systemctl_daemon_reload_command_privileged()
+}
+
+test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
+  apt_install_command(package: package_tailscale, privileged: false) != "apt-get install --yes nodejs"
+}

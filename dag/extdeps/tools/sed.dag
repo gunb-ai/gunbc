@@ -1,0 +1,31 @@
+module extdeps.tools.sed
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/sed/manual/sed.html"
+  }
+}
+
+data sed_cli_tool: CliTool = CliTool {
+  name: "sed",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+service sed.Sed {
+  operation InPlaceSubstitute {
+    input { expression: NonEmptyStr, path: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sed -i failed"
+    }
+  }
+}

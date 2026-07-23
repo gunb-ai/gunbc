@@ -1,0 +1,24 @@
+module test.claim.builtin_get_resolver
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_get_in_bounds_returns_element() -> Bool {
+  match get(xs: [10, 20, 30], index: 1) {
+    Present { value: v } => v == 20
+    Absent => false
+  }
+}
+
+fn witness_get_out_of_bounds_is_absent() -> Bool {
+  match get(xs: [10, 20, 30], index: 7) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_get_negative_index_is_absent() -> Bool {
+  match get(xs: [10, 20, 30], index: 0 - 1) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

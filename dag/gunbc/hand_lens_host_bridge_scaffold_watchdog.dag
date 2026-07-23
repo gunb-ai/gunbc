@@ -1,14 +1,10 @@
 module gunbc.hand_lens_host_bridge_scaffold_watchdog
 
-import gunbc.hand_lens_host_bridge_scaffold_index {
-  transport_script_position_host_bridge_dissolution_trigger,
-}
-import std.types { List, String, Bool }
 
 type HostBridgeScaffoldRow {
   lens_module: String
   host_seam: String
-  dissolution_trigger: String
+  dissolution_trigger: Disposition
 }
 
 data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {
@@ -17,16 +13,27 @@ data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeS
   dissolution_trigger: transport_script_position_host_bridge_dissolution_trigger
 }
 
+data extdeps_external_authority_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {
+  lens_module: "v2.lens.mandatory_tag.corpus_scan"
+  host_seam: "cli_run.rs::extdeps_external_authority_module_facts"
+  dissolution_trigger: extdeps_external_authority_host_bridge_dissolution_trigger
+}
+
 data hand_lens_host_bridge_scaffold_roster: List<HostBridgeScaffoldRow> = [
-  transport_script_position_scaffold_row
+  transport_script_position_scaffold_row,
+  extdeps_external_authority_scaffold_row
 ]
 
 fn scaffold_dissolution_trigger_nonempty(row: HostBridgeScaffoldRow) -> Bool {
-  row.dissolution_trigger != ""
+  match row.dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn scaffold_dissolution_trigger_matches_authority(row: HostBridgeScaffoldRow) -> Bool {
   row.dissolution_trigger == transport_script_position_host_bridge_dissolution_trigger
+    || row.dissolution_trigger == extdeps_external_authority_host_bridge_dissolution_trigger
 }
 
 fn hand_lens_host_bridge_scaffold_roster_tracked() -> Bool {

@@ -1,0 +1,351 @@
+module v2.test.execution.emit_on_demand_classical_not_ingested_family_witness
+
+import std.logic { Bool }
+import std.types { ContentHash, String }
+import std.measure { ByteSize, byte_size }
+import std.materialization_ladder {
+  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
+}
+import std.artifact_store {
+  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put,
+}
+import std.realization { Share, Recompute }
+import std.realize_pack {
+  BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
+}
+import std.emit_on_demand { emit_on_demand_family_cache_root }
+import std.emit_on_demand {
+  SourceArtifact, NativeArtifact,
+  emit_on_demand_key, emit_on_demand_lookup,
+  materialization_for_lookup, EmitOnDemandHit, EmitOnDemandMiss,
+  interpreter_surviving_roles_bounded,
+}
+import v2.std.emit_on_demand { witness_family_realize_width }
+import extdeps.realization.emit_on_demand_host {
+  native_cache_workspace_root, emit_on_demand_evict_native_cache,
+}
+import v2.compiler.emit { emit }
+import extdeps.communication.medium { Medium }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  emit_host_no_run_args,
+  run_emit_host_cached,
+  run_test_claim_from_source_emit_vs_eval_cached,
+}
+import v2.compiler.eval {
+  TestClaimEvalSubject,
+  Inputs,
+  eval_test_claim_subject,
+  inputs_for_emit_host,
+  inferred_tree_digest,
+}
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.rust_test { rust_classical_not_ingested_target_model_staging }
+import v2.test.execution.emit_host_classical_not_ingested_equals_eval {
+  ingested_classical_not_source,
+  ingested_classical_not_swapped_source,
+  ingested_inferred_tree_from_source,
+  ingested_classical_not_context,
+  ingested_classical_not_claim,
+  ingested_classical_not_eval_subgraph_canonical,
+  ingested_classical_not_verdict_is_pass,
+  ingested_classical_not_verdict_is_semantic_mismatch,
+}
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.node { Node }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data emit_on_demand_classical_not_family_note: String = "Witness-realization fan-out lane 4 (classical_not_ingested), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_classical_not_native_one_build_holds: one root, both keys evicted up front; primary (ingested pipeline) cold then warm (octet 0), the eval-anchored agreement runs WARM on the same build (run_test_claim_from_source_emit_vs_eval_cached — oracle stays eval), then the swapped-source alt colds in the SAME root with the flipped octet 1 AND its eval-anchored semantic-mismatch RED runs warm on the alt build. Formerly ~6 crate builds per pass; now 2. Pure receipts unchanged."
+
+data classical_not_family_cache_root: String = emit_on_demand_family_cache_root(family: "classical_not_family")
+data classical_not_family_emitter: String = "v2.compiler.emit"
+data classical_not_family_provider: CacheProvider = provider_row(
+  id: "emit-on-demand-classical-not-family",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ArtifactTier { keying: ContentKeyed },
+  eviction: SpacePacked { budget: "classical not ingested family native cache" }
+)
+
+fn classical_not_family_native_key_for(tree: InferredTree) -> ContentHash {
+  emit_on_demand_key(
+    closure_digest: inferred_tree_digest(tree: tree),
+    emitter_identity: classical_not_family_emitter,
+    target_language: "rust",
+    grain: NativeArtifact
+  )
+}
+
+fn classical_not_family_test_store() -> ArtifactStore {
+  match store_over_provider(provider: classical_not_family_provider, budget: byte_size(count: 1000000)) {
+    StoreReady { store: s } => s
+    StoreRefusedEviction { provider_id: _, declared: _ } =>
+      ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+  }
+}
+
+fn classical_not_family_tree() -> Outcome<InferredTree> {
+  ingested_inferred_tree_from_source(source: ingested_classical_not_source)
+}
+
+fn classical_not_family_alt_tree() -> Outcome<InferredTree> {
+  ingested_inferred_tree_from_source(source: ingested_classical_not_swapped_source)
+}
+
+fn classical_not_family_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: ingested_classical_not_claim(rhs_result_node: ingested_classical_not_eval_subgraph_canonical()),
+    context: ingested_classical_not_context(),
+    tree: tree,
+    evaluator_pin: ^ingested_classical_not_evaluator_pin
+  )
+}
+
+fn classical_not_family_fixture_inputs() -> Inputs {
+  inputs_for_emit_host(
+    claim_input_root: ingested_classical_not_eval_subgraph_canonical(),
+    expected_eval_root: ingested_classical_not_eval_subgraph_canonical(),
+    claim_pin: ^ingested_classical_not_evaluator_pin
+  )
+}
+
+fn classical_not_family_cache_root_for(test_id: String) -> String {
+  concat(classical_not_family_cache_root, "/", test_id)
+}
+
+fn classical_not_family_cached_run_with_source(
+  workspace: String,
+  tree: InferredTree,
+  source: Medium<String>,
+  expect_compile_skipped: Bool,
+  expected_octet: Int
+) -> Bool {
+  match run_emit_host_cached(
+    workspace_dir: workspace,
+    target: rust_classical_not_ingested_target_model_staging(),
+    source: source,
+    fixture_inputs: classical_not_family_fixture_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted {
+          value: HostLogicalRun { stdout: stdout },
+          diagnostics: None
+        } =>
+          receipt.compile_skipped == expect_compile_skipped
+            && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn classical_not_family_cached_run_checks(
+  workspace: String,
+  tree: InferredTree,
+  expect_compile_skipped: Bool,
+  expected_octet: Int
+) -> Bool {
+  match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      classical_not_family_cached_run_with_source(
+        workspace: workspace,
+        tree: tree,
+        source: source,
+        expect_compile_skipped: expect_compile_skipped,
+        expected_octet: expected_octet
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn classical_not_family_cached_cold_then_warm(
+  workspace: String,
+  tree: InferredTree,
+  expected_octet: Int
+) -> Bool {
+  match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      classical_not_family_cached_run_with_source(
+        workspace: workspace,
+        tree: tree,
+        source: source,
+        expect_compile_skipped: false,
+        expected_octet: expected_octet
+      )
+        && classical_not_family_cached_run_with_source(
+          workspace: workspace,
+          tree: tree,
+          source: source,
+          expect_compile_skipped: true,
+          expected_octet: expected_octet
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_grain_keys_differ_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let digest = inferred_tree_digest(tree: tree)
+      let source = emit_on_demand_key(
+        closure_digest: digest,
+        emitter_identity: classical_not_family_emitter,
+        target_language: "rust",
+        grain: SourceArtifact
+      )
+      let native = emit_on_demand_key(
+        closure_digest: digest,
+        emitter_identity: classical_not_family_emitter,
+        target_language: "rust",
+        grain: NativeArtifact
+      )
+      (source == native) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_materialize_share_on_hit_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let key = classical_not_family_native_key_for(tree: tree)
+      let put = store_put(store: classical_not_family_test_store(), key: key, artifact_bytes: byte_size(count: 64))
+      let lookup = emit_on_demand_lookup(store: put.store, key: key)
+      match lookup {
+        EmitOnDemandHit { receipt: r } =>
+          r.compile_skipped
+            && materialization_for_lookup(lookup: lookup) == Share
+        EmitOnDemandMiss => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_materialize_recompute_on_miss_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let lookup = emit_on_demand_lookup(
+        store: classical_not_family_test_store(),
+        key: classical_not_family_native_key_for(tree: tree)
+      )
+      match lookup {
+        EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
+        EmitOnDemandHit { receipt: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_interpreter_roles_bounded_holds() -> Bool {
+  interpreter_surviving_roles_bounded()
+}
+
+test fn emit_on_demand_classical_not_schedule_refuses_unreadable_budget_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match witness_family_realize_width(
+        bound_bytes: byte_size(count: 25),
+        budget: BudgetUnreadable,
+        witness_root: tree.root,
+        independence_override: 4
+      ) {
+        BudgetRefused => true
+        PackedWidth { width: _ } => false
+        MaturationReserve { width: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree_primary, diagnostics: _ } =>
+      match classical_not_family_alt_tree() {
+        Accepted { value: tree_alt, diagnostics: _ } =>
+          let key_primary = classical_not_family_native_key_for(tree: tree_primary)
+          let key_alt = classical_not_family_native_key_for(tree: tree_alt)
+          key_primary != key_alt
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn classical_not_cached_agreement_pass(workspace: String, tree: InferredTree) -> Bool {
+  ingested_classical_not_verdict_is_pass(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: classical_not_family_subject(tree: tree),
+      source_outcome: emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()),
+      target: rust_classical_not_ingested_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
+  )
+}
+
+fn classical_not_cached_wrong_fixture_mismatch(workspace: String, tree: InferredTree) -> Bool {
+  ingested_classical_not_verdict_is_semantic_mismatch(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: classical_not_family_subject(tree: tree),
+      source_outcome: emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()),
+      target: rust_classical_not_ingested_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: emit_host_no_run_args()
+    )
+  )
+}
+
+test fn emit_on_demand_classical_not_native_one_build_holds() -> Bool {
+  match classical_not_family_tree() {
+    Accepted { value: tree_primary, diagnostics: _ } =>
+      match classical_not_family_alt_tree() {
+        Accepted { value: tree_alt, diagnostics: _ } =>
+          let shared_parent = classical_not_family_cache_root_for(test_id: "native_one_build")
+          let key_primary = classical_not_family_native_key_for(tree: tree_primary)
+          let key_alt = classical_not_family_native_key_for(tree: tree_alt)
+          if key_primary == key_alt {
+            false
+          } else {
+            let workspace_primary = native_cache_workspace_root(cache_root: shared_parent, key: key_primary)
+            let _evict_primary = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_primary)
+            let _evict_alt = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_alt)
+            let warmed = classical_not_family_cached_cold_then_warm(
+              workspace: workspace_primary,
+              tree: tree_primary,
+              expected_octet: 0
+            )
+            let workspace_alt = native_cache_workspace_root(cache_root: shared_parent, key: key_alt)
+            warmed
+              && classical_not_cached_agreement_pass(
+                workspace: workspace_primary,
+                tree: tree_primary
+              )
+              && classical_not_family_cached_run_checks(
+                workspace: workspace_alt,
+                tree: tree_alt,
+                expect_compile_skipped: false,
+                expected_octet: 1
+              )
+              && classical_not_cached_wrong_fixture_mismatch(
+                workspace: workspace_alt,
+                tree: tree_alt
+              )
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_classical_not_ingested_family_witnesses() -> Bool {
+  emit_on_demand_classical_not_grain_keys_differ_holds()
+    && emit_on_demand_classical_not_materialize_recompute_on_miss_holds()
+    && emit_on_demand_classical_not_interpreter_roles_bounded_holds()
+    && emit_on_demand_classical_not_schedule_refuses_unreadable_budget_holds()
+    && emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_holds()
+    && emit_on_demand_classical_not_native_one_build_holds()
+    && emit_on_demand_classical_not_materialize_share_on_hit_holds()
+}

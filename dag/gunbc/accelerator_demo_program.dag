@@ -1,6 +1,5 @@
 module gunbc.accelerator_demo_program
 
-import std.types { Int, List, Bool }
 
 type ElementwiseArrayOp
   = ElemwiseMul
@@ -64,8 +63,6 @@ data relu_mul_add_wire_op_codes: List<Int> = [
   elemwise_add_op_code,
   elemwise_relu_op_code,
 ]
-
-data elementwise_op_code_host_realization_note: String = "host kernel fail-closed validation mirrors extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes until feature:dag-kernel-realization-handler dissolves literals into target_model emit; wire authority is program_op_codes(program); roadmap bind: extdeps.languages.simd.kernel.simd_kernel_handler_roadmap_bind"
 
 fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
   match op {

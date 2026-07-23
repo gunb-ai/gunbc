@@ -1,0 +1,383 @@
+module v2.workflow.compile_door_ledger
+
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.compile { compile_source_root_ingest_with_admission }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag {
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.lens.module_graph {
+  ImportResolutionFact,
+  ModuleDeclarationFact,
+  import_closure,
+  import_resolution_facts_live,
+  module_declaration_facts_live
+}
+import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_qn_from_import_decl_strict }
+import v2.std.algebra { filter, fold_list, length, list_reverse }
+import v2.workflow.floor_diff_observe {
+  FloorNameStatusDiffResult,
+  NameStatusDiffFail,
+  NameStatusDiffOk,
+  floor_observe_git_diff_name_status_for_ci
+}
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data compile_door_ledger_law: String = "The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5 factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in v2.test.long.door_real_module_probe — the door's pre-existing per-node roster and resolve red real corpus modules today, so Blocking is impossible until causes zero). Each subject path gets exactly ONE typed row: DoorCompiled, or DoorRefused carrying the rejection's head reason — located by the per-path interned unit symbol, counted by the cause histogram, NEVER absorbed into a widened rerun or a silent skip. The histogram over an affected set is the burn-down list toward v2-compiles-the-repo; a cause reaching zero is the named flip-to-Blocking trigger for its owning lane (fact_density calibration = this lane; resolve generics = shared self-host critical path; import/ambiguity causes = namespace migration, counted with NO trigger per the nimble-boar-198 contract). Input contract: subject paths must exist on the live tree (a diff-scoped caller filters deletions at the diff observation, which carries name-status; a missing path is the caller's defect and fails loud in the read effect, never a fabricated row)."
+
+data door_ledger_shared_census_note: String = "Cost shape (DESIGN 2/6, duplicate-work thread): the module-graph census (import_resolution_facts_live + module_declaration_facts_live, host-realized fact producers) runs ONCE per door_ledger call and every row's import closure is a pure BFS over those shared facts — per-row re-census would be the corpus-denominated duplicate-work trap. The remaining double-parse is declared scaffold cost: the subject is parsed once here (admission derivation) and again inside the door's assembly; it dissolves with derive_module_admission itself."
+
+data derive_admission_scaffold_note: String = "derive_module_admission is a SCAFFOLD with a named dissolution: it reads the subject's module QN (qualified_name_from_module_node) and its import-decl targets (reference_qn_from_import_decl_strict — the same fail-closed reader the reference-deps lens uses; no second import-syntax authority) off the parsed tree to build the Admission that resolve_with_admission requires. It dies with imports themselves at the namespace migration's Rule-1 end-state (deps derived from container.member references; import grammar deleted — nimble-boar-198 lane): at that flip resolve takes the containment tree, and this derivation plus its double-parse is deleted, not migrated. Fail-closed: a module whose QN or any import decl cannot be read yields DoorRefused with the reader's own diagnostic reason — never a fabricated empty admission."
+
+type DoorOutcomeKind
+  = DoorCompiled
+  | DoorRefused { reason: Symbol }
+
+type DoorLedgerRow {
+  module_path: String
+  outcome: DoorOutcomeKind
+}
+
+type CauseCount {
+  reason: Symbol
+  count: Int
+}
+
+type ModuleGraphFacts {
+  edges: List<ImportResolutionFact>
+  nodes: List<ModuleDeclarationFact>
+}
+
+fn module_graph_facts(pool_roots: List<String>) -> ModuleGraphFacts {
+  ModuleGraphFacts {
+    edges: import_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: []
+    ),
+    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  }
+}
+
+fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl { Cons { head: n, tail: acc } } else { acc }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    collect_import_decl_nodes(n: e.target, acc: a)
+  })
+}
+
+type ImportRowsState
+  = ImportRowsFailed { reason: Symbol }
+  | ImportRowsOk { rows: List<Import> }
+
+fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
+  let gathered = fold_list(
+    xs: list_reverse(xs: collect_import_decl_nodes(n: root, acc: Empty)),
+    empty: ImportRowsOk { rows: Empty },
+    cons: fn(state, import_node) {
+      match state {
+        ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+        ImportRowsOk { rows: prior } =>
+          match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
+            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
+            Accepted { value: target_qn, diagnostics: _ } =>
+              ImportRowsOk {
+                rows: Cons {
+                  head: Import { target: target_qn, visibility: ImportVisible },
+                  tail: prior
+                }
+              }
+          }
+      }
+    }
+  )
+  match gathered {
+    ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+    ImportRowsOk { rows: rev } => ImportRowsOk { rows: list_reverse(xs: rev) }
+  }
+}
+
+type AdmissionDerivation
+  = AdmissionRefused { reason: Symbol }
+  | AdmissionDerived { admission: Admission }
+
+fn derive_module_admission(root: Node) -> AdmissionDerivation {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
+    Accepted { value: subject_qn, diagnostics: _ } =>
+      match import_rows_from_parsed_module(root: root) {
+        ImportRowsFailed { reason: r } => AdmissionRefused { reason: r }
+        ImportRowsOk { rows: rows } =>
+          AdmissionDerived {
+            admission: Admission {
+              subject: ResolutionSubject { name: subject_qn },
+              imports: rows
+            }
+          }
+      }
+  }
+}
+
+fn source_root_for_path(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/v2") { V2Tree } else { DagTree }
+}
+
+fn ledger_read_witness(path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: path),
+      file_path: path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: source_root_for_path(path: path)
+  }
+}
+
+fn closure_ingest(closure_paths: FreeMonoid<String>) -> SourceRootIngest {
+  list_reverse(
+    xs: fold_list(
+      xs: closure_paths,
+      empty: Empty,
+      cons: fn(acc, p) { Cons { head: ledger_read_witness(path: p), tail: acc } }
+    )
+  )
+}
+
+fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerRow {
+  let subject_text = filesystem_read(path: subject_path).content
+  match reference_deps_ingest_source_text(
+    source_text: subject_text,
+    file: symbol_intern_lexeme(lexeme: subject_path)
+  ) {
+    Rejected { diagnostics: d } =>
+      DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: d.head.reason } }
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match derive_module_admission(root: parse_root) {
+        AdmissionRefused { reason: r } =>
+          DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: r } }
+        AdmissionDerived { admission: admission } =>
+          match compile_source_root_ingest_with_admission(
+            ingest: closure_ingest(
+              closure_paths: import_closure(
+                entry_path: subject_path,
+                edges: facts.edges,
+                nodes: facts.nodes
+              )
+            ),
+            admission: admission,
+            target: rust_target_model()
+          ) {
+            Accepted { value: _, diagnostics: _ } =>
+              DoorLedgerRow { module_path: subject_path, outcome: DoorCompiled }
+            Rejected { diagnostics: d } =>
+              DoorLedgerRow {
+                module_path: subject_path,
+                outcome: DoorRefused { reason: d.head.reason }
+              }
+          }
+      }
+  }
+}
+
+fn door_ledger(paths: List<String>, pool_roots: List<String>) -> List<DoorLedgerRow> {
+  let facts = module_graph_facts(pool_roots: pool_roots)
+  list_reverse(
+    xs: fold_list(
+      xs: paths,
+      empty: Empty,
+      cons: fn(acc, path) {
+        Cons { head: door_ledger_row(subject_path: path, facts: facts), tail: acc }
+      }
+    )
+  )
+}
+
+data affected_set_ledger_law: String = "door_ledger_over_affected_set is the affected-set entry point: it reads the PR's real changed paths off the git diff (floor_observe_git_diff_name_status_for_ci — the same name-status observation the CI floor already uses, single authority for the diff), keeps only the .dag modules present on disk (changed_paths; departed_paths are deletions the ledger cannot read and never fabricates a row for), and ledgers exactly those through the door. Fail-closed per DESIGN 5: a diff-observation failure yields AffectedDiffRefused carrying the observation's own reason — it NEVER widens to the whole corpus. Widening on a provenance gap is the absorbing fallback (corpus-denominated cost, deficit frequency zeroed by construction) that the affected-set floor was explicitly repaired to remove; the ledger inherits that discipline. The result is AuditOnly: a counted cause histogram over the affected set, never a gate that greens or blocks (there is no stopped line while the seed is the compile path — wiring a gate here would block every PR or absorb refusals)."
+
+type AffectedLedgerResult
+  = AffectedDiffRefused { reason: String }
+  | AffectedLedgered { rows: List<DoorLedgerRow> }
+
+fn dag_module_paths(paths: List<String>) -> List<String> {
+  filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })
+}
+
+fn affected_ledger_from_diff(
+  diff: FloorNameStatusDiffResult,
+  pool_roots: List<String>
+) -> AffectedLedgerResult {
+  match diff {
+    NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
+    NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
+      AffectedLedgered {
+        rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)
+      }
+  }
+}
+
+fn door_ledger_over_affected_set(pool_roots: List<String>) -> AffectedLedgerResult {
+  affected_ledger_from_diff(
+    diff: floor_observe_git_diff_name_status_for_ci(),
+    pool_roots: pool_roots
+  )
+}
+
+type CauseBumpState {
+  rows: List<CauseCount>
+  found: Bool
+}
+
+fn cause_count_bump(counts: List<CauseCount>, reason: Symbol) -> List<CauseCount> {
+  let walked = fold_list(
+    xs: counts,
+    empty: CauseBumpState { rows: Empty, found: false },
+    cons: fn(state, row) {
+      let bumped = if row.reason == reason {
+        CauseCount { reason: row.reason, count: row.count + 1 }
+      } else {
+        row
+      }
+      CauseBumpState {
+        rows: Cons { head: bumped, tail: state.rows },
+        found: state.found || (row.reason == reason)
+      }
+    }
+  )
+  if walked.found {
+    list_reverse(xs: walked.rows)
+  } else {
+    list_reverse(xs: Cons { head: CauseCount { reason: reason, count: 1 }, tail: walked.rows })
+  }
+}
+
+fn ledger_cause_histogram(rows: List<DoorLedgerRow>) -> List<CauseCount> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.outcome {
+        DoorCompiled => acc
+        DoorRefused { reason: r } => cause_count_bump(counts: acc, reason: r)
+      }
+    }
+  )
+}
+
+fn ledger_compiled_count(rows: List<DoorLedgerRow>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      match row.outcome {
+        DoorCompiled => acc + 1
+        DoorRefused { reason: _ } => acc
+      }
+    }
+  )
+}
+
+fn ledger_refused_count(rows: List<DoorLedgerRow>) -> Int {
+  length(xs: rows) - ledger_compiled_count(rows: rows)
+}
+
+fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: Symbol) -> Int {
+  fold_list(
+    xs: ledger_cause_histogram(rows: rows),
+    empty: 0,
+    cons: fn(acc, row) {
+      if row.reason == reason { row.count } else { acc }
+    }
+  )
+}
+
+fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
+  ledger_refused_count(rows: rows) == 0
+}
+
+data flip_trigger_table_law: String = "The per-lens flip-to-Blocking triggers, modeled as DATA in the carrier (DESIGN 6: the mark on the carrier is the authority, no parallel-ledger markdown). Each known frontier cause maps to its OWNING lane and the named condition that flips its gate from AuditOnly-counted to Blocking. Two lane shapes carry a per-cause flip (ThisLaneCalibration, SharedSelfHostCriticalPath): when that cause's count reaches zero over the whole corpus, the owning lane flips the cause to Blocking and the histogram assertion pinning it goes red — the flip is a receipt, not a toggle. MigrationOwned causes carry NO per-cause trigger (nimble-boar-198 contract): the whole class dissolves BY CONSTRUCTION at the namespace-only containment flip, so counting them is the only action here. The table is fail-closed: a refused cause with no ownership row is an UNATTRIBUTED deficit (cause_is_attributed = false), the honest 'a new frontier cause appeared, someone must own it' signal — never silently bucketed. This is why the ledger is AuditOnly and NOT wired as a CI floor gate today: the seed compile path has no lens stage, so there is no stopped line to gate; wiring a per-PR affected-set gate now would either block every PR (the whole corpus refuses) or pass despite refusals (the DESIGN 5 absorbing fallback). The gate wiring is DEFERRED behind a named trigger: v2 interpreted compile becomes the actual compile path (the migration), at which point the door's fail-closed rejection IS compilation failure and this ledger becomes its stopped-line audit."
+
+type CauseLane
+  = ThisLaneCalibration
+  | SharedSelfHostCriticalPath
+  | MigrationOwned
+
+type CauseOwnership {
+  cause: Symbol
+  lane: CauseLane
+  flip_trigger: String
+}
+
+data known_frontier_causes: List<CauseOwnership> = [
+  CauseOwnership {
+    cause: ^fact_density_hollow_alias_locus,
+    lane: ThisLaneCalibration,
+    flip_trigger: "fact_density subtree roster corpus-calibrated (smart-eagle burn-down); flips to Blocking when the count zeroes — calibration must never become relaxing the lens"
+  },
+  CauseOwnership {
+    cause: ^resolve_reason_unbound_symbol,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve grows generic type-param binding (sharp-bee std/logic thread); flips to Blocking when the count zeroes"
+  },
+  CauseOwnership {
+    cause: ^resolve_ambiguous_export,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
+  },
+  CauseOwnership {
+    cause: ^parse_grammar_choice_overlap_residue,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
+  }
+]
+
+data list_find_first_promotion_note: String = "list_find_first is a short-circuiting element-returning find — the std/algebra gap beside any/filter/contains (which return Bool or the whole filtered list, never the first match with early-exit). Homed locally with ONE consumer (cause_ownership_lookup) per the facts-before-abstraction discipline: promote to v2.std.algebra when a second consumer inhabits it, not before. Short-circuit matters by the standing bare-minimum-cost ruling (2026-07-10): 'n is small here' is not time-stable — known_frontier_causes grows as causes are modeled — so the find returns on the first hit rather than folding the whole table."
+
+fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if predicate(h) {
+        optional_present(value: h)
+      } else {
+        list_find_first(xs: t, predicate: predicate)
+      }
+  }
+}
+
+fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
+  list_find_first(xs: known_frontier_causes, predicate: fn(row) { row.cause == cause })
+}
+
+fn cause_is_attributed(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn all_refused_causes_attributed(rows: List<DoorLedgerRow>) -> Bool {
+  fold_list(
+    xs: ledger_cause_histogram(rows: rows),
+    empty: true,
+    cons: fn(acc, row) { acc && cause_is_attributed(cause: row.reason) }
+  )
+}

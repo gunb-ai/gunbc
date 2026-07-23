@@ -2,6 +2,7 @@ module v1.compiler.trace
 
 import v1.std.core { SourceSpan }
 
+
 type SpanMapping {
   generated_line: Int
   source_span: SourceSpan

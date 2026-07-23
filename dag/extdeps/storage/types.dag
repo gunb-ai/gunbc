@@ -2,6 +2,7 @@ module extdeps.storage.types
 
 import std.measure { ByteSize, Bandwidth, bandwidth, bandwidth_count }
 import std.types { Int, NonEmptyStr }
+import std.machine_shape { InterconnectLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
@@ -36,6 +37,13 @@ type PcieLink {
 
 fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {
   bandwidth(bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
+}
+
+fn pcie_interconnect_link(link: PcieLink) -> InterconnectLink {
+  InterconnectLink {
+    bandwidth: pcie_link_bandwidth(link: link)
+    latency: none
+  }
 }
 
 type NvmeFormFactor =

@@ -106,8 +106,6 @@ data gha_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data gha_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (gha_fold_unsupported_variant_diagnostic, unsupported step kind / empty step list / non-self-hosted runner rejects, wrong-production and flat-steps perturbation witnesses). DISSOLVES WHEN GHA fold serialize lands beyond the pilot: production emit callers surface Violates diagnostics through emit() with node_locus over the offending Job/Step subtree in GhaFoldJobBundle.emitted, retiring the synthetic anchor."
-
 fn gha_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
@@ -731,8 +729,6 @@ fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
-data gha_fold_fixed_depth_indent_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_yaml_indent — pilot block-sequence LIST STRUCTURE traverses generic per-LHS fold (step_list leaf/pair + derive_grammar_relation_row_node), but YAML indent whitespace is fixed-depth baked terminal spellings (e.g. gha_token_yaml_block_run_head = two-space-dash-run-colon at depth 2; no indent/depth/nest parameter). DISSOLVES WHEN arbitrary-depth nested YAML mapping indentation is modeled: depth-aware fold extension replaces per-depth terminal literals with computed indent from a nesting carrier."
-
 fn gha_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -756,8 +752,6 @@ fn gha_fold_lex_rules() -> LexRuleSet {
 fn gha_fold_lex() -> LexRules {
   ModeledLexRules { root: gha_fold_lex_rules() }
 }
-
-data gha_fold_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0002} kind-marker lex bytes (gha_fold_scalar_kind / gha_fold_prod_kind_tag) and zero-width gha_fold_scalar_kind_emit_transform / gha_fold_kind_emit_transform are replaced by real YAML step-class lexing that disambiguates production tags without sentinel bytes"
 
 fn gha_fold_kind_emit_transform(_spelling: String) -> String {
   ""

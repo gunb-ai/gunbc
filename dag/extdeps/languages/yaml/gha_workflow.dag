@@ -7,9 +7,10 @@ import extdeps.languages.yaml.types {
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
   empty_yaml_values
 }
+import extdeps.cron.schedule_model { render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule, MergeGroup,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
@@ -98,10 +99,14 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
         kv(key: "branches", value: string_list_flow(items: bs)),
         kv(key: "types", value: pr_activities_flow(types: ts))
       ]))
-    Schedule { cron: _ } =>
-      kv(key: "schedule", value: YamlNull)
+    Schedule { cron: c } =>
+      kv(key: "schedule", value: yaml_sequence(elements: [
+        yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
+      ]))
     WorkflowCall { inputs: _ } =>
       kv(key: "workflow_call", value: YamlNull)
+    MergeGroup =>
+      kv(key: "merge_group", value: YamlNull)
   }
 }
 
@@ -155,7 +160,9 @@ fn runner_label_string(label: RunnerLabel) -> String {
   match label {
     UbuntuLatest => "ubuntu-latest"
     Ubuntu2404 => "ubuntu-24.04"
+    Ubuntu2404Arm => "ubuntu-24.04-arm"
     Ubuntu2204 => "ubuntu-22.04"
+    UbuntuSlim => "ubuntu-slim"
     MacosLatest => "macos-latest"
     Macos14 => "macos-14"
     WindowsLatest => "windows-latest"
