@@ -795,7 +795,10 @@ pub fn type_leaf_name_for_collapse(
 }
 
 pub fn is_machine_width_phantom_token(name: String) -> bool {
-    name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
+    (((((name.clone() == "Word8".to_string()) || (name.clone() == "Word16".to_string()))
+        || (name.clone() == "Word32".to_string()))
+        || (name.clone() == "Word64".to_string()))
+        || (name.clone() == "Word128".to_string()))
 }
 
 pub fn rust_type_arg_renders_as_unit(
@@ -804,11 +807,11 @@ pub fn rust_type_arg_renders_as_unit(
     variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_width_nat_type_literal(n.clone())
+    ((is_width_nat_type_literal(n.clone())
         || is_machine_width_phantom_token(type_leaf_name_for_collapse(
             n.clone(),
             source_indices.clone(),
-        ))
+        )))
         || is_value_variant_type_arg(
             generic_param_names.clone(),
             variant_to_enum.clone(),
