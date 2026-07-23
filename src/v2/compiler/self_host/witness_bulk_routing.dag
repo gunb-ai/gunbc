@@ -192,10 +192,7 @@ fn routing_row_for_entry(entry: String) -> List<WitnessEntryRoutingRow> {
 }
 
 fn witness_bulk_routing_total_holds() -> Bool {
-  let split_total =
-    length(xs: native_routed_entry_rows())
-      + length(xs: interpreted_retained_entry_rows())
-      + length(xs: emit_ineligible_entry_rows())
+  let split_total = length(xs: native_routed_entry_rows()) + length(xs: interpreted_retained_entry_rows()) + length(xs: emit_ineligible_entry_rows())
   length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
     && split_total == witness_bulk_entry_count_expected
 }
