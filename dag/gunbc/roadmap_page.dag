@@ -410,6 +410,7 @@ fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Markup
     frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged),
     frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged),
     frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged),
+    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, merged: merged),
   ])
 }
 

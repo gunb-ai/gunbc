@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import extdeps.languages.json.emit {
@@ -102,6 +102,11 @@ type SpawnFrontier {
   ready: List<RoadmapNode>
   upcoming: List<RoadmapNode>
   done: List<RoadmapNode>
+  superseded: List<RoadmapNode>
+}
+
+fn node_is_superseded(n: RoadmapNode) -> Bool {
+  !(item_superseded_by(item: n.line) == "")
 }
 
 fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
@@ -111,6 +116,7 @@ fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
     ready: next_spawnable(doc: doc, merged: merged),
     upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges, merged: merged)),
     done: nodes |> filter(n => node_is_frontier_done(n: n, merged: merged)),
+    superseded: nodes |> filter(n => node_is_superseded(n: n)),
   }
 }
 
@@ -282,6 +288,12 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
       ])
     ))),
     json_kv(key: "done", value: json_array(elements: frontier.done |> map(n => json_string(s: n.node)))),
+    json_kv(key: "superseded", value: json_array(elements: frontier.superseded |> map(n =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: n.node)),
+        json_kv(key: "superseded_by", value: json_string(s: item_superseded_by(item: n.line))),
+      ])
+    ))),
   ])
 }
 
