@@ -23,10 +23,28 @@ the same input content) plus a **ranked lever table** priced in displaced minute
 | Workflow (build+ci+deploy) | 55m | 56% of main runs | operator-facing "~1 hour" |
 | **ci job** | **44m** | 40% | **use this for floor attribution** |
 | Floor step (`gunbc ci` claim_executor) | ~35–48m | — | regen excluded (~3m) |
+| **Extreme tail (action ceiling)** | **270m+** | 1 receipt | PR #7110 run `29986954853` — see §1.1 |
 
 The **~72 min** figure in `gunbc_ci_witness_corpus_only_batches_note` is whole-tree **emit**
 infeasible for pre-push — not typical ci job wall. Scoped PRs skip compile-clean emit entirely
 (`compile-clean scope: skipped`).
+
+### 1.1 Extreme tail — run `29986954853` (PR #7110, plan-only)
+
+**Receipt:** PR #7110 @ `ad44c819c`, run `29986954853`, **killed at the ci-step
+`timeout-minutes: 270` ceiling** (workflow wall ~281 min including setup). Diff is **one file**
+(`dag/gunbc/v1_deletion_plan.dag` only) — the most trivial affected-set path; compile-clean
+should be skipped.
+
+**Reading:** NOT diff-size-driven. Strong evidence the tail is **corpus-denominated +
+infra-bound** (serial `width=1` + memory thrash on a bad-luck runner). When width latches at 1
+there is **no recovery arm** — the run rides silently to the action ceiling (DESIGN §5
+absorbing-fallback shape: corpus-denominated cost breaks the budget later, not a typed refusal
+mid-flight). Phase breakdown unavailable: log rotated on re-queue at cancel; floor never emitted
+final batch receipts.
+
+**Lever sharpen:** extends ranked lever 5 (width=1 latch) — add **fail-fast at action ceiling**
+as a separate scheduling finding (270 min silent ride vs early typed refusal).
 
 ---
 
