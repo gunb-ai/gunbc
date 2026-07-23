@@ -1,6 +1,6 @@
 module extdeps.storage.nbd
 
-import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand }
@@ -15,7 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type NbdExport {
   export_name: NonEmptyStr
   backing_path: NonEmptyStr
-  port: Int
+  port: Port
   read_only: Bool
 }
 
@@ -48,7 +48,7 @@ fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
 
 type NbdClientAttach {
   server: NonEmptyStr
-  port: Int
+  port: Port
   export_name: NonEmptyStr
   device: NonEmptyStr
 }

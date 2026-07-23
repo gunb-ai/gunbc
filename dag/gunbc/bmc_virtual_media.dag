@@ -1,6 +1,6 @@
 module gunbc.bmc_virtual_media
 
-import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.storage.nbd {
   NbdExport,
@@ -34,9 +34,9 @@ type BmcVirtualMediaPlan {
   srv1_host: NonEmptyStr
   iso_path: NonEmptyStr
   export_name: NonEmptyStr
-  nbd_port: Int
+  nbd_port: Port
   nbd_device: NonEmptyStr
-  udc_port: NonEmptyStr
+  udc: NonEmptyStr
   nbd_config_path: NonEmptyStr
 }
 
@@ -55,7 +55,7 @@ data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
   nbd_port: srv3_nbd_proxy_local_port,
   export_name: "srv4iso",
   nbd_device: "/dev/nbd0",
-  udc_port: "1e6a0000.usb-vhub:p3",
+  udc: "1e6a0000.usb-vhub:p3",
 }
 
 data srv4_configfs_transport: VirtualMediaTransport = ConfigfsGadgetTransport {
@@ -71,7 +71,7 @@ fn bmc_virtual_media_plan_of(intent: VirtualMediaIntent, params: ConfigfsGadgetP
     export_name: params.export_name,
     nbd_port: params.nbd_port,
     nbd_device: params.nbd_device,
-    udc_port: params.udc_port,
+    udc: params.udc,
     nbd_config_path: "/tmp/gunbc-nbd-srv4.conf",
   }
 }
@@ -115,7 +115,7 @@ fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
       read_only: true,
       removable: true,
     },
-    udc: plan.udc_port,
+    udc: plan.udc,
   }
 }
 

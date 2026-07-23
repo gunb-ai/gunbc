@@ -1,6 +1,6 @@
 module extdeps.bmc.virtual_media
 
-import std.types { NonEmptyStr, Int, String, List }
+import std.types { NonEmptyStr, Int, String, List, Port }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -26,16 +26,16 @@ type VirtualMediaIntent {
 
 type ConfigfsGadgetParams {
   nbd_server_host: NonEmptyStr
-  nbd_port: Int
+  nbd_port: Port
   export_name: NonEmptyStr
   nbd_device: NonEmptyStr
-  udc_port: NonEmptyStr
+  udc: NonEmptyStr
 }
 
 type NbdProxyWebsocatParams {
   session_token: NonEmptyStr
   ws_path: NonEmptyStr
-  local_nbd_port: Int
+  local_nbd_port: Port
 }
 
 type VirtualMediaTransport

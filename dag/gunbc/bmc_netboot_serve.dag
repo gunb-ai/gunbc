@@ -1,6 +1,6 @@
 module gunbc.bmc_netboot_serve
 
-import std.types { NonEmptyStr, String, Int, List }
+import std.types { NonEmptyStr, String, Int, List, Port }
 import extdeps.uri { Uri, Http, Https, uri_wire }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
@@ -28,7 +28,7 @@ import gunbc.os_install_emit { autoinstall_user_data }
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr
-  serve_port: Int
+  serve_port: Port
   netboot_dir: NonEmptyStr
   boot_interface: NonEmptyStr
   bulk_iso_url: Uri
