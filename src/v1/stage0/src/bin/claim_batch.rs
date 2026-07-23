@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
-    discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
+    build_multi_entry_index, closure_subject_for_entry, discover_floor_witness_roster,
+    make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
     witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
@@ -504,18 +504,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
-        if let Err(e) = check_floor_filename_hygiene(&source_roots) {
-            eprintln!("claim_batch: {e}");
-            return Err(ExitCode::from(2));
-        }
         let excludes = witness_exclusion_substrings();
-        let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs, &excludes) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("claim_batch: discovery roster failed: {e}");
-                return Err(ExitCode::from(2));
-            }
-        };
+        let mut rows =
+            match discover_floor_witness_roster(&source_roots, &disc.scan_dirs, &excludes, &[]) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("claim_batch: discovery roster failed: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            };
         let mut seen: std::collections::BTreeSet<(String, String)> = rows
             .iter()
             .map(|r| (r.entry.clone(), r.function.clone()))

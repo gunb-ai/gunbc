@@ -1,0 +1,73 @@
+module gunbc.plans.host_convergence_circuit_residue
+
+import std.types { String, List }
+import std.markdown { MarkdownBlock }
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn hccr_intro() -> List<MarkdownBlock> {
+  [
+    p(text: "Host-convergence circuit brief (steps 0-3). This is the AcceptedWithResidue receipt for the session that landed P0 + the P1 loop-close LOGIC. It records what is proven, and the counted debts that remain — including one named §5 hazard the next session must NOT trip on."),
+    quote(blocks: [p(text: "P1's four receipts were the non-negotiable bar. Their HERMETIC floor is delivered and GREEN. The LIVE-on-srv1 arms are operator one-liners gated on the P1a/P1b live wiring below.")]),
+  ]
+}
+
+fn hccr_done() -> List<MarkdownBlock> {
+  [
+    h2(text: "Landed"),
+    h3(text: "P0 — paper transport deleted, wall tightened (GREEN)"),
+    ul(items: [
+      li(text: "Deleted dag/gunbc/fleet_converge_emit.dag (bash-emission: expected_fleet_converge_sh, project_fleet_converge_to_doc, fresh_standup_bootstrap_* — the last had NO executing consumer) + .github/fleet-converge.sh + FleetConvergeArtifact registration + the fleet_converge_emit_test + its commit_workflow enrollment. The typed path (converge_apply) already lived in fleet_converge_apply."),
+      li(text: "THE WALL: removed dag/gunbc/fleet_converge_emit from realization_vocabulary_containment realization_edge_path_prefixes. Nothing under dag/gunbc/fleet_converge* may now emit ShellProgram vocabulary; a stray import reds the containment lens. EmitArtifactThenThinRun transport STAYS (general infra: srv3-install/ci_deploy/nbd_proxy)."),
+      li(text: "Green: fleet_converge_apply, generated_artifact_drift, host_standup_spine, commit_workflow, realization_vocabulary_containment."),
+    ]),
+    h3(text: "P1 core — PerSlotMemoryCap axis on the membership_reconcile spine (4 receipts, GREEN)"),
+    ul(items: [
+      li(text: "dag/gunbc/host_axis_caps.dag: the first NON-DEGENERATE membership_reconcile in the repo (desired vs a real observed set, not observed=[]). One spine instantiation with a (key_of, key_eq, value_eq, ownership_of) bundle; ownership DERIVED from the drop-in path (managed -> Owned, foreign -> Ensured), never stored."),
+      li(text: "Interference domain = the drop-in directory, realized through the SAME spine: a foreign occupant is Removed + not-owned -> MemberTeardownRefused (R5, no effect arm, never deleted) -> ApplyRefused wholesale."),
+      li(text: "Four hermetic receipts, each with a RED control, all GREEN, auto-discovered as a CI corpus consumer (not inert): idempotence (zero effects), perturb-and-heal (exactly the drifted row Upsert), foreign occupant (ApplyRefused + zero teardowns; RED = an owned removed file DOES teardown), derived content ([Service]/property/bytes derived, no hand strings)."),
+    ]),
+    h3(text: "P1a — interpreter closed + realize executes for real (loop closed at the live entry)"),
+    ul(items: [
+      li(text: "host_converge_realize.interpret_converge_knob: PerSlotMemoryCap -> KnobEffect carrying the derived cap_upsert_script (single content authority = host_axis_caps, no hand strings); every other target still KnobUnimplemented. interpret_host_converge accumulates KnobEffect scripts, and still short-circuits to ConvergeHostRefused on any unimplemented knob."),
+      li(text: "host_effect_realize.realize_converge_in_process: the fabricated exit_code 0 is GONE. It now runs the interpreted script through run_shell_transport (in-process LocalShell shell.Exec.Run) and grounds on the REAL exit code; a nonzero exit is a typed, located NotConverged refusal — never fabricated success. When reached (converge_apply_for_host -> host_effect_apply -> realize on a ConvergeHostInterpreted host), it actuates for real."),
+      li(text: "Safe-by-refusal on the hermetic floor: every real fleet host also carries GunbcPinnedTree + JobserverTokens + RunnerWidth knobs (all still KnobUnimplemented), so interpret_host_converge refuses the whole host BEFORE realize reaches run_shell_transport. No witness shells out in CI; the srv2 KnobFrontier receipt witness stays green. The srv3 memory witness flipped from 'refuses' to 'interprets' (runner_memory_knob_apply_interpreted) and is green by interpretation only (no execution)."),
+      li(text: "HONEST LIMIT — the live one-liner does NOT yet apply caps end-to-end. The full-host entry (gunbc converge --host srv1 -> converge_cli_run) refuses whole-host on those sibling knobs (correct fail-closed — do not fabricate the un-modeled knobs), and the only caps-scoped CLI route (converge_cli_verify_run) is READ-BACK ONLY. There is no caps-only APPLY entry, so the wired interpret->realize path is proven by compile + the srv3 interpret witness, not yet by a live gunbc-converge apply. The interim live caps state on srv1/srv4 is the operator-hand-applied DERIVED values (legitimate interim, not transplanted drift)."),
+    ]),
+  ]
+}
+
+fn hccr_hazard() -> List<MarkdownBlock> {
+  [
+    h2(text: "CLOSED hazard (the §5 fail-open P1a had to walk past) + the remaining landmine"),
+    p(text: "CLOSED: realize_converge_in_process used to ground a ConvergePlanApplied evidence with a HARDCODED exit_code 0 and NO execution — dead only because everything refused. P1a replaced it with a real run_shell_transport call grounded on the actual exit (fail-closed on nonzero). The fabricated success is gone."),
+    p(text: "REMAINING LANDMINE (counted residue): the converge EXECUTE path is reached whenever interpret_host_converge returns ConvergeHostInterpreted, and today that only happens for a host whose knobs are ALL PerSlotMemoryCap. No real fleet host is caps-only (they all carry pinned-tree / jobserver / runner-width knobs), so the hermetic witnesses that call converge_cli_run / converge_apply refuse before executing. The moment a host becomes caps-only — or a new all-implemented axis lands — those SAME hermetic witnesses would shell out live in a `gunbc run --claim-run` (Wet) CI pass. Before that happens the execute path must be mode-gated (Wet actuates; hermetic/dry-run yields the plan without executing) OR the hermetic witnesses must assert the interpreted plan rather than call the live-apply entry. This is accidental-coverage-by-refusal, tracked so it is fixed by construction, not left to luck."),
+  ]
+}
+
+fn hccr_residue() -> List<MarkdownBlock> {
+  [
+    h2(text: "Counted residue"),
+    ol(items: [
+      li(text: "Caps-only APPLY entry (the piece that makes the live receipt runnable). The knob interpreter + realize execution are DONE (P1a landed). What is missing is a CLI route that applies the caps-only HostConverge (runner_memory_host_converge, already built caps-only) through converge_apply_for_host -> host_effect_apply -> realize, so `gunbc converge` can actuate caps without waiting on the sibling knobs to be modeled. This is coupled to the landmine fix below (a caps-only apply path WOULD execute in any Wet witness that calls it), so it lands mode-gated (Wet actuates; hermetic yields the plan) — never as a bare apply entry a discovery witness can trip."),
+      li(text: "P1b — fail-closed observe provider: enumerate the live drop-in directory + read each file's content -> observed CapMember set; an unreadable directory/file is a typed refusal, never an empty set (belt_observe pattern: unknown never widens to empty). runner_memory_cap_live_read already reads the systemctl-show effective values; the directory enumeration (for the interference/foreign arm) is the missing read."),
+      li(text: "Live srv1 receipts (operator one-liners, once P1a+P1b land): converge caps on srv1 -> all Unchanged, zero effects; hand-break one slot's cap -> diff names exactly that row Modified -> apply -> readback green -> re-run all-Unchanged; drop an unowned file in the .d dir -> typed refusal naming the path, nothing deleted, siblings continue. Until then the HERMETIC witnesses stand, plus the hand-verified srv4 caps state (the 2026-07-23 OOM fix receipts)."),
+      li(text: "P2 — enrollment + the wall: srv4 as a fleet_intent data row (BMC-measured HostMemoryPopulation via Redfish, not the flat 128GiB guess; the conservation wall then CHECKS the 5-runner fit); AND the enrollment wall as CONSTRUCTION — the runner installer refuses on a host absent from fleet_intent (a generated host-roster guard emitted from fleet_intent, drift-gated). A host can no longer take fleet work by hand-action alone."),
+      li(text: "P3 (amended) — the axis framework as the pattern: HostAxisBundle enrolled in gunbc.roster_registry (a GROUP, not a nickname list); providers are cited extdeps rows grounding in the ONE shared memory model (cgroup-v2 knobs, PSI, OOM-kill verb — extend extdeps/os/systemd + extdeps/os/oomd, never re-mint per provider); interference = computed claim intersection (the effect-grants subtree relation) witnessed by execution; observe classifies occupants by identity, an unmapped occupant -> typed UnmodeledOccupant refusal (never auto-disable); TakeoverRuling is the ONLY signed path from foreign occupant to owned teardown. Land swap-device + reclaim-timer as DECLARED frontier axis rows (hand-provisioned on srv1/2/4 with receipts; dissolve_on = each axis's own follow-on PR on the proven P1 circuit)."),
+    ]),
+    p(text: "Hard rule honored throughout: a failure arm refuses, never widens. The caps axis foreign-occupant arm refuses wholesale and deletes nothing; no observe-all, no assume-owned, no auto-disable."),
+  ]
+}
+
+fn host_convergence_circuit_residue_body() -> List<MarkdownBlock> {
+  concat(hccr_intro(),
+  concat(hccr_done(),
+  concat(hccr_hazard(), hccr_residue())))
+}
+
+data host_convergence_circuit_residue_plan: Plan = Plan {
+  slug: "host-convergence-circuit-residue",
+  title: "Host-convergence circuit — P0 + P1-core landed; P1a/P1b/live + P2 + P3 residue (2026-07-23)",
+  body: host_convergence_circuit_residue_body(),
+  dissolution: HasTrigger { text: "Dissolves as each counted debt lands on the proven P1 circuit: P1a (interpreter KnobEffect + realize real-execution, the two coupled edits past the fabricated-exit-0 hazard), P1b (fail-closed observe provider), the three live srv1 receipts, P2 (srv4 enrollment + the enrollment wall), P3 (the axis framework + swap-device/reclaim-timer frontier rows). Fully retired when a foreign occupant on srv1's drop-in directory is refused BY THE LIVE CONVERGE (not just the hermetic witness) and srv5 subsumes with the enrollment wall making hand-action membership unwritable." },
+}

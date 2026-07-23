@@ -422,3 +422,73 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
         }
     }
 }
+
+pub fn uri_query_param_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Query-string parsing, the URI concern's single home (§3) — mirror of the '?' strip match_path_template/parse_path_template already do. uri_query_string returns everything after the first '?' (empty if none); uri_query_param returns the value for a key over the '&'-separated 'k=v' pairs (empty if the key is absent). Kept minimal: no percent-decoding yet (the one consumer, the /sandbox/echo status label, is an ASCII enum), so a decode pass is a named follow-on when a consumer needs it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn uri_query_string(path: String) -> String {
+    match Rc::new(
+        path.clone()
+            .split(&"?".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .get(1 as usize)
+    .cloned()
+    {
+        Some(q) => q.clone(),
+        None => "".to_string(),
+    }
+}
+
+pub fn uri_query_param(path: String, key: String) -> String {
+    {
+        let pairs = Rc::new(
+            uri_query_string(path.clone())
+                .split(&"&".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        pairs
+            .clone()
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, pair: String| {
+                let k = match Rc::new(
+                    pair.clone()
+                        .split(&"=".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .first()
+                .cloned()
+                {
+                    Some(x) => x.clone(),
+                    None => "".to_string(),
+                };
+                let v = match Rc::new(
+                    pair.clone()
+                        .split(&"=".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .get(1 as usize)
+                .cloned()
+                {
+                    Some(x) => x.clone(),
+                    None => "".to_string(),
+                };
+                if (k.clone() == key.clone()) {
+                    v.clone()
+                } else {
+                    acc
+                }
+            })
+    }
+}

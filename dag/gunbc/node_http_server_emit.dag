@@ -2,26 +2,14 @@ module gunbc.node_http_server_emit
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.http_path { PathTemplate, LiteralToken, ParamToken }
-import std.markup { MarkupNode }
-import extdeps.uri_path {
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-}
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.http.server {
   HttpServerListenConfig,
   ServedStaticRoute,
   ServedStaticRouteTable,
-  HttpContentType,
-  TextHtmlUtf8,
-  http_content_type_wire_label,
+  MediaType,
+  media_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority, belt_dispatch_path_prefix }
-import gunbc.roadmap_belt_actuate { belt_dispatch_env_var, belt_actuate_workdir }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.roadmap_static_site { roadmap_site_text_static_routes }
 import extdeps.languages.typescript.program {
   TsProgram,
   TsExpr,
@@ -52,23 +40,12 @@ import extdeps.languages.typescript.program {
   ts_spread,
 }
 
-data belt_dispatch_route_note: String = "INTERIM (roadmap belt A, operator 2026-07-20): the deployed static Node dashboard gets ONE dynamic POST route so the launch button works before the model-honest gunbc-serve (belt B, child cool-wolf-720) lands and RETIRES this whole Node server. On POST <path_prefix>NODE, it execs the srv1 gunbc binary running belt_dispatch_node_cli with the node id in GUNBC_BELT_NODE_ID (env channel -- gunbc run has no --arg), cwd = the repo (gunbc run derives workspace_root from cwd, so it MUST be a git checkout), and returns the JSON receipt. The dispatch AUTHORITY stays belt_dispatch_node in .dag -- this route only SHELLS the CLI (an interim smuggled-exec that B dissolves to an in-process call). Only the roadmap dashboard spec carries this; gunbhub leaves it Absent."
-
-type BeltDispatchRouteConfig {
-  path_prefix: String
-  gunbc_bin: String
-  repo_cwd: String
-  source_roots: List<String>
-  entry: String
-  function_name: String
-  env_var: String
-}
+data node_http_server_emit_disposition_note: String = "DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the service is `gunbc serve`, not an emitted server.js) and this PR proved the belt-B path end-to-end by execution (GET / , /roadmap, /sandbox render; POST /dispatch and /sandbox/echo answer in-process). Gone with it: the belt-A smuggled-exec dispatch route (BeltDispatchRouteConfig + the execFile-gunbc handler — the very env-var-channel shell-out belt B dissolves to an in-process call), the roadmap static route table, and every roadmap_dashboard_* emitter. This module SURVIVES only for the gunbhub static-server emit (gunbhub_node_http_server_source, the sole live consumer via dag/tools/emit_host_transport.dag) — a static server with no dispatch. Its own dissolution trigger is gunbhub's migration to belt B (gunbc serve), the named follow-on (OUT OF SCOPE here: gunbhub_serve). Not a silent zombie: the roadmap emit is removed, not merely marked, and the remaining consumer is named."
 
 type NodeHttpStaticServerSpec {
   service_name: String
   routes: ServedStaticRouteTable
   listen: HttpServerListenConfig
-  dispatch: BeltDispatchRouteConfig?
 }
 
 fn emit_http_method_label(method: HttpMethod) -> String {
@@ -118,7 +95,7 @@ fn emit_path_template_regex_source(template: PathTemplate) -> String {
 fn emit_static_route_expr(route: ServedStaticRoute) -> TsExpr {
   let method = emit_http_method_label(method: route.method)
   let re = emit_path_template_regex_source(template: route.path_pattern)
-  let ct = http_content_type_wire_label(content_type: route.content_type)
+  let ct = media_type_wire_label(m: route.content_type)
   ts_object([
     ts_field(key: "method", value: ts_lit_str(value: method)),
     ts_field(key: "pathRe", value: ts_lit_regex(source: re)),
@@ -167,104 +144,8 @@ fn node_http_match_handler_body() -> TsStmt {
   ])
 }
 
-fn node_http_dispatch_exec_args(cfg: BeltDispatchRouteConfig) -> List<TsExpr> {
-  let roots = fold(cfg.source_roots, init: [], f: fn(acc, r) {
-    concat(acc, [ts_lit_str(value: "--source-root"), ts_lit_str(value: r)])
-  })
-  concat(
-    concat([ts_lit_str(value: "run")], roots),
-    [
-      ts_lit_str(value: "--entry"), ts_lit_str(value: cfg.entry),
-      ts_lit_str(value: "--function"), ts_lit_str(value: cfg.function_name),
-    ]
-  )
-}
-
-fn node_http_dispatch_callback() -> TsExpr {
-  ts_arrow(params: ["err", "stdout", "stderr"], body: ts_block(stmts: [
-    ts_expr_stmt(expr: ts_call(
-      callee: res_member(name: "writeHead"),
-      args: [
-        ts_cond(
-          test: ts_ident(name: "err"),
-          consequent: ts_lit_num(text: "500"),
-          alternate: ts_lit_num(text: "200"),
-        ),
-        ts_object(fields: [ts_quoted_field(key: "Content-Type", value: ts_lit_str(value: "application/json"))]),
-      ]
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: res_member(name: "end"),
-      args: [ts_call(
-        callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"),
-        args: [ts_object(fields: [
-          ts_field(key: "ok", value: ts_prefix(op: "!", expr: ts_ident(name: "err"))),
-          ts_field(key: "node", value: ts_ident(name: "node")),
-          ts_field(key: "stdout", value: ts_ident(name: "stdout")),
-          ts_field(key: "stderr", value: ts_ident(name: "stderr")),
-        ])]
-      )]
-    )),
-  ]))
-}
-
-fn node_http_dispatch_route_stmt(cfg: BeltDispatchRouteConfig) -> TsStmt {
-  ts_if(
-    cond: ts_binop(
-      left: ts_binop(left: ts_ident(name: "method"), op: "===", right: ts_lit_str(value: "POST")),
-      op: "&&",
-      right: ts_call(
-        callee: ts_member(object: ts_ident(name: "path"), property: "startsWith"),
-        args: [ts_lit_str(value: cfg.path_prefix)]
-      )
-    ),
-    then: ts_block(stmts: [
-      ts_const(
-        name: "node",
-        value: ts_call(
-          callee: ts_ident(name: "decodeURIComponent"),
-          args: [ts_call(
-            callee: ts_member(object: ts_ident(name: "path"), property: "slice"),
-            args: [ts_member(object: ts_lit_str(value: cfg.path_prefix), property: "length")]
-          )]
-        )
-      ),
-      ts_const(
-        name: "cp",
-        value: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "child_process")])
-      ),
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(object: ts_ident(name: "cp"), property: "execFile"),
-        args: [
-          ts_lit_str(value: cfg.gunbc_bin),
-          ts_array(elements: node_http_dispatch_exec_args(cfg: cfg)),
-          ts_object(fields: [
-            ts_field(key: "cwd", value: ts_lit_str(value: cfg.repo_cwd)),
-            ts_field(key: "maxBuffer", value: ts_lit_num(text: "10485760")),
-            ts_field(key: "env", value: ts_call(
-              callee: ts_member(object: ts_ident(name: "Object"), property: "assign"),
-              args: [
-                ts_object(fields: []),
-                ts_member(object: ts_ident(name: "process"), property: "env"),
-                ts_object(fields: [ts_quoted_field(key: cfg.env_var, value: ts_ident(name: "node"))]),
-              ]
-            )),
-          ]),
-          node_http_dispatch_callback(),
-        ]
-      )),
-      ts_return(expr: none),
-    ]),
-    else_stmt: none
-  )
-}
-
-fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
-  let dispatch_stmts = match dispatch {
-    Present { value: cfg } => [node_http_dispatch_route_stmt(cfg: cfg)]
-    Absent => []
-  }
-  ts_block(stmts: concat(concat([
+fn node_http_request_handler_block() -> TsStmt {
+  ts_block(stmts: concat([
     ts_const(
       name: "method",
       value: ts_binop(left: req_member(name: "method"), op: "||", right: ts_lit_str(value: "GET"))
@@ -287,7 +168,7 @@ fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt
         right: ts_lit_str(value: "/")
       )
     ),
-  ], dispatch_stmts), [
+  ], [
     ts_for_of(
       var_name: "route",
       iterable: ts_ident(name: "routes"),
@@ -381,7 +262,7 @@ fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt
   ]))
 }
 
-fn node_http_create_server_stmt(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
+fn node_http_create_server_stmt() -> TsStmt {
   ts_const(
     name: "server",
     value: ts_call(
@@ -389,7 +270,7 @@ fn node_http_create_server_stmt(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
         object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
         property: "createServer"
       ),
-      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block(dispatch: dispatch))]
+      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block())]
     )
   )
 }
@@ -449,7 +330,7 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsPro
         name: "routes",
         value: ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
       ),
-      node_http_create_server_stmt(dispatch: spec.dispatch),
+      node_http_create_server_stmt(),
       node_http_port_const(port: port),
       node_http_host_const(host: spec.listen.host),
       node_http_listen_stmt(),
@@ -465,87 +346,9 @@ fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
       host: "0.0.0.0",
       port: 8080,
     },
-    dispatch: Absent,
   }
 }
 
 fn gunbhub_node_http_server_source() -> String {
   serialize_typescript_program(p: emit_node_http_static_server_program(spec: gunbhub_node_http_static_server_spec()))
-}
-
-fn roadmap_dashboard_root_path_template() -> PathTemplate {
-  match parse_path_template(raw: "/") {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [] }
-  }
-}
-
-fn roadmap_dashboard_roadmap_path_template() -> PathTemplate {
-  match parse_path_template(raw: "/roadmap") {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [LiteralToken { text: "roadmap" }] }
-  }
-}
-
-fn roadmap_served_static_route(path: PathTemplate, page: MarkupNode) -> List<ServedStaticRoute> {
-  match try_serialize_html_source(node: page) {
-    EmitOk { html: h } =>
-      [
-        ServedStaticRoute {
-          method: GET,
-          path_pattern: path,
-          body: h,
-          content_type: TextHtmlUtf8,
-          status_on_hit: 200,
-        },
-      ]
-    EmitRejected { reason: _ } => []
-  }
-}
-
-fn roadmap_dashboard_served_static_route_table() -> ServedStaticRouteTable {
-  let daily = roadmap_served_static_route(
-    path: roadmap_dashboard_root_path_template(),
-    page: roadmap_daily_workspace_page_for_authority(),
-  )
-  let full = roadmap_served_static_route(
-    path: roadmap_dashboard_roadmap_path_template(),
-    page: roadmap_page_for_authority(),
-  )
-  ServedStaticRouteTable {
-    routes: concat(
-      concat(roadmap_site_text_static_routes(), daily),
-      full
-    )
-  }
-}
-
-fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
-  NodeHttpStaticServerSpec {
-    service_name: "gunbc-roadmap",
-    routes: roadmap_dashboard_served_static_route_table(),
-    listen: HttpServerListenConfig {
-      host: "0.0.0.0",
-      port: 8080,
-    },
-    dispatch: Present { value: roadmap_dashboard_dispatch_route_config() },
-  }
-}
-
-fn roadmap_dashboard_dispatch_route_config() -> BeltDispatchRouteConfig {
-  BeltDispatchRouteConfig {
-    path_prefix: belt_dispatch_path_prefix,
-    gunbc_bin: "/opt/gunbc/bin/gunbc",
-    repo_cwd: belt_actuate_workdir as String,
-    source_roots: witness_layer_roots,
-    entry: "dag/gunbc/roadmap_belt_actuate.dag",
-    function_name: "belt_dispatch_node_cli",
-    env_var: belt_dispatch_env_var as String,
-  }
-}
-
-fn roadmap_dashboard_node_http_server_source() -> String {
-  serialize_typescript_program(p: emit_node_http_static_server_program(spec: roadmap_dashboard_node_http_static_server_spec()))
 }

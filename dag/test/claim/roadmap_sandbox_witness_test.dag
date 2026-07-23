@@ -1,0 +1,82 @@
+module test.claim.roadmap_sandbox_witness
+
+import std.types { Int, String, Bool, List }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import gunbc.roadmap_sandbox { sandbox_page, sandbox_gallery_terminal_labels }
+import gunbc.roadmap_component {
+  dispatch_button_component, dispatch_state_display_text, sandbox_live_class,
+}
+import gunbc.design.component { component_terminal_states, component_drop_state }
+import gunbc.design.theme { role_var, CanvasRole, night_canvas }
+import gunbc.design.material { paint }
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import gunbc.roadmap_serve { roadmap_serve_respond }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_sandbox_witness_note: String = "P4 keystone: /sandbox is the register at every depth plus every component in every state, and it doubles as the visual witness. Gallery totality is the wire vocabulary re-witnessed as coverage (one static instance per wire label; drop one -> RED). The echo answers ANY wire arm on demand with the SAME belt JSON shape production sends (proven per label; unknown label refuses 400). The live instances are one pressable button per arm, all driven by the shared client program. The register depths (roles under both themes, scales) render from the authorities, so the sandbox cannot drift from the live surfaces."
+
+fn sandbox_html() -> String {
+  match try_serialize_html_source(node: sandbox_page()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_gallery_covers_every_wire_label() -> Bool {
+  let gallery = sandbox_gallery_terminal_labels()
+  let wire = belt_dispatch_all_status_labels()
+  gallery.length() == wire.length()
+    && all(wire, w => any(gallery, g => g == w))
+    && all(gallery, g => any(wire, w => w == g))
+}
+
+fn witness_gallery_drop_is_located_red() -> Bool {
+  let dropped = component_drop_state(c: dispatch_button_component(), drop_key: "spawned")
+  let labels = map(component_terminal_states(c: dropped), s => dispatch_state_display_text(state: s))
+  labels.length() == belt_dispatch_all_status_labels().length() - 1
+    && !any(labels, l => l == "spawned")
+}
+
+fn witness_echo_answers_every_wire_arm() -> Bool {
+  all(belt_dispatch_all_status_labels(), l => {
+    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "")
+    r.status == 200 && string_contains(s: r.body, pattern: l) && string_contains(s: r.body, pattern: "status")
+  })
+}
+
+fn witness_echo_unknown_label_refuses() -> Bool {
+  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "")
+  r.status == 400 && string_contains(s: r.body, pattern: "unknown status")
+}
+
+fn witness_sandbox_renders_register_depths() -> Bool {
+  let h = sandbox_html()
+  string_contains(s: h, pattern: "roles — night / day")
+    && string_contains(s: h, pattern: "scales")
+    && string_contains(s: h, pattern: "class=\"swatch\"")
+    && string_contains(s: h, pattern: role_var(r: CanvasRole))
+    && string_contains(s: h, pattern: paint(m: night_canvas))
+    && string_contains(s: h, pattern: "space-8")
+}
+
+fn witness_sandbox_gallery_and_live_render() -> Bool {
+  let h = sandbox_html()
+  string_contains(s: h, pattern: "dispatch button — every state")
+    && string_contains(s: h, pattern: "dispatch-ok")
+    && string_contains(s: h, pattern: "dispatch-refused")
+    && string_contains(s: h, pattern: "dispatching...")
+    && string_contains(s: h, pattern: sandbox_live_class)
+    && string_contains(s: h, pattern: "/assets/sandbox.js")
+    && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
+}
+
+test fn roadmap_sandbox_keystone_holds() -> Bool {
+  witness_gallery_covers_every_wire_label()
+    && witness_gallery_drop_is_located_red()
+    && witness_echo_answers_every_wire_arm()
+    && witness_echo_unknown_label_refuses()
+    && witness_sandbox_renders_register_depths()
+    && witness_sandbox_gallery_and_live_render()
+}
