@@ -8513,13 +8513,69 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
 /// located refusal. It never falls back to a fabricated label.
 pub fn witness_execution_leg_label(entry: &str) -> String {
     let rel = repo_relative_dag_path(entry);
+    if let Some(hit) = witness_execution_leg_cached(&rel) {
+        return hit;
+    }
+    let leg = derive_witness_execution_leg(&rel);
+    witness_execution_leg_cache_put(&rel, &leg);
+    leg
+}
+
+/// Derive every distinct entry's leg once, on the caller's thread, before witnesses fan out.
+///
+/// Cost shape (§6 — measured, not assumed): the label itself is ~5us, but building the
+/// interpreter context for the classification authority is seconds, because it resolves
+/// against the corpus-wide shared index — and that index and the context are both
+/// thread-local. Priming here, on the thread whose index the floor has already built, keeps
+/// the process to a single context build; without it every worker thread that missed the
+/// cache would pay for its own. The cache is process-wide so the fan-out reads it directly.
+pub(crate) fn prime_witness_execution_legs<'a>(entries: impl IntoIterator<Item = &'a str>) {
+    let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for entry in entries {
+        distinct.insert(repo_relative_dag_path(entry));
+    }
+    for rel in distinct {
+        if witness_execution_leg_cached(&rel).is_none() {
+            let leg = derive_witness_execution_leg(&rel);
+            witness_execution_leg_cache_put(&rel, &leg);
+        }
+    }
+}
+
+/// Memo of derived labels, keyed on the entry path the rule is a function of. This is a
+/// cache of a pure computation, not a second representation of it: it is built from the
+/// `.dag` authority in-process, never written down, and cannot drift from the rule.
+static WITNESS_EXECUTION_LEG_CACHE: OnceLock<std::sync::RwLock<HashMap<String, String>>> =
+    OnceLock::new();
+
+fn witness_execution_leg_cache() -> &'static std::sync::RwLock<HashMap<String, String>> {
+    WITNESS_EXECUTION_LEG_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn witness_execution_leg_cached(rel: &str) -> Option<String> {
+    match witness_execution_leg_cache().read() {
+        Ok(map) => map.get(rel).cloned(),
+        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
+    }
+}
+
+fn witness_execution_leg_cache_put(rel: &str, leg: &str) {
+    match witness_execution_leg_cache().write() {
+        Ok(mut map) => {
+            map.insert(rel.to_string(), leg.to_string());
+        }
+        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
+    }
+}
+
+fn derive_witness_execution_leg(rel: &str) -> String {
     let ctx = witness_entry_eligibility_census_ctx().unwrap_or_else(|e| {
         panic!(
             "witness execution leg: {e} (refuse — {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY} \
              is the classification authority)"
         )
     });
-    match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
+    match eval_census_string_fn(&ctx, "census_execution_leg_label", rel) {
         Ok(leg) if !leg.trim().is_empty() => leg,
         Ok(_) => panic!(
             "witness execution leg: census_execution_leg_label({rel:?}) returned an empty label (refuse)"
@@ -14535,6 +14591,9 @@ fn run_discovery_rows(
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
     };
+    // One context build for the whole roster, on this thread, while its shared index is warm.
+    prime_witness_execution_legs(rows.iter().map(|row| row.entry.as_str()));
+
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
     // context: the floor runner closure is resolved once per shard and its modules are resident
@@ -27850,25 +27909,3 @@ mod compile_clean_loader_closure_fork_regression {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
-
-#[cfg(test)]
-mod tmp_leg_cost_measurement {
-    use super::*;
-    #[test]
-    fn measure_leg_call_cost() {
-        let entries = [
-            "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
-            "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
-            "src/v2/test/claim/self_host/witness_bulk_routing_test.dag",
-        ];
-        let warm = std::time::Instant::now();
-        let _ = witness_execution_leg_label(entries[0]);
-        eprintln!("COLD(first call, incl. resolve+ctx): {:?}", warm.elapsed());
-        let t = std::time::Instant::now();
-        for i in 0..2306 {
-            let _ = witness_execution_leg_label(entries[i % 3]);
-        }
-        let el = t.elapsed();
-        eprintln!("2306 CALLS: {:?}  per-call: {:?}", el, el / 2306);
-    }
-}
