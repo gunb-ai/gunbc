@@ -14,7 +14,6 @@ type GeneratedArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
   | RunnerDeployArtifact
-  | FleetConvergeArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
   | Stage0CratePartitionGeneratedDagArtifact
@@ -27,7 +26,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -55,7 +54,6 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     GithooksPrePushArtifact => ".githooks/pre-push"
     GithooksPreCommitArtifact => ".githooks/pre-commit"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
-    FleetConvergeArtifact => ".github/fleet-converge.sh"
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
     Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
@@ -78,7 +76,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
     RunnerDeployArtifact => NotCommitted
-    FleetConvergeArtifact => CommitRequired { consumer: HostReconciler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -100,6 +97,10 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => artifact_is_committed(a: a))
 }
 
+fn committed_generated_artifact_paths() -> List<String> {
+  map(committed_generated_artifacts(), a => artifact_path(a: a))
+}
+
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
@@ -110,7 +111,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
-    FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }

@@ -22,6 +22,7 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::qualified_last_segment;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -130,10 +131,19 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
     .cloned()
 }
 
+pub fn coerce_primitive_type_dotted_fallback_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note, which covers PATTERN position, in v1.compiler.05_emit_rust). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority variant_pattern_qualified_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_checkpoint(target.clone(), dag_name.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => dag_name.clone(),
+        None => qualified_last_segment(dag_name.clone()),
     }
 }
 

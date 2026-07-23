@@ -22,9 +22,8 @@ import extdeps.languages.html {
 import extdeps.http.server {
   HttpServerRoute,
   HttpStatusResponse,
-  HttpContentType,
-  TextHtmlUtf8,
-  http_content_type_wire_label,
+  MediaType,
+  text_html_utf8,
   NoRequestBody,
   TextRequestBody,
   NodeHttpServerRouteBinding,
@@ -203,8 +202,8 @@ fn gunbhub_compose_body(node: MarkupNode) -> GunbhubComposeResult {
   }
 }
 
-fn gunbhub_html_content_type() -> HttpContentType {
-  TextHtmlUtf8
+fn gunbhub_html_content_type() -> MediaType {
+  text_html_utf8
 }
 
 fn gunbhub_browse_path_template() -> PathTemplate {

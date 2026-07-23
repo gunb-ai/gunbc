@@ -39,7 +39,7 @@ fn figure_vars_style(figure: Material) -> String {
 }
 
 fn theme_vars_style(t: Theme) -> String {
-  join(map(theme_var_decls(t: t), d => join([d.prop, ": ", d.value], "")), "; ")
+  join(map(theme_var_decls(t: t), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
 }
 
 fn candidate_panel(r: StarlightRender) -> MarkupNode {
@@ -105,63 +105,63 @@ fn day_panel() -> MarkupNode {
 
 fn study_static_rules() -> List<BuildRule> {
   [
-    StaticRule { selector: "body", decls: [
-      role_decl(prop: "background", r: CanvasRole),
-      role_decl(prop: "color", r: TextRole),
-      decl(prop: "font-family", value: "'Noto Sans', system-ui, sans-serif"),
-      decl(prop: "margin", value: "0"),
-      decl(prop: "line-height", value: "1.55"),
+    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      role_decl(prop: Background, r: CanvasRole),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: LineHeight, value: "1.55"),
     ] },
-    StaticRule { selector: "main", decls: [
-      decl(prop: "max-width", value: "54rem"),
-      decl(prop: "margin", value: "0 auto"),
-      decl(prop: "padding", value: "3rem 1.5rem 4rem"),
+    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      decl(prop: MaxWidth, value: "54rem"),
+      decl(prop: Margin, value: "0 auto"),
+      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    StaticRule { selector: "h1", decls: [
-      decl(prop: "font-size", value: "1.2rem"),
-      decl(prop: "font-weight", value: "500"),
+    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+      decl(prop: FontSize, value: "1.2rem"),
+      decl(prop: FontWeight, value: "500"),
     ] },
-    StaticRule { selector: ".thesis", decls: [
-      role_decl(prop: "color", r: TextDimRole),
-      decl(prop: "margin", value: "0.25rem 0 0"),
+    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    StaticRule { selector: "h2", decls: [
-      decl(prop: "font-size", value: "0.85rem"),
-      decl(prop: "font-weight", value: "500"),
-      decl(prop: "code-spacing", value: "0.08em"),
-      decl(prop: "text-transform", value: "lowercase"),
-      role_decl(prop: "color", r: TextDimRole),
-      decl(prop: "margin-top", value: "2.2rem"),
+    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      decl(prop: FontSize, value: "0.85rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: RawProperty { name: "code-spacing" }, value: "0.08em"),
+      decl(prop: TextTransform, value: "lowercase"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginTop, value: "2.2rem"),
     ] },
-    StaticRule { selector: ".panel", decls: [
-      role_decl(prop: "background", r: SurfaceRole),
-      decl(prop: "border", value: "1px solid var(--border)"),
-      decl(prop: "border-radius", value: "3px"),
-      decl(prop: "padding", value: "1.1rem 1.25rem"),
-      decl(prop: "margin-top", value: "0.8rem"),
+    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "1.1rem 1.25rem"),
+      decl(prop: MarginTop, value: "0.8rem"),
     ] },
-    StaticRule { selector: ".day-panel", decls: [
-      decl(prop: "background", value: "var(--canvas)"),
-      decl(prop: "color", value: "var(--text)"),
+    StaticRule { selector: ClassSelector { name: "day-panel" }, decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Color, value: "var(--text)"),
     ] },
-    StaticRule { selector: ".constellation", decls: [
-      decl(prop: "width", value: "100%"),
-      decl(prop: "height", value: "auto"),
+    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "auto"),
     ] },
-    StaticRule { selector: ".mono", decls: [
-      decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
-      decl(prop: "font-size", value: "0.78em"),
+    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      decl(prop: FontSize, value: "0.78em"),
     ] },
-    StaticRule { selector: ".label", decls: [
-      role_decl(prop: "color", r: TextDimRole),
-      decl(prop: "margin", value: "0.6rem 0 0"),
+    StaticRule { selector: ClassSelector { name: "label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.6rem 0 0"),
     ] },
   ]
 }
 
 fn study_root_css() -> String {
   join([
-    join([":root { ", join(map(theme_var_decls(t: night_theme), d => join([d.prop, ": ", d.value], "")), "; "), " }"], ""),
+    join([":root { ", join(map(theme_var_decls(t: night_theme), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; "), " }"], ""),
     serialize_rules(rules: concat(study_static_rules(), figure_rules())),
   ], "\n")
 }

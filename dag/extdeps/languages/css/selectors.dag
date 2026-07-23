@@ -1,0 +1,42 @@
+module extdeps.languages.css.selectors
+
+import std.types { String, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/selectors-4"
+  }
+}
+
+data css_selector_note: String = "Cited upstream: W3C Selectors Level 4. The BOUNDED grain (D5): a rule's subject is a typed SelectorSubject, not a raw string inside an otherwise-typed rule. Three modeled shapes cover the register's simple subjects — ClassSelector (a single .class), ElementSelector (a type/tag selector), PseudoSuffix (a compound of a base selector and one pseudo-class, e.g. a:hover) — and RawSelector is the COUNTED frontier for everything else (descendant combinators like '.frontier-bucket h2', compound type.class like 'li.node', :root and its functional pseudo-classes, the universal '*'). RawSelector carries the exact text so emission is byte-identical, and its COUNT is the honest residue number: the fraction of the register still expressed as raw selector text. dissolve_on: the combinator / compound / functional-pseudo grammar lands (Selectors 4 has the structure — descendant/child combinators, compound selectors, :not()/:is()), at which point each RawSelector row migrates to a modeled shape and the count falls. The full CSS VALUE grammar (decl right-hand sides) stays a separate named arc, out of scope."
+
+type SelectorSubject
+  = ClassSelector { name: String }
+  | ElementSelector { tag: String }
+  | PseudoSuffix { base: String, pseudo: String }
+  | RawSelector { text: String }
+
+fn selector_subject_wire(s: SelectorSubject) -> String {
+  match s {
+    ClassSelector { name: n } => join([".", n], "")
+    ElementSelector { tag: t } => t
+    PseudoSuffix { base: b, pseudo: p } => join([b, ":", p], "")
+    RawSelector { text: t } => t
+  }
+}
+
+fn selector_subject_is_raw(s: SelectorSubject) -> Bool {
+  match s {
+    ClassSelector { name: _ } => false
+    ElementSelector { tag: _ } => false
+    PseudoSuffix { base: _, pseudo: _ } => false
+    RawSelector { text: _ } => true
+  }
+}
+
+fn raw_selector_count(subjects: List<SelectorSubject>) -> Int {
+  fold(subjects, init: 0, f: (acc, s) => if selector_subject_is_raw(s: s) { acc + 1 } else { acc })
+}
