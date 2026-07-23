@@ -514,7 +514,7 @@ fn ci_heal_regen_step() -> Step {
 
 fn ci_heal_commit_push_step() -> Step {
   RunStep {
-    name: Present { value: "Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)" },
+    name: Present { value: "Commit + push regenerated artifacts to the triggering branch (only when drifted; byte-idempotent fixed point terminates the loop)" },
     id: none,
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
