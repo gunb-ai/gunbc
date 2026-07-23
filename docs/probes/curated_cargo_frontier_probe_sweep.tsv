@@ -1,21 +1,3 @@
-<<<<<<< HEAD
-# classifier_stamp: rule1-first-error-dup-harness-unknown-unresolved-v2
-module	emit	cargo	first_error	mapped_gate	verdict
-src/v2/compiler/03_resolve.dag	46 files emitted, 0 diagnostics	refuse	error[E0422]: cannot find struct, variant or union type `RuntimePrimitiveValue` in this scope	namespace_resolution	CONFIRMED-namespace
-src/v2/compiler/02_parse.dag	74 files emitted, 59 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/00_compile.dag	129 files emitted, 226 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/01_tokenize.dag	23 files emitted, 0 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/03_ingest.dag	131 files emitted, 226 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/03_normalize.dag	51 files emitted, 9 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/06_translate.dag	58 files emitted, 8 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/04_infer.dag	50 files emitted, 0 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/program_assembly.dag	emit_fail	emit_fail	indexed 2356 modules from 2 source roots resolved 42 sources (transitive import closure) [census] 2314 indexed modules outside the closure enter the name census only (not compiled) 		EMIT_REFUSE
-src/v2/compiler/05_eval.dag	57 files emitted, 0 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/program_partition.dag	65 files emitted, 8 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/materialization_carriers.dag	41 files emitted, 50 diagnostics	refuse	error[E0107]: missing generics for struct `Measure`	UNKNOWN	UNKNOWN-error[E0107]:_missing_generics_for_struct_`Measure`
-src/v2/compiler/source_authority.dag	102 files emitted, 94 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-src/v2/compiler/05_emit.dag	59 files emitted, 8 diagnostics	refuse	error[E0255]: the name `List` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
-=======
 # classifier_stamp: rule1-first-error-plus-residual-histogram-v3
 module	emit	cargo	first_error	mapped_gate	verdict	residual_histogram	raw_dup_pub_use
 src/v2/compiler/02_parse.dag	74 files emitted, 59 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`	error[E0107]:18 error[E0425]:10 error[E0109]:8 error[E0433]:7 error[E0422]:7 error[E0573]:1 error[E0391]:1 uncoded:7	0
@@ -39,4 +21,3 @@ src/v2/compiler/04_infer.dag	50 files emitted, 0 diagnostics	refuse	error[E0433]
 src/v2/compiler/program_assembly.dag	emit_fail	emit_fail	indexed 2385 modules from 2 source roots resolved 42 sources (transitive import closure) [census] 2343 indexed modules outside the closure enter the name census only (not compiled) 		EMIT_REFUSE		unmeasured
 src/v2/compiler/program_partition.dag	65 files emitted, 8 diagnostics	refuse	error[E0433]: cannot find type `UriScheme` in this scope	namespace_resolution	CONFIRMED-namespace	error[E0433]:15 error[E0425]:14 error[E0422]:8 error[E0109]:8 error[E0107]:6 error[E0391]:1	0
 src/v2/compiler/source_authority.dag	102 files emitted, 94 diagnostics	refuse	error: expected `,`, or `}`, found `.`	UNKNOWN	UNKNOWN-error:_expected_`,`,_or_`}`,_found_`.`	error[E0107]:25 error[E0425]:19 error[E0433]:18 error[E0423]:13 error[E0422]:8 error[E0109]:8 error[E0573]:7 error[E0391]:1 uncoded:29	0
->>>>>>> origin/main
