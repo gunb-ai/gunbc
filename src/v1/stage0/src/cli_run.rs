@@ -1926,53 +1926,33 @@ fn call_compile_clean_bool_list_fn(
     }
 }
 
-fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
-    match call_compile_clean_bool_list_fn(
+fn compile_clean_all_touched_paths_docs_universe(
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    call_compile_clean_bool_list_fn(
         "compile_clean_all_touched_paths_docs_universe",
         "touched_paths",
         touched_paths,
-    ) {
-        Ok(b) => b,
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
-            );
-            false
-        }
-    }
+    )
 }
 
-fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> bool {
-    match call_compile_clean_bool_list_fn(
+fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> Result<bool, String> {
+    call_compile_clean_bool_list_fn(
         "compile_clean_all_touched_paths_selectable",
         "touched_paths",
         touched_paths,
-    ) {
-        Ok(b) => b,
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
-            );
-            false
-        }
-    }
+    )
 }
 
-fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
+fn compile_clean_departed_paths_outside_docs(
+    departed_paths: &HashSet<String>,
+) -> Result<bool, String> {
     let paths: Vec<String> = departed_paths.iter().cloned().collect();
-    match call_compile_clean_bool_list_fn(
+    call_compile_clean_bool_list_fn(
         "compile_clean_departed_paths_outside_docs",
         "departed_paths",
         &paths,
-    ) {
-        Ok(b) => b,
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: predicate authority failed ({msg}) — whole-tree baseline"
-            );
-            true
-        }
-    }
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2111,26 +2091,44 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
 
-    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
-        let reason =
-            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                .to_string();
-        eprintln!("compile-clean scope: skipped ({reason})");
-        return CompileCleanScopePlan::SkipNoAffected { reason };
+    match compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        Ok(true) => {
+            let reason =
+                "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                    .to_string();
+            eprintln!("compile-clean scope: skipped ({reason})");
+            return CompileCleanScopePlan::SkipNoAffected { reason };
+        }
+        Ok(false) => {}
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
-    if !compile_clean_all_touched_paths_selectable(touched_paths) {
-        eprintln!(
-            "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
-        );
-        return CompileCleanScopePlan::WholeTree;
+    match compile_clean_all_touched_paths_selectable(touched_paths) {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!(
+                "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
-    if compile_clean_departed_paths_outside_docs(departed_paths) {
-        eprintln!(
-            "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
-        );
-        return CompileCleanScopePlan::WholeTree;
+    match compile_clean_departed_paths_outside_docs(departed_paths) {
+        Ok(true) => {
+            eprintln!(
+                "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+        Ok(false) => {}
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
     let pool_roots = compile_clean_source_roots();
@@ -2201,14 +2199,23 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
                 eprintln!("documentation-only floor skip: empty diff — full floor");
                 return RUN_FULL_FLOOR_LABEL.to_string();
             }
-            if compile_clean_all_touched_paths_docs_universe(&changed_paths) {
-                eprintln!(
-                    "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                );
-                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
-            } else {
-                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
-                RUN_FULL_FLOOR_LABEL.to_string()
+            match compile_clean_all_touched_paths_docs_universe(&changed_paths) {
+                Ok(true) => {
+                    eprintln!(
+                        "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                    );
+                    DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+                }
+                Ok(false) => {
+                    eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
+                    RUN_FULL_FLOOR_LABEL.to_string()
+                }
+                Err(msg) => {
+                    eprintln!(
+                        "documentation-only floor skip: predicate authority failed ({msg}) — full floor"
+                    );
+                    RUN_FULL_FLOOR_LABEL.to_string()
+                }
             }
         }
     }

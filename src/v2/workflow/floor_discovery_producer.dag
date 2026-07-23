@@ -409,6 +409,51 @@ fn floor_discovery_merge_owned_rows(
   )
 }
 
+fn floor_discovery_paths_for_sidecar_kind(
+  violations: List<FloorDiscoverySidecarViolation>,
+  kind: FloorDiscoverySidecarKind
+) -> String {
+  fold_list(
+    xs: violations,
+    empty: "",
+    cons: fn(acc, v) {
+      if v.kind == kind {
+        if acc == "" {
+          v.entry_path
+        } else {
+          concat(acc, ", ", v.entry_path)
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_sidecar_refusal_reason(
+  violations: List<FloorDiscoverySidecarViolation>
+) -> String {
+  let test_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: TestMarkedDecl
+  )
+  if test_paths != "" {
+    concat(
+      "`test`-marked decls must live in `*_test.dag` files; found in: ",
+      test_paths
+    )
+  } else {
+    let wire_paths = floor_discovery_paths_for_sidecar_kind(
+      violations: violations,
+      kind: WireContractDecl
+    )
+    concat(
+      "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+      wire_paths
+    )
+  }
+}
+
 fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
   if state.walk_failures > 0 {
     FloorDiscoveryRefused {
@@ -416,7 +461,7 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
     }
   } else if length(xs: state.sidecar_violations) > 0 {
     FloorDiscoveryRefused {
-      reason: "sidecar placement violation during floor discovery"
+      reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)
     }
   } else {
     FloorDiscoveryAccepted { rows: state.rows }
