@@ -22126,14 +22126,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
-    // 2026-07-23 backfill: #7088 (cheap-gate early batch) landed two Gate-membership
-    // predicates unrostered on main — one-special-variant dispatch (fold over the declared
-    // cheap-gate list, nested `match g { <variant> => true _ => found }` off-variant arms).
-    // Surfaced when this PR's doc_graph_roots.dag edit re-ran the whole-corpus nfr receipt
-    // (same masking class as the dated blocks above). Burns down when Gate membership is
-    // derived from the declared roster fold instead of hand-nested matches.
-    "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
-    "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {
