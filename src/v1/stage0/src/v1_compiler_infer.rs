@@ -158,21 +158,22 @@ pub use crate::v1_std_core::{
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, float_type, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_container_type, is_error_diagnostic, is_kernel_type, is_property_contraction,
-    is_tree_size_reducing, kernel_type_set, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_span,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    field_node_type_expr, find_child_named, find_property_string, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_kernel_type,
+    is_property_contraction, is_tree_size_reducing, kernel_type_set, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, none_type, param_node_name_at,
+    param_node_type_expr, qualified_last_segment, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -14824,6 +14825,36 @@ pub fn build_type_env(
             }
             __result
         });
+        let namespace_alias_diags = Rc::new({
+            let mut __result = Vec::new();
+            for item in module_items(module.module.clone()).iter().cloned() {
+                __result.extend(
+                    (*if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                        match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+                            None => Rc::new(vec![]),
+                            Some(target_path) => {
+                                match symbol_index_lookup(symbol_index.clone(), target_path.clone())
+                                {
+                                    Some(_) => Rc::new(vec![]),
+                                    None => Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::UnresolvedType {
+                                            name: target_path.clone(),
+                                            span: item.span.clone(),
+                                        }),
+                                        module_name_str.clone(),
+                                    )]),
+                                }
+                            }
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
@@ -15154,7 +15185,10 @@ pub fn build_type_env(
         Rc::new(BuildTypeEnvResult {
             env: final_env.clone(),
             cache: type_env_cache.clone(),
-            diagnostics: v1_rt::concat(import_diags.clone(), resolved_diags.clone()),
+            diagnostics: v1_rt::concat(
+                v1_rt::concat(import_diags.clone(), namespace_alias_diags.clone()),
+                resolved_diags.clone(),
+            ),
             binding_forks: binding_forks.clone(),
         })
     }

@@ -5,7 +5,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
   intern, intern_str, empty_intern_table,
-  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
+  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -6831,6 +6831,18 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let scope_parents = concat(import_parents, [kernel])
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: _ } => [] Absent => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
+  let namespace_alias_diags = flat_map(module_items(n: module.module), item =>
+    if is_namespace_alias_item(item: item, source_indices: source_indices) {
+      match namespace_alias_target_path(item: item, source_indices: source_indices) {
+        Absent => []
+        Present { value: target_path } =>
+          match symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
+            Present { value: _ } => []
+            Absent => [make_error_node(diagnostic: UnresolvedType { name: target_path, span: item.span }, module_name: module_name_str)]
+          }
+      }
+    } else { [] }
+  )
 
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
@@ -6951,7 +6963,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   BuildTypeEnvResult {
     env: final_env,
     cache: type_env_cache,
-    diagnostics: concat(import_diags, resolved_diags),
+    diagnostics: concat(concat(import_diags, namespace_alias_diags), resolved_diags),
     binding_forks: binding_forks
   }
 }
