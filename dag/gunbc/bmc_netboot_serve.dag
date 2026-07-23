@@ -14,9 +14,9 @@ import extdeps.exec.command {
   SshExec,
   command_over_transport,
   shell_command_render,
+  scp_command,
 }
 import extdeps.shell
-import extdeps.bmc.ssh
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -161,11 +161,10 @@ fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
 func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
   uses net: Network
 {
-  let put = bmc.Ssh.PutFile(
-    local_path: local,
-    remote_target: join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr,
-  )
-  if put.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
+  let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
+  let cmd = scp_command(local_path: local, remote_target: remote_target)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: cmd)))
+  if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
 }
 
 func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
