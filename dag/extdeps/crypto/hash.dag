@@ -24,3 +24,9 @@ type Digest {
 fn sha256_digest(hex: NonEmptyStr) -> Digest {
   Digest { algorithm: Sha256, hex: hex }
 }
+
+fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
+  match digest.algorithm {
+    Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
+  }
+}

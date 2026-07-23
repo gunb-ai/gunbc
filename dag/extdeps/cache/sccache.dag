@@ -8,7 +8,7 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
 import std.cache_interface {
   NativeInternalLookup,
   OverwriteAllowed,
@@ -67,19 +67,13 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
 
 data sccache_install_dissolution_trigger: String = "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf."
 
-fn sccache_digest_verify_line(digest: Digest) -> String {
-  match digest.algorithm {
-    Sha256 => join(["echo '", digest.hex as String, "  /tmp/sccache.tar.gz' | sha256sum -c -"], "")
-  }
-}
-
 fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
   let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
   let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
   join([
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
-    sccache_digest_verify_line(digest: digest),
+    digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
     "tar -xzf /tmp/sccache.tar.gz -C /tmp",
     join(["sudo mv '/tmp/", dir, "/sccache' /usr/local/bin/sccache"], ""),
     "sudo chmod +x /usr/local/bin/sccache",
