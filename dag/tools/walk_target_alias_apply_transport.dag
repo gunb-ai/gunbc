@@ -10,6 +10,8 @@ import std.types { list_length }
 
 data wtaa_transport_doc: String = "§13 walk-target alias APPLY transport: the walk_target_alias_apply driver bin projects module paths and file text at the host boundary, calls walk_target_alias_apply_module_fold in-process, and realizes the returned splices (dry-run prints; --write refuses via the fold's corpus write gate until the v1 alias parse arm lands). Wet plan production remains on the walk_target_alias_plan WitnessBin (#6984 seed-retained)."
 
+data wtaa_dry_run_smoke_not_receipt_note: String = "SMOKE, not a receipt (review 41659): this empty-input call proves only that the fold is callable and its gates run on the degenerate pole - it cannot go red on a real apply defect. The discriminating executing consumers are the long-lane parse witnesses (test.claim.long.walk_target_alias_apply_parse_witness: end-to-end module fold with a real edit/splice, and skip-existing), plus the fast-lane conflict/oracle/gate REDs. Green here must never be cited as Phase-7 or apply-correctness evidence."
+
 fn walk_target_alias_apply_dry_run_receipt_holds() -> Bool {
   match walk_target_alias_apply_module_fold(
     inputs: [],

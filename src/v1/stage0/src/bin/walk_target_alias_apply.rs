@@ -215,6 +215,13 @@ fn diagnostics_head_reason(ctx: &InterpContext, diagnostics: &Value) -> String {
 
 /// Insert `insert` before the char at char-offset `offset` (tokenize counts chars,
 /// not bytes; identical for ASCII sources). Fail-closed on out-of-range offsets.
+/// `offset` is CHAR-denominated, matching the `.dag` fold's extents: the v1
+/// interpreter realizes `length` on a native `Str` as `s.chars().count()`
+/// (v1_interpreter.rs `"length"` builtin), so tokenizer `start`/`end` — and the
+/// `ByteRange` extents built from them — count chars despite the type's name
+/// (a pre-existing `v2.std.provenance` naming debt, review 41659). The
+/// multi-byte unit test below is the discriminating consumer: it goes red if
+/// either side of this seam flips to byte denomination.
 fn apply_splice_char_offset(source: &str, offset: usize, insert: &str) -> Result<String, String> {
     let char_count = source.chars().count();
     if offset > char_count {
@@ -648,5 +655,15 @@ mod tests {
     fn splice_out_of_range_refuses() {
         let err = apply_splice_char_offset("abc", 4, "-X").expect_err("must refuse");
         assert!(err.contains("out of range"), "got: {err}");
+    }
+
+    // Discriminating consumer for the char-denomination contract (review 41659):
+    // "é" is 1 char but 2 bytes, so a byte-denominated reading of offset 3 would
+    // land the insert one position early ("aé-X-bc"). Reds if either side of the
+    // .dag↔driver seam flips to bytes.
+    #[test]
+    fn splice_offset_is_char_denominated_not_bytes() {
+        let out = apply_splice_char_offset("aébc", 3, "-X-").expect("splice");
+        assert_eq!(out, "aéb-X-c");
     }
 }
