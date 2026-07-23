@@ -21,17 +21,28 @@ import gunbc.srv4_uefi_observed { srv4_uefi_observed_environment }
 test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
   let sit = diagnose_boot_install(env: srv4_uefi_observed_environment)
   let is_needs_dhcp = match sit {
-    NetworkUpNeedsDhcp { interface: i } => i == "eth0"
+    NetworkUpNeedsDhcp { interface: i } => i == "eth2"
     InstallMediaReady { boot_file: _ } => false
     NetworkReady { interface: _ } => false
     NoBootSourceAvailable { reason: _ } => false
   }
   let action = decide_boot_install(situation: sit, goal: InstalledFleetNode)
   let cmds_have_dhcp = match boot_install_commands(action: action) {
-    Present { value: cs } => string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth0 dhcp")
+    Present { value: cs } => string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth2 dhcp")
     Absent => false
   }
   is_needs_dhcp && cmds_have_dhcp && !boot_install_is_refused(action: action)
+}
+
+test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
+  let action = decide_boot_install(
+    situation: diagnose_boot_install(env: srv4_uefi_observed_environment),
+    goal: InstalledFleetNode,
+  )
+  match boot_install_commands(action: action) {
+    Present { value: cs } => !string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth0 dhcp")
+    Absent => false
+  }
 }
 
 data no_source_env: UefiShellEnvironment = UefiShellEnvironment {

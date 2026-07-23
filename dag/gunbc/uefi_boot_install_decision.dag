@@ -31,6 +31,10 @@ fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
     || string_contains(s: ipv4 as String, pattern: "169.254.")
 }
 
+fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
+  string_contains(s: ipv4 as String, pattern: "169.254.")
+}
+
 fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
   string_contains(s: m.device_path as String, pattern: "CDROM")
     || string_contains(s: m.device_path as String, pattern: "USB")
@@ -60,16 +64,30 @@ type IfaceScan {
   routable: Bool
 }
 
+type IfaceScanRanked {
+  rank: Int
+  name: NonEmptyStr
+}
+
+data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) > linked link-local (1) > no link (0)."
+
+fn iface_dhcp_rank(iface: UefiNetworkInterface) -> Int {
+  if !uefi_interface_has_link(iface: iface) { 0 }
+  else if !ipv4_unconfigured(ipv4: iface.ipv4) { 3 }
+  else if ipv4_link_local(ipv4: iface.ipv4) { 1 }
+  else { 2 }
+}
+
 fn scan_up_interface(env: UefiShellEnvironment) -> IfaceScan {
-  fold(
+  let best = fold(
     env.interfaces,
-    init: IfaceScan { found: false, name: "none", routable: false },
+    init: IfaceScanRanked { rank: 0, name: "none" },
     f: (acc, i) =>
-      if acc.found { acc }
-      else if uefi_interface_has_link(iface: i) {
-        IfaceScan { found: true, name: i.name, routable: !ipv4_unconfigured(ipv4: i.ipv4) }
+      if iface_dhcp_rank(iface: i) > acc.rank {
+        IfaceScanRanked { rank: iface_dhcp_rank(iface: i), name: i.name }
       } else { acc }
   )
+  IfaceScan { found: best.rank > 0, name: best.name, routable: best.rank == 3 }
 }
 
 fn diagnose_boot_install(env: UefiShellEnvironment) -> BootInstallSituation {
