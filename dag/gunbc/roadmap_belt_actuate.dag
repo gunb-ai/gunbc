@@ -634,6 +634,10 @@ fn belt_dispatch_label_is_ok(wire_label: String) -> Bool {
   any(belt_dispatch_ok_status_labels, l => l == wire_label)
 }
 
+data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part of the wire contract (the click POSTs to prefix+NODE_ID; belt B answers it at the /dispatch/ NODE_ID route). Homed here with the rest of the wire vocabulary (§3) so the client script builder (gunbc.roadmap_component) and the emitted server (node_http_server_emit) read one authority — it moved off roadmap_page to break the page-to-component import cycle the TsProgram builder would otherwise create."
+
+data belt_dispatch_path_prefix: String = "/dispatch/"
+
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
   match r {
     DispatchSpawned { node_id: nid, session_name: sn } =>

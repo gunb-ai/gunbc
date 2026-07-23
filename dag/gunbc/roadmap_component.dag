@@ -11,7 +11,15 @@ import gunbc.design.theme {
   ThemeRole, TextRole, TextDimRole, FigureRole, SurfaceRole, BorderRole, BoundaryRole, FocusRole,
 }
 import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_label_is_ok }
+import gunbc.roadmap_belt_actuate {
+  belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
+  belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
+}
+import extdeps.languages.typescript.program {
+  TsProgram, TsExpr, TsStmt, serialize_typescript_program,
+  ts_ident, ts_lit_str, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
+  ts_const, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+}
 
 data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
 
@@ -63,4 +71,137 @@ fn dispatch_button_wire_total() -> Bool {
 
 fn dispatch_button_terminal_count() -> Int {
   count(component_terminal_states(c: dispatch_button_component()))
+}
+
+data dispatch_client_program_note: String = "The dispatch button's client behavior, modeled in native .dag as ONE TsProgram (extdeps.languages.typescript.program) — never a hand-concatenated JS string (the dispatch-button incident's root class, §5). It is EMITTED as an external served asset (gunbc.roadmap_dispatch_asset_path, served by belt B) and referenced by <script src>, the same shape gunbc.site.moodboard uses for reframe_watcher_js — NOT inlined into the HTML (an inline <script> text node escapes '>' under std.markup EscapeHtml, corrupting an arrow's `=>`; external emission has no such hazard, so arrows are free). The ok-predicate is a ts_binop `||` chain DERIVED from belt_dispatch_ok_status_labels (the wire authority), so a label crossing the ok/refusal line moves the predicate by derivation — the retired belt-A ok/node read is gone and cannot return (the page witness holds a RED on j.ok)."
+
+data roadmap_dispatch_asset_path: String = "/assets/roadmap-dispatch.js"
+
+fn js_b_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: "b"), property: name)
+}
+
+fn js_j_status() -> TsExpr {
+  ts_member(object: ts_ident(name: "j"), property: "status")
+}
+
+fn dispatch_ok_status_comparison(wire_label: String) -> TsExpr {
+  ts_binop(left: js_j_status(), op: "===", right: ts_lit_str(value: wire_label))
+}
+
+fn dispatch_or_chain(exprs: List<TsExpr>) -> TsExpr {
+  let acc = fold(exprs, init: none, f: (a, c) => match a {
+    Absent => Present { value: c }
+    Present { value: prev } => Present { value: ts_binop(left: prev, op: "||", right: c) }
+  })
+  match acc {
+    Present { value: e } => e
+    Absent => ts_ident(name: "false")
+  }
+}
+
+fn dispatch_ok_predicate_expr() -> TsExpr {
+  dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels, l => dispatch_ok_status_comparison(wire_label: l)))
+}
+
+fn dispatch_fetch_url_expr() -> TsExpr {
+  ts_binop(
+    left: ts_lit_str(value: belt_dispatch_path_prefix),
+    op: "+",
+    right: ts_call(
+      callee: ts_ident(name: "encodeURIComponent"),
+      args: [ts_call(callee: js_b_member(name: "getAttribute"), args: [ts_lit_str(value: "data-node")])],
+    ),
+  )
+}
+
+fn dispatch_response_handler_body() -> TsStmt {
+  ts_block(stmts: [
+    ts_const(name: "ok", value: dispatch_ok_predicate_expr()),
+    ts_const(name: "st", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status"))),
+    ts_expr_stmt(expr: ts_binop(
+      left: js_b_member(name: "textContent"),
+      op: "=",
+      right: ts_cond(
+        test: ts_ident(name: "ok"),
+        consequent: js_j_status(),
+        alternate: ts_binop(left: ts_lit_str(value: "failed: "), op: "+", right: ts_ident(name: "st")),
+      ),
+    )),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "ok")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "console"), property: "log"),
+          args: [ts_lit_str(value: "dispatch refused"), ts_ident(name: "j")],
+        )),
+      ]),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
+  ])
+}
+
+fn dispatch_click_handler_body() -> TsStmt {
+  ts_block(stmts: [
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "dispatching..."))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_ident(name: "fetch"),
+                  args: [dispatch_fetch_url_expr(), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                ),
+                property: "then",
+              ),
+              args: [ts_arrow(params: ["r"], body: ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: [])))],
+            ),
+            property: "then",
+          ),
+          args: [ts_arrow(params: ["j"], body: dispatch_response_handler_body())],
+        ),
+        property: "catch",
+      ),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "error"))),
+        ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
+      ]))],
+    )),
+  ])
+}
+
+fn dispatch_client_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [
+      "gunbc roadmap dispatch button — emitted from gunbc.roadmap_component.dispatch_client_program",
+      "POSTs to the dispatch route and reads belt B's status contract (ok set derived from",
+      "belt_dispatch_ok_status_labels); served as an external asset, referenced by <script src>",
+    ],
+    statements: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(
+          object: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+            args: [ts_lit_str(value: ".dispatch-btn")],
+          ),
+          property: "forEach",
+        ),
+        args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: js_b_member(name: "addEventListener"),
+            args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body())],
+          )),
+        ]))],
+      )),
+    ],
+  }
+}
+
+fn dispatch_client_js_source() -> String {
+  serialize_typescript_program(p: dispatch_client_program())
 }

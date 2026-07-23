@@ -11,7 +11,7 @@ import extdeps.uri_path {
   parse_path_template,
 }
 import extdeps.http.server {
-  HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8,
+  HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8, TextJavascriptUtf8,
   ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
@@ -26,6 +26,7 @@ import extdeps.http.server {
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
@@ -59,6 +60,7 @@ type RoadmapServeHandler
   | DispatchJsonHandler
   | HealthzHandler
   | BeltDispatchHandler
+  | DispatchAssetHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -79,6 +81,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
   ]
 }
@@ -194,6 +197,7 @@ fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBind
     DispatchJsonHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_dispatch_json_body())
     HealthzHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_healthz_body())
     BeltDispatchHandler => serve_dispatch_handler_response(params: params)
+    DispatchAssetHandler => serve_text_response(status: 200, content_type: TextJavascriptUtf8, body: dispatch_client_js_source())
   }
 }
 

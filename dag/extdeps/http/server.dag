@@ -20,6 +20,7 @@ type HttpContentType
   = TextHtmlUtf8
   | TextPlainUtf8
   | ApplicationJsonUtf8
+  | TextJavascriptUtf8
   | ApplicationOctetStream
 
 fn http_content_type_wire_label(content_type: HttpContentType) -> String {
@@ -27,6 +28,7 @@ fn http_content_type_wire_label(content_type: HttpContentType) -> String {
     TextHtmlUtf8 => "text/html; charset=utf-8"
     TextPlainUtf8 => "text/plain; charset=utf-8"
     ApplicationJsonUtf8 => "application/json; charset=utf-8"
+    TextJavascriptUtf8 => "text/javascript; charset=utf-8"
     ApplicationOctetStream => "application/octet-stream"
   }
 }

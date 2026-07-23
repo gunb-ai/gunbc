@@ -18,7 +18,7 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
-import gunbc.roadmap_belt_actuate { belt_dispatch_ok_status_labels }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -247,7 +247,7 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
   }
 }
 
-data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE and reads belt B's response contract: the `status` member of belt_dispatch_result_json_value, with the ok-set DERIVED from belt_dispatch_ok_status_labels (one authority with the serve JSON -- DESIGN section 3). The retired belt-A `ok`/`node` shape is gone: reading it while B answered `status` made EVERY successful click render 'failed' (found live 2026-07-23; the page witness holds a RED on `j.ok` so the fork cannot silently return). The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
+data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
 fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
   if node_status_symbol(rn: rn, merged: merged) == "done" {
@@ -267,32 +267,54 @@ fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode>
   }
 }
 
-data belt_dispatch_path_prefix: String = "/dispatch/"
-
-fn dispatch_js_ok_predicate() -> String {
-  join(belt_dispatch_ok_status_labels |> map(l => concat(concat("j.status==='", l), "'")), "||")
-}
-
-fn dispatch_client_js() -> String {
-  concat(
-    concat(
-      concat(
-        concat(
-          "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
-          belt_dispatch_path_prefix,
-        ),
-        "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{var ok=(",
-      ),
-      dispatch_js_ok_predicate(),
-    ),
-    ");b.textContent=ok?j.status:('failed: '+(j.status||'no status'));if(!ok)\{console.log('dispatch refused',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
-  )
-}
-
-data dispatch_client_js_scaffold_note: String = "dispatch_client_js is JS-as-concatenated-string -- a medium-as-string Scaffold INDEPENDENT of the server exec route. Belt B (cool-wolf-720, gunbc serve) retires the exec route in node_http_server_emit, but this CLIENT script SURVIVES: B serves roadmap_page in-process via roadmap_serve and inherits it unchanged. So its dissolution trigger is its own, not the exec route's: dissolves to a modeled browser-emit lane -- JS/TsProgram grammar rows read backward (DESIGN section 4, the same one-grammar-both-directions move as the bash and Node emitters), at which point this string concat becomes emit over modeled nodes. Marked on the carrier here (DESIGN section 6: the mark on the carrier is the authority) rather than in belt B, whose tree does not contain this function."
-
 fn dispatch_client_script() -> MarkupNode {
-  el("script", [ txt(dispatch_client_js()) ])
+  ElementNode {
+    tag: "script",
+    attrs: [
+      MarkupAttr { name: "src", value: roadmap_dispatch_asset_path },
+      MarkupAttr { name: "defer", value: "" },
+    ],
+    children: [],
+  }
+}
+
+data page_script_census_note: String = "The served-page script wall (P1): every script the page carries must be MODELED, not a hand-authored string. The page emits its dispatch behavior as an external <script src> pointing at roadmap_dispatch_asset_path (whose body IS serialize_typescript_program of a modeled TsProgram, served by belt B). So the census walks the page tree and refuses two shapes fail-closed: an inline <script> with a non-empty text node (a hand JS string, the dispatch-button incident's class) and a <script src> pointing anywhere but a known modeled asset. Green over the real page; the RED controls (a resurrected inline string script; a rogue src) each locate their violation. Mirror of the unthemed-color / untokened-length censuses: a pure reader over the same MarkupNode tree, no new substrate."
+
+type PageScriptViolation {
+  kind: String
+  detail: String
+}
+
+fn script_inline_text(children: List<MarkupNode>) -> String {
+  fold(children, init: "", f: (acc, c) => match c {
+    TextNode { text } => concat(acc, text)
+    ElementNode { tag: _, attrs: _, children: _ } => acc
+  })
+}
+
+fn script_src_attr(attrs: List<MarkupAttr>) -> String {
+  fold(attrs, init: "", f: (acc, a) => if a.name == "src" { a.value } else { acc })
+}
+
+fn collect_script_violations(node: MarkupNode, known_src: String) -> List<PageScriptViolation> {
+  match node {
+    TextNode { text: _ } => []
+    ElementNode { tag, attrs, children } =>
+      if tag == "script" {
+        let inline = script_inline_text(children: children)
+        let src = script_src_attr(attrs: attrs)
+        concat(
+          if inline == "" { [] } else { [PageScriptViolation { kind: "inline-js", detail: inline }] },
+          if src == "" || src == known_src { [] } else { [PageScriptViolation { kind: "unknown-src", detail: src }] },
+        )
+      } else {
+        fold(children, init: [], f: (acc, c) => concat(acc, collect_script_violations(node: c, known_src: known_src)))
+      }
+  }
+}
+
+fn page_script_census(page: MarkupNode) -> List<PageScriptViolation> {
+  collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
