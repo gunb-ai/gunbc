@@ -1004,7 +1004,7 @@ fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let form = find_item_form(forms: dag_syntax_spec.item_forms, keyword: kw)
   match form {
     Present { value: f } => parse_item_by_form(tokens: tokens, ctx: ctx, form: f)
-    Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
+    Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
   }
 }
 
@@ -1080,6 +1080,7 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: ItemForm) ->
     ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    AliasBody => parse_alias_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     NoBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
