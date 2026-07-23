@@ -11,6 +11,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("witness_entry_eligibility_census_emit: cwd: {e}");
         ExitCode::from(2)
     })?;
+    // SCAFFOLD (§3 path mirror — review 41784): defaults must match
+    // `witness_entry_eligibility_census_{tsv,histogram}_path` in witness_entry_eligibility_census.dag
+    // until emit reads them from the authority. dissolve-on: same as cli_run leg-loader path fold.
     let tsv = args
         .get(1)
         .map(PathBuf::from)

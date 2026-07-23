@@ -8403,6 +8403,10 @@ pub fn witness_execution_leg_label(entry: &str) -> String {
 
 const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
     "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
+// SCAFFOLD (§3 path mirror — review 41784): byte-identical to
+// `witness_entry_eligibility_census_tsv_path` in the authority `.dag` until cli_run reads
+// carrier paths at load time. dissolve-on: emit/leg transport projects rel paths from those
+// data rows; delete this HAND-RUST literal when wired.
 const WITNESS_ENTRY_ELIGIBILITY_CENSUS_TSV_REL: &str =
     "docs/probes/witness_entry_eligibility_census.tsv";
 

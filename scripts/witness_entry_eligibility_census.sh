@@ -11,6 +11,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Default carrier paths mirror `witness_entry_eligibility_census_{tsv,histogram}_path`
+# in witness_entry_eligibility_census.dag (§3 dissolve-on: review 41784).
 TSV="${1:-$ROOT/docs/probes/witness_entry_eligibility_census.tsv}"
 HIST="${2:-$ROOT/docs/probes/witness_entry_eligibility_histogram.txt}"
 
