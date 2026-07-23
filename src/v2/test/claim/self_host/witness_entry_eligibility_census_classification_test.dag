@@ -1,0 +1,56 @@
+module v2.test.claim.self_host.witness_entry_eligibility_census_classification_test
+
+import v2.compiler.self_host.witness_entry_eligibility_census {
+  census_disposition_column_for_entry,
+  census_reason_column_for_entry,
+  census_execution_leg_label
+}
+
+test fn census_long_lane_row_holds() -> Bool {
+  census_disposition_column_for_entry(
+    entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+  ) == "EmitIneligible"
+    && census_reason_column_for_entry(
+      entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+    ) == "LongLaneScheduled"
+    && census_execution_leg_label(
+      entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+    ) == "InterpretedLeg"
+}
+
+test fn census_offline_recipe_row_holds() -> Bool {
+  census_disposition_column_for_entry(
+    entry: "src/v2/test/claim/manual/english_emit_add_test.dag"
+  ) == "EmitIneligible"
+    && census_reason_column_for_entry(
+      entry: "src/v2/test/claim/manual/english_emit_add_test.dag"
+    ) == "OfflineLocalRecipe"
+}
+
+test fn census_emit_on_demand_family_crate_leg_holds() -> Bool {
+  census_reason_column_for_entry(
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag"
+  ) == "EmitOnDemandFamilyGrain"
+    && census_execution_leg_label(
+      entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag"
+    ) == "NativeFamilyLeg{family_crate}"
+}
+
+test fn census_bulk_pending_default_holds() -> Bool {
+  census_disposition_column_for_entry(
+    entry: "src/v2/test/claim/self_host/native_agreement_test.dag"
+  ) == "InterpretedRetained"
+    && census_reason_column_for_entry(
+      entry: "src/v2/test/claim/self_host/native_agreement_test.dag"
+    ) == "BulkFlipPendingCensusIncomplete"
+    && census_execution_leg_label(
+      entry: "src/v2/test/claim/self_host/native_agreement_test.dag"
+    ) == "InterpretedLeg"
+}
+
+test fn witness_entry_eligibility_census_classification_witnesses() -> Bool {
+  census_long_lane_row_holds()
+    && census_offline_recipe_row_holds()
+    && census_emit_on_demand_family_crate_leg_holds()
+    && census_bulk_pending_default_holds()
+}
