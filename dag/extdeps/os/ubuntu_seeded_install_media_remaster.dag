@@ -48,6 +48,24 @@ data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition
 
 data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): install_media_remaster_probe_verdict now returns a 3-way InstallMediaRemasterProbeVerdict (Valid|Stale|InfraFailure\{reason\}) instead of collapsing the mktemp probe into a Bool, so a shell.Mktemp.Dir failure stays distinguishable from a genuine content/grub/seed mismatch (InstallMediaRemasterVerifyInfraFailure vs InstallMediaRemasterStale). observe_install_media_remaster matches this verdict directly, and install_media_remaster_reconcile refuses fail-closed on infra failure instead of silently treating an indeterminate probe as stale-and-rebuild."
 
+data install_media_remaster_boot_fidelity_doc: String = "xorriso -boot_image any replay modifies the stock ISO by mapping in only the NoCloud seed dir and grub.cfg, so the arm64 El Torito/ESP boot structure survives; an -as mkisofs rebuild destroyed it and the media stopped booting (root-caused live on srv4, PR #7027); instance-id derives from the artifact's nocloud dir basename, never a hardcoded host name"
+
+data el_torito_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pdos.csail.mit.edu/6.828/2014/readings/boot-cdrom.pdf"
+  }
+}
+
+data esp_boot_structure_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "uefi.org/specs/UEFI/2.10/13_Protocols_Media_Access.html"
+  }
+}
+
+data boot_structure_authorities_note: String = "The boot structure the replay preserves is owned by two specs the fidelity doc names in prose: the El Torito Bootable CD-ROM Format Specification 1.0 (Phoenix/IBM 1995; anchor is a hosted copy of the original) and the UEFI spec's EFI System Partition / media-access section (UEFI 2.10 §13). These are the entities the mkisofs rebuild violated."
+
 type InstallMediaRemasterProbeVerdict
   = InstallMediaRemasterProbeValid
   | InstallMediaRemasterProbeStale
@@ -136,6 +154,14 @@ fn install_media_remaster_ensure_grub_cmdline(grub_cfg: NonEmptyStr, cmdline: No
   substituted && grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg).matches
 }
 
+fn install_media_remaster_instance_seed_name(nocloud_dir_on_iso: NonEmptyStr) -> String {
+  fold(
+    split(s: nocloud_dir_on_iso as String, delimiter: "/"),
+    init: "",
+    f: (acc, segment) => segment,
+  )
+}
+
 fn install_media_remaster_write_nocloud_seed(
   work_dir: NonEmptyStr,
   nocloud_dir_on_iso: NonEmptyStr,
@@ -152,29 +178,38 @@ fn install_media_remaster_write_nocloud_seed(
     )
     let wrote_meta_data = Filesystem.Write(
       path: concat(nocloud_dir as String, "/meta-data"),
-      content: "instance-id: gunbc-srv3-seeded\n",
+      content: concat(
+        "instance-id: gunbc-",
+        concat(install_media_remaster_instance_seed_name(nocloud_dir_on_iso: nocloud_dir_on_iso), "-seeded\n"),
+      ),
     )
     wrote_user_data.success && wrote_meta_data.success
   }
 }
 
 fn install_media_remaster_build_iso(
+  stock_path: NonEmptyStr,
   final_path: NonEmptyStr,
   part_path: NonEmptyStr,
   content_hash: NonEmptyStr,
   work_dir: NonEmptyStr,
+  nocloud_dir_on_iso: NonEmptyStr,
 ) -> InstallMediaRemasterOutcome {
-  let built = xorriso.Iso.BuildIso(
-    volume_id: "UBUNTU_SEEDED" as NonEmptyStr,
+  let built = xorriso.Iso.ReplayBuildWithTwoMaps(
+    stock_iso_path: stock_path,
     output_path: part_path,
-    source_dir: work_dir,
+    volume_id: "UBUNTU_SEEDED" as NonEmptyStr,
+    map_one_source: concat(work_dir as String, concat("/", nocloud_dir_on_iso as String)) as NonEmptyStr,
+    map_one_iso_path: concat("/", nocloud_dir_on_iso as String) as NonEmptyStr,
+    map_two_source: concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr,
+    map_two_iso_path: "/boot/grub/grub.cfg" as NonEmptyStr,
   )
   if built.success == false {
-    InstallMediaRemasterRefused { reason: "xorriso -as mkisofs failed" as NonEmptyStr }
+    InstallMediaRemasterRefused { reason: "xorriso -boot_image any replay build failed" as NonEmptyStr }
   } else {
     let moved = shell.Move.File(source: part_path as FilePath, destination: final_path as FilePath)
     if moved.success == false {
-      InstallMediaRemasterRefused { reason: "mv failed after mkisofs" as NonEmptyStr }
+      InstallMediaRemasterRefused { reason: "mv failed after replay build" as NonEmptyStr }
     } else {
       let wrote_sidecar = Filesystem.Write(
         path: install_media_remaster_sidecar_path(final_path: final_path) as String,
@@ -220,10 +255,12 @@ fn install_media_remaster_build(
         InstallMediaRemasterRefused { reason: "InstallMediaRemasterRefusal: grub kernel cmdline not applied" as NonEmptyStr }
       } else {
         install_media_remaster_build_iso(
+          stock_path: stock_path,
           final_path: final_path,
           part_path: part_path,
           content_hash: artifact.content_hash as NonEmptyStr,
           work_dir: work_dir,
+          nocloud_dir_on_iso: artifact.nocloud_dir_on_iso,
         )
       }
     }

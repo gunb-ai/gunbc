@@ -1,0 +1,62 @@
+module test.claim.runner_host_deploy
+
+import std.logic { Bool }
+import std.types { list_length }
+import extdeps.exec.command { shell_command_render }
+import gunbc.runner_host_deploy {
+  srv4_runner_host_deploy,
+  gunbc_ci_github_app,
+  runner_host_installer_command,
+  runner_instance_names,
+  runner_enable_command,
+  runner_host_docker_provision_script,
+  runner_host_sccache_provision_script,
+}
+import gunbc.fleet_intent { fleet_intent_execution_surface }
+import extdeps.toolchain.types { ToolchainCapability }
+
+test fn srv4_docker_prereq_cites_official_repo() -> Bool {
+  let s = runner_host_docker_provision_script()
+  string_contains(s: s, pattern: "download.docker.com/linux/ubuntu/gpg")
+    && string_contains(s: s, pattern: "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable")
+    && string_contains(s: s, pattern: "docker-ce-rootless-extras")
+}
+
+test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool {
+  let s = runner_host_sccache_provision_script(arch: "aarch64", sha256: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8")
+  string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
+    && string_contains(s: s, pattern: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8  /tmp/sccache.tar.gz")
+    && string_contains(s: s, pattern: "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' /usr/local/bin/sccache")
+}
+
+test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
+  let surf = fleet_intent_execution_surface()
+  fold(surf.toolchains, init: false, f: (acc, t) => acc || (t.name as String == "sccache"))
+}
+
+test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
+  let c = shell_command_render(command: runner_host_installer_command(
+    deploy: srv4_runner_host_deploy,
+    installer_path: "/tmp/install-actions-runner.sh",
+    pem_src_path: "/tmp/app.pem",
+  ))
+  string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
+    && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
+    && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
+    && string_contains(s: c, pattern: "'sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
+}
+
+test fn srv4_runner_app_from_secret_manager() -> Bool {
+  gunbc_ci_github_app.org as String == "gunb-ai"
+    && gunbc_ci_github_app.app_pem_secret.secret as String == "ci-github-app-private-key"
+}
+
+test fn srv4_enables_five_named_runner_instances() -> Bool {
+  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
+  let enable = shell_command_render(command: runner_enable_command(deploy: srv4_runner_host_deploy))
+  list_length(items: names) == 5
+    && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
+    && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
+    && (string_contains(s: enable, pattern: "srv4-06") == false)
+    && string_contains(s: enable, pattern: "'sudo' 'systemctl' 'enable' '--now'")
+}

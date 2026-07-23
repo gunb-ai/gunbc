@@ -1,0 +1,35 @@
+module extdeps.tools.busybox
+
+import std.types { NonEmptyStr, String, Int, Port }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_busybox }
+import extdeps.exec.command { ArgvCommand }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "busybox.net/downloads/BusyBox.html"
+  }
+}
+
+data busybox_pinned_version: VersionConstraint = ">= 1.36"
+
+data busybox_cli_tool: CliTool = CliTool {
+  name: "busybox",
+  min_version: Present { value: busybox_pinned_version },
+  installable_via: [SourceApt { package: package_busybox }],
+}
+
+data busybox_source_1_36_1_url: Uri = Uri {
+  scheme: Https,
+  locator: "busybox.net/downloads/busybox-1.36.1.tar.bz2",
+}
+
+fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Port) -> ArgvCommand {
+  ArgvCommand {
+    argv: [busybox_bin as String, "httpd", "-p", to_string(port), "-h", document_root as String],
+  }
+}

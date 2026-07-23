@@ -42,11 +42,14 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_fast_lane_eval_budget_ms,
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
+  falsifier_rehomed_bin_wet_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
+  witness_floor_batch_wall_budgets_cover_schedule,
+  witness_floor_batch_wall_budgets_all_positive,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, LayeringImportsGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -176,7 +179,8 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
-  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 4)
+    && gate_in_cheap_floor_membership(g: CheapClaimPoolGate)
     && gate_in_cheap_floor_membership(g: LayeringImportsGate)
     && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
     && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
@@ -433,7 +437,8 @@ fn falsifier_plan_structure_holds() -> Bool {
   let wet_enrolled = length(xs: falsifier_self_host_wet_entries()) > 0
   let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
   let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
-  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 })
+  let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 })
   let wet_ok = if wet_enrolled {
     let wet_batch = skip(xs: batches, n: 1).first()
     (wet_batch.length() == 1)
@@ -487,6 +492,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && witness_hermetic_floor_posture_declared()
     && witness_floor_arm_time_budget_refusal_plan_roster_authority()
     && witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed()
+    && witness_floor_batch_wall_budgets_cover_schedule()
+    && witness_floor_batch_wall_budgets_all_positive()
+    && falsifier_rehomed_bin_wet_batch_enrolled()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

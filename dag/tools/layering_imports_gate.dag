@@ -1,14 +1,17 @@
 module tools.layering_imports_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.layering_imports_transport { run_layering_imports_claims }
+import tools.cheap_gate_pool { claims_covered_by_cheap_pool_chunks }
+import tools.layering_imports_transport { layering_imports_claims }
+
+data layering_enrollment_wall_note: String = "ENROLLMENT WALL (CI floor endgame D1, 2026-07-23): the layering claims EXECUTE in the batch-0 pooled claim_batch child (tools.cheap_gate_pool — one child per batch, per-claim verdicts named in its PASS/FAIL lines); this gate is the pure construction wall that the layering concern's every claim survives the K-chunking transform into some pooled child's roster (chunk-transform totality — the pool itself is the union of the concern lists by construction, so membership alone would be vacuous; the chunker between pool and children is the code that could drop a claim, and that drop reds here before the pool even runs). Concern authority stays tools.layering_imports_transport.layering_imports_claims; execution authority is the pool."
 
 func run_layering_imports_gate_body() -> ProcessExit {
-  return if run_layering_imports_claims() {
+  return if claims_covered_by_cheap_pool_chunks(claims: layering_imports_claims()) {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "layering imports gate failed: clean_tree and/or scanner-execution perturb receipts (failing claim named in the pooled claim_batch FAIL lines)"
+      reason: "layering imports enrollment wall failed: a layering claim does not survive the pool's K-chunking transform (tools.cheap_gate_pool.chunk_claims) — its execution would be silently dropped"
     )
   }
 }

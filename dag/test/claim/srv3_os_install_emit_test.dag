@@ -26,3 +26,11 @@ test fn srv3_user_data_enables_remote_access_and_locale() -> Bool {
     && string_contains(s: ud, pattern: "    layout: us")
     && string_contains(s: ud, pattern: "    username: ubuntu")
 }
+
+test fn srv3_user_data_bakes_fleet_keys_and_disables_password_ssh() -> Bool {
+  let ud = autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+  string_contains(s: ud, pattern: "    authorized-keys:")
+    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF macbook-m4")
+    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc")
+    && string_contains(s: ud, pattern: "    allow-pw: false")
+}

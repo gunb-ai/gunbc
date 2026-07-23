@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_with_index, run_discovery_corpus_with_options,
-    workspace_root, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
-    NodeFrontierSelectionMode,
+    build_multi_entry_index, resolve_entry_graph_shared, resolve_entry_with_index,
+    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
+    DiscoveryWidthPolicy, NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -332,21 +332,31 @@ fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
         .into_owned()
 }
 
+// Selection-control step D3 (CI floor endgame, 2026-07-23): this suite paid THREE cold
+// whole-pool index builds per run — the two budget_roster cases each called bare
+// build_multi_entry_index, then the first corpus case built the thread-shared index —
+// which is why the step measured 4m51s in CI against 80s local (the cold-index class,
+// attribution doc section 9, under the post-floor slot's swapped-out cgroup). The warmup
+// case now resolves through resolve_entry_graph_shared, so its warmup entries AND every
+// later corpus case share ONE process index. The cold case below deliberately keeps its
+// own bare build — it is the named cold-resolution control (the import-strip Class-B
+// pool-coincidence class needs a fresh-index resolution witness), one cold build by design.
 fn budget_roster_resolves_after_frontier_warmup() {
     chdir_workspace();
     let roots = floor_skip_source_roots();
-    let index = build_multi_entry_index(&roots);
     for path in [
         "dag/std/realization_schedule.dag",
         "src/v2/workflow/affected_set_floor_runner.dag",
         "src/v2/workflow/affected_set_floor_runner_test.dag",
     ] {
-        let _ = resolve_entry_with_index(&index, path);
+        let _ = resolve_entry_graph_shared(&roots, path);
     }
     let entry = budget_roster_completeness_entry(&workspace_root());
-    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
+    resolve_entry_graph_shared(&roots, &entry).expect("budget_roster should resolve");
 }
 
+// The ONE deliberate cold build in this suite (see the note above): a fresh index with no
+// warmup, proving the budget_roster entry resolves without pool-membership coincidence.
 fn budget_roster_resolves_cold() {
     chdir_workspace();
     let roots = floor_skip_source_roots();
