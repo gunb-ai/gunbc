@@ -135,5 +135,8 @@ fn emitted_family_runtime_row_gated(
   family: EmittedEffectFamily,
   present: EmitHostRuntimeRow
 ) -> TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent { row: present }
+  match family {
+    FilesystemReadFamily => HostRuntimeRowPresent { row: present }
+    ShellExecRunFamily => HostRuntimeRowPresent { row: present }
+  }
 }

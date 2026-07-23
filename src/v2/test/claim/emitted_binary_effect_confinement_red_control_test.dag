@@ -2,11 +2,13 @@ module v2.test.claim.emitted_binary_effect_confinement_red_control
 
 import v2.std.host_transport {
   EmitHostRuntimeRow,
+  EmittedEffectFamily,
+  FilesystemReadFamily,
+  ShellExecRunFamily,
   HostRuntimeRowAbsent,
   HostRuntimeRowPresent,
   HostTransportDescriptor,
   TargetEmitHostRuntimeRow,
-  emitted_family_effect_admitted,
   emitted_family_runtime_row_gated
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -17,9 +19,9 @@ import v2.lens.emitted_binary_effect_confinement { construction_justification }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED control (neat-carp-312): a synthetic family name that was never added to emitted_effect_family_roster attempts to build a TargetEmitHostRuntimeRow via the exact same construction-site call (emitted_family_runtime_row_gated) the two landed families (rust_filesystem_read_family_runtime_row, rust_shell_exec_run_family_runtime_row) actually call in rust_test.dag -- this is the real gated code path, not a re-implementation of the check. A synthetic HostTransportDescriptor stands in for a real one since the wall fires on the family-name lookup alone and never inspects transport contents (fail-closed on identity, not on payload shape)."
+data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED control (neat-carp-312): construction-by-type (v2.std.host_transport.EmittedEffectFamily, a closed FilesystemReadFamily | ShellExecRunFamily sum) makes an unrostered family name unrepresentable rather than merely rejected -- there is no unrostered EmittedEffectFamily value to construct, so the RED witness is the positive control: both landed variants route through the exact same construction-site call (emitted_family_runtime_row_gated) the two landed families (rust_filesystem_read_family_runtime_row, rust_shell_exec_run_family_runtime_row) actually call in rust_test.dag, and the exhaustive match inside emitted_family_runtime_row_gated is the wall -- a future third variant would fail to compile until this call site names it. A synthetic HostTransportDescriptor stands in for a real one since content is irrelevant to the family-identity wall (fail-closed on identity, not on payload shape)."
 
-fn synthetic_unrostered_transport() -> HostTransportDescriptor {
+fn synthetic_transport() -> HostTransportDescriptor {
   HostTransportDescriptor {
     identity: ^emitted_binary_effect_confinement_red_control_synthetic_identity,
     workspace: [],
@@ -32,37 +34,35 @@ fn synthetic_unrostered_transport() -> HostTransportDescriptor {
   }
 }
 
-fn synthetic_unrostered_row() -> TargetEmitHostRuntimeRow {
+fn rostered_row(family: EmittedEffectFamily) -> TargetEmitHostRuntimeRow {
   emitted_family_runtime_row_gated(
-    family: "not_a_real_registered_family",
+    family: family,
     present: EmitHostRuntimeRow {
-      transport: synthetic_unrostered_transport(),
+      transport: synthetic_transport(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
     }
   )
 }
 
-test fn emitted_family_effect_admitted_refuses_unrostered_family() -> Bool {
-  emitted_family_effect_admitted(family: "not_a_real_registered_family") == false
-}
-
-test fn emitted_family_runtime_row_gated_refuses_unrostered_family() -> Bool {
-  match synthetic_unrostered_row() {
-    HostRuntimeRowAbsent => true
-    HostRuntimeRowPresent { row: _ } => false
+test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
+  match rostered_row(family: FilesystemReadFamily) {
+    HostRuntimeRowPresent { row: _ } => true
+    HostRuntimeRowAbsent => false
   }
 }
 
-test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
-  emitted_family_effect_admitted(family: "filesystem_read_family")
-    && emitted_family_effect_admitted(family: "shell_exec_run_family")
+test fn emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family() -> Bool {
+  match rostered_row(family: ShellExecRunFamily) {
+    HostRuntimeRowPresent { row: _ } => true
+    HostRuntimeRowAbsent => false
+  }
 }
 
 test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool {
   match construction_justification.class {
     WallNow { mechanism: _, authority: authority } =>
       authority.module_path == "v2.std.host_transport"
-        && authority.decl_name == "emitted_effect_family_roster"
+        && authority.decl_name == "EmittedEffectFamily"
         && (match authority.field {
           WholeDeclaration => true
           NamedField { field_name: _ } => false

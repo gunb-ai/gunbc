@@ -4031,7 +4031,7 @@ fn rust_filesystem_read_family_host_transport_descriptor(fixture_content: String
 
 fn rust_filesystem_read_family_runtime_row(fixture_content: String) -> TargetEmitHostRuntimeRow {
   emitted_family_runtime_row_gated(
-    family: "filesystem_read_family",
+    family: FilesystemReadFamily,
     present: EmitHostRuntimeRow {
       transport: rust_filesystem_read_family_host_transport_descriptor(fixture_content: fixture_content),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -4131,7 +4131,7 @@ fn rust_shell_exec_run_family_host_transport_descriptor() -> HostTransportDescri
 
 fn rust_shell_exec_run_family_runtime_row() -> TargetEmitHostRuntimeRow {
   emitted_family_runtime_row_gated(
-    family: "shell_exec_run_family",
+    family: ShellExecRunFamily,
     present: EmitHostRuntimeRow {
       transport: rust_shell_exec_run_family_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()

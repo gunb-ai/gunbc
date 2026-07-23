@@ -123,7 +123,7 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
       entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
-      function: "emitted_family_runtime_row_gated_refuses_unrostered_family",
+      function: "emitted_binary_effect_confinement_authority_points_at_host_transport",
       kind: CorpusWitnessKind
     }
   },
@@ -131,7 +131,7 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
   boundary: ConstructionJustification {
     class: WallNow {
       mechanism: SingleAuthority,
-      authority: DeclarationRef { module_path: "v2.std.host_transport", decl_name: "emitted_effect_family_roster", field: WholeDeclaration }
+      authority: DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: WholeDeclaration }
     }
   }
 }
