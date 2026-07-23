@@ -6110,6 +6110,10 @@ pub struct ScheduleRetention {
     unknown_counted: HashSet<String>,
     schedule_evictions: u64,
     retention_unknown: u64,
+    /// Assembled `ResolvedGraph`s dropped from `resolved_graph_memo` on entry completion
+    /// (Fact #4): each strong-`Rc`-pins the very `TypedModule`s per-module eviction drops,
+    /// so without this the module bytes never free ("strong Rc pins from elsewhere").
+    resolved_graph_evictions: u64,
     /// Measurement pole (RED #1): false ⇒ compute everything, drop nothing.
     evict_enabled: bool,
 }
@@ -6146,6 +6150,7 @@ impl ScheduleRetention {
             unknown_counted: HashSet::new(),
             schedule_evictions: 0,
             retention_unknown: 0,
+            resolved_graph_evictions: 0,
             evict_enabled,
         }
     }
@@ -6243,6 +6248,17 @@ impl ScheduleRetention {
     pub fn retention_unknown(&self) -> u64 {
         self.retention_unknown
     }
+    pub fn resolved_graph_evictions(&self) -> u64 {
+        self.resolved_graph_evictions
+    }
+    pub fn note_graph_eviction(&mut self) {
+        self.resolved_graph_evictions += 1;
+    }
+    /// Number of distinct modules the arming refcounted — for the unconditional
+    /// ARMED receipt line.
+    pub fn refcount_len(&self) -> usize {
+        self.refcount.len()
+    }
 }
 
 /// Arm schedule-derived retention for a discovery run over `rows`. Only the private
@@ -6277,6 +6293,7 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
         per_entry.push((row.entry.clone(), paths));
     }
     let evict_enabled = schedule_retention_evict_enabled();
+    let entries = per_entry.len();
     if !evict_enabled {
         // Loud, once per armed run: an accidentally-set env must not silently revert the
         // M2 memory win in CI. Without this line the receipt's `schedule_evictions=0` is
@@ -6288,8 +6305,16 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
              schedule_evictions will be 0 BY CONSTRUCTION; unset the env to restore eviction."
         );
     }
-    *index.schedule_retention.borrow_mut() =
-        Some(ScheduleRetention::armed(per_entry, evict_enabled));
+    let sr = ScheduleRetention::armed(per_entry, evict_enabled);
+    // Unconditional ARMED receipt: proves schedule-derived retention is LIVE on this run,
+    // so a later `schedule_evictions=0` reads as "shared closure held resident" rather
+    // than "never armed" (the private-index serial regime is the only one that arms).
+    eprintln!(
+        "[floor-drain] schedule-retention ARMED: entries={entries} \
+         modules_refcounted={} evict_enabled={evict_enabled}",
+        sr.refcount_len()
+    );
+    *index.schedule_retention.borrow_mut() = Some(sr);
 }
 
 /// Record a reconciled module's cache keys with the armed schedule retention (no-op
@@ -6306,11 +6331,20 @@ fn index_record_schedule_module(
     }
 }
 
-/// Drive one entry-completion: decrement the entry's closure refcounts and drop the
+/// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
-/// normalize-diag, ownership-diag, source-hash). Heads are never touched. A schedule
-/// underflow propagates as a typed, located refusal.
-fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Result<(), String> {
+/// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
+/// `ResolvedGraph` from `resolved_graph_memo` (keyed by `subject`) — the graph strong-
+/// `Rc`-pins the same modules, so without it the per-module eviction frees no bytes
+/// (Fact #4 / the brief's "strong Rc pins from elsewhere"). Heads are never touched. A
+/// schedule underflow propagates as a typed, located refusal. Emits an unconditional
+/// per-entry progress line so a timed-out walk still shows eviction working (the early-
+/// receipt discipline — the walk-end receipt never lands on a step-cap death).
+fn index_schedule_entry_completed(
+    index: &MultiEntryIndex,
+    entry: &str,
+    subject: Option<&str>,
+) -> Result<(), String> {
     let batch = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
@@ -6318,16 +6352,13 @@ fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Resul
             None => return Ok(()),
         }
     };
-    if batch.module_names.is_empty() {
-        return Ok(());
-    }
-    {
+    if !batch.typed_keys.is_empty() {
         let mut cache = index.typed_module_cache.borrow_mut();
         for key in &batch.typed_keys {
             cache.remove(key);
         }
     }
-    {
+    if !batch.raw_files.is_empty() {
         let mut parse = index.parse_cache.borrow_mut();
         let mut norm = index.normalize_diag_cache.borrow_mut();
         let mut own = index.ownership_diag_cache.borrow_mut();
@@ -6339,14 +6370,43 @@ fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Resul
             src.remove(file);
         }
     }
-    if floor_verbose() {
-        eprintln!(
-            "[floor-drain] schedule_eviction: entry='{entry}' modules={} typed_keys={} raw_files={}",
-            batch.module_names.len(),
-            batch.typed_keys.len(),
-            batch.raw_files.len()
-        );
-    }
+    // Drop the completed entry's assembled graph. The entry's own `InterpContext` still
+    // holds it until the next resolve, so this only removes the memo's pin; a rare later
+    // entry with the identical closure re-resolves (a memo miss, cost only).
+    let graph_evicted = match subject {
+        Some(subj) => index
+            .resolved_graph_memo
+            .borrow_mut()
+            .remove(subj)
+            .is_some(),
+        None => false,
+    };
+    let (sched_evictions, retention_unknown, graph_evictions) = {
+        let mut slot = index.schedule_retention.borrow_mut();
+        match slot.as_mut() {
+            Some(sr) => {
+                if graph_evicted {
+                    sr.note_graph_eviction();
+                }
+                (
+                    sr.schedule_evictions(),
+                    sr.retention_unknown(),
+                    sr.resolved_graph_evictions(),
+                )
+            }
+            None => (0, 0, 0),
+        }
+    };
+    // Unconditional (not floor_verbose-gated) so the receipt survives a step-cap timeout.
+    eprintln!(
+        "[floor-drain] schedule-retention: entry='{entry}' evicted_modules={} evicted_graph={} \
+         schedule_evictions={sched_evictions} graph_evictions={graph_evictions} \
+         retention_unknown={retention_unknown} typed_cache={} resolved_graphs={}",
+        batch.module_names.len(),
+        graph_evicted as u8,
+        index.typed_module_cache.borrow().len(),
+        index.resolved_graph_memo.borrow().len(),
+    );
     Ok(())
 }
 
@@ -6570,26 +6630,50 @@ mod schedule_retention_red_controls {
         super::resolve_entry_with_index(&index, &entry_a).expect("resolve a");
         super::resolve_entry_with_index(&index, &entry_b).expect("resolve b");
 
-        // Both closures reconciled → all three modules cached.
+        // Both closures reconciled → all three modules cached, and each entry's
+        // assembled ResolvedGraph is memoized (the strong-Rc pin Fact #4 drops).
         let full = super::typed_module_cache_len_for_test(&index);
         assert_eq!(full, 3, "entry_a + entry_b + shared_lib cached");
+        let subj_a = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_a).unwrap(),
+        );
+        let subj_b = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_b).unwrap(),
+        );
+        let graphs_full = super::index_retention_snapshot(&index).resolved_graph_memo_entries;
+        assert!(
+            graphs_full >= 2,
+            "each entry's ResolvedGraph memoized (got {graphs_full})"
+        );
 
-        // Completing A drops entry_a's unique module; shared_lib stays (B needs it).
-        super::index_schedule_entry_completed(&index, &entry_a).expect("complete a");
-        let after_a = super::typed_module_cache_len_for_test(&index);
-        assert_eq!(after_a, 2, "entry_a evicted; shared_lib + entry_b remain");
-
-        // Completing B drops entry_b AND the now-unreachable shared_lib.
-        super::index_schedule_entry_completed(&index, &entry_b).expect("complete b");
-        let after_b = super::typed_module_cache_len_for_test(&index);
+        // Completing A drops entry_a's unique module AND its ResolvedGraph pin (Fact #4).
+        super::index_schedule_entry_completed(&index, &entry_a, Some(&subj_a)).expect("complete a");
         assert_eq!(
-            after_b, 0,
+            super::typed_module_cache_len_for_test(&index),
+            2,
+            "entry_a evicted; shared_lib + entry_b remain"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).resolved_graph_memo_entries,
+            graphs_full - 1,
+            "entry_a's ResolvedGraph dropped"
+        );
+
+        // Completing B drops entry_b AND the now-unreachable shared_lib (+ B's graph).
+        super::index_schedule_entry_completed(&index, &entry_b, Some(&subj_b)).expect("complete b");
+        assert_eq!(
+            super::typed_module_cache_len_for_test(&index),
+            0,
             "shared_lib survived until its last entry, then dropped"
         );
 
         let snap = super::index_retention_snapshot(&index);
         assert_eq!(snap.schedule_evictions, 3);
         assert_eq!(snap.retention_unknown, 0);
+        assert_eq!(
+            snap.resolved_graph_memo_entries, 0,
+            "both entries' ResolvedGraphs evicted — the pin is released"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -15461,7 +15545,11 @@ fn run_discovery_rows(
         // reaches. A schedule underflow refuses here (typed, located).
         if schedule_prev_entry.as_deref() != Some(row.entry.as_str()) {
             if let Some(prev) = schedule_prev_entry.take() {
-                index_schedule_entry_completed(index, &prev)?;
+                // `current_closure_subject` still holds the PREVIOUS entry's subject here
+                // (it is reassigned only in the resolve block below), so it keys the
+                // previous entry's ResolvedGraph for eviction; None when that entry was
+                // skip-before-resolved (no graph to drop).
+                index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
             }
             schedule_prev_entry = Some(row.entry.clone());
         }
@@ -15719,7 +15807,7 @@ fn run_discovery_rows(
     // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
     // The final entry's rows are done — its state is now unreachable too.
     if let Some(prev) = schedule_prev_entry.take() {
-        index_schedule_entry_completed(index, &prev)?;
+        index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
     summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
