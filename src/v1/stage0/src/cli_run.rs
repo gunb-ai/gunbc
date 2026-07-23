@@ -8564,7 +8564,7 @@ pub fn emit_witness_entry_eligibility_census(
             .map_err(|e| format!("resolve census authority: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let root = process_workspace_root();
-    let stamp = chrono_lite_utc_stamp();
+    let stamp = chrono_lite_utc_stamp()?;
     let entries = collect_witness_entry_closure_paths()?;
     let mut rows = Vec::new();
     for rel_entry in &entries {
@@ -8634,22 +8634,26 @@ pub fn emit_witness_entry_eligibility_census(
     Ok(rows.len())
 }
 
-fn chrono_lite_utc_stamp() -> String {
+fn chrono_lite_utc_stamp() -> Result<String, String> {
     // SCAFFOLD (§7 HAND-RUST — dissolve-on: stamp from pure `.dag` emit fold / host clock intrinsic).
-    std::process::Command::new("date")
+    let output = std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%dT%H:%MZ"])
         .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s)
-            }
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+        .map_err(|e| format!("census emit stamp: date command failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "census emit stamp: date command exited with {}",
+            output.status
+        ));
+    }
+    let stamp = String::from_utf8(output.stdout)
+        .map_err(|e| format!("census emit stamp: date stdout not utf-8: {e}"))?
+        .trim()
+        .to_string();
+    if stamp.is_empty() {
+        return Err("census emit stamp: date returned empty stdout".to_string());
+    }
+    Ok(stamp)
 }
 
 #[cfg(test)]
