@@ -22,6 +22,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data orch_while_long_lane_note: String = "Relocated here from v2.workflow (the per-PR fast-lane discovery roster) because these three check_fns' own eval exceeds the operator's 5-second fast-lane budget (gunbc_ci_fast_lane_rule_note; see commit_workflow_long_lane_note for the authority and precedent on repoint-vs-delete). No test content changed — all three still assert byte-identical goldens against orch_while_locate_golden. Excluded from discovery and the affected-set falsifier by the test/claim/long/ dir grain (gunbc.ci_layer_roots witness_exclusion_substrings), same offlining contract as the realization_vocabulary_containment_witness_test.dag sibling. Local recipe until the long-lane scheduled falsifier follow-on enrolls this row (dissolve-on): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/orchestration_while_emit_test.dag --functions orch_while_locate_pipeline_matches_golden_holds,orch_while_step_matches_golden_holds,orch_while_emit_has_teeth_holds."
+
 data orch_while_golden_note: String = "Goldens are hand-authored bytes independent of grammar row spellings; byte tests compare emit against these literals so row/emitter regressions cannot go green by perturbing both sides at once."
 
 data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
