@@ -3412,44 +3412,59 @@ fn rust_use_bound_symbol(entry: String) -> String {
 
 data strip_repeated_use_symbols_note: String = "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction."
 
-fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
-  (lines |> fold(init: { seen: empty_map(), out: [] }, f: (acc, line) =>
-    if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
-      { seen: acc.seen, out: concat(acc.out, [line]) }
+fn rust_use_line_bound_symbols(line: String) -> List<String> {
+  if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
+    []
+  } else {
+    let braced = rust_pub_use_braced_names(line: line)
+    if braced |> count > 0 {
+      braced |> map(entry => rust_use_bound_symbol(entry: entry))
     } else {
+      let singleton = rust_pub_use_singleton_name(line: line)
+      if singleton == "" { [] } else { [singleton] }
+    }
+  }
+}
+
+fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
+  lines |> fold(init: [], f: (out, line) =>
+    if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
+      concat(out, [line])
+    } else {
+      let seen = out |> flat_map(prev => rust_use_line_bound_symbols(line: prev))
       let braced = rust_pub_use_braced_names(line: line)
       if braced |> count > 0 {
-        let folded = braced |> fold(init: { seen: acc.seen, keep: [] }, f: (a, entry) =>
-          let bound = rust_use_bound_symbol(entry: entry)
-          if emit_map_has(m: a.seen, key: bound) {
-            a
-          } else {
-            { seen: map_insert(a.seen, bound, true), keep: concat(a.keep, [entry]) }
+        let fresh_bounds = unique_strings(items: braced |> map(entry => rust_use_bound_symbol(entry: entry)))
+          |> filter(bound => (seen |> any(s => s == bound)) == false)
+        let kept = fresh_bounds |> flat_map(bound =>
+          match braced |> filter(entry => rust_use_bound_symbol(entry: entry) == bound) |> first {
+            Present { value: entry } => [entry]
+            Absent => []
           }
         )
-        if folded.keep |> count == 0 {
-          { seen: folded.seen, out: acc.out }
-        } else if (folded.keep |> count) == (braced |> count) {
-          { seen: folded.seen, out: concat(acc.out, [line]) }
+        if kept |> count == 0 {
+          out
+        } else if (kept |> count) == (braced |> count) {
+          concat(out, [line])
         } else {
           let rebuilt = match line |> split(delimiter: "::{") |> first {
-            Present { value: prefix } => concat(prefix, "::{", folded.keep |> join(separator: ", "), "};")
+            Present { value: prefix } => concat(prefix, "::{", kept |> join(separator: ", "), "};")
             Absent => line
           }
-          { seen: folded.seen, out: concat(acc.out, [rebuilt]) }
+          concat(out, [rebuilt])
         }
       } else {
         let singleton = rust_pub_use_singleton_name(line: line)
         if singleton == "" {
-          { seen: acc.seen, out: concat(acc.out, [line]) }
-        } else if emit_map_has(m: acc.seen, key: singleton) {
-          { seen: acc.seen, out: acc.out }
+          concat(out, [line])
+        } else if seen |> any(s => s == singleton) {
+          out
         } else {
-          { seen: map_insert(acc.seen, singleton, true), out: concat(acc.out, [line]) }
+          concat(out, [line])
         }
       }
     }
-  )).out
+  )
 }
 
 fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
