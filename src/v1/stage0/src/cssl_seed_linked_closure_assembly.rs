@@ -742,12 +742,23 @@ mod tests {
     /// v2_compiler_namespace_graft` from the narrow hand lib must refuse cargo.
     #[test]
     fn normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo() {
-        let root = std::env::current_dir().expect("cwd");
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = manifest
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .expect("repo root")
+            .to_path_buf();
         let gunbc = root.join("target/release/gunbc");
         let assemble_bin = root.join("target/release/cssl_assemble");
         let shim_dir = root.join("dag/tools/self_host_03_normalize_shims");
         if !gunbc.is_file() || !assemble_bin.is_file() || !shim_dir.is_dir() {
-            return;
+            panic!(
+                "release bins or shim dir missing (gunbc={}, assemble={}, shims={})",
+                gunbc.is_file(),
+                assemble_bin.is_file(),
+                shim_dir.is_dir()
+            );
         }
         let out = std::env::temp_dir().join(format!(
             "cssl_normalize_stale_red_{}",
