@@ -3847,6 +3847,19 @@ pub fn import_closure_live_paths_with_facts(
     import_closure_from_adjacency(entry_path, &facts.adjacency)
 }
 
+/// Like `import_closure_live_paths_with_facts` but over the WIDER `selection_adjacency`
+/// (import + strict reference edges) — so a module reached cross-entry only through a
+/// bare-reference edge is still refcounted by schedule-derived retention. Over-retaining
+/// (the safe direction: never premature-evict a reference-reached module into a
+/// recompute-on-miss) and equally cheap: a BFS over prebuilt adjacency, no per-entry
+/// source loading, no #6848 both-closure fixpoint.
+pub(crate) fn selection_closure_live_paths_with_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
+    import_closure_from_adjacency(entry_path, &facts.selection_adjacency)
+}
+
 impl ModuleGraphFactsLive {
     /// Repo-relative paths of every declared module in the facts scan — the existence
     /// set for refuse-vs-answer decisions (a module can be absent from `adjacency`
@@ -6076,18 +6089,19 @@ pub struct ScheduleEvictionBatch {
 }
 
 /// Schedule-derived per-module retention bookkeeping (pure). Refcount is keyed by
-/// authored module NAME — unique per process via the `module_source_identity`
-/// collision guard, and the identity `collect_both_closure_module_names_for_entry`
-/// (arming) and `authored_name_at` (reconcile) both produce. A name-form mismatch
-/// between those two — the only latent hazard — degrades to "retain + count as
-/// RetentionUnknown", never to a wrong verdict.
+/// REPO-RELATIVE MODULE PATH — the identity `selection_closure_live_paths_with_facts`
+/// (arming, a cheap prebuilt-adjacency BFS) and `workspace_relative_repo_path`
+/// (reconcile's `decl_file`) both produce. A path-form mismatch between those two —
+/// the only latent hazard — degrades to "retain + count as RetentionUnknown", never
+/// to a wrong verdict (proven aligned on a live index by
+/// `schedule_eviction_end_to_end_on_real_index`).
 pub struct ScheduleRetention {
-    /// module name → remaining scheduled entries whose closure reaches it.
+    /// module path → remaining scheduled entries whose closure reaches it.
     refcount: std::collections::HashMap<String, usize>,
-    /// entry path → the closure module names it reaches (stored at arm time so the
-    /// per-entry decrement uses the SAME names arming counted).
+    /// entry path → the closure module paths it reaches (stored at arm time so the
+    /// per-entry decrement uses the SAME paths arming counted).
     entry_closures: std::collections::HashMap<String, Vec<String>>,
-    /// module name → its recorded cache keys (filled as modules reconcile; a cache
+    /// module path → its recorded cache keys (filled as modules reconcile; a cache
     /// hit re-records idempotently so a module first cached under an earlier entry
     /// still carries its keys when its refcount finally reaches zero).
     cache_keys: std::collections::HashMap<String, ModuleCacheKeys>,
@@ -6250,14 +6264,17 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
         if !seen.insert(row.entry.as_str()) {
             continue;
         }
-        let mut names: HashSet<String> = HashSet::new();
-        match collect_both_closure_module_names_for_entry(index, &row.entry, &mut names) {
-            Ok(()) => per_entry.push((row.entry.clone(), names.into_iter().collect())),
-            Err(_) => {
-                // Provenance gap for this entry's closure — leave it unarmed; its
-                // modules surface as counted RetentionUnknown, retained (§5).
-            }
-        }
+        // CHEAP closure: a BFS over the prebuilt selection adjacency (import + strict
+        // reference edges; no per-entry source loading, no #6848 both-closure fixpoint
+        // walk) — keyed by the repo-relative path the reconcile loop records
+        // (`decl_file`). The prior `collect_both_closure_module_names_for_entry`
+        // front-loaded the source-loading fixpoint for every distinct entry (the
+        // compiler-affected worst case is ~694), a cost the affected-set path otherwise
+        // skips or defers. The wider selection tier over-retains (never premature-evicts
+        // a reference-reached module into a recompute-on-miss); a module reached by no
+        // edge at all surfaces as counted RetentionUnknown at reconcile (retained, §5).
+        let paths = selection_closure_live_paths_with_facts(&row.entry, &index.module_graph_facts);
+        per_entry.push((row.entry.clone(), paths));
     }
     let evict_enabled = schedule_retention_evict_enabled();
     if !evict_enabled {
@@ -8147,12 +8164,14 @@ fn reconcile_with_typed_cache(
                 let cached = index_get_typed(index, &typed_key)?;
                 let was_cache_hit = cached.is_some();
                 // Record this module's cache keys with the armed schedule retention
-                // (idempotent; hit or miss) so its state can be dropped exactly when
-                // no remaining scheduled entry reaches it. `span.file` is the raw key
-                // the parse / normalize-diag / ownership-diag / source-hash caches use.
+                // (idempotent; hit or miss) so its state can be dropped exactly when no
+                // remaining scheduled entry reaches it. Keyed by `decl_file` — the same
+                // repo-relative path form the arming refcount uses (import_closure_live_
+                // paths_with_facts). `span.file` is the raw key the parse / normalize-diag
+                // / ownership-diag / source-hash caches use.
                 index_record_schedule_module(
                     index,
-                    &mod_name,
+                    &decl_file,
                     &typed_key,
                     &resolved.module.span.file,
                 );
