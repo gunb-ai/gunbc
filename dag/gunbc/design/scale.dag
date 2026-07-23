@@ -1,0 +1,109 @@
+module gunbc.design.scale
+
+import std.types { Int, String, Bool }
+import gunbc.design.material { CssDecl, decl, css_block }
+
+data design_scale_note: String = "Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing, type, font stack, plus the dimension tokens (radius, border width, measure, fixed element extents) the roadmap surface consumes. THE single authority for every length/font literal the register emits — the whole point is that a page rule references a token (var(--space-8)), never a raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls) has exactly one place to exclude by scope (this :root block, the analog of the theme var block the unthemed-color census excludes). Value-named on purpose (space-8 == 8px, text-14 == 14px): the P2 migration preserves the roadmap's authored output EXACTLY (the register walls are the visual-regression net), so a value-encoded name makes each px->token substitution mechanical and review-checkable, and a scale_var over a NAMED token makes a typo a compile error, never a silent undefined-var. A semantic re-tuning of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job is DRY (each value lives once) + census-ability, both served now. Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no raw px' is total, not partial."
+
+type ScaleToken {
+  name: String
+  value: String
+}
+
+fn scale_var(t: ScaleToken) -> String {
+  join(["var(--", t.name, ")"], "")
+}
+
+fn scale_decl(t: ScaleToken) -> CssDecl {
+  decl(prop: concat("--", t.name), value: t.value)
+}
+
+data space_0: ScaleToken = ScaleToken { name: "space-0", value: "0" }
+data space_1: ScaleToken = ScaleToken { name: "space-1", value: "1px" }
+data space_2: ScaleToken = ScaleToken { name: "space-2", value: "2px" }
+data space_3: ScaleToken = ScaleToken { name: "space-3", value: "3px" }
+data space_4: ScaleToken = ScaleToken { name: "space-4", value: "4px" }
+data space_6: ScaleToken = ScaleToken { name: "space-6", value: "6px" }
+data space_8: ScaleToken = ScaleToken { name: "space-8", value: "8px" }
+data space_12: ScaleToken = ScaleToken { name: "space-12", value: "12px" }
+data space_16: ScaleToken = ScaleToken { name: "space-16", value: "16px" }
+data space_20: ScaleToken = ScaleToken { name: "space-20", value: "20px" }
+data space_24: ScaleToken = ScaleToken { name: "space-24", value: "24px" }
+
+data spacing_scale: List<ScaleToken> = [
+  space_0, space_1, space_2, space_3, space_4, space_6, space_8,
+  space_12, space_16, space_20, space_24,
+]
+
+data text_10: ScaleToken = ScaleToken { name: "text-10", value: "10px" }
+data text_11: ScaleToken = ScaleToken { name: "text-11", value: "11px" }
+data text_12: ScaleToken = ScaleToken { name: "text-12", value: "12px" }
+data text_13: ScaleToken = ScaleToken { name: "text-13", value: "13px" }
+data text_14: ScaleToken = ScaleToken { name: "text-14", value: "14px" }
+data text_15: ScaleToken = ScaleToken { name: "text-15", value: "15px" }
+data text_18: ScaleToken = ScaleToken { name: "text-18", value: "18px" }
+
+data type_scale: List<ScaleToken> = [
+  text_10, text_11, text_12, text_13, text_14, text_15, text_18,
+]
+
+data font_sans: ScaleToken = ScaleToken { name: "font-sans", value: "'Noto Sans', system-ui, sans-serif" }
+data font_mono: ScaleToken = ScaleToken { name: "font-mono", value: "'JetBrains Mono', monospace" }
+
+data font_stack: List<ScaleToken> = [font_sans, font_mono]
+
+data radius_3: ScaleToken = ScaleToken { name: "radius-3", value: "3px" }
+data radius_5: ScaleToken = ScaleToken { name: "radius-5", value: "5px" }
+data border_1: ScaleToken = ScaleToken { name: "border-1", value: "1px" }
+data border_2: ScaleToken = ScaleToken { name: "border-2", value: "2px" }
+data measure_page: ScaleToken = ScaleToken { name: "measure", value: "960px" }
+data height_mark: ScaleToken = ScaleToken { name: "h-mark", value: "24px" }
+data height_bar: ScaleToken = ScaleToken { name: "h-bar", value: "10px" }
+data width_status: ScaleToken = ScaleToken { name: "w-status", value: "52px" }
+data width_brick_state: ScaleToken = ScaleToken { name: "w-brick-state", value: "62px" }
+
+data dimension_scale: List<ScaleToken> = [
+  radius_3, radius_5, border_1, border_2, measure_page,
+  height_mark, height_bar, width_status, width_brick_state,
+]
+
+fn all_scale_tokens() -> List<ScaleToken> {
+  concat(concat(spacing_scale, type_scale), concat(font_stack, dimension_scale))
+}
+
+fn scale_var_decls() -> List<CssDecl> {
+  map(all_scale_tokens(), t => scale_decl(t: t))
+}
+
+data scale_root_css_note: String = "The token :root block. Emitted alongside theme_root_css so a page's stylesheet carries both authorities in :root and every rule references them by var. This block is the ONE home of raw px/font literals; the untokened-length census excludes it by scope (it runs over the page's BuildRule rows, never this block) exactly as the unthemed-color census excludes the theme var block."
+
+fn scale_root_css() -> String {
+  css_block(selector: ":root", decls: scale_var_decls())
+}
+
+fn token_name_present(tokens: List<ScaleToken>, name: String) -> Bool {
+  fold(tokens, init: false, f: (acc, t) => acc || t.name == name)
+}
+
+type ScaleDistinctAcc {
+  seen: List<String>
+  ok: Bool
+}
+
+fn scale_names_distinct(tokens: List<ScaleToken>) -> Bool {
+  let result = fold(tokens, init: ScaleDistinctAcc { seen: [], ok: true }, f: (acc, t) =>
+    if token_name_present(tokens: map(acc.seen, s => ScaleToken { name: s, value: "" }), name: t.name) {
+      ScaleDistinctAcc { seen: acc.seen, ok: false }
+    } else {
+      ScaleDistinctAcc { seen: concat(acc.seen, [t.name]), ok: acc.ok }
+    })
+  result.ok
+}
+
+fn scale_well_formed() -> Bool {
+  scale_names_distinct(tokens: all_scale_tokens())
+    && all(all_scale_tokens(), t => t.name.length() > 0 && t.value.length() > 0)
+    && spacing_scale.length() == 11
+    && type_scale.length() == 7
+    && font_stack.length() == 2
+}
