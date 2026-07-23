@@ -134,6 +134,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "name_resolution_policy_is_namespace_only".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
             unit_type(),
         );

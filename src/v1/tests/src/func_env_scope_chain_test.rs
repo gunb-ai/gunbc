@@ -12,7 +12,7 @@ use v1_compiler::cli_run::{
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-use v1_compiler::v1_compiler_infer_lookup::lookup_func_sig;
+use v1_compiler::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
 use v1_compiler::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 use v1_compiler::v1_std_core::{authored_name_at, diagnostic_to_message};
@@ -79,13 +79,16 @@ fn assert_rc_identity_across_import_chain(
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
-    let def_sig = lookup_resolved_sig(def_mod.func_env.clone(), "shared_fn".to_string())
-        .expect("definer local shared_fn");
-    let use_sig = lookup_func_sig(
+    let def_sig = func_sig_if_resolved(lookup_resolved_sig(
+        def_mod.func_env.clone(),
+        "shared_fn".to_string(),
+    ))
+    .expect("definer local shared_fn");
+    let use_sig = func_sig_if_resolved(lookup_func_sig(
         use_mod.func_env.clone(),
         use_mod.type_env.clone(),
         "shared_fn".to_string(),
-    )
+    ))
     .expect("consumer lookup shared_fn");
     assert!(
         Rc::ptr_eq(&def_sig, &use_sig),
@@ -290,11 +293,11 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         "test.func_env_rc_consumer",
     );
     assert!(
-        lookup_func_sig(
+        func_sig_if_resolved(lookup_func_sig(
             consumer.func_env.clone(),
             consumer.type_env.clone(),
             "shared_fn".to_string()
-        )
+        ))
         .is_some(),
         "sanity: imported shared_fn must resolve with intact parent chain"
     );
@@ -314,11 +317,11 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         ..(*consumer.type_env).clone()
     });
     assert!(
-        lookup_func_sig(
+        func_sig_if_resolved(lookup_func_sig(
             stripped.clone(),
             census_stripped_env.clone(),
             "shared_fn".to_string()
-        )
+        ))
         .is_none(),
         "perturbation: stripping parents from a real import consumer must break \
          imported name lookup (chain-walk is load-bearing, not decorative)"

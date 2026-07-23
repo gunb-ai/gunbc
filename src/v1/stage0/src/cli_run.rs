@@ -19,6 +19,7 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -2768,6 +2769,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+        CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -2791,6 +2793,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
     };
     (class.to_string(), name)
 }
@@ -19480,7 +19483,8 @@ pub fn resolution_divergence_census_from_ctx(
             }
             for (callee, call_node) in calls {
                 out.sites_checked += 1;
-                let import_sig = lookup_resolved_sig(func_env.clone(), callee.clone());
+                let import_sig =
+                    func_sig_if_resolved(lookup_resolved_sig(func_env.clone(), callee.clone()));
                 let import_binding = import_sig.as_ref().and_then(|sig| {
                     import_chain_owner(&func_env, &callee)
                         .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
@@ -20503,9 +20507,9 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
 mod resolution_divergence_census_tests {
     use super::{
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
-        import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
-        resolution_divergence_silent_pick_refusal, whole_tree_resolved_ctx, ContainmentResolve,
-        ResolutionDivergenceBucket, WholeTreeCtx,
+        func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
+        resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
+        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -20574,8 +20578,11 @@ fn caller() -> Bool {
             .iter()
             .find(|m| m.type_env.module_path == "test.posctl.middle.leaf")
             .expect("leaf module must resolve");
-        let import_sig =
-            lookup_resolved_sig(leaf.func_env.clone(), "lex_target".to_string()).expect("import");
+        let import_sig = func_sig_if_resolved(lookup_resolved_sig(
+            leaf.func_env.clone(),
+            "lex_target".to_string(),
+        ))
+        .expect("import");
         let import_owner = import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
         let import_arity = import_sig.params.len();
         let item_index = build_module_item_index(&ctx);
@@ -26571,13 +26578,17 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "bottom_fn".to_string(),
+            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "bottom_fn".to_string(),
+                ),
             );
-            let miss = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "absent_fn".to_string(),
+            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "absent_fn".to_string(),
+                ),
             );
             let _ = tx.send((
                 prev.parents.len(),
@@ -26611,8 +26622,10 @@ mod sigs_env_flat_parents {
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string())
-                .map(|s| s.inferred.name.clone())
+            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
+            )
+            .map(|s| s.inferred.name.clone())
         };
 
         let b = w2_env("b", &[("f", "FromB"), ("g", "FromBg")], vec![]);

@@ -14,6 +14,7 @@ use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
@@ -23,7 +24,8 @@ pub use crate::v1_std_core::{
     param_node_type_expr, source_text_at,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
+    Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -969,6 +971,123 @@ pub fn global_bare_nearest_ancestor(
     }
 }
 
+pub fn unique_on_chain_policy_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default OFF = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn global_bare_chain_candidates(
+    env_module_path: String,
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> Rc<Vec<Rc<GlobalBareCandidate>>> {
+    {
+        let env_segs = module_path_segments(env_module_path.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for cand in candidates.clone().iter().cloned() {
+                if {
+                    let cand_segs = module_path_segments(cand.module_path.clone());
+                    (segment_lcp_len(cand_segs.clone(), env_segs.clone())
+                        == (cand_segs.clone().len() as i64))
+                } {
+                    __result.push(cand);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn global_bare_unique_chain_candidate(
+    env_module_path: String,
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> Option<Rc<GlobalBareCandidate>> {
+    {
+        let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
+        match ((chain.clone().len() as i64) == 1) {
+            true => chain.clone().first().cloned(),
+            false => None,
+        }
+    }
+}
+
+pub fn global_bare_policy_candidate(
+    env_module_path: String,
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> Option<Rc<GlobalBareCandidate>> {
+    if v1_rt::name_resolution_policy_is_namespace_only() {
+        global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
+    } else {
+        global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone())
+    }
+}
+
+pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
+    {
+        if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                candidates: cands, ..
+            }) => {
+                let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                if ((chain.clone().len() as i64) == 1) {
+                    Rc::new(vec![])
+                } else {
+                    {
+                        let pool = if ((chain.clone().len() as i64) >= 2) {
+                            chain.clone()
+                        } else {
+                            cands.clone()
+                        };
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in pool.clone().iter().cloned() {
+                                __result.push(v1_rt::concat(
+                                    v1_rt::concat(c.module_path.clone(), ".".to_string()),
+                                    name.clone(),
+                                ));
+                            }
+                            __result
+                        })
+                    }
+                }
+            }
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn bare_name_miss_diagnostic(
+    env: Rc<TypeEnv>,
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<CompilerDiagnostic> {
+    {
+        let cands = global_bare_strict_ambiguity_candidates(env.clone(), name.clone());
+        if ((cands.clone().len() as i64) > 0) {
+            Rc::new(CompilerDiagnostic::AmbiguousReference {
+                name: name.clone(),
+                candidates: cands.clone(),
+                span: span.clone(),
+            })
+        } else {
+            Rc::new(CompilerDiagnostic::UnresolvedType {
+                name: name.clone(),
+                span: span.clone(),
+            })
+        }
+    }
+}
+
 pub fn global_bare_owner_module(
     env: Rc<TypeEnv>,
     owner_module_path: String,
@@ -988,19 +1107,17 @@ pub fn global_bare_owner_module(
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => {
-            match global_bare_nearest_ancestor_candidate(owner_module_path.clone(), cands.clone()) {
-                Some(cand) => match binding_declares_name(
-                    cand.binding.clone(),
-                    name.clone(),
-                    env.source_indices.clone(),
-                ) {
-                    true => Some(cand.module_path.clone()),
-                    false => None,
-                },
-                None => None,
-            }
-        }
+        }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
+            Some(cand) => match binding_declares_name(
+                cand.binding.clone(),
+                name.clone(),
+                env.source_indices.clone(),
+            ) {
+                true => Some(cand.module_path.clone()),
+                false => None,
+            },
+            None => None,
+        },
         None => None,
     }
 }
@@ -1289,14 +1406,25 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
-            if (v1_rt::resolution_silent_pick_is_enabled() && ((cands.clone().len() as i64) >= 2)) {
-                record_global_bare_ambiguous_silent_pick(
-                    env.module_path.clone(),
-                    name.clone(),
-                    cands.clone(),
-                )
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
+                    Some(cand) => Some(cand.binding.clone()),
+                    None => None,
+                }
+            } else {
+                {
+                    if (v1_rt::resolution_silent_pick_is_enabled()
+                        && ((cands.clone().len() as i64) >= 2))
+                    {
+                        record_global_bare_ambiguous_silent_pick(
+                            env.module_path.clone(),
+                            name.clone(),
+                            cands.clone(),
+                        )
+                    }
+                    global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+                }
             }
-            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
         }
         None => None,
     }
@@ -1309,7 +1437,13 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
     {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None),
+        }) => {
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                (global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) == None)
+            } else {
+                (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
+            }
+        }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
         None => false,
     }
