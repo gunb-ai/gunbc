@@ -84,17 +84,35 @@ fn floor_discovery_first_token_before_space(seg: String) -> String {
   )
 }
 
-fn floor_discovery_test_decl_name_from_line(line: String) -> String {
-  fold(
-    split(s: floor_discovery_test_rest_from_line(line: line), delimiter: "("),
+fn floor_discovery_test_decl_name_from_rest(rest: String) -> String {
+  let before_paren = fold(
+    split(s: rest, delimiter: "("),
     init: "",
     f: fn(acc, seg) {
       if acc != "" {
         acc
       } else {
-        floor_discovery_first_token_before_space(seg: seg)
+        seg
       }
     }
+  )
+  let before_colon = fold(
+    split(s: before_paren, delimiter: ":"),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+  floor_discovery_first_token_before_space(seg: before_colon)
+}
+
+fn floor_discovery_test_decl_name_from_line(line: String) -> String {
+  floor_discovery_test_decl_name_from_rest(
+    rest: floor_discovery_test_rest_from_line(line: line)
   )
 }
 
