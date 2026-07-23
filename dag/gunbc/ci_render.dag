@@ -13,7 +13,7 @@ fn pad_to(text: String, width: Int) -> String {
   if w >= width {
     text
   } else {
-    concat(text, std.render.repeat_string(s: " ", n: width - w))
+    concat(text, repeat_string(s: " ", n: width - w))
   }
 }
 
@@ -35,7 +35,7 @@ fn box_top(title: String, width: Int, tier: Tier) -> Line {
   let tr = glyph_for(id: BoxCornerTopRight, tier: tier)
   let prefix = concat(glyph_for(id: BoxCornerTopLeft, tier: tier), concat(hz, concat(" ", concat(title, " "))))
   let dashes = width - string_display_width(s: prefix) - string_display_width(s: tr)
-  line_of(span: dim_span(text: concat(prefix, concat(std.render.repeat_string(s: hz, n: dashes), tr))))
+  line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
 }
 
 fn box_bottom(width: Int, tier: Tier) -> Line {
@@ -43,7 +43,7 @@ fn box_bottom(width: Int, tier: Tier) -> Line {
   let bl = glyph_for(id: BoxCornerBottomLeft, tier: tier)
   let br = glyph_for(id: BoxCornerBottomRight, tier: tier)
   let dashes = width - string_display_width(s: bl) - string_display_width(s: br)
-  line_of(span: dim_span(text: concat(bl, concat(std.render.repeat_string(s: hz, n: dashes), br))))
+  line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
 }
 
 fn box_content_line(text: String, width: Int, tier: Tier) -> Line {

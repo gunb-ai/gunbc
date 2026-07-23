@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql
 
+import v2.extdeps.languages.dag { dag_named_edge }
 import v2.std.grammar { GrammarSchema }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
@@ -210,15 +211,11 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
 }
 }
 
-fn sql_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
-}
-
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
@@ -231,7 +228,7 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
@@ -244,11 +241,11 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisEncoding {}),
         target: sql_inhabitant_atom(id: facts.representation),
       ),
