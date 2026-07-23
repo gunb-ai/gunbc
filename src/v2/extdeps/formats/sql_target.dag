@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql_target
 
+import v2.extdeps.languages.dag { dag_named_edge }
 import std.algebra { Empty }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.grammar {
@@ -49,10 +50,6 @@ fn sql_atom(id: Symbol) -> Node {
     children: [],
     occurrence_id: SyntheticOccurrence
   }
-}
-
-fn sql_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
 }
 
 fn sql_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
@@ -154,7 +151,7 @@ fn sql_relation_translation_rules_witness(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            sql_named_edge(name: rule_name, target: row)
+            dag_named_edge(name: rule_name, target: row)
           ],
           occurrence_id: SyntheticOccurrence
         }
@@ -200,15 +197,15 @@ fn sql_serialize_source_node(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: ^serialize_source_field_source_text,
         target: sql_atom(id: source_text_binding)
       ),
-      sql_named_edge(
+      dag_named_edge(
         name: ^serialize_source_field_source_grammar,
         target: sql_atom(id: production_binding)
       ),
-      sql_named_edge(
+      dag_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: tokens,
@@ -224,11 +221,11 @@ fn sql_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: ^target_model_edge_translation_rules,
         target: rules
       ),
-      sql_named_edge(
+      dag_named_edge(
         name: ^target_model_edge_serialize_source,
         target: serialize_source
       )

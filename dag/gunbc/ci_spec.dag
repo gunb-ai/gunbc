@@ -31,6 +31,7 @@ import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
   ci_floor_disposition_marker_init_script,
+  ci_repo_root_shell,
 }
 import extdeps.git {
   git_remote_ref_parts,
@@ -175,10 +176,6 @@ fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec 
 }
 
 data ci_release_features: String = "text_lookup_work_counter"
-
-fn ci_repo_root_shell() -> String {
-  git_toplevel_shell_subexpr_with_fallback()
-}
 
 fn ci_release_build_line() -> String {
   concat(
