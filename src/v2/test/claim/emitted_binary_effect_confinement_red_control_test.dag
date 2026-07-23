@@ -1,15 +1,13 @@
 module v2.test.claim.emitted_binary_effect_confinement_red_control
 
-import v2.lens.emitted_binary_effect_confinement {
-  emitted_family_effect_admitted,
-  emitted_family_runtime_row_gated
-}
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   HostRuntimeRowAbsent,
   HostRuntimeRowPresent,
   HostTransportDescriptor,
-  TargetEmitHostRuntimeRow
+  TargetEmitHostRuntimeRow,
+  emitted_family_effect_admitted,
+  emitted_family_runtime_row_gated
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }

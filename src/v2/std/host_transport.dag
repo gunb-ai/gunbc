@@ -127,3 +127,31 @@ fn configured_emit_host_runtime_row_from_target_row(
       outcome_rejected(d: emit_host_runtime_row_unconfigured_diagnostic())
   }
 }
+
+data emitted_effect_family_roster: List<String> = [
+  "filesystem_read_family",
+  "shell_exec_run_family"
+]
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) { acc || (s == target) }
+  )
+}
+
+fn emitted_family_effect_admitted(family: String) -> Bool {
+  list_contains_str(xs: emitted_effect_family_roster, target: family)
+}
+
+fn emitted_family_runtime_row_gated(
+  family: String,
+  present: EmitHostRuntimeRow
+) -> TargetEmitHostRuntimeRow {
+  if emitted_family_effect_admitted(family: family) {
+    HostRuntimeRowPresent { row: present }
+  } else {
+    target_emit_host_runtime_row_unconfigured
+  }
+}
