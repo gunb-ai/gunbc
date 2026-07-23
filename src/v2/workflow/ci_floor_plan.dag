@@ -404,6 +404,13 @@ fn witness_floor_stop_policy_unknown_defaults_full_ledger() -> Bool {
   }
 }
 
+fn witness_floor_batch_stop_policy_plan_roster_enrolled() -> Bool {
+  gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: floor_plan_function)
+    && gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: plan_artifact_plan_function)
+    && gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: falsifier_plan_function)
+    && !gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: "bre_claim_batches")
+}
+
 fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }

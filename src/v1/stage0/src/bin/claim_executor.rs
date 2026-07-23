@@ -48,6 +48,13 @@ fn read_positive_budget_ms(
     }
 }
 
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `gunbc.ci_spec.gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note`,
+/// type `gunbc.ci_spec.FloorBatchStopPolicy`):
+/// seed-side enum mirror + `run_walk` consumer for the event-scoped batch halt;
+/// policy mapping and plan roster enrollment are delegated to `.dag` eval
+/// (`gunbc_ci_floor_batch_stop_policy_for_github_event`,
+/// `gunbc_ci_floor_plan_uses_batch_stop_policy`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FloorBatchStopPolicy {
     StopBeforeDependents,
