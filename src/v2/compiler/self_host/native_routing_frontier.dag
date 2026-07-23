@@ -146,12 +146,18 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "filesystem_read",
+    subject: family_subject(
+      module_path: "v2.extdeps.languages.rust_test",
+      decl_name: "rust_filesystem_read_family_target_model_staging"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
     f: "emit_host_filesystem_read_equals_eval_holds"
   ),
   retained_parity_open(
-    family: "shell_exec_run",
+    subject: family_subject(
+      module_path: "v2.extdeps.languages.rust_test",
+      decl_name: "rust_shell_exec_run_family_target_model_staging"
+    ),
     entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
     f: "emit_host_shell_exec_run_equals_eval_holds"
   )
