@@ -735,7 +735,6 @@ Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the 
 The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.type_annotation {
     Present { value: _ } =>
       if n.connective == Conj && (n.children |> count) == 1 {
@@ -758,9 +757,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent =>
-    if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
-      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-    } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
@@ -768,7 +764,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
         }
       }
-    }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)

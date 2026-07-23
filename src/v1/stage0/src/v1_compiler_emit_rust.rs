@@ -1631,9 +1631,6 @@ pub fn render_rust_alias_rhs_type(
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
-        }
         match n.type_annotation.clone() {
             Some(_) => {
                 if ((n.connective.clone() == Connective::Conj)
@@ -1698,33 +1695,20 @@ pub fn render_rust_alias_rhs_type(
             {
                 match rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) {
                     Some(host) => host.clone(),
-                    None => {
-                        if is_host_text_carrier_type(
-                            n.clone(),
-                            source_indices.clone(),
-                            corpus_repr.clone(),
-                        ) {
-                            rust_carrier_optional_wrap(
-                                n.clone(),
-                                render_rust_text_carrier(shared_types.clone()),
+                    None => match rust_opaque_kernel_alias_carrier(name.clone()) {
+                        Some(carrier) => carrier.clone(),
+                        None => {
+                            let rendered = rust_render_type_leaf_name(
+                                name.clone(),
+                                variant_to_enum.clone(),
+                            );
+                            render_rust_shared_type_if_needed(
+                                name.clone(),
+                                rendered.clone(),
+                                shared_types.clone(),
                             )
-                        } else {
-                            match rust_opaque_kernel_alias_carrier(name.clone()) {
-                                Some(carrier) => carrier.clone(),
-                                None => {
-                                    let rendered = rust_render_type_leaf_name(
-                                        name.clone(),
-                                        variant_to_enum.clone(),
-                                    );
-                                    render_rust_shared_type_if_needed(
-                                        name.clone(),
-                                        rendered.clone(),
-                                        shared_types.clone(),
-                                    )
-                                }
-                            }
                         }
-                    }
+                    },
                 }
             } else {
                 if ((n.connective.clone() == Connective::NoConnective)
