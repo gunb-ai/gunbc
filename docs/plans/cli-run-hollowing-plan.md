@@ -1,6 +1,6 @@
 # Plan — cli_run.rs hollowing map (Chunk F)
 
-**Status:** high-level hollowing map (operator-directed rework of closed #7074) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). **`dag/gunbc/plans/cli_run_hollowing_plan.dag` is the authority**; `docs/plans/cli-run-hollowing-plan.md` is its generated projection (PlanArtifact). Linked from [seed-shrink-census.md](seed-shrink-census.md) Chunk **F** (`cli_run.rs`, ~4,165 LOC HAND) and [v2-self-hosting.md](v2-self-hosting.md) Wave 4 kernel story — cite those for sequencing and LOC receipts; this doc answers *what the file does* and *how each chunk dies*.
+**Status:** high-level hollowing map (operator-directed rework of closed #7074) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). **`dag/gunbc/plans/cli_run_hollowing_plan.dag` is the authority**; `docs/plans/cli-run-hollowing-plan.md` is its generated projection (PlanArtifact). Linked from [seed-shrink-census.md](seed-shrink-census.md) Chunk **F** (dissolution sign-off unit for `cli_run.rs`, not a live whole-file LOC) and [v2-self-hosting.md](v2-self-hosting.md) Wave 4 kernel story — cite those for sequencing; **§0 below is the live scale receipt**; this doc answers *what the file does* and *how each chunk dies*.
 
 > **Read this in 5 minutes.** `cli_run.rs` is the v1 **workflow orchestration kernel**: it walks the `.dag` corpus, drives resolve/typecheck/reconcile, runs the CI floor and witness corpus, bridges host facts into lenses, and pins a shrinking set of HAND-Rust path/grant/discovery scaffolds. It is **not** the compiler front-end (that is already `.dag` + GENERATED Rust). Terminal shape: emit the orchestration from workflow `.dag` + shrink to the pinned bootstrap kernel ([seed-shrink-census.md](seed-shrink-census.md) §6). Deep dive on the resolve/reconcile/discovery *cluster only*: [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) — link, do not duplicate here.
 
@@ -8,7 +8,8 @@
 
 ## 0. Scale receipt (live tree)
 
-- **~4,165 LOC** HAND_MAINTAINED (`seed-shrink-census.md` Chunk F) · **~635 production fns + ~239 test-only fns** in module scope (order-of-magnitude; not a per-fn ledger).
+- **Live whole file (measured by execution, 2026-07-23):** `wc -l src/v1/stage0/src/cli_run.rs` → **26,773 lines**; `rg -c '^\s*(pub\s+)?(async\s+)?fn\s+' src/v1/stage0/src/cli_run.rs` → **976 fns** (22 `test_*` inline modules; remainder production-scope). The §7 seed is **not** stable — it grew ~6× since the census snapshot.
+- **`seed-shrink-census.md` Chunk F (~4,165 LOC)** names the **dissolution sign-off unit** (CI orchestration → workflow `host_effect_apply`), not a live whole-file count. The other **~22.6k LOC** are the same file's interim seed body: classified by the **16 functional areas in §2** below, and tracked as managed seed growth in ROADMAP **§7 Seed interim** ([`ts-seed-interim`](../../ROADMAP.md) in `dag/gunbc/roadmap_authority.dag`) — host bridges, lens host feeds, floor/discovery machinery absorbed while v2 lanes land.
 - **Sign-off order:** Chunk F runs **after** emitter chunks A–E and de-fork G per census §4 — orchestration dissolves once the compiler pipeline and host-effect spine can carry the floor without a hand-written driver.
 
 ## 1. Area map (summary)
@@ -44,7 +45,7 @@
 
 ### 2.3 Corpus discovery & file walk
 
-**Today:** walks `dag/` + `src/v2/` for `*_test.dag`, roster entries, and compile-clean shard inputs (`collect_dag_files`, discovery skip arms). **Subsumes:** `gunbc.ci_spec` + floor plan nodes. **Disposition:** emit-when. **Trigger:** CI onto v2 native routing (#7069) + witness realization scheduling.
+**Today:** walks `dag/` + `src/v2/` for `*_test.dag`, roster entries, and compile-clean shard inputs (`collect_dag_files`, discovery skip arms). **Subsumes:** `gunbc.ci_spec` + floor plan nodes. **Disposition:** emit-when. **Trigger:** CI onto v2 native routing (#7069) + witness realization scheduling. **In motion (2026-07-22+):** native bulk-machine arc (ROADMAP group 2a) and #7090 floor DECISIONS repoint (discovery producer + compile-clean scope) reduce HAND discovery/scope arms.
 
 ### 2.4 Resolve / typecheck entry orchestration
 
@@ -72,7 +73,7 @@
 
 ### 2.10 Floor / witness execution
 
-**Today:** `run_discovery_corpus`, parallel witness scheduling, governor width — the CI floor runtime. **Subsumes:** `claim_executor` workflow + witness-realization plan. **Disposition:** emit-when. **Trigger:** `host_effect_apply` workflow realization replaces HAND loop ([host-effect-orchestration.md](host-effect-orchestration.md)).
+**Today:** `run_discovery_corpus`, parallel witness scheduling, governor width — the CI floor runtime. **Subsumes:** `claim_executor` workflow + witness-realization plan. **Disposition:** emit-when. **Trigger:** `host_effect_apply` workflow realization replaces HAND loop ([host-effect-orchestration.md](host-effect-orchestration.md)). **In motion (2026-07-22+):** witness-realization scheduling + host-effect transport lanes (shell→intent Phase 2) and #7090 returning work on floor execution paths.
 
 ### 2.11 Compile-clean shard scope
 
