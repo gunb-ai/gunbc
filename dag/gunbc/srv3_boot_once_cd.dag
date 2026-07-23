@@ -67,7 +67,7 @@ func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
-  let plan = new_altra_onboarding_plan
+  let plan = srv3_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 

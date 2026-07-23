@@ -51,7 +51,10 @@ data altrad8ud_openbmc_2_07_00_capabilities_list: List<BmcCapability> = [
   CapabilityAccountManagement,
   CapabilityFirmwareUpdate,
   CapabilityNbdProxyVirtualMedia,
+  CapabilitySerialConsole,
 ]
+
+data altrad8ud_openbmc_2_07_00_serial_console_probe: NonEmptyStr = "IPMI SOL Enabled=true, Privilege=ADMINISTRATOR, Payload Port=623 — confirmed live 2026-07-21 via ipmitool -I lanplus sol info against srv4 (192.168.1.195, OpenBMC 2.07.00)"
 
 data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {

@@ -69,7 +69,7 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): the 9 standalone emit_host_<family>_equals_eval_test.dag agreement witnesses — emit->build->run->equals-oracle with no compile_skipped assertion, so every leg is COLD-VALID under the control. The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named."
+data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): the 11 standalone emit_host_<family>_equals_eval_test.dag agreement witnesses — emit->build->run->equals-oracle with no compile_skipped assertion, so every leg is COLD-VALID under the control. The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named. Extended 2026-07-23 (neat-carp-312, Lane C) with filesystem_read/shell_exec_run, the two native host-effect transport families added alongside EmittedEffectFamily — same COLD-VALID shape, no compile_skipped assertion."
 
 data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
@@ -107,6 +107,14 @@ data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    f: "emit_host_filesystem_read_equals_eval_holds"
+  ),
+  self_host_wet_entry(
+    entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
+    f: "emit_host_shell_exec_run_equals_eval_holds"
   )
 ]
 

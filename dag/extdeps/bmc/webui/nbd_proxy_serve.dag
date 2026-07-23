@@ -51,6 +51,16 @@ fn nbd_proxy_serve_transport_intent(
   }
 }
 
+fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdProxyWebsocatParams) -> NbdProxyServeTransportIntent {
+  NbdProxyServeTransportIntent {
+    bmc_host: vm.bmc_host,
+    session_token: params.session_token,
+    ws_path: params.ws_path,
+    iso_path: virtual_media_source_iso(intent: vm),
+    local_nbd_port: params.local_nbd_port,
+  }
+}
+
 fn bmcweb_session_login_curl_args(
   bmc_host: NonEmptyStr,
   request_body_file: NonEmptyStr,

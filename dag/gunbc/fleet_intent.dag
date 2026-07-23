@@ -1,8 +1,8 @@
 module gunbc.fleet_intent
 
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
-import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog, samsung_970_evo_500gb_catalog }
 import extdeps.storage.types {
   StorageDevice,
   nvme_storage_device,
@@ -19,8 +19,11 @@ import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_cata
 import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
+import extdeps.cache.sccache { sccache_toolchain_capability }
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
 import product.placement_supply { HostIdentity }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
@@ -201,6 +204,10 @@ data srv3_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
 }
+data srv4_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.195", protocol: Redfish },
+}
 
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
@@ -214,8 +221,12 @@ data srv3_nvme0: StorageDevice = nvme_storage_device(
   catalog: samsung_970_evo_plus_2tb_catalog,
   persistence: Persistent,
 )
+data srv4_nvme0: StorageDevice = nvme_storage_device(
+  catalog: samsung_970_evo_500gb_catalog,
+  persistence: Persistent,
+)
 
-data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), all three hosts observed 2026-07-16 (deferral scaffolds retired on the srv1/srv2 observation); (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
 
 data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
@@ -266,15 +277,46 @@ data srv3_host: ComputeHost = ComputeHost {
   storage: [srv3_nvme0],
   network_interfaces: [],
 }
+type FleetHostMemoryPopulationDeferral {
+  host: HostIdentity
+  bmc_host: NonEmptyStr
+  cause: NonEmptyStr
+  dissolution_trigger: NonEmptyStr
+}
 
-data fleet_intent_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host]
+data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
+  host: operator_host_srv4,
+  bmc_host: "192.168.1.195",
+  cause: "per-DIMM Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
+  dissolution_trigger: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)",
+}
+
+data srv4_memory_population_deferral_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_intent",
+    decl_name: "srv4_memory_population",
+    field: WholeDeclaration,
+  },
+}
+
+data srv4_host: ComputeHost = ComputeHost {
+  identity: operator_host_srv4,
+  baseboard: Present { value: srv4_baseboard },
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  storage: [srv4_nvme0],
+  network_interfaces: [],
+}
+
+data fleet_intent_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host, srv4_host]
 
 fn fleet_intent_execution_surface() -> ExecutionSurface {
   ExecutionSurface {
     os: fleet_intent_os_surface,
     isolation: PerJobFilesystem,
-    container_runtime: none,
-    toolchains: [],
+    container_runtime: Present { value: Docker },
+    toolchains: [sccache_toolchain_capability],
     mounted_storage: [],
     network: [],
   }

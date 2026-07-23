@@ -1,0 +1,51 @@
+module gunbc.command_runner
+
+import std.types { List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.exec.command {
+  ArgvCommand,
+  CommandTransport,
+  command_over_transport,
+  shell_command_render,
+}
+import extdeps.shell
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data command_runner_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.command_runner",
+    decl_name: "command_runner_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
+
+func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
+  uses net: Network
+{
+  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: rendered))
+  if run.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("command failed: ", run.stderr))
+  }
+}
+
+func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
+  uses net: Network
+{
+  fold(
+    commands,
+    init: ExitSuccess,
+    f: (acc, c) => match acc {
+      ExitFailure { code: _, reason: _ } => acc
+      ExitSuccess => run_shell_command(command: c, transport: transport)
+    }
+  )
+}

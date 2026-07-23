@@ -1,0 +1,25 @@
+module test.claim.uefi_boot_config
+
+import std.logic { Bool }
+import gunbc.uefi_boot_config {
+  uefi_boot_config_script,
+  srv4_uefi_install_boot,
+  uefi_boot_config_commands,
+  BootFromPxeEntry,
+}
+import extdeps.firmware.uefi_shell { uefi_shell_script }
+
+test fn srv4_install_boot_renders_bcfg_add_sequence() -> Bool {
+  let s = uefi_boot_config_script(desired: srv4_uefi_install_boot)
+  string_contains(s: s, pattern: "map -r")
+    && string_contains(s: s, pattern: "bcfg boot dump -v")
+    && string_contains(s: s, pattern: "bcfg boot add 0 fs0:\\EFI\\BOOT\\BOOTAA64.EFI \"gunbc-install-media\"")
+    && string_contains(s: s, pattern: "reset -w")
+}
+
+test fn pxe_boot_reorders_existing_entry() -> Bool {
+  let s = uefi_shell_script(commands: uefi_boot_config_commands(desired: BootFromPxeEntry { boot_index: 3 }))
+  string_contains(s: s, pattern: "bcfg boot mv 3 0")
+    && string_contains(s: s, pattern: "reset -w")
+    && !string_contains(s: s, pattern: "bcfg boot add")
+}

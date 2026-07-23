@@ -249,6 +249,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+      check_fns: [
+        "emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family",
+        "emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family",
+        "emitted_binary_effect_confinement_authority_points_at_host_transport"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
       check_fns: ["complexity_budget_roster_family_gate_holds"],
       kind: CorpusWitnessKind,
