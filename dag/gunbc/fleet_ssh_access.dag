@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import extdeps.access.ssh { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import gunbc.assimilate.bmc_token_federation { bmc_secrets_project_id }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
 
 data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
@@ -23,7 +23,7 @@ data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
 }
 
 data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
-  project: bmc_secrets_project_id,
+  project: fleet_secrets_gcp_project,
   secret: "fleet-automation-ssh-key" as NonEmptyStr,
   version: "latest",
   hash_state: HashPending,

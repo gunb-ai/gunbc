@@ -3,7 +3,7 @@ module gunbc.runner_host_deploy
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.assimilate.bmc_token_federation { bmc_secrets_project_id }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
@@ -25,7 +25,7 @@ data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
   installation_id: "104134109",
   org: "gunb-ai",
   app_pem_secret: SecretRef {
-    project: bmc_secrets_project_id,
+    project: fleet_secrets_gcp_project,
     secret: "ci-github-app-private-key",
     version: "latest",
     hash_state: HashPending,

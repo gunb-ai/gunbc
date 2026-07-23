@@ -4,7 +4,7 @@ import extdeps.bmc.http
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
-import gunbc.assimilate.bmc_token_federation { bmc_secrets_project_id }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
   srv3_onboarding_plan,
@@ -143,12 +143,12 @@ func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSour
   let token = resolve_access_token(source: token_source)
   stored = gcp.SecretManager.AddVersion(
     access_token: token,
-    secret_name: gcp_secret_full_name(project: bmc_secrets_project_id, secret_id: secret_id),
+    secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
     payload_b64: payload_b64
   )
   readback = gcp.SecretManager.AccessVersion(
     access_token: token,
-    project_id: bmc_secrets_project_id,
+    project_id: fleet_secrets_gcp_project,
     secret: secret_id,
     version: "latest"
   )
@@ -199,7 +199,7 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
   let token = resolve_access_token(source: token_source)
   secret_resp = gcp.SecretManager.AccessVersion(
     access_token: token,
-    project_id: bmc_secrets_project_id,
+    project_id: fleet_secrets_gcp_project,
     secret: onboarding_secret_id(plan: plan),
     version: "latest"
   )
