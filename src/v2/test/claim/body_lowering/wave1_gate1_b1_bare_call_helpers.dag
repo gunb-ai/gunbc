@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.wave1_gate1_b1_bare_call_helpers
 
-import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
 
 
 data wave1_gate1_b1_bare_call_module_source: String = "module wave1_gate1_b1_bare_call\n\nfn helper(x: Int) -> Int { x + x }\n\nfn caller(x: Int) -> Int { helper(x) }\n"
@@ -20,7 +20,7 @@ fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
           match normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: _ } => false
             Accepted { value: root, diagnostics: _ } =>
-              match qualified_name_from_module_node_graft_aware(root: root) {
+              match qualified_name_from_module_node(root: root) {
                 Rejected { diagnostics: _ } => false
                 Accepted { value: module_qn, diagnostics: _ } =>
                   match resolve_with_admission(

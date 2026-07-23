@@ -7597,6 +7597,8 @@ fn emit_host_run_transport_cached_in_workspace(
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
+            .env_remove("RUSTC_WRAPPER")
+            .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!(
@@ -7725,6 +7727,8 @@ fn emit_host_run_transport_in_workspace(
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
+            .env_remove("RUSTC_WRAPPER")
+            .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("emit_host_run_transport: spawn {:?} failed: {e}", argv[0]),
