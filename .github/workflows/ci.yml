@@ -76,16 +76,7 @@ jobs:
           if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-              RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness ) 2>&1 | tee "$RETRY_LOG"; then
-                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
-                  echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness || exit 1
-                else
-                  exit 1
-                fi
-              fi
-              rm -f "$RETRY_LOG"
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness
             else
               exit 1
             fi
