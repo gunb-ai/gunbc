@@ -12,7 +12,7 @@ import gunbc.design.theme {
 }
 import gunbc.design.scale {
   ScaleToken, spacing_scale, type_scale, font_stack, dimension_scale,
-  scale_var, scale_pair, scale_border,
+  scale_var, scale_pair, scale_border, scale_value_wire,
   space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_3, border_1, measure_page,
 }
 import gunbc.design.component { ComponentState, component_terminal_states }
@@ -108,7 +108,7 @@ fn roles_section() -> MarkupNode {
 fn scale_token_row(t: ScaleToken) -> MarkupNode {
   el_class("div", "token-row", [
     el_class("span", "token-name", [ txt(t.name) ]),
-    el_class("span", "token-value", [ txt(t.value) ]),
+    el_class("span", "token-value", [ txt(scale_value_wire(v: t.value)) ]),
   ])
 }
 

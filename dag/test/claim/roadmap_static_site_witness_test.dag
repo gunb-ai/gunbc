@@ -3,7 +3,7 @@ module test.claim.roadmap_static_site_witness
 import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr, ContentHash }
 import std.disposition { Scaffold, Terminal }
-import extdeps.http.server { TextPlainUtf8, ApplicationJsonUtf8 }
+import extdeps.http.server { media_type_wire_label }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
@@ -89,7 +89,7 @@ fn witness_healthz_route_json_ok() -> Bool {
     && string_contains(s: body, pattern: "\"status\": \"ok\"")
     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
-    && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
+    && media_type_wire_label(m: roadmap_site_healthz_route().content_type) == "application/json; charset=utf-8"
 }
 
 fn witness_static_site_route_authority_paths_locked() -> Bool {
@@ -140,7 +140,7 @@ fn witness_roadmap_route_is_plain_text() -> Bool {
   let roadmap = roadmap_site_roadmap_md_artifact()
   any(routes, r =>
     r.body == roadmap.body
-      && r.content_type == TextPlainUtf8
+      && media_type_wire_label(m: r.content_type) == "text/plain; charset=utf-8"
   )
 }
 

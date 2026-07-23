@@ -6,8 +6,8 @@ import extdeps.http.server {
   HttpServerListenConfig,
   ServedStaticRoute,
   ServedStaticRouteTable,
-  HttpContentType,
-  http_content_type_wire_label,
+  MediaType,
+  media_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
 import extdeps.languages.typescript.program {
@@ -95,7 +95,7 @@ fn emit_path_template_regex_source(template: PathTemplate) -> String {
 fn emit_static_route_expr(route: ServedStaticRoute) -> TsExpr {
   let method = emit_http_method_label(method: route.method)
   let re = emit_path_template_regex_source(template: route.path_pattern)
-  let ct = http_content_type_wire_label(content_type: route.content_type)
+  let ct = media_type_wire_label(m: route.content_type)
   ts_object([
     ts_field(key: "method", value: ts_lit_str(value: method)),
     ts_field(key: "pathRe", value: ts_lit_regex(source: re)),

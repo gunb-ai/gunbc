@@ -2,12 +2,43 @@ module gunbc.design.scale
 
 import std.types { Int, String, Bool }
 import gunbc.design.material { CssDecl, decl, css_block }
+import extdeps.languages.css.values {
+  CssLength, css_px, css_length_wire,
+  CssFontStack, CssFontFamily, NamedFamily, GenericFamily,
+  CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
+  css_font_stack_wire,
+}
 
-data design_scale_note: String = "Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing, type, font stack, plus the dimension tokens (radius, border width, measure, fixed element extents) the roadmap surface consumes. THE single authority for every length/font literal the register emits — the whole point is that a page rule references a token (var(--space-8)), never a raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls) has exactly one place to exclude by scope (this :root block, the analog of the theme var block the unthemed-color census excludes). Value-named on purpose (space-8 == 8px, text-14 == 14px): the P2 migration preserves the roadmap's authored output EXACTLY (the register walls are the visual-regression net), so a value-encoded name makes each px->token substitution mechanical and review-checkable, and a scale_var over a NAMED token makes a typo a compile error, never a silent undefined-var. A semantic re-tuning of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job is DRY (each value lives once) + census-ability, both served now. Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no raw px' is total, not partial."
+data design_scale_note: String = "Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing, type, font stack, plus the dimension tokens (radius, border width, measure, fixed element extents) the roadmap surface consumes. THE single authority for every length/font literal the register emits — the whole point is that a page rule references a token (var(--space-8)), never a raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls) has exactly one place to exclude by scope (this :root block, the analog of the theme var block the unthemed-color census excludes). D3 grounding: a token's value is a TYPED CssLength (magnitude x unit, extdeps.languages.css.values, cited CSS Values and Units) or a typed CssFontStack (a list of families) — the fused \"4px\"/'Noto Sans, ...' strings are decompressed (DESIGN section 2), and the value-encoded token NAME is DERIVED from the magnitude by the length_token constructor (space-4 from px 4), so name and value can no longer diverge — the fork is UNWRITABLE by construction, not caught by a witness (DESIGN section 5). A semantic re-tuning of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job is DRY (each value lives once) + census-ability + no magnitude-vs-name fork, all served now. Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no raw px' is total, not partial."
+
+type ScaleValue
+  = LengthValue { length: CssLength }
+  | FontStackValue { stack: CssFontStack }
+
+fn scale_value_wire(v: ScaleValue) -> String {
+  match v {
+    LengthValue { length: l } => css_length_wire(l: l)
+    FontStackValue { stack: s } => css_font_stack_wire(s: s)
+  }
+}
 
 type ScaleToken {
   name: String
-  value: String
+  value: ScaleValue
+}
+
+data scale_token_derive_note: String = "length_token DERIVES the token name from the magnitude (space-4 from px 4), so the number lives exactly once and a name/value divergence is unwritable (D3). named_length_token is for the semantic-named dimension tokens whose name does NOT encode the magnitude (measure, h-mark) — no fork to close there. font_token carries a typed CssFontStack."
+
+fn length_token(prefix: String, px: Int) -> ScaleToken {
+  ScaleToken { name: join([prefix, "-", to_string(px)], ""), value: LengthValue { length: css_px(n: px) } }
+}
+
+fn named_length_token(name: String, px: Int) -> ScaleToken {
+  ScaleToken { name: name, value: LengthValue { length: css_px(n: px) } }
+}
+
+fn font_token(name: String, families: List<CssFontFamily>) -> ScaleToken {
+  ScaleToken { name: name, value: FontStackValue { stack: CssFontStack { families: families } } }
 }
 
 fn scale_var(t: ScaleToken) -> String {
@@ -15,7 +46,7 @@ fn scale_var(t: ScaleToken) -> String {
 }
 
 fn scale_decl(t: ScaleToken) -> CssDecl {
-  decl(prop: concat("--", t.name), value: t.value)
+  decl(prop: concat("--", t.name), value: scale_value_wire(v: t.value))
 }
 
 fn scale_pair(a: ScaleToken, b: ScaleToken) -> String {
@@ -30,49 +61,56 @@ fn scale_border(w: ScaleToken, color_var: String) -> String {
   join([scale_var(t: w), " solid ", color_var], "")
 }
 
-data space_0: ScaleToken = ScaleToken { name: "space-0", value: "0" }
-data space_1: ScaleToken = ScaleToken { name: "space-1", value: "1px" }
-data space_2: ScaleToken = ScaleToken { name: "space-2", value: "2px" }
-data space_3: ScaleToken = ScaleToken { name: "space-3", value: "3px" }
-data space_4: ScaleToken = ScaleToken { name: "space-4", value: "4px" }
-data space_6: ScaleToken = ScaleToken { name: "space-6", value: "6px" }
-data space_8: ScaleToken = ScaleToken { name: "space-8", value: "8px" }
-data space_12: ScaleToken = ScaleToken { name: "space-12", value: "12px" }
-data space_16: ScaleToken = ScaleToken { name: "space-16", value: "16px" }
-data space_20: ScaleToken = ScaleToken { name: "space-20", value: "20px" }
-data space_24: ScaleToken = ScaleToken { name: "space-24", value: "24px" }
+data space_0: ScaleToken = length_token(prefix: "space", px: 0)
+data space_1: ScaleToken = length_token(prefix: "space", px: 1)
+data space_2: ScaleToken = length_token(prefix: "space", px: 2)
+data space_3: ScaleToken = length_token(prefix: "space", px: 3)
+data space_4: ScaleToken = length_token(prefix: "space", px: 4)
+data space_6: ScaleToken = length_token(prefix: "space", px: 6)
+data space_8: ScaleToken = length_token(prefix: "space", px: 8)
+data space_12: ScaleToken = length_token(prefix: "space", px: 12)
+data space_16: ScaleToken = length_token(prefix: "space", px: 16)
+data space_20: ScaleToken = length_token(prefix: "space", px: 20)
+data space_24: ScaleToken = length_token(prefix: "space", px: 24)
 
 data spacing_scale: List<ScaleToken> = [
   space_0, space_1, space_2, space_3, space_4, space_6, space_8,
   space_12, space_16, space_20, space_24,
 ]
 
-data text_10: ScaleToken = ScaleToken { name: "text-10", value: "10px" }
-data text_11: ScaleToken = ScaleToken { name: "text-11", value: "11px" }
-data text_12: ScaleToken = ScaleToken { name: "text-12", value: "12px" }
-data text_13: ScaleToken = ScaleToken { name: "text-13", value: "13px" }
-data text_14: ScaleToken = ScaleToken { name: "text-14", value: "14px" }
-data text_15: ScaleToken = ScaleToken { name: "text-15", value: "15px" }
-data text_18: ScaleToken = ScaleToken { name: "text-18", value: "18px" }
+data text_10: ScaleToken = length_token(prefix: "text", px: 10)
+data text_11: ScaleToken = length_token(prefix: "text", px: 11)
+data text_12: ScaleToken = length_token(prefix: "text", px: 12)
+data text_13: ScaleToken = length_token(prefix: "text", px: 13)
+data text_14: ScaleToken = length_token(prefix: "text", px: 14)
+data text_15: ScaleToken = length_token(prefix: "text", px: 15)
+data text_18: ScaleToken = length_token(prefix: "text", px: 18)
 
 data type_scale: List<ScaleToken> = [
   text_10, text_11, text_12, text_13, text_14, text_15, text_18,
 ]
 
-data font_sans: ScaleToken = ScaleToken { name: "font-sans", value: "'Noto Sans', system-ui, sans-serif" }
-data font_mono: ScaleToken = ScaleToken { name: "font-mono", value: "'JetBrains Mono', monospace" }
+data font_sans: ScaleToken = font_token(name: "font-sans", families: [
+  NamedFamily { name: "Noto Sans" },
+  GenericFamily { kind: GenericSystemUi },
+  GenericFamily { kind: GenericSansSerif },
+])
+data font_mono: ScaleToken = font_token(name: "font-mono", families: [
+  NamedFamily { name: "JetBrains Mono" },
+  GenericFamily { kind: GenericMonospace },
+])
 
 data font_stack: List<ScaleToken> = [font_sans, font_mono]
 
-data radius_3: ScaleToken = ScaleToken { name: "radius-3", value: "3px" }
-data radius_5: ScaleToken = ScaleToken { name: "radius-5", value: "5px" }
-data border_1: ScaleToken = ScaleToken { name: "border-1", value: "1px" }
-data border_2: ScaleToken = ScaleToken { name: "border-2", value: "2px" }
-data measure_page: ScaleToken = ScaleToken { name: "measure", value: "960px" }
-data height_mark: ScaleToken = ScaleToken { name: "h-mark", value: "24px" }
-data height_bar: ScaleToken = ScaleToken { name: "h-bar", value: "10px" }
-data width_status: ScaleToken = ScaleToken { name: "w-status", value: "52px" }
-data width_brick_state: ScaleToken = ScaleToken { name: "w-brick-state", value: "62px" }
+data radius_3: ScaleToken = length_token(prefix: "radius", px: 3)
+data radius_5: ScaleToken = length_token(prefix: "radius", px: 5)
+data border_1: ScaleToken = length_token(prefix: "border", px: 1)
+data border_2: ScaleToken = length_token(prefix: "border", px: 2)
+data measure_page: ScaleToken = named_length_token(name: "measure", px: 960)
+data height_mark: ScaleToken = named_length_token(name: "h-mark", px: 24)
+data height_bar: ScaleToken = named_length_token(name: "h-bar", px: 10)
+data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
+data width_brick_state: ScaleToken = named_length_token(name: "w-brick-state", px: 62)
 
 data dimension_scale: List<ScaleToken> = [
   radius_3, radius_5, border_1, border_2, measure_page,
@@ -93,8 +131,8 @@ fn scale_root_css() -> String {
   css_block(selector: ":root", decls: scale_var_decls())
 }
 
-fn token_name_present(tokens: List<ScaleToken>, name: String) -> Bool {
-  fold(tokens, init: false, f: (acc, t) => acc || t.name == name)
+fn name_present(names: List<String>, name: String) -> Bool {
+  fold(names, init: false, f: (acc, n) => acc || n == name)
 }
 
 type ScaleDistinctAcc {
@@ -104,7 +142,7 @@ type ScaleDistinctAcc {
 
 fn scale_names_distinct(tokens: List<ScaleToken>) -> Bool {
   let result = fold(tokens, init: ScaleDistinctAcc { seen: [], ok: true }, f: (acc, t) =>
-    if token_name_present(tokens: map(acc.seen, s => ScaleToken { name: s, value: "" }), name: t.name) {
+    if name_present(names: acc.seen, name: t.name) {
       ScaleDistinctAcc { seen: acc.seen, ok: false }
     } else {
       ScaleDistinctAcc { seen: concat(acc.seen, [t.name]), ok: acc.ok }
@@ -114,7 +152,7 @@ fn scale_names_distinct(tokens: List<ScaleToken>) -> Bool {
 
 fn scale_well_formed() -> Bool {
   scale_names_distinct(tokens: all_scale_tokens())
-    && all(all_scale_tokens(), t => t.name.length() > 0 && t.value.length() > 0)
+    && all(all_scale_tokens(), t => t.name.length() > 0 && scale_value_wire(v: t.value).length() > 0)
     && spacing_scale.length() == 11
     && type_scale.length() == 7
     && font_stack.length() == 2

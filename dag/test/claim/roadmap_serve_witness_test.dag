@@ -27,7 +27,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
-  http_content_type_wire_label,
+  media_type_wire_label,
 }
 import std.http_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
@@ -70,7 +70,7 @@ fn witness_asset_route_serves_modeled_js() -> Bool {
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
   )
   r.status == 200
-    && http_content_type_wire_label(content_type: r.content_type) == "text/javascript; charset=utf-8"
+    && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
     && r.body == dispatch_client_js_source()
     && string_contains(s: r.body, pattern: "j.status === 'spawned'")
     && !string_contains(s: r.body, pattern: "j.ok")
