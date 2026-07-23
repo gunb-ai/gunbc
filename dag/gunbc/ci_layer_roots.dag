@@ -688,6 +688,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: "roadmap_belt_actuate_witnesses"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claims_pooled_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claims_pooled_nonzero_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_executor_verify_build_artifacts_red_control_holds"),
   bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
   bin_wet(entry: "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag", f: "auth_declared_but_unwired_witness_keystone_holds"),
