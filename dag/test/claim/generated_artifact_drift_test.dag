@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -39,7 +39,6 @@ fn witness_all_known_committed() -> Bool {
     && artifact_is_committed(a: GithooksPrePushArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
-    && artifact_is_committed(a: FleetConvergeArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
@@ -50,7 +49,6 @@ fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: "DESIGN.md")
     && !path_is_ignored(path: ".githooks/pre-push")
     && !path_is_ignored(path: ".githooks/pre-commit")
-    && !path_is_ignored(path: ".github/fleet-converge.sh")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_layout_generated.dag")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_partition_generated.dag")
     && !path_is_ignored(path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
@@ -70,7 +68,7 @@ fn witness_ignored_paths_excluded() -> Bool {
 }
 
 fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (14 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (13 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
@@ -79,7 +77,6 @@ fn witness_registry_complete() -> Bool {
     && registry_contains(a: GithooksPrePushArtifact)
     && registry_contains(a: GithooksPreCommitArtifact)
     && registry_contains(a: RunnerDeployArtifact)
-    && registry_contains(a: FleetConvergeArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedDagArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedRsArtifact)
     && registry_contains(a: Stage0CratePartitionGeneratedDagArtifact)
@@ -96,7 +93,6 @@ fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: GithooksPrePushArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
-    && artifact_is_committed(a: FleetConvergeArtifact)
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedRsArtifact)
     && artifact_is_committed(a: Stage0CratePartitionGeneratedDagArtifact)
@@ -128,7 +124,6 @@ fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
     && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
     && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
-    && consumer_is(a: FleetConvergeArtifact, expected: HostReconciler)
     && consumer_is(a: Stage0CrateLayoutGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CrateLayoutGeneratedRsArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CratePartitionGeneratedDagArtifact, expected: GitProtocol)
