@@ -245,6 +245,12 @@ path = "src/bin/parse_witness.rs"
 name = "compile_clean_diagnostic_histogram"
 path = "src/bin/compile_clean_diagnostic_histogram.rs"
 
+# SCAFFOLD (Lane B HAND-RUST) — census TSV/histogram emit transport;
+# dissolve-on: pure `.dag` row fold replaces this bin.
+[[bin]]
+name = "witness_entry_eligibility_census_emit"
+path = "src/bin/witness_entry_eligibility_census_emit.rs"
+
 # SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
 # gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
 # top of the same closure-scoped census the gate itself consumes. Not a CI consumer —
@@ -252,10 +258,6 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 # human triage of a red run. DISSOLUTION: delete when the falsifier_silent_pick_gate
 # telemetry class dissolves (§13 unique-on-chain resolution ships, per
 # falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
-[[bin]]
-name = "witness_entry_eligibility_census_emit"
-path = "src/bin/witness_entry_eligibility_census_emit.rs"
-
 [[bin]]
 name = "silent_pick_crosscheck"
 path = "src/bin/silent_pick_crosscheck.rs"
