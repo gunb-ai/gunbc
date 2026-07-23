@@ -1,0 +1,19 @@
+module std.witness_admission
+
+
+data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands."
+
+type WitnessConsumerCadence
+  = DiscoverySelection
+  | FalsifierSelfHostWet
+  | BinWitnessWet
+  | QuarantineProbeExpectRed
+  | OfflineLocalRecipe
+  | FixtureExplicitRoster
+  | NoConsumer
+
+type WitnessAdmissionRefusal
+  = WitnessAdmissionHolds
+  | UnexecutedDeferredWitness { entry: String, function: String }
+
+data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."

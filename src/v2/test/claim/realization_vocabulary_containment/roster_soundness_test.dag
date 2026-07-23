@@ -12,7 +12,7 @@ data empty_live_leak_paths: List<String> = []
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   realization_vocab_roster_sound(
     roster: list_append(
-      left: realization_vocab_exception_roster,
+      left: realization_vocab_exception_paths(),
       right: [planted_stale_roster_entry]
     ),
     live_leak_paths: empty_live_leak_paths
