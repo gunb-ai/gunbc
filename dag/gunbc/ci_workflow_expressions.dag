@@ -82,6 +82,10 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
+data ci_regen_heal_if: String = "github.event_name == 'pull_request' || github.event_name == 'push'"
+
+data ci_regen_heal_if_note: String = "The generated-artifact heal runs on pull_request AND main push (operator-directed 2026-07-23: 'i would regen push to PRs please — convenience in general, by the time it gets to main this should be green regardless'). It auto-regenerates drifted artifacts and pushes the fix back to the triggering branch, so drift is repaired on the PR branch before it reaches main. merge_group and workflow_dispatch are excluded: a merge-queue ref is not a pushable branch, and a manual dispatch has no branch-heal intent. Push events on this workflow only fire for main, so the push arm is the main safety net (the same tree the deploy job guards)."
+
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
 data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22, fail-fast lane): cancel-in-progress is true for pull_request / push / workflow_dispatch (supersede stale runs on new commits) and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). The expression is the single authority; dissolve-on: a typed EventStopPolicy row per trigger replaces the hand-spelled string when the workflow model carries event-grain policy by construction."
