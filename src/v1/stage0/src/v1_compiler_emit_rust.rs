@@ -8380,7 +8380,7 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
     .get(1 as usize)
     .cloned()
     {
-        Some(alias) => alias.clone(),
+        Some(bound_name) => bound_name.clone(),
         None => entry.clone(),
     }
 }
@@ -8388,7 +8388,7 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
 pub fn strip_repeated_use_symbols_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first.".to_string()
+            "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a per-line projection against it — linear in total bound symbols (an owner line always retains its owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost rule, 2026-07-10).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -8425,143 +8425,143 @@ pub fn rust_use_line_bound_symbols(line: String) -> Rc<Vec<String>> {
 }
 
 pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    lines
-        .clone()
-        .iter()
-        .cloned()
-        .fold(Rc::new(vec![]), |out: Rc<Vec<String>>, line: String| {
-            if ((rust_use_crate_marker(line.clone()) == "".to_string())
-                || v1_rt::contains(line.clone(), "::*".to_string()))
-            {
-                v1_rt::concat(out.clone(), Rc::new(vec![line.clone()]))
-            } else {
-                {
-                    let seen = Rc::new({
-                        let mut __result = Vec::new();
-                        for prev in out.clone().iter().cloned() {
-                            __result.extend(
-                                (*rust_use_line_bound_symbols(prev.clone())).iter().cloned(),
-                            );
+    {
+        let owners = lines.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, line: String| {
+                rust_use_line_bound_symbols(line.clone())
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner: Rc<HashMap<String, String>>, bound: String| {
+                        if v1_rt::map_contains_key(&inner, bound.clone()) {
+                            inner.clone()
+                        } else {
+                            v1_rt::rc_map_insert(inner.clone(), bound.clone(), line.clone())
                         }
-                        __result
-                    });
-                    let braced = rust_pub_use_braced_names(line.clone());
-                    if ((braced.clone().len() as i64) > 0) {
-                        {
-                            let fresh_bounds = Rc::new({
-                                let mut __result = Vec::new();
-                                for bound in unique_strings(Rc::new({
-                                    let mut __result = Vec::new();
-                                    for entry in braced.clone().iter().cloned() {
-                                        __result.push(rust_use_bound_symbol(entry.clone()));
-                                    }
-                                    __result
-                                }))
-                                .iter()
-                                .cloned()
-                                {
-                                    if ({
-                                        let mut __found = false;
-                                        for s in seen.clone().iter().cloned() {
-                                            if (s.clone() == bound.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    } == false)
-                                    {
-                                        __result.push(bound);
-                                    }
-                                }
-                                __result
-                            });
-                            let kept = Rc::new({
-                                let mut __result = Vec::new();
-                                for bound in fresh_bounds.clone().iter().cloned() {
-                                    __result.extend(
-                                        (*match Rc::new({
-                                            let mut __result = Vec::new();
-                                            for entry in braced.clone().iter().cloned() {
-                                                if (rust_use_bound_symbol(entry.clone())
-                                                    == bound.clone())
-                                                {
-                                                    __result.push(entry);
-                                                }
-                                            }
-                                            __result
-                                        })
-                                        .first()
-                                        .cloned()
-                                        {
-                                            Some(entry) => Rc::new(vec![entry.clone()]),
-                                            None => Rc::new(vec![]),
-                                        })
-                                        .iter()
-                                        .cloned(),
-                                    );
-                                }
-                                __result
-                            });
-                            if ((kept.clone().len() as i64) == 0) {
-                                out.clone()
-                            } else {
-                                if ((kept.clone().len() as i64) == (braced.clone().len() as i64)) {
-                                    v1_rt::concat(out.clone(), Rc::new(vec![line.clone()]))
-                                } else {
-                                    {
-                                        let rebuilt = match Rc::new(
-                                            line.clone()
-                                                .split(&"::{".to_string())
-                                                .map(|s| s.to_string())
-                                                .collect::<Vec<_>>(),
-                                        )
-                                        .first()
-                                        .cloned()
-                                        {
-                                            Some(prefix) => v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        prefix.clone(),
-                                                        "::{".to_string(),
-                                                    ),
-                                                    kept.clone().join(&", ".to_string()),
-                                                ),
-                                                "};".to_string(),
-                                            ),
-                                            None => line.clone(),
-                                        };
-                                        v1_rt::concat(out.clone(), Rc::new(vec![rebuilt.clone()]))
-                                    }
-                                }
-                            }
-                        }
+                    })
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for line in lines.clone().iter().cloned() {
+                __result.extend(
+                    (*if ((rust_use_crate_marker(line.clone()) == "".to_string())
+                        || v1_rt::contains(line.clone(), "::*".to_string()))
+                    {
+                        Rc::new(vec![line.clone()])
                     } else {
                         {
-                            let singleton = rust_pub_use_singleton_name(line.clone());
-                            if (singleton.clone() == "".to_string()) {
-                                v1_rt::concat(out.clone(), Rc::new(vec![line.clone()]))
-                            } else {
-                                if {
-                                    let mut __found = false;
-                                    for s in seen.clone().iter().cloned() {
-                                        if (s.clone() == singleton.clone()) {
-                                            __found = true;
-                                            break;
+                            let braced = rust_pub_use_braced_names(line.clone());
+                            if ((braced.clone().len() as i64) > 0) {
+                                {
+                                    let fresh_bounds = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for bound in unique_strings(Rc::new({
+                                            let mut __result = Vec::new();
+                                            for entry in braced.clone().iter().cloned() {
+                                                __result.push(rust_use_bound_symbol(entry.clone()));
+                                            }
+                                            __result
+                                        }))
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if match v1_rt::map_get(&owners, bound.clone()) {
+                                                Some(owner) => (owner.clone() == line.clone()),
+                                                None => false,
+                                            } {
+                                                __result.push(bound);
+                                            }
+                                        }
+                                        __result
+                                    });
+                                    let kept = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for bound in fresh_bounds.clone().iter().cloned() {
+                                            __result.extend(
+                                                (*match Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for entry in braced.clone().iter().cloned() {
+                                                        if (rust_use_bound_symbol(entry.clone())
+                                                            == bound.clone())
+                                                        {
+                                                            __result.push(entry);
+                                                        }
+                                                    }
+                                                    __result
+                                                })
+                                                .first()
+                                                .cloned()
+                                                {
+                                                    Some(entry) => Rc::new(vec![entry.clone()]),
+                                                    None => Rc::new(vec![]),
+                                                })
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    });
+                                    if ((kept.clone().len() as i64) == 0) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        if ((kept.clone().len() as i64)
+                                            == (braced.clone().len() as i64))
+                                        {
+                                            Rc::new(vec![line.clone()])
+                                        } else {
+                                            match Rc::new(
+                                                line.clone()
+                                                    .split(&"::{".to_string())
+                                                    .map(|s| s.to_string())
+                                                    .collect::<Vec<_>>(),
+                                            )
+                                            .first()
+                                            .cloned()
+                                            {
+                                                Some(prefix) => Rc::new(vec![v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            prefix.clone(),
+                                                            "::{".to_string(),
+                                                        ),
+                                                        kept.clone().join(&", ".to_string()),
+                                                    ),
+                                                    "};".to_string(),
+                                                )]),
+                                                None => Rc::new(vec![line.clone()]),
+                                            }
                                         }
                                     }
-                                    __found
-                                } {
-                                    out.clone()
-                                } else {
-                                    v1_rt::concat(out.clone(), Rc::new(vec![line.clone()]))
+                                }
+                            } else {
+                                {
+                                    let singleton = rust_pub_use_singleton_name(line.clone());
+                                    if (singleton.clone() == "".to_string()) {
+                                        Rc::new(vec![line.clone()])
+                                    } else {
+                                        match v1_rt::map_get(&owners, singleton.clone()) {
+                                            Some(owner) => {
+                                                if (owner.clone() == line.clone()) {
+                                                    Rc::new(vec![line.clone()])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                }
+                                            }
+                                            None => Rc::new(vec![line.clone()]),
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
+            __result
         })
+    }
 }
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
