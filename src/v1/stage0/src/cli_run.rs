@@ -10906,6 +10906,15 @@ fn witness_admission_entry_function_keys_from_source(
         while let Some(rel) = content[search_from..].find(head) {
             let occ = search_from + rel;
             search_from = occ + head.len();
+            // Word-boundary guard: `bin_wet(` must not match inside a longer identifier
+            // (`witness_exclusion_row_is_rehomed_bin_wet(row: …)` — the class that panicked
+            // run 30033250697). A head preceded by an identifier char is a different name.
+            if occ > 0 {
+                let prev = content.as_bytes()[occ - 1];
+                if prev.is_ascii_alphanumeric() || prev == b'_' {
+                    continue;
+                }
+            }
             let after = &content[search_from..];
             let window = &after[..after.len().min(WINDOW)];
             let trimmed = window.trim_start();
@@ -25935,6 +25944,20 @@ mod module_path_index_tests {
                 .collect::<Vec<_>>(),
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn head_scan_ignores_longer_identifiers_containing_a_head() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {\n\
+               true\n\
+             }\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.is_empty(),
+            "a head substring inside a longer identifier must not scan as a roster row; got {keys:?}"
         );
     }
 
