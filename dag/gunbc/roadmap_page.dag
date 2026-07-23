@@ -18,6 +18,7 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
+import gunbc.roadmap_belt_actuate { belt_dispatch_ok_status_labels }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -246,7 +247,7 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
   }
 }
 
-data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE, which both A (Node exec route) and B (gunbc serve in-process) answer -- the button is transport-agnostic, so the backend swaps under it with zero page change. The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
+data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE and reads belt B's response contract: the `status` member of belt_dispatch_result_json_value, with the ok-set DERIVED from belt_dispatch_ok_status_labels (one authority with the serve JSON -- DESIGN section 3). The retired belt-A `ok`/`node` shape is gone: reading it while B answered `status` made EVERY successful click render 'failed' (found live 2026-07-23; the page witness holds a RED on `j.ok` so the fork cannot silently return). The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
 
 fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
   if node_status_symbol(rn: rn, merged: merged) == "done" {
@@ -268,13 +269,23 @@ fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode>
 
 data belt_dispatch_path_prefix: String = "/dispatch/"
 
+fn dispatch_js_ok_predicate() -> String {
+  join(belt_dispatch_ok_status_labels |> map(l => concat(concat("j.status==='", l), "'")), "||")
+}
+
 fn dispatch_client_js() -> String {
   concat(
     concat(
-      "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
-      belt_dispatch_path_prefix,
+      concat(
+        concat(
+          "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
+          belt_dispatch_path_prefix,
+        ),
+        "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{var ok=(",
+      ),
+      dispatch_js_ok_predicate(),
     ),
-    "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{b.textContent=j.ok?('dispatched: '+j.node):'failed';if(!j.ok)\{console.log('dispatch failed',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
+    ");b.textContent=ok?j.status:('failed: '+(j.status||'no status'));if(!ok)\{console.log('dispatch refused',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
   )
 }
 

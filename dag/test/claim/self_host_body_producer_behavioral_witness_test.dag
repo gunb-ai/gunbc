@@ -1,9 +1,9 @@
 module test.claim.self_host_body_producer_behavioral_witness
 
-import tools.self_host_body_producer_behavioral_transport { sbp_behavioral_receipt_holds }
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-data self_host_body_producer_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 easy-flip lane (03_body_producer): tools.self_host_body_producer_behavioral_transport emits src/v2/compiler/03_body_producer.dag via gunbc --entry, assembles a seed-linked v1_compiled crate (gunbc-emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault), and claim-run on structured_body_dispatch. Live host effects — nightly falsifier Wet batch when frontier row is SelfEmitted with binding."
+data self_host_body_producer_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 easy-flip lane (03_body_producer): tools.self_host_module_behavioral_transport_roster's compiler_module_behavioral_receipt_for emits src/v2/compiler/03_body_producer.dag via gunbc --entry, assembles a seed-linked v1_compiled crate (gunbc-emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault), and claim-run on structured_body_dispatch. Live host effects — nightly falsifier Wet batch when frontier row is SelfEmitted with binding."
 
 test fn self_host_body_producer_behavioral_receipt_holds() -> Bool {
-  sbp_behavioral_receipt_holds()
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/03_body_producer.dag")
 }

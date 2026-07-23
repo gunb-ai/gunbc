@@ -1,0 +1,40 @@
+module test.claim.self_host_module_behavioral_transport_roster
+
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_transport_roster }
+import v2.compiler.self_host.frontier { compiler_frontier_roster }
+import v2.std.algebra { fold_list, list_map, contains, unique }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data self_host_module_behavioral_transport_roster_construction_doc: String = "Construction-holds cross-check tying the roster (dag/tools/self_host_module_behavioral_transport_roster.dag) back to its single naming authority, v2.compiler.self_host.frontier's compiler_frontier_roster (DESIGN §3 — no second, drifting roster). Every roster row's module_path must name a real frontier row, and no roster row may duplicate another's module_path."
+
+fn frontier_module_paths() -> List<String> {
+  list_map(xs: compiler_frontier_roster, f: fn(row) { row.module_path })
+}
+
+fn roster_module_paths() -> List<String> {
+  list_map(xs: compiler_module_behavioral_transport_roster, f: fn(cfg) { cfg.module_path })
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+test fn self_host_module_behavioral_transport_roster_rows_are_frontier_members_holds() -> Bool {
+  let known = frontier_module_paths()
+  fold_list(
+    xs: compiler_module_behavioral_transport_roster,
+    empty: true,
+    cons: fn(acc, cfg) {
+      match acc {
+        true => contains(xs: known, item: cfg.module_path, eq: string_eq)
+        false => false
+      }
+    }
+  )
+}
+
+test fn self_host_module_behavioral_transport_roster_module_paths_unique_holds() -> Bool {
+  unique(xs: roster_module_paths(), eq: string_eq)
+}

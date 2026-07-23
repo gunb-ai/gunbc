@@ -1,0 +1,14 @@
+module v2.workflow.commit_witness_claim_roster
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+data commit_witness_claim_roster_dissolution_trigger: String = "Dissolve-on: enrollment derived from discovery so stale CommitWitnessClaim rows become unwritable (module-identity Phase-0 admission invariant). Until then: detection-only typed located counted refusals — never auto-delete or re-point roster rows."
+
+fn commit_witness_claim_roster_holds() -> Bool {
+  commit_witness_claim_roster_unresolvable_count() == 0
+}
+
+fn commit_witness_claim_roster_live_unresolvable_count() -> Int {
+  commit_witness_claim_roster_unresolvable_count()
+}
