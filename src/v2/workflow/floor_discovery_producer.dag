@@ -33,6 +33,7 @@ type FloorDiscoveryProducerResult
 type FloorDiscoveryWalkState {
   rows: List<FloorDiscoveryRow>
   walk_failures: Int
+  walk_failure_path: String
   sidecar_violations: List<FloorDiscoverySidecarViolation>
 }
 
@@ -40,7 +41,36 @@ fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
   FloorDiscoveryWalkState {
     rows: [],
     walk_failures: 0,
+    walk_failure_path: "",
     sidecar_violations: []
+  }
+}
+
+fn floor_discovery_record_walk_list_failure(
+  state: FloorDiscoveryWalkState,
+  dir_path: String
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: state.rows,
+    walk_failures: state.walk_failures + 1,
+    walk_failure_path: if state.walk_failure_path == "" {
+      dir_path
+    } else {
+      state.walk_failure_path
+    },
+    sidecar_violations: state.sidecar_violations
+  }
+}
+
+fn floor_discovery_walk_failure_refusal_reason(path: String) -> String {
+  if path == "" {
+    "directory listing failed during floor discovery walk (typed refusal, never empty roster)"
+  } else {
+    concat(
+      "directory listing failed during floor discovery walk at ",
+      path,
+      " (typed refusal, never empty roster)"
+    )
   }
 }
 
@@ -220,6 +250,7 @@ fn floor_discovery_append_row(
     FloorDiscoveryWalkState {
       rows: concat(state.rows, [row]),
       walk_failures: state.walk_failures,
+      walk_failure_path: state.walk_failure_path,
       sidecar_violations: state.sidecar_violations
     }
   }
@@ -234,6 +265,7 @@ fn floor_discovery_collect_sidecar_violation(
   FloorDiscoveryWalkState {
     rows: state.rows,
     walk_failures: state.walk_failures,
+    walk_failure_path: state.walk_failure_path,
     sidecar_violations: concat(state.sidecar_violations, [
       FloorDiscoverySidecarViolation {
         entry_path: entry_path,
@@ -332,11 +364,7 @@ fn floor_discovery_walk_dir(
 ) -> FloorDiscoveryWalkState {
   let listed = Filesystem.List(path: dir_path)
   if !listed.success {
-    FloorDiscoveryWalkState {
-      rows: state.rows,
-      walk_failures: state.walk_failures + 1,
-      sidecar_violations: state.sidecar_violations
-    }
+    floor_discovery_record_walk_list_failure(state: state, dir_path: dir_path)
   } else if listed.entries == "" {
     state
   } else {
@@ -478,7 +506,7 @@ fn floor_discovery_sidecar_refusal_reason(
 fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
   if state.walk_failures > 0 {
     FloorDiscoveryRefused {
-      reason: "directory listing failed during floor discovery walk (typed refusal, never empty roster)"
+      reason: floor_discovery_walk_failure_refusal_reason(path: state.walk_failure_path)
     }
   } else if length(xs: state.sidecar_violations) > 0 {
     FloorDiscoveryRefused {
@@ -538,5 +566,7 @@ fn floor_filename_hygiene_refusal_for_paths(
 }
 
 data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List host facts, owned-data transport records, witness_exclusion_substrings, and *_test.dag naming rules. Interior directory candidates (basename has no '.') increment walk_failures on list failure; dotted basenames are skipped as non-dag files. Listing failure is FloorDiscoveryRefused, never an empty roster."
+
+data floor_discovery_directory_candidate_dissolve_on: String = "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty)."
 
 data floor_discovery_live_tree_disposition_dissolve_on: String = "dissolve-on: floor_discovery_live_tree_disposition — producer reads the entry's `data live_tree_disposition: LiveTreeDisposition = …` row (first match; undeclared = ReadsLiveTree). Malformed/duplicate declaration refusal and effect-reach reclassification remain on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold)."
