@@ -64,7 +64,7 @@ import v1.compiler.infer_items {
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 
-import v1.compiler.infer_lookup { lookup_func_sig }
+import v1.compiler.infer_lookup { lookup_func_sig, func_sig_if_resolved }
 
 import v1.compiler.infer {
   InferScope,
@@ -329,7 +329,7 @@ fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
 }
 
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig? {
-  lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name)
+  func_sig_if_resolved(lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
 }
 
 fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {

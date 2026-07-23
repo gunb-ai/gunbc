@@ -106,6 +106,20 @@ fn roadmap_instance_rules() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "status-done" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
+    StaticRule { selector: ClassSelector { name: "status-superseded" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: BorderStyle, value: "dashed"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".node-superseded > .title" }, decls: [
+      decl(prop: TextDecoration, value: "line-through"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "superseded-by" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginLeft, value: scale_var(t: space_6)),
+    ] },
     StaticRule { selector: ClassSelector { name: "title" }, decls: [
       decl(prop: MarginRight, value: scale_var(t: space_8)),
     ] },

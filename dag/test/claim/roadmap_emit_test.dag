@@ -3,7 +3,7 @@ module test.claim.roadmap_emit
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -89,10 +89,28 @@ fn witness_child_derived_unchecked_when_unmerged() -> Bool {
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
+fn superseded_child_node() -> RoadmapNode {
+  RoadmapNode {
+    node: child_id,
+    line: SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn witness_superseded_checked_struck_no_signoff_suffix() -> Bool {
+  let out = emit_nodes(nodes: [parent_node(), superseded_child_node()], merged: [])
+  string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
+    && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
+}
+
 test fn roadmap_emit_witnesses() -> Bool {
   witness_heading()
     && witness_parent_authored_box_and_link()
     && witness_child_merged_unsigned_awaiting_signoff()
     && witness_child_signed_checked()
     && witness_child_derived_unchecked_when_unmerged()
+    && witness_superseded_checked_struck_no_signoff_suffix()
 }

@@ -10,6 +10,8 @@ type RoadmapItem
 
   | PlainLine { content: String }
 
+  | SupersededLine { by: String, content: String }
+
 type Signoff
   = Unsigned
   | SignedOff { by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool }
@@ -55,6 +57,16 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
     DerivableLine { prs, title: _, description: _ } => prs_all_merged(prs: prs, merged: merged)
     AuthoredLine { done, content: _ } => done
     PlainLine { content: _ } => false
+    SupersededLine { by: _, content: _ } => true
+  }
+}
+
+fn item_superseded_by(item: RoadmapItem) -> String {
+  match item {
+    DerivableLine { prs: _, title: _, description: _ } => ""
+    AuthoredLine { done: _, content: _ } => ""
+    PlainLine { content: _ } => ""
+    SupersededLine { by, content: _ } => by
   }
 }
 
@@ -68,6 +80,7 @@ fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Dr
   match item {
     AuthoredLine { done: _, content: _ } => Underivable
     PlainLine { content: _ } => Underivable
+    SupersededLine { by: _, content: _ } => Underivable
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean

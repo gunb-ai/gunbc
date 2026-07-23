@@ -440,6 +440,11 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    AmbiguousReference {
+        name: String,
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
 }
 impl CompilerDiagnostic {
     pub fn span(&self) -> Rc<SourceSpan> {
@@ -463,6 +468,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::AmbiguousReference { span: __val, .. } => __val.clone(),
         }
     }
 }
@@ -499,6 +505,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
+        CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
     }
 }
 
@@ -705,6 +712,26 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(
             v1_rt::concat("unlisted import use '".to_string(), n.clone()),
             "' (referenced but not in any import's name list)".to_string(),
+        ),
+        CompilerDiagnostic::AmbiguousReference {
+            name: n,
+            candidates: cs,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("ambiguous reference '".to_string(), n.clone()),
+                            "': ".to_string(),
+                        ),
+                        (cs.clone().len() as i64).to_string(),
+                    ),
+                    " candidates: ".to_string(),
+                ),
+                cs.clone().join(&", ".to_string()),
+            ),
+            " — qualify by containment path, alias, or rename".to_string(),
         ),
     }
 }

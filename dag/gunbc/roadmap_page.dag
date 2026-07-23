@@ -14,7 +14,7 @@ import gunbc.roadmap_model {
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, item_is_done, signoff_accepts, signoff_by }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
@@ -164,14 +164,18 @@ fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode 
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {
-  if signoff_accepts(s: rn.signoff) {
-    "done"
-  } else {
-    if item_is_done(item: rn.line, merged: merged) {
-      "review"
+  if item_superseded_by(item: rn.line) == "" {
+    if signoff_accepts(s: rn.signoff) {
+      "done"
     } else {
-      "open"
+      if item_is_done(item: rn.line, merged: merged) {
+        "review"
+      } else {
+        "open"
+      }
     }
+  } else {
+    "superseded"
   }
 }
 
@@ -204,6 +208,7 @@ fn line_title(line: RoadmapItem) -> String {
     DerivableLine { prs, title, description } => title
     AuthoredLine { done, content } => content
     PlainLine { content } => content
+    SupersededLine { by: _, content } => content
   }
 }
 
@@ -249,8 +254,18 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
 
 data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
+fn superseded_badge(rn: RoadmapNode) -> List<MarkupNode> {
+  let by = item_superseded_by(item: rn.line)
+  if by == "" {
+    []
+  } else {
+    [ el_class("span", "superseded-by", [ txt(concat("→ ", by)) ]) ]
+  }
+}
+
 fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
-  if node_status_symbol(rn: rn, merged: merged) == "done" {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  if status == "done" || status == "superseded" {
     []
   } else {
     [
@@ -325,7 +340,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
         el_class("span", concat("status status-", status), [ txt(status) ]),
         el_class("span", "title", title_nodes(line: rn.line)),
       ],
-      owner_badge(rn: rn),
+      concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
     ),
     concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
   )
@@ -390,7 +405,7 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
         el_class("span", concat("status status-", status), [ txt(status) ]),
         el_class("span", "title", title_nodes(line: rn.line)),
       ],
-      owner_badge(rn: rn),
+      concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
     ),
     concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
   )
@@ -417,6 +432,7 @@ fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Markup
     frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged),
     frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged),
     frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged),
+    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, merged: merged),
   ])
 }
 

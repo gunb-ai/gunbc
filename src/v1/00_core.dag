@@ -155,6 +155,7 @@ type CompilerDiagnostic
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
+  | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -186,6 +187,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
+    AmbiguousReference { name: _, candidates: _, span: s } => s
   }
 }
 
@@ -210,6 +212,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
   }
 }
 
