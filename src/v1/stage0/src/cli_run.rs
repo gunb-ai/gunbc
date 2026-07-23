@@ -8604,8 +8604,9 @@ mod witness_execution_leg_derivation_tests {
         let family_grain = witness_execution_leg_label(
             "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
         );
-        let interpreted =
-            witness_execution_leg_label("src/v2/test/claim/self_host/witness_bulk_routing_test.dag");
+        let interpreted = witness_execution_leg_label(
+            "src/v2/test/claim/self_host/witness_bulk_routing_test.dag",
+        );
 
         assert_eq!(native, "NativeFamilyLeg{family_crate}");
         assert_eq!(family_grain, "InterpretedLeg{EmitOnDemandFamilyGrain}");
