@@ -373,9 +373,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "interp_recorded_fixture_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
+    classification: OfflineLocalRecipe,
+    reason: "PER-PR ENROLLMENT REVERTED 2026-07-23 (the cold-child class, measured): the witness drives ~13+ claim_batch children each given --source-root <workspace root> — every child indexes the ENTIRE repo cold, serially — 2556s (42.6min) on run 29995111208's wet batch, the dominating row of the 53.2min batch-4 wall. That is a cold corpus-scan on the merge path (the record->replay lifecycle it witnesses is real coverage, but its transport class is the exact disease the pooled-child lever removes elsewhere). Too heavy for the falsifier wet lane's 600s per-receipt wall budget as-is, so it reverts to local recipe rather than enshrining a nightly refusal. Local recipe: target/release/interp_recorded_fixture_witness (builds claim_batch on demand).",
+    dissolve_on: "re-enrolls (falsifier wet or per-PR) when its claim_batch children are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt"
   },
   WitnessExclusionRow {
     pattern: "test/claim/parse_test.dag",
@@ -672,7 +672,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "build_artifact_corruption_probe_holds"),
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "witness_bin_readiness_arms_are_discriminating"),
   bin_wet(entry: "dag/test/claim/floor_skip_discovery_witness_test.dag", f: "floor_skip_discovery_keystone_holds"),
-  bin_wet(entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", f: "interp_recorded_fixture_keystone_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_floor_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_perf_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_git_toplevel_resolves_holds"),
@@ -688,6 +687,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: "roadmap_belt_actuate_witnesses"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_argv_shape_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_run_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_executor_verify_build_artifacts_red_control_holds"),
   bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
   bin_wet(entry: "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag", f: "auth_declared_but_unwired_witness_keystone_holds"),

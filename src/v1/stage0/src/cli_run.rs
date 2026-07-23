@@ -19,6 +19,7 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -2176,13 +2177,17 @@ fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bo
 
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+/// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
+/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
+/// (see its note: a roster that is a strict subset of the compiled tree both widened
+/// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
+/// scoped runs).
 fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
-    let entry_root = witness_layer_roots()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "dag".to_string());
-    let abs_entry_root = anchor_source_root(&entry_root);
-    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+    let entry_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|root| anchor_source_root(root))
+        .collect();
+    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
         .collect();
@@ -2928,6 +2933,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+        CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -2951,6 +2957,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
     };
     (class.to_string(), name)
 }
@@ -19632,7 +19639,8 @@ pub fn resolution_divergence_census_from_ctx(
             }
             for (callee, call_node) in calls {
                 out.sites_checked += 1;
-                let import_sig = lookup_resolved_sig(func_env.clone(), callee.clone());
+                let import_sig =
+                    func_sig_if_resolved(lookup_resolved_sig(func_env.clone(), callee.clone()));
                 let import_binding = import_sig.as_ref().and_then(|sig| {
                     import_chain_owner(&func_env, &callee)
                         .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
@@ -20655,9 +20663,9 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
 mod resolution_divergence_census_tests {
     use super::{
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
-        import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
-        resolution_divergence_silent_pick_refusal, whole_tree_resolved_ctx, ContainmentResolve,
-        ResolutionDivergenceBucket, WholeTreeCtx,
+        func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
+        resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
+        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -20726,8 +20734,11 @@ fn caller() -> Bool {
             .iter()
             .find(|m| m.type_env.module_path == "test.posctl.middle.leaf")
             .expect("leaf module must resolve");
-        let import_sig =
-            lookup_resolved_sig(leaf.func_env.clone(), "lex_target".to_string()).expect("import");
+        let import_sig = func_sig_if_resolved(lookup_resolved_sig(
+            leaf.func_env.clone(),
+            "lex_target".to_string(),
+        ))
+        .expect("import");
         let import_owner = import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
         let import_arity = import_sig.params.len();
         let item_index = build_module_item_index(&ctx);
@@ -23808,9 +23819,50 @@ fn test_migration_retired_stems() -> Vec<String> {
     stems
 }
 
-// The covered set consumed by both the debt roster and the delete-guard: floor-witness stems
-// (migrate path) unioned with retired stems (delete path). One union, two consumers.
-fn test_migration_covered_stems() -> Vec<String> {
+// Third stem source (typed RETAIN path): a `<stem>_retained.dag` declaration constructs a
+// `TestModuleRetirement` whose disposition is `RetainedNonMigratable` — a v1 test module whose
+// behavior is NOT migratable to a `.dag` witness (it exercises a host-Rust-only surface, e.g. a
+// thread-local policy gate the substrate cannot reach) and is therefore RETAINED as `.rs` until
+// src/v1 is deleted. Distinct from `_retired.dag` (delete-only): a retained stem must EXCLUDE the
+// module from the debt roster (it is accounted for, not migration debt) but must NEVER authorize
+// its deletion. Fusing it into the delete-authorize set would be a §5 fail-open: the delete-guard
+// would silently green-light deleting a test that has no `.dag` replacement. So this stem source
+// feeds ONLY the debt-exclude set, never the delete-authorize set.
+fn test_migration_retained_nonmigratable_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .filter(|(_, content)| content.contains("RetainedNonMigratable {"))
+        .filter_map(|(path, _)| {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())?;
+            file_name
+                .strip_suffix("_retained.dag")
+                .map(|s| s.to_string())
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The DEBT-EXCLUDE set (consumed by `build_test_migration_debt_report`): floor-witness stems
+// (migrate path) ∪ retired stems (delete path) ∪ retained-non-migratable stems (retain path). A
+// module in any of the three is accounted for and drops out of the debt roster.
+fn test_migration_debt_exclude_stems() -> Vec<String> {
+    let mut stems = test_migration_debt_floor_stems();
+    stems.extend(test_migration_retired_stems());
+    stems.extend(test_migration_retained_nonmigratable_stems());
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The DELETE-AUTHORIZE set (consumed by the delete-guard): floor-witness stems ∪ retired stems
+// ONLY. A retained-non-migratable stem is DELIBERATELY absent — retention accounts for a module
+// without authorizing its deletion, so the delete-guard still refuses a delete of a retained
+// module that has no exact-stem floor witness (§5 fail-closed: retention is not deletion consent).
+fn test_migration_delete_authorize_stems() -> Vec<String> {
     let mut stems = test_migration_debt_floor_stems();
     stems.extend(test_migration_retired_stems());
     stems.sort();
@@ -23820,7 +23872,7 @@ fn test_migration_covered_stems() -> Vec<String> {
 
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_debt_exclude_stems();
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
@@ -23997,7 +24049,7 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     if base_rev == head_rev {
         return Ok(Vec::new());
     }
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_delete_authorize_stems();
     let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
     let mut violations = Vec::new();
     for path in deleted {
@@ -24244,6 +24296,36 @@ mod witness_layer_roots_compile_clean_tests {
                 &departed,
             );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Roster covers the whole compiled tree (lever 8): a diff touching only
+    /// `src/v2/**.dag` scopes to its own entry closure instead of falling to the
+    /// "no shard intersection" whole-tree baseline (pre-fix the roster enumerated
+    /// `dag/`-declared entries only, so this exact shape widened — baseline run
+    /// 29976989996), and a `dag/std` touch selects its affected `src/v2` importers
+    /// (pre-fix they were never in the roster, so scoped runs under-covered them).
+    #[test]
+    fn floor_fast_plan_scopes_src_v2_entries_both_directions() {
+        with_workspace_cwd(|| {
+            let v2_leaf = "src/v2/std/witness_execution_routing.dag".to_string();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[v2_leaf.clone(), "dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            let CompileCleanScopePlan::Scoped { entry_paths } = plan else {
+                panic!("expected Scoped for a selectable .dag-only diff, got {plan:?}");
+            };
+            assert!(
+                entry_paths.contains(&v2_leaf),
+                "touched src/v2 module must select its own entry"
+            );
+            assert!(
+                entry_paths
+                    .iter()
+                    .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
+                "a dag/std touch must select affected src/v2 importers"
+            );
         });
     }
 
@@ -24648,7 +24730,13 @@ mod test_migration_debt_tests {
             !test_migration_debt_floor_stems().iter().any(|s| s == stem),
             "stem must be covered only via retirement, not a floor witness"
         );
-        assert!(test_migration_covered_stems().iter().any(|s| s == stem));
+        assert!(test_migration_debt_exclude_stems()
+            .iter()
+            .any(|s| s == stem));
+        // A `_retired.dag` (delete path) stem DOES authorize deletion — it is in both sets.
+        assert!(test_migration_delete_authorize_stems()
+            .iter()
+            .any(|s| s == stem));
     }
 
     // The retired module no longer appears in the debt roster (the retirement excluded it).
@@ -24659,6 +24747,75 @@ mod test_migration_debt_tests {
                 .iter()
                 .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
             "a retired module must drop out of the debt roster"
+        );
+    }
+
+    // Green-by-execution for the RETAIN path: the demonstrator
+    // `dag/test/retirement/namespace_unique_on_chain_policy_retained.dag` declares a
+    // `RetainedNonMigratable` retention whose stem is `namespace_unique_on_chain_policy`. That stem
+    // is neither a floor-witness stem nor a retired (delete-path) stem, so the retention is the
+    // ONLY thing that accounts for it — the debt-exclude union must pick it up.
+    #[test]
+    fn retained_nonmigratable_stem_excluded_but_not_floor_or_retired() {
+        let stem = "namespace_unique_on_chain_policy";
+        assert!(
+            test_migration_retained_nonmigratable_stems()
+                .iter()
+                .any(|s| s == stem),
+            "retention declaration must contribute its stem"
+        );
+        // Coverage comes strictly from the retain path — not a floor witness, not a retired marker.
+        assert!(
+            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
+            "stem must be accounted for only via retention, not a floor witness"
+        );
+        assert!(
+            !test_migration_retired_stems().iter().any(|s| s == stem),
+            "a retained (non-delete) stem must NOT be a retired (delete) stem"
+        );
+        // It IS in the debt-exclude set (module drops out of the debt roster).
+        assert!(
+            test_migration_debt_exclude_stems()
+                .iter()
+                .any(|s| s == stem),
+            "a retained module must be excluded from the debt roster"
+        );
+    }
+
+    // The retained module no longer appears in the debt roster (retention excluded it).
+    #[test]
+    fn retained_nonmigratable_module_is_not_debt() {
+        assert!(
+            !test_migration_debt_module_names()
+                .iter()
+                .any(|m| m == "namespace_unique_on_chain_policy_test.rs"),
+            "a retained-non-migratable module must drop out of the debt roster"
+        );
+    }
+
+    // §5 RED CONTROL — retention is NOT deletion consent. A retained-non-migratable stem must be
+    // ABSENT from the delete-authorize set, so the delete-guard REFUSES deleting the module (it has
+    // no `.dag` replacement). This is the discriminating red: were the retain path fused into the
+    // delete-authorize set (the fail-open this split closes), `stem_covered` would return true here
+    // and the guard would silently green-light the delete. It flips exactly with the wiring:
+    //   - debt-exclude set    → contains the stem (asserted above) → module is not debt.
+    //   - delete-authorize set → does NOT contain the stem → guard flags any delete of it.
+    #[test]
+    fn delete_guard_refuses_deleting_retained_nonmigratable_module() {
+        let stem = "namespace_unique_on_chain_policy";
+        let authorize = test_migration_delete_authorize_stems();
+        // This is the exact predicate the delete-guard applies per deleted path
+        // (`!stem_covered(stem, delete_authorize_stems)` => violation): it must report the delete
+        // of a retained module as an UNCOVERED (refused) delete.
+        assert!(
+            !test_migration_debt_stem_covered(stem, &authorize),
+            "retained-non-migratable stem must NOT authorize deletion — the delete-guard must refuse"
+        );
+        // Control: a genuinely delete-covered (retired) stem IS authorized, proving the guard's
+        // refusal discriminates on retain-vs-delete disposition, not on being unknown.
+        assert!(
+            test_migration_debt_stem_covered("map_lookup_dual_dispatch", &authorize),
+            "a retired (delete-path) stem must authorize deletion"
         );
     }
 }
@@ -26983,13 +27140,17 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "bottom_fn".to_string(),
+            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "bottom_fn".to_string(),
+                ),
             );
-            let miss = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "absent_fn".to_string(),
+            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "absent_fn".to_string(),
+                ),
             );
             let _ = tx.send((
                 prev.parents.len(),
@@ -27023,8 +27184,10 @@ mod sigs_env_flat_parents {
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string())
-                .map(|s| s.inferred.name.clone())
+            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
+            )
+            .map(|s| s.inferred.name.clone())
         };
 
         let b = w2_env("b", &[("f", "FromB"), ("g", "FromBg")], vec![]);
