@@ -1,0 +1,101 @@
+module test.claim.ci_heal_job_witness
+
+import gunbc.ci_workflow {
+  ci_workflow,
+  ci_heal_generated_artifacts_job,
+  ci_build_job,
+  ci_job
+}
+import gunbc.ci_spec {
+  ci_heal_generated_artifact_regen_function,
+  ci_heal_generated_artifact_gate_entry,
+  gunbc_ci_heal_commit_push_script
+}
+import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import extdeps.github.actions {
+  Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead
+}
+
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). The load-bearing safety control is contents_write_is_scoped_to_heal_only: it reds if the contents:write grant leaks to the workflow default, or onto the build/ci jobs, or if the heal job loses it — pinning least privilege (DESIGN 5) by construction, so the whole-corpus ci floor can never run with a push-capable token. heal_job_needs_build_not_ci is the second discriminating control: the drift gate lives inside ci, so a heal re-pointed to needs:[ci] would be skipped exactly when a drift reds ci — this witness goes red on that regression. The remaining witnesses pin enrollment, the main-push-only guard, the scoped write, and the regen target (main_wet on the generated-artifact drift gate). heal_commit_scope_is_artifact_only (review 41703) is the third discriminating control: the unattended push stages EXACTLY registry paths and decides on the STAGED diff (git add over committed_generated_artifact_paths, then git diff --cached), never git add -A — so it reds if the shell regresses to whole-tree staging that could sweep incidental runner dirt into a push to main."
+
+fn perm_is_write(p: PermissionLevel) -> Bool {
+  match p { PermWrite => true  _ => false }
+}
+
+fn perm_is_read(p: PermissionLevel) -> Bool {
+  match p { PermRead => true  _ => false }
+}
+
+fn job_contents_is_write(j: Job) -> Bool {
+  match j.permissions {
+    Present { value: wp } =>
+      match wp.contents { Present { value: l } => perm_is_write(p: l)  Absent => false }
+    Absent => false
+  }
+}
+
+fn job_has_no_write(j: Job) -> Bool {
+  match j.permissions {
+    Absent => true
+    Present { value: wp } =>
+      match wp.contents { Present { value: l } => !perm_is_write(p: l)  Absent => true }
+  }
+}
+
+fn workflow_contents_is_read(w: Workflow) -> Bool {
+  match w.permissions {
+    Present { value: wp } =>
+      match wp.contents { Present { value: l } => perm_is_read(p: l)  Absent => false }
+    Absent => false
+  }
+}
+
+fn heal_job_enrolled_in_ci_workflow() -> Bool {
+  fold(ci_workflow.jobs, init: false, f: (acc, j) => acc || (j.id == "heal_generated_artifacts"))
+}
+
+fn heal_job_needs_build_not_ci() -> Bool {
+  ci_heal_generated_artifacts_job().needs == ["build"]
+}
+
+fn heal_job_runs_on_main_push_only() -> Bool {
+  match ci_heal_generated_artifacts_job().if_condition {
+    Present { value: s } => s == ci_deploy_push_to_main_if
+    Absent => false
+  }
+}
+
+fn heal_job_has_scoped_contents_write() -> Bool {
+  job_contents_is_write(j: ci_heal_generated_artifacts_job())
+}
+
+fn contents_write_is_scoped_to_heal_only() -> Bool {
+  workflow_contents_is_read(w: ci_workflow)
+    && job_has_no_write(j: ci_build_job())
+    && job_has_no_write(j: ci_job())
+    && job_contents_is_write(j: ci_heal_generated_artifacts_job())
+}
+
+fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
+  (ci_heal_generated_artifact_regen_function == "main_wet")
+    && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
+}
+
+fn heal_commit_scope_is_artifact_only() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
+    && string_contains(s: script, pattern: "git diff --cached --quiet")
+    && !string_contains(s: script, pattern: "git add -A")
+    && (count(committed_generated_artifact_paths()) > 0)
+}
+
+test fn ci_heal_job_witnesses() -> Bool {
+  heal_job_enrolled_in_ci_workflow()
+    && heal_job_needs_build_not_ci()
+    && heal_job_runs_on_main_push_only()
+    && heal_job_has_scoped_contents_write()
+    && contents_write_is_scoped_to_heal_only()
+    && heal_regen_targets_generated_artifact_main_wet()
+    && heal_commit_scope_is_artifact_only()
+}

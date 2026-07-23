@@ -19,6 +19,7 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -2059,6 +2060,59 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
 }
 
 const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
+const FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY: &str =
+    "src/v2/workflow/floor_compile_clean_predicates.dag";
+
+fn call_compile_clean_bool_list_fn(
+    fn_name: &str,
+    arg_name: &str,
+    paths: &[String],
+) -> Result<bool, String> {
+    let roots = default_source_roots();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
+        .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let values: Vec<v1_interpreter::Value> = paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [(Some(arg_name.to_string()), list_value_from_vec(values))];
+    match v1_interpreter::run_in_context_with_args(&ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "{fn_name} returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{fn_name}: {e}")),
+    }
+}
+
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> Result<bool, String> {
+    call_compile_clean_bool_list_fn(
+        "compile_clean_all_touched_paths_docs_universe",
+        "touched_paths",
+        touched_paths,
+    )
+}
+
+fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> Result<bool, String> {
+    call_compile_clean_bool_list_fn(
+        "compile_clean_all_touched_paths_selectable",
+        "touched_paths",
+        touched_paths,
+    )
+}
+
+fn compile_clean_departed_paths_outside_docs(
+    departed_paths: &HashSet<String>,
+) -> Result<bool, String> {
+    let paths: Vec<String> = departed_paths.iter().cloned().collect();
+    call_compile_clean_bool_list_fn(
+        "compile_clean_departed_paths_outside_docs",
+        "departed_paths",
+        &paths,
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
@@ -2163,52 +2217,25 @@ fn compile_clean_source_roots() -> Vec<String> {
     roots
 }
 
-fn compile_clean_touched_path_norm(path: &str) -> &str {
-    path.strip_prefix("./").unwrap_or(path)
-}
-
-fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
-    !touched_paths.is_empty()
-        && touched_paths
-            .iter()
-            .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
-}
-
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+/// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
+/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
+/// (see its note: a roster that is a strict subset of the compiled tree both widened
+/// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
+/// scoped runs).
 fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
-    let entry_root = witness_layer_roots()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "dag".to_string());
-    let abs_entry_root = anchor_source_root(&entry_root);
-    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+    let entry_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|root| anchor_source_root(root))
+        .collect();
+    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
         .collect();
     paths.sort();
     paths.dedup();
     paths
-}
-
-/// Mirror of `tools.dag_compile_clean_scope.compile_clean_touched_path_selectable`:
-/// import-closure selection can only answer for `.dag` sources (and the docs universe);
-/// any other touched path (compiler seed `.rs`, workflow yml, manifests) can change
-/// compile behavior outside the module graph, so the gate keeps its whole-tree baseline.
-fn compile_clean_touched_path_selectable(path: &str) -> bool {
-    let norm = path.strip_prefix("./").unwrap_or(path);
-    norm.starts_with("docs/") || norm.ends_with(".dag")
-}
-
-/// Mirror of `tools.dag_compile_clean_scope.compile_clean_departed_paths_outside_docs`:
-/// a departed (deleted / renamed-from) non-docs path is invisible to current-tree
-/// adjacency — a dangling import drops the edge, so a broken importer would not be
-/// selected — whole-tree baseline.
-fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
-    departed_paths.iter().any(|p| {
-        let norm = p.strip_prefix("./").unwrap_or(p);
-        !norm.starts_with("docs/")
-    })
 }
 
 /// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
@@ -2227,29 +2254,44 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
 
-    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
-        let reason =
-            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                .to_string();
-        eprintln!("compile-clean scope: skipped ({reason})");
-        return CompileCleanScopePlan::SkipNoAffected { reason };
+    match compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        Ok(true) => {
+            let reason =
+                "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                    .to_string();
+            eprintln!("compile-clean scope: skipped ({reason})");
+            return CompileCleanScopePlan::SkipNoAffected { reason };
+        }
+        Ok(false) => {}
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
-    if let Some(outside) = touched_paths
-        .iter()
-        .find(|p| !compile_clean_touched_path_selectable(p))
-    {
-        eprintln!(
-            "compile-clean scope: touched path outside the selectable universe ({outside}) — compiler/infra change, whole-tree baseline"
-        );
-        return CompileCleanScopePlan::WholeTree;
+    match compile_clean_all_touched_paths_selectable(touched_paths) {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!(
+                "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
-    if compile_clean_departed_paths_outside_docs(departed_paths) {
-        eprintln!(
-            "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
-        );
-        return CompileCleanScopePlan::WholeTree;
+    match compile_clean_departed_paths_outside_docs(departed_paths) {
+        Ok(true) => {
+            eprintln!(
+                "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+        Ok(false) => {}
+        Err(msg) => {
+            return CompileCleanScopePlan::Refused { reason: msg };
+        }
     }
 
     let pool_roots = compile_clean_source_roots();
@@ -2297,37 +2339,101 @@ fn compile_clean_scoping_active() -> bool {
 }
 
 pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
-pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
+pub const RUN_FULL_FLOOR_SCOPING_INACTIVE_LABEL: &str = "run_full_floor_scoping_inactive";
+pub const RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL: &str =
+    "run_full_floor_diff_observation_failed";
+pub const RUN_FULL_FLOOR_EMPTY_DIFF_LABEL: &str = "run_full_floor_empty_diff";
+pub const RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL: &str = "run_full_floor_non_docs_change";
 
-/// CI floor admission label for the docs-only witness-corpus skip arm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentationOnlyFloorFullFloorCause {
+    ScopingInactive,
+    DiffObservationFailed { detail: String },
+    EmptyDiff,
+    NonDocsChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentationOnlyFloorSkipDisposition {
+    DocumentationOnlySkip,
+    RunFullFloor {
+        cause: DocumentationOnlyFloorFullFloorCause,
+    },
+}
+
+impl DocumentationOnlyFloorSkipDisposition {
+    pub fn witness_label(&self) -> &'static str {
+        match self {
+            Self::DocumentationOnlySkip => DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL,
+            Self::RunFullFloor { cause } => match cause {
+                DocumentationOnlyFloorFullFloorCause::ScopingInactive => {
+                    RUN_FULL_FLOOR_SCOPING_INACTIVE_LABEL
+                }
+                DocumentationOnlyFloorFullFloorCause::DiffObservationFailed { .. } => {
+                    RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL
+                }
+                DocumentationOnlyFloorFullFloorCause::EmptyDiff => RUN_FULL_FLOOR_EMPTY_DIFF_LABEL,
+                DocumentationOnlyFloorFullFloorCause::NonDocsChange => {
+                    RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL
+                }
+            },
+        }
+    }
+}
+
+/// CI floor admission disposition for the docs-only witness-corpus skip arm.
 /// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
-/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed).
+/// Each run-full-floor cause is a distinct typed variant so deficit frequency is countable.
+/// Predicate-authority failure returns `Err` (typed refusal — never widens to full floor).
 /// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
 /// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
-pub fn documentation_only_floor_skip_label_for_ci() -> String {
+pub fn documentation_only_floor_skip_label_for_ci(
+) -> Result<DocumentationOnlyFloorSkipDisposition, String> {
     if !compile_clean_scoping_active() {
-        return RUN_FULL_FLOOR_LABEL.to_string();
+        return Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+            cause: DocumentationOnlyFloorFullFloorCause::ScopingInactive,
+        });
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
             eprintln!(
-                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+                "documentation-only floor skip: diff observation failed ({msg}) — {}",
+                RUN_FULL_FLOOR_DIFF_OBSERVATION_FAILED_LABEL
             );
-            RUN_FULL_FLOOR_LABEL.to_string()
+            Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                cause: DocumentationOnlyFloorFullFloorCause::DiffObservationFailed { detail: msg },
+            })
         }
         Ok((changed_paths, _departed)) => {
             if changed_paths.is_empty() {
-                eprintln!("documentation-only floor skip: empty diff — full floor");
-                return RUN_FULL_FLOOR_LABEL.to_string();
-            }
-            if compile_clean_all_touched_paths_docs_universe(&changed_paths) {
                 eprintln!(
-                    "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                    "documentation-only floor skip: empty diff — {}",
+                    RUN_FULL_FLOOR_EMPTY_DIFF_LABEL
                 );
-                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
-            } else {
-                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
-                RUN_FULL_FLOOR_LABEL.to_string()
+                return Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                    cause: DocumentationOnlyFloorFullFloorCause::EmptyDiff,
+                });
+            }
+            match compile_clean_all_touched_paths_docs_universe(&changed_paths) {
+                Ok(true) => {
+                    eprintln!(
+                        "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                    );
+                    Ok(DocumentationOnlyFloorSkipDisposition::DocumentationOnlySkip)
+                }
+                Ok(false) => {
+                    eprintln!(
+                        "documentation-only floor skip: {}",
+                        RUN_FULL_FLOOR_NON_DOCS_CHANGE_LABEL
+                    );
+                    Ok(DocumentationOnlyFloorSkipDisposition::RunFullFloor {
+                        cause: DocumentationOnlyFloorFullFloorCause::NonDocsChange,
+                    })
+                }
+                Err(msg) => {
+                    eprintln!("documentation-only floor skip: predicate authority refused ({msg})");
+                    Err(msg)
+                }
             }
         }
     }
@@ -2928,6 +3034,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+        CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -2951,6 +3058,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
     };
     (class.to_string(), name)
 }
@@ -8367,6 +8475,315 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
+/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
+fn failure_receipt_companion(function: &str) -> Option<String> {
+    function
+        .strip_suffix("_holds")
+        .map(|base| format!("{base}_failure_receipt"))
+}
+
+/// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
+/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
+/// interpreter error or wrong type — never silent None (review 41847, §5).
+pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
+    match v1_interpreter::run_in_context(ctx, function, false) {
+        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(other) => format!(
+            "failure_receipt_refused: {function} returned {}, expected String",
+            ctx.format_value(&other)
+        ),
+        Err(e) => format!("failure_receipt_refused: {function}: {e}"),
+    }
+}
+
+/// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_execution_leg_label`):
+/// Floor receipt leg labels are projected from the committed census TSV (itself emitted
+/// from `v2.compiler.self_host.witness_entry_eligibility_census` via
+/// `witness_entry_eligibility_census_emit`). dissolve-on: claim_executor derives
+/// `WitnessExecutionLeg` from the routing frontier row at runtime (construction).
+pub fn witness_execution_leg_label(entry: &str) -> String {
+    let rel = repo_relative_dag_path(entry);
+    witness_entry_eligibility_execution_leg_from_tsv(&rel).unwrap_or_else(|| {
+        panic!(
+            "witness execution leg: no census TSV row for entry {rel:?} \
+             (refuse — regenerate docs/probes/witness_entry_eligibility_census.tsv)"
+        )
+    })
+}
+
+const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
+    "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
+// SCAFFOLD (§3 path mirror — review 41784): byte-identical to
+// `witness_entry_eligibility_census_tsv_path` in the authority `.dag` until cli_run reads
+// carrier paths at load time. dissolve-on: emit/leg transport projects rel paths from those
+// data rows; delete this HAND-RUST literal when wired.
+const WITNESS_ENTRY_ELIGIBILITY_CENSUS_TSV_REL: &str =
+    "docs/probes/witness_entry_eligibility_census.tsv";
+
+fn witness_entry_eligibility_execution_legs_by_entry() -> &'static HashMap<String, String> {
+    static LEGS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LEGS.get_or_init(|| {
+        let path = process_workspace_root().join(WITNESS_ENTRY_ELIGIBILITY_CENSUS_TSV_REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "witness execution leg TSV: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        parse_witness_entry_eligibility_execution_legs(&content)
+    })
+}
+
+fn parse_witness_entry_eligibility_execution_legs(content: &str) -> HashMap<String, String> {
+    let mut legs = HashMap::new();
+    let mut saw_header = false;
+    for line in content.lines() {
+        if line.starts_with('#') {
+            continue;
+        }
+        if !saw_header {
+            saw_header = true;
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut cols = line.split('\t');
+        let entry = cols.next().unwrap_or("").trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let leg = cols
+            .nth(6)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                panic!("witness execution leg TSV: entry {entry:?} has empty execution_leg column")
+            });
+        legs.insert(entry.to_string(), leg.to_string());
+    }
+    legs
+}
+
+fn witness_entry_eligibility_execution_leg_from_tsv(entry: &str) -> Option<String> {
+    witness_entry_eligibility_execution_legs_by_entry()
+        .get(entry)
+        .cloned()
+}
+
+/// Data-row count in the committed census TSV (excludes comment + header).
+pub fn witness_entry_eligibility_census_tsv_data_row_count() -> usize {
+    witness_entry_eligibility_execution_legs_by_entry().len()
+}
+
+fn witness_entry_eligibility_census_declared_entry_count_from_authority(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<i64, String> {
+    match v1_interpreter::run_in_context(
+        ctx,
+        "witness_entry_eligibility_census_declared_entry_count",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) => Ok(n),
+        Ok(other) => Err(format!(
+            "witness_entry_eligibility_census_declared_entry_count returned {}, expected Int",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!(
+            "witness_entry_eligibility_census_declared_entry_count: {e}"
+        )),
+    }
+}
+
+fn collect_witness_entry_closure_paths() -> Result<Vec<String>, String> {
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: discovery-roster projection in pure `.dag` fold).
+    // Entry paths must cover every floor row `witness_execution_leg_label` may attribute:
+    // all sidecar `*_test.dag` with `test fn`/`test data` under witness_layer_roots.
+    // Discovery exclusions (execution/long/offline grains) do NOT apply here — those
+    // entries still run via explicit rosters and need census leg rows (reviews 41820/41837).
+    let root = process_workspace_root();
+    let mut entries = BTreeSet::new();
+    for rel_root in witness_layer_roots() {
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(&root.join(&rel_root), &mut dag_files);
+        for path in dag_files {
+            let abs = path.to_string_lossy();
+            let rel = repo_relative_dag_path(&abs);
+            if !rel.ends_with("_test.dag") || rel.contains("/generated/") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if scan_test_decl_lines(&content).is_empty() {
+                continue;
+            }
+            entries.insert(rel);
+        }
+    }
+    Ok(entries.into_iter().collect())
+}
+
+fn module_path_from_entry_source(path: &Path) -> String {
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            return rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("unknown")
+                .to_string();
+        }
+    }
+    "unknown".to_string()
+}
+
+fn eval_census_string_fn(
+    ctx: &v1_interpreter::InterpContext,
+    fn_name: &str,
+    entry: &str,
+) -> Result<String, String> {
+    let args = [(
+        Some("entry".to_string()),
+        v1_interpreter::Value::Str(entry.to_string()),
+    )];
+    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Str(s)) => Ok(s),
+        Ok(other) => Err(format!(
+            "{fn_name}({entry:?}) returned {}, expected String",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{fn_name}({entry:?}): {e}")),
+    }
+}
+
+/// SCAFFOLD (§7 HAND-RUST — `witness_entry_eligibility_census_emit`):
+/// Host transport that writes the census TSV/histogram from the `.dag` classification
+/// authority. dissolve-on: Filesystem.List walk + pure `.dag` row fold replaces this bin.
+pub fn emit_witness_entry_eligibility_census(
+    tsv_path: &Path,
+    hist_path: &Path,
+) -> Result<usize, String> {
+    let roots = witness_layer_roots();
+    let (graph, indices) =
+        resolve_entry_graph_shared(&roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+            .map_err(|e| format!("resolve census authority: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let root = process_workspace_root();
+    let stamp = chrono_lite_utc_stamp()?;
+    let entries = collect_witness_entry_closure_paths()?;
+    let mut rows = Vec::new();
+    for rel_entry in &entries {
+        let abs = root.join(rel_entry);
+        let module_path = module_path_from_entry_source(&abs);
+        let disposition =
+            eval_census_string_fn(&ctx, "census_disposition_column_for_entry", rel_entry)?;
+        let reason = eval_census_string_fn(&ctx, "census_reason_column_for_entry", rel_entry)?;
+        let first_error =
+            match v1_interpreter::run_in_context(&ctx, "census_first_error_class_column", false) {
+                Ok(v1_interpreter::Value::Str(s)) => s,
+                Ok(other) => {
+                    return Err(format!(
+                        "census_first_error_class_column returned {}, expected String",
+                        ctx.format_value(&other)
+                    ));
+                }
+                Err(e) => return Err(format!("census_first_error_class_column: {e}")),
+            };
+        let leg = eval_census_string_fn(&ctx, "census_execution_leg_label", rel_entry)?;
+        rows.push(format!(
+            "{rel_entry}\t{module_path}\t{module_path}\twitness_entry\t{disposition}\t{reason}\t{first_error}\t{leg}"
+        ));
+    }
+    rows.sort();
+    let mut tsv = format!(
+        "# witness_entry_eligibility_census stamp={stamp} grain=entry_closure roots=witness_layer_roots(test.dag with test fn/data)\n"
+    );
+    tsv.push_str(
+        "entry\tmodule_path\tsubject_module\tsubject_decl\tdisposition\tretained_or_ineligible_reason\tfirst_error_class\texecution_leg\n",
+    );
+    for row in &rows {
+        tsv.push_str(row);
+        tsv.push('\n');
+    }
+    std::fs::write(tsv_path, tsv).map_err(|e| format!("write {}: {e}", tsv_path.display()))?;
+
+    let mut hist_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for row in &rows {
+        let cols: Vec<_> = row.split('\t').collect();
+        if cols.len() < 6 {
+            continue;
+        }
+        let disposition = cols[4].to_string();
+        let reason = cols[5].to_string();
+        *hist_counts.entry((disposition, reason)).or_default() += 1;
+    }
+    let mut hist = format!(
+        "# witness_entry_eligibility_histogram stamp={stamp} total_entries={}\n",
+        rows.len()
+    );
+    hist.push_str("disposition\treason\tcount\n");
+    let mut sorted: Vec<_> = hist_counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    for ((disposition, reason), count) in sorted {
+        hist.push_str(&format!("{disposition}\t{reason}\t{count}\n"));
+    }
+    std::fs::write(hist_path, hist).map_err(|e| format!("write {}: {e}", hist_path.display()))?;
+    let declared = witness_entry_eligibility_census_declared_entry_count_from_authority(&ctx)?;
+    if rows.len() as i64 != declared {
+        return Err(format!(
+            "census emit: roster has {count} entries but witness_entry_eligibility_census_entry_count={declared} — update the .dag constant then regen",
+            count = rows.len(),
+            declared = declared,
+        ));
+    }
+    Ok(rows.len())
+}
+
+fn chrono_lite_utc_stamp() -> Result<String, String> {
+    // SCAFFOLD (§7 HAND-RUST — dissolve-on: v2.std.host_clock or equivalent host intrinsic).
+    let output = std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%MZ"])
+        .output()
+        .map_err(|e| format!("census emit stamp: date command failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "census emit stamp: date command exited with {}",
+            output.status
+        ));
+    }
+    let stamp = String::from_utf8(output.stdout)
+        .map_err(|e| format!("census emit stamp: date stdout not utf-8: {e}"))?
+        .trim()
+        .to_string();
+    if stamp.is_empty() {
+        return Err("census emit stamp: date returned empty stdout".to_string());
+    }
+    Ok(stamp)
+}
+
+#[cfg(test)]
+mod witness_entry_eligibility_census_tsv_sync_tests {
+    use super::*;
+
+    #[test]
+    fn tsv_data_row_count_matches_declared_authority() {
+        let rows = witness_entry_eligibility_census_tsv_data_row_count();
+        let roots = witness_layer_roots();
+        let (graph, indices) =
+            resolve_entry_graph_shared(&roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+                .expect("resolve census authority");
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let declared =
+            witness_entry_eligibility_census_declared_entry_count_from_authority(&ctx).unwrap();
+        assert_eq!(
+            rows as i64, declared,
+            "update witness_entry_eligibility_census_entry_count or regen TSV via scripts/witness_entry_eligibility_census.sh"
+        );
+    }
+}
+
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
     // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
@@ -10026,6 +10443,8 @@ pub struct DiscoveryWitnessOutcome {
     pub entry: String,
     pub function: String,
     pub outcome: ClaimOutcome,
+    /// Which execution leg ran (`v2.std.witness_execution_routing.WitnessExecutionLeg` projection).
+    pub execution_leg: String,
 }
 
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
@@ -10702,29 +11121,6 @@ fn scan_wire_contract_decl_names(content: &str) -> Vec<String> {
     out
 }
 
-struct SidecarPlacementRule {
-    required_suffix: &'static str,
-    decl_description: &'static str,
-    scan: fn(&str) -> Vec<String>,
-    emit_discovery: bool,
-}
-
-const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
-    SidecarPlacementRule {
-        required_suffix: "_test.dag",
-        decl_description: "`test`-marked decls",
-        scan: scan_test_decl_names,
-        emit_discovery: true,
-    },
-    SidecarPlacementRule {
-        required_suffix: "_contracts.dag",
-        decl_description:
-            "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
-        scan: scan_wire_contract_decl_names,
-        emit_discovery: false,
-    },
-];
-
 fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     let mut out = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -10745,282 +11141,317 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
-    let mut violations: Vec<String> = Vec::new();
+fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Result<(), String> {
+    let mut dag_paths: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
         for path in dag_files {
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|name| name.contains("__"))
-            {
-                violations.push(path.to_string_lossy().into_owned());
-            }
+            dag_paths.push(path.to_string_lossy().into_owned());
         }
     }
-    if violations.is_empty() {
+    if dag_paths.is_empty() {
         return Ok(());
     }
-    violations.sort();
-    Err(format!(
-        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
-         offending file(s): {}",
-        violations.join(", ")
-    ))
-}
-
-pub fn discover_floor_corpus_rows(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    discover_floor_corpus_rows_inner(source_roots, scan_dirs, exclude_substrings, &[])
-}
-
-pub fn discover_floor_corpus_rows_scoped(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    discover_floor_corpus_rows_inner(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )
-}
-
-struct FloorLensHygieneGraph {
-    rows: Vec<DiscoveryRow>,
-    path_imports: std::collections::HashMap<String, Vec<String>>,
-    module_to_path: std::collections::HashMap<String, String>,
-    lens_with_justification: std::collections::BTreeSet<String>,
-}
-
-fn build_floor_lens_hygiene_graph(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<FloorLensHygieneGraph, String> {
-    let excludes: Vec<String> = exclude_substrings.to_vec();
-    let mut rows: Vec<DiscoveryRow> = Vec::new();
-    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
-    let mut entry_dispositions: std::collections::BTreeMap<String, bool> =
-        std::collections::BTreeMap::new();
-    for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
-        for rec in discovery.records {
-            if let OwnedDataDeclInitializer::BoolWitnessClaim {
-                witness_entry,
-                witness_function,
-            } = rec.initializer
-            {
-                if witness_entry.is_empty() || witness_function.is_empty() {
-                    return Err(format!(
-                        "discovered decl '{}' has malformed BoolWitness transport (entry/function)",
-                        rec.decl_name
-                    ));
-                }
-                if seen.insert((witness_entry.clone(), witness_function.clone())) {
-                    let label = rec
-                        .decl_name
-                        .strip_prefix("unified_claim_")
-                        .unwrap_or(&rec.decl_name)
-                        .to_string();
-                    let reads_live_tree = match entry_dispositions.get(&witness_entry) {
-                        Some(d) => *d,
-                        None => {
-                            let d = read_entry_live_tree_disposition(&witness_entry)?;
-                            entry_dispositions.insert(witness_entry.clone(), d);
-                            d
-                        }
-                    };
-                    rows.push(DiscoveryRow {
-                        label,
-                        entry: witness_entry,
-                        function: witness_function,
-                        reads_live_tree,
-                    });
-                }
-            }
-        }
-    }
-
-    let mut sidecar_violations: Vec<Vec<String>> =
-        SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
-    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    let mut module_to_path: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut lens_with_justification: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            let rel = repo_relative_dag_path(&entry);
-            if let Some(m) = extract_module_path(&content) {
-                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
-                    lens_with_justification.insert(m.clone());
-                }
-                module_to_path.insert(m, rel.clone());
-            }
-            path_imports.insert(rel, extract_import_paths(&content));
-            if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
-                continue;
-            }
-            if !discovery_scope_dirs.is_empty()
-                && !discovery_scope_dirs
-                    .iter()
-                    .any(|d| entry.contains(d.as_str()))
-            {
-                continue;
-            }
-            let rule_decls: Vec<Vec<String>> = SIDECAR_PLACEMENT_RULES
-                .iter()
-                .map(|rule| (rule.scan)(&content))
-                .collect();
-            for (i, (rule, names)) in SIDECAR_PLACEMENT_RULES
-                .iter()
-                .zip(rule_decls.iter())
-                .enumerate()
-            {
-                if !names.is_empty() && !entry.ends_with(rule.required_suffix) {
-                    sidecar_violations[i].push(entry.clone());
-                }
-                if rule.emit_discovery && entry.ends_with(rule.required_suffix) {
-                    let reads_live_tree = match entry_dispositions.get(&entry) {
-                        Some(d) => *d,
-                        None => {
-                            let d = parse_entry_live_tree_disposition(&entry, &content)?;
-                            entry_dispositions.insert(entry.clone(), d);
-                            d
-                        }
-                    };
-                    for name in names {
-                        if seen.insert((entry.clone(), name.clone())) {
-                            rows.push(DiscoveryRow {
-                                label: name.clone(),
-                                entry: entry.clone(),
-                                function: name.clone(),
-                                reads_live_tree,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for (rule, violations) in SIDECAR_PLACEMENT_RULES
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
-        .zip(sidecar_violations.iter())
-    {
-        if !violations.is_empty() {
-            let mut sorted = violations.clone();
-            sorted.sort();
-            return Err(format!(
-                "{} must live in `*{}` files; found in: {}",
-                rule.decl_description,
-                rule.required_suffix,
-                sorted.join(", ")
-            ));
+        .map(|p| v1_interpreter::Value::Str(p.clone()))
+        .collect();
+    let args = [(
+        Some("dag_paths".to_string()),
+        list_value_from_vec(path_values),
+    )];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "floor_filename_hygiene_refusal_for_paths",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
+    match &result {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
+            match ctx.field(fields, "value") {
+                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
+                _ => Err(
+                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
+                        .to_string(),
+                ),
+            }
         }
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
+        other => Err(format!(
+            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
+            ctx.format_value(other)
+        )),
     }
-    // Reference-derived reach edges (namespace terminal step), unioned onto the import edges above so
-    // a stripped file (no import edges) still reaches its lenses. STRICT set only (Qualified +
-    // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
-    // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
-    // strings never fabricate a reach. Dedup keeps the BFS set honest.
-    // Long-lane discovery exclusions (`test/claim/long/`) must not suppress reference edges here:
-    // exclusion only removes a witness from per-PR enrollment; stripped long/ witnesses still wire
-    // lens reachability for this hygiene pass (the inert_lens_hygiene witness lives under long/).
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &[]),
-        true,
-    ) {
-        let importer = repo_relative_dag_path(&edge.path);
-        let entry = path_imports.entry(importer).or_default();
-        if !entry.contains(&edge.import_module) {
-            entry.push(edge.import_module);
-        }
-    }
+}
 
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    Ok(FloorLensHygieneGraph {
-        rows,
-        path_imports,
-        module_to_path,
-        lens_with_justification,
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+fn owned_data_decl_record_to_value(
+    rec: &OwnedDataDeclRecord,
+    ctx: &v1_interpreter::InterpContext,
+) -> v1_interpreter::Value {
+    use std::rc::Rc;
+    use v1_interpreter::{sorted_fields, Value};
+    let initializer = match &rec.initializer {
+        OwnedDataDeclInitializer::BoolWitnessClaim {
+            witness_entry,
+            witness_function,
+        } => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("witness_entry"), Value::Str(witness_entry.clone())),
+                (
+                    ctx.sym("witness_function"),
+                    Value::Str(witness_function.clone()),
+                ),
+            ])),
+        },
+        OwnedDataDeclInitializer::NodeCorpus => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedNodeCorpusInit"),
+            fields: Rc::new(vec![]),
+        },
+        OwnedDataDeclInitializer::Other { resolved } => Value::Variant {
+            type_name: ctx.sym("OwnedDataDeclInitializer"),
+            variant_name: ctx.sym("OwnedOtherInit"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("resolved"),
+                Value::Record {
+                    type_name: ctx.sym("ResolvedDeclRef"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("module"), Value::Str(resolved.module.clone())),
+                        (ctx.sym("name"), Value::Str(resolved.name.clone())),
+                    ])),
+                },
+            )])),
+        },
+    };
+    Value::Record {
+        type_name: ctx.sym("OwnedDataDeclRecord"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("entry"), Value::Str(rec.entry.clone())),
+            (ctx.sym("module"), Value::Str(rec.module.clone())),
+            (ctx.sym("decl_name"), Value::Str(rec.decl_name.clone())),
+            (ctx.sym("initializer"), initializer),
+        ])),
+    }
+}
+
+fn parse_reads_live_tree_disposition(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<bool, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "LiveTreeDisposition") => {
+            if ctx.sym_eq(*variant_name, "ReadsLiveTree") {
+                Ok(true)
+            } else if ctx.sym_eq(*variant_name, "SubstrateInputsOnly") {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "unknown LiveTreeDisposition variant `{}`",
+                    ctx.resolve(*variant_name)
+                ))
+            }
+        }
+        other => Err(format!(
+            "expected LiveTreeDisposition, got `{}`",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn discovery_row_from_floor_discovery_row_value(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<DiscoveryRow, String> {
+    use v1_interpreter::Value;
+    let Value::Record { fields, .. } = val else {
+        return Err(format!(
+            "expected FloorDiscoveryRow record, got `{}`",
+            ctx.format_value(val)
+        ));
+    };
+    let label = match ctx.field(fields, "label") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `label`".to_string()),
+    };
+    let entry = match ctx.field(fields, "entry") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `entry`".to_string()),
+    };
+    let function = match ctx.field(fields, "function") {
+        Some(Value::Str(s)) => s.clone(),
+        _ => return Err("FloorDiscoveryRow missing `function`".to_string()),
+    };
+    let reads_live_tree = match ctx.field(fields, "reads_live_tree") {
+        Some(v) => parse_reads_live_tree_disposition(ctx, v)?,
+        None => return Err("FloorDiscoveryRow missing `reads_live_tree`".to_string()),
+    };
+    Ok(DiscoveryRow {
+        label,
+        entry,
+        function,
+        reads_live_tree,
     })
 }
 
-fn default_floor_lens_hygiene_excludes() -> Vec<String> {
-    witness_exclusion_substrings()
-}
-
-/// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
-/// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
-pub fn inert_lens_unreached_module_count() -> i64 {
-    match build_floor_lens_hygiene_graph(
-        &default_source_roots(),
-        &witness_discovery_scan_dirs(),
-        &default_floor_lens_hygiene_excludes(),
-        &[],
-    ) {
-        Ok(graph) => {
-            inert_lens_modules(&graph.rows, &graph.path_imports, &graph.module_to_path).len() as i64
+fn parse_floor_discovery_producer_result(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<Vec<DiscoveryRow>, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "FloorDiscoveryProducerResult")
+            && ctx.sym_eq(*variant_name, "FloorDiscoveryAccepted") =>
+        {
+            let rows_val = ctx
+                .field(fields, "rows")
+                .ok_or_else(|| "FloorDiscoveryAccepted missing `rows`".to_string())?;
+            match rows_val {
+                Value::List(items) => {
+                    let mut out = Vec::with_capacity(items.len());
+                    for item in items.iter() {
+                        out.push(discovery_row_from_floor_discovery_row_value(ctx, item)?);
+                    }
+                    out.sort_by(|a, b| {
+                        a.entry
+                            .cmp(&b.entry)
+                            .then_with(|| a.function.cmp(&b.function))
+                    });
+                    Ok(out)
+                }
+                other => Err(format!(
+                    "FloorDiscoveryAccepted.rows not a List: `{}`",
+                    ctx.format_value(other)
+                )),
+            }
         }
-        Err(_) => -1,
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "FloorDiscoveryProducerResult")
+            && ctx.sym_eq(*variant_name, "FloorDiscoveryRefused") =>
+        {
+            let reason = match ctx.field(fields, "reason") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => "floor discovery refused (no reason)".to_string(),
+            };
+            Err(reason)
+        }
+        other => Err(format!(
+            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            ctx.format_value(other)
+        )),
     }
 }
 
-/// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
-pub fn inert_lens_top_level_module_count() -> i64 {
-    match build_floor_lens_hygiene_graph(
-        &default_source_roots(),
-        &witness_discovery_scan_dirs(),
-        &default_floor_lens_hygiene_excludes(),
-        &[],
-    ) {
-        Ok(graph) => graph
-            .module_to_path
-            .keys()
-            .filter(|m| is_top_level_lens_module(m))
-            .count() as i64,
-        Err(_) => -1,
+fn invoke_floor_discovery_producer(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let excludes: Vec<String> = exclude_substrings.to_vec();
+    let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
+    for scan_dir in scan_dirs {
+        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        owned_data_records.extend(discovery.records);
     }
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let source_root_values: Vec<v1_interpreter::Value> = source_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let owned_values: Vec<v1_interpreter::Value> = owned_data_records
+        .iter()
+        .map(|rec| owned_data_decl_record_to_value(rec, &ctx))
+        .collect();
+    let args = [
+        (
+            Some("source_roots".to_string()),
+            list_value_from_vec(source_root_values),
+        ),
+        (
+            Some("exclude_substrings".to_string()),
+            list_value_from_vec(exclude_values),
+        ),
+        (
+            Some("owned_data_records".to_string()),
+            list_value_from_vec(owned_values),
+        ),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "discover_floor_corpus_rows_from_host_facts",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
+    parse_floor_discovery_producer_result(&ctx, &result)
 }
 
-fn discover_floor_corpus_rows_inner(
+fn apply_discovery_scope_dirs_filter(
+    mut rows: Vec<DiscoveryRow>,
+    discovery_scope_dirs: &[String],
+) -> Vec<DiscoveryRow> {
+    if discovery_scope_dirs.is_empty() {
+        return rows;
+    }
+    rows.retain(|row| {
+        discovery_scope_dirs
+            .iter()
+            .any(|d| row.entry.contains(d.as_str()))
+    });
+    rows
+}
+
+pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    let graph = build_floor_lens_hygiene_graph(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )?;
-    let FloorLensHygieneGraph {
-        mut rows,
+    floor_filename_hygiene_refusal_via_producer(source_roots)?;
+    let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
+    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
+    let FloorLensImportGraph {
         path_imports,
         module_to_path,
         lens_with_justification,
-    } = graph;
+    } = build_floor_lens_import_graph(source_roots)?;
     let facts = build_module_graph_facts_live(source_roots);
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
@@ -11048,6 +11479,87 @@ fn discover_floor_corpus_rows_inner(
         ));
     }
     Ok(rows)
+}
+
+struct FloorLensImportGraph {
+    path_imports: std::collections::HashMap<String, Vec<String>>,
+    module_to_path: std::collections::HashMap<String, String>,
+    lens_with_justification: std::collections::BTreeSet<String>,
+}
+
+fn build_floor_lens_import_graph(source_roots: &[String]) -> Result<FloorLensImportGraph, String> {
+    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut lens_with_justification: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            let rel = repo_relative_dag_path(&entry);
+            if let Some(m) = extract_module_path(&content) {
+                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
+                    lens_with_justification.insert(m.clone());
+                }
+                module_to_path.insert(m, rel.clone());
+            }
+            path_imports.insert(rel, extract_import_paths(&content));
+        }
+    }
+    for edge in reference_edges_as_import_facts(
+        &reference_resolution_facts(source_roots, source_roots, &[]),
+        true,
+    ) {
+        let importer = repo_relative_dag_path(&edge.path);
+        let entry = path_imports.entry(importer).or_default();
+        if !entry.contains(&edge.import_module) {
+            entry.push(edge.import_module);
+        }
+    }
+    Ok(FloorLensImportGraph {
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    })
+}
+
+fn default_floor_lens_hygiene_excludes() -> Vec<String> {
+    witness_exclusion_substrings()
+}
+
+/// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
+/// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
+pub fn inert_lens_unreached_module_count() -> i64 {
+    let roots = default_source_roots();
+    let scan_dirs = witness_discovery_scan_dirs();
+    let excludes = default_floor_lens_hygiene_excludes();
+    match build_floor_lens_import_graph(&roots) {
+        Ok(graph) => match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
+            Ok(rows) => {
+                inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len() as i64
+            }
+            Err(_) => -1,
+        },
+        Err(_) => -1,
+    }
+}
+
+/// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
+pub fn inert_lens_top_level_module_count() -> i64 {
+    match build_floor_lens_import_graph(&default_source_roots()) {
+        Ok(graph) => graph
+            .module_to_path
+            .keys()
+            .filter(|m| is_top_level_lens_module(m))
+            .count() as i64,
+        Err(_) => -1,
+    }
 }
 
 fn declares_construction_justification(content: &str) -> bool {
@@ -12862,7 +13374,8 @@ fn floor_diff_edits_from_line_ranges(
             continue;
         }
         let file_norm = normalize_repo_path(file_path);
-        if !std::path::Path::new(file_path).exists() {
+        let disk_path = process_workspace_root().join(&file_norm);
+        if !disk_path.is_file() {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
                 // is empty by construction — the file has no declarations to
@@ -12884,7 +13397,7 @@ fn floor_diff_edits_from_line_ranges(
         } else {
             index
         };
-        let content = match std::fs::read_to_string(file_path) {
+        let content = match std::fs::read_to_string(&disk_path) {
             Ok(c) => c,
             Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
@@ -13244,12 +13757,11 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
-    check_floor_filename_hygiene(source_roots)?;
     let mut rows =
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_corpus_rows_scoped(
+            discover_floor_witness_roster(
                 source_roots,
                 scan_dirs,
                 &options.exclude_substrings,
@@ -14026,7 +14538,14 @@ impl ShardStyle {
         }
     }
 
-    fn stream_witness(self, function: &str, entry: &str, wall_nanos: u128, passed: bool) {
+    fn stream_witness(
+        self,
+        function: &str,
+        entry: &str,
+        execution_leg: &str,
+        wall_nanos: u128,
+        passed: bool,
+    ) {
         if !self.stream {
             return;
         }
@@ -14040,11 +14559,11 @@ impl ShardStyle {
                 "\x1b[31m✗\x1b[0m"
             };
             eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms"
+                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry} leg={execution_leg})\x1b[0m {ms:.1}ms"
             );
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({entry}) {ms:.1}ms");
+            eprintln!("{ts} {tag}{glyph} {function} ({entry} leg={execution_leg}) {ms:.1}ms");
         }
     }
 }
@@ -14321,14 +14840,17 @@ fn run_discovery_rows(
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
+        let execution_leg = witness_execution_leg_label(&row.entry);
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
+            execution_leg: execution_leg.clone(),
         });
         style.stream_witness(
             &row.function,
             &row.entry,
+            &execution_leg,
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
         );
@@ -14348,10 +14870,17 @@ fn run_discovery_rows(
         }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => summary.failures.push(format!(
-                "{} ({}) returned Bool(false)",
-                row.function, row.entry
-            )),
+            ClaimOutcome::Fail => {
+                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
+                if let Some(companion) = failure_receipt_companion(&row.function) {
+                    let receipt = run_claim_failure_receipt(ctx_ref, &companion);
+                    if !receipt.is_empty() {
+                        failure.push_str(" | ");
+                        failure.push_str(&receipt);
+                    }
+                }
+                summary.failures.push(failure);
+            }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
@@ -17483,7 +18012,7 @@ mod source_root_ingest_manifest_tests {
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
+        default_source_roots, discover_floor_witness_roster, inert_lens_modules,
         is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
         DiscoveryRow,
     };
@@ -17584,7 +18113,7 @@ mod inert_lens_hygiene_tests {
         let roots = default_source_roots();
         let scan_dirs = witness_discovery_scan_dirs();
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
@@ -17597,8 +18126,8 @@ mod inert_lens_hygiene_tests {
 mod construction_justification_hygiene_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
-        declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
-        wall_now_authority_refs, witness_exclusion_substrings,
+        declares_construction_justification, discover_floor_witness_roster,
+        unjustified_lens_modules, wall_now_authority_refs, witness_exclusion_substrings,
     };
     use std::collections::BTreeSet;
     use std::collections::HashMap;
@@ -17670,7 +18199,7 @@ mod construction_justification_hygiene_tests {
             "src/v2/test/claim/manual".to_string(),
         ];
         let excludes = witness_exclusion_substrings();
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
+        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
@@ -17759,7 +18288,7 @@ mod construction_justification_hygiene_tests {
 
 #[cfg(test)]
 mod sidecar_placement_hygiene_tests {
-    use super::{discover_floor_corpus_rows, scan_wire_contract_decl_names};
+    use super::{discover_floor_witness_roster, scan_wire_contract_decl_names};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -17812,11 +18341,11 @@ mod sidecar_placement_hygiene_tests {
         )
         .expect("write temp file");
         let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_corpus_rows(&[root], &[], &[]);
+        let result = discover_floor_witness_roster(&[root], &[], &[], &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive discover_floor_corpus_rows to Err");
+            .expect("misplaced wire-contract decl must drive discover_floor_witness_roster to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
@@ -17883,16 +18412,19 @@ mod witness_timing_attribution_tests {
                     entry: "a.dag".to_string(),
                     function: "fast".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "b.dag".to_string(),
                     function: "slow".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "a.dag".to_string(),
                     function: "medium".to_string(),
                     outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".to_string(),
                 },
             ],
             entry_resolve_receipts: vec![
@@ -19632,7 +20164,8 @@ pub fn resolution_divergence_census_from_ctx(
             }
             for (callee, call_node) in calls {
                 out.sites_checked += 1;
-                let import_sig = lookup_resolved_sig(func_env.clone(), callee.clone());
+                let import_sig =
+                    func_sig_if_resolved(lookup_resolved_sig(func_env.clone(), callee.clone()));
                 let import_binding = import_sig.as_ref().and_then(|sig| {
                     import_chain_owner(&func_env, &callee)
                         .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
@@ -20655,9 +21188,9 @@ pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
 mod resolution_divergence_census_tests {
     use super::{
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
-        import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
-        resolution_divergence_silent_pick_refusal, whole_tree_resolved_ctx, ContainmentResolve,
-        ResolutionDivergenceBucket, WholeTreeCtx,
+        func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
+        resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
+        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -20726,8 +21259,11 @@ fn caller() -> Bool {
             .iter()
             .find(|m| m.type_env.module_path == "test.posctl.middle.leaf")
             .expect("leaf module must resolve");
-        let import_sig =
-            lookup_resolved_sig(leaf.func_env.clone(), "lex_target".to_string()).expect("import");
+        let import_sig = func_sig_if_resolved(lookup_resolved_sig(
+            leaf.func_env.clone(),
+            "lex_target".to_string(),
+        ))
+        .expect("import");
         let import_owner = import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
         let import_arity = import_sig.params.len();
         let item_index = build_module_item_index(&ctx);
@@ -23808,9 +24344,50 @@ fn test_migration_retired_stems() -> Vec<String> {
     stems
 }
 
-// The covered set consumed by both the debt roster and the delete-guard: floor-witness stems
-// (migrate path) unioned with retired stems (delete path). One union, two consumers.
-fn test_migration_covered_stems() -> Vec<String> {
+// Third stem source (typed RETAIN path): a `<stem>_retained.dag` declaration constructs a
+// `TestModuleRetirement` whose disposition is `RetainedNonMigratable` — a v1 test module whose
+// behavior is NOT migratable to a `.dag` witness (it exercises a host-Rust-only surface, e.g. a
+// thread-local policy gate the substrate cannot reach) and is therefore RETAINED as `.rs` until
+// src/v1 is deleted. Distinct from `_retired.dag` (delete-only): a retained stem must EXCLUDE the
+// module from the debt roster (it is accounted for, not migration debt) but must NEVER authorize
+// its deletion. Fusing it into the delete-authorize set would be a §5 fail-open: the delete-guard
+// would silently green-light deleting a test that has no `.dag` replacement. So this stem source
+// feeds ONLY the debt-exclude set, never the delete-authorize set.
+fn test_migration_retained_nonmigratable_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .filter(|(_, content)| content.contains("RetainedNonMigratable {"))
+        .filter_map(|(path, _)| {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())?;
+            file_name
+                .strip_suffix("_retained.dag")
+                .map(|s| s.to_string())
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The DEBT-EXCLUDE set (consumed by `build_test_migration_debt_report`): floor-witness stems
+// (migrate path) ∪ retired stems (delete path) ∪ retained-non-migratable stems (retain path). A
+// module in any of the three is accounted for and drops out of the debt roster.
+fn test_migration_debt_exclude_stems() -> Vec<String> {
+    let mut stems = test_migration_debt_floor_stems();
+    stems.extend(test_migration_retired_stems());
+    stems.extend(test_migration_retained_nonmigratable_stems());
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The DELETE-AUTHORIZE set (consumed by the delete-guard): floor-witness stems ∪ retired stems
+// ONLY. A retained-non-migratable stem is DELIBERATELY absent — retention accounts for a module
+// without authorizing its deletion, so the delete-guard still refuses a delete of a retained
+// module that has no exact-stem floor witness (§5 fail-closed: retention is not deletion consent).
+fn test_migration_delete_authorize_stems() -> Vec<String> {
     let mut stems = test_migration_debt_floor_stems();
     stems.extend(test_migration_retired_stems());
     stems.sort();
@@ -23820,7 +24397,7 @@ fn test_migration_covered_stems() -> Vec<String> {
 
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_debt_exclude_stems();
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
@@ -23997,7 +24574,7 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     if base_rev == head_rev {
         return Ok(Vec::new());
     }
-    let floor_stems = test_migration_covered_stems();
+    let floor_stems = test_migration_delete_authorize_stems();
     let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
     let mut violations = Vec::new();
     for path in deleted {
@@ -24212,8 +24789,12 @@ mod witness_layer_roots_compile_clean_tests {
                 "GUNBC_CI_DIFF_NAME_STATUS",
                 "M\\000docs/plans/example.md\\000",
             );
-            let label = documentation_only_floor_skip_label_for_ci();
-            assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
+            let disposition =
+                documentation_only_floor_skip_label_for_ci().expect("docs-only label");
+            assert_eq!(
+                disposition,
+                DocumentationOnlyFloorSkipDisposition::DocumentationOnlySkip
+            );
         });
     }
 
@@ -24244,6 +24825,36 @@ mod witness_layer_roots_compile_clean_tests {
                 &departed,
             );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Roster covers the whole compiled tree (lever 8): a diff touching only
+    /// `src/v2/**.dag` scopes to its own entry closure instead of falling to the
+    /// "no shard intersection" whole-tree baseline (pre-fix the roster enumerated
+    /// `dag/`-declared entries only, so this exact shape widened — baseline run
+    /// 29976989996), and a `dag/std` touch selects its affected `src/v2` importers
+    /// (pre-fix they were never in the roster, so scoped runs under-covered them).
+    #[test]
+    fn floor_fast_plan_scopes_src_v2_entries_both_directions() {
+        with_workspace_cwd(|| {
+            let v2_leaf = "src/v2/std/witness_execution_routing.dag".to_string();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[v2_leaf.clone(), "dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            let CompileCleanScopePlan::Scoped { entry_paths } = plan else {
+                panic!("expected Scoped for a selectable .dag-only diff, got {plan:?}");
+            };
+            assert!(
+                entry_paths.contains(&v2_leaf),
+                "touched src/v2 module must select its own entry"
+            );
+            assert!(
+                entry_paths
+                    .iter()
+                    .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
+                "a dag/std touch must select affected src/v2 importers"
+            );
         });
     }
 
@@ -24648,7 +25259,13 @@ mod test_migration_debt_tests {
             !test_migration_debt_floor_stems().iter().any(|s| s == stem),
             "stem must be covered only via retirement, not a floor witness"
         );
-        assert!(test_migration_covered_stems().iter().any(|s| s == stem));
+        assert!(test_migration_debt_exclude_stems()
+            .iter()
+            .any(|s| s == stem));
+        // A `_retired.dag` (delete path) stem DOES authorize deletion — it is in both sets.
+        assert!(test_migration_delete_authorize_stems()
+            .iter()
+            .any(|s| s == stem));
     }
 
     // The retired module no longer appears in the debt roster (the retirement excluded it).
@@ -24659,6 +25276,75 @@ mod test_migration_debt_tests {
                 .iter()
                 .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
             "a retired module must drop out of the debt roster"
+        );
+    }
+
+    // Green-by-execution for the RETAIN path: the demonstrator
+    // `dag/test/retirement/namespace_unique_on_chain_policy_retained.dag` declares a
+    // `RetainedNonMigratable` retention whose stem is `namespace_unique_on_chain_policy`. That stem
+    // is neither a floor-witness stem nor a retired (delete-path) stem, so the retention is the
+    // ONLY thing that accounts for it — the debt-exclude union must pick it up.
+    #[test]
+    fn retained_nonmigratable_stem_excluded_but_not_floor_or_retired() {
+        let stem = "namespace_unique_on_chain_policy";
+        assert!(
+            test_migration_retained_nonmigratable_stems()
+                .iter()
+                .any(|s| s == stem),
+            "retention declaration must contribute its stem"
+        );
+        // Coverage comes strictly from the retain path — not a floor witness, not a retired marker.
+        assert!(
+            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
+            "stem must be accounted for only via retention, not a floor witness"
+        );
+        assert!(
+            !test_migration_retired_stems().iter().any(|s| s == stem),
+            "a retained (non-delete) stem must NOT be a retired (delete) stem"
+        );
+        // It IS in the debt-exclude set (module drops out of the debt roster).
+        assert!(
+            test_migration_debt_exclude_stems()
+                .iter()
+                .any(|s| s == stem),
+            "a retained module must be excluded from the debt roster"
+        );
+    }
+
+    // The retained module no longer appears in the debt roster (retention excluded it).
+    #[test]
+    fn retained_nonmigratable_module_is_not_debt() {
+        assert!(
+            !test_migration_debt_module_names()
+                .iter()
+                .any(|m| m == "namespace_unique_on_chain_policy_test.rs"),
+            "a retained-non-migratable module must drop out of the debt roster"
+        );
+    }
+
+    // §5 RED CONTROL — retention is NOT deletion consent. A retained-non-migratable stem must be
+    // ABSENT from the delete-authorize set, so the delete-guard REFUSES deleting the module (it has
+    // no `.dag` replacement). This is the discriminating red: were the retain path fused into the
+    // delete-authorize set (the fail-open this split closes), `stem_covered` would return true here
+    // and the guard would silently green-light the delete. It flips exactly with the wiring:
+    //   - debt-exclude set    → contains the stem (asserted above) → module is not debt.
+    //   - delete-authorize set → does NOT contain the stem → guard flags any delete of it.
+    #[test]
+    fn delete_guard_refuses_deleting_retained_nonmigratable_module() {
+        let stem = "namespace_unique_on_chain_policy";
+        let authorize = test_migration_delete_authorize_stems();
+        // This is the exact predicate the delete-guard applies per deleted path
+        // (`!stem_covered(stem, delete_authorize_stems)` => violation): it must report the delete
+        // of a retained module as an UNCOVERED (refused) delete.
+        assert!(
+            !test_migration_debt_stem_covered(stem, &authorize),
+            "retained-non-migratable stem must NOT authorize deletion — the delete-guard must refuse"
+        );
+        // Control: a genuinely delete-covered (retired) stem IS authorized, proving the guard's
+        // refusal discriminates on retain-vs-delete disposition, not on being unknown.
+        assert!(
+            test_migration_debt_stem_covered("map_lookup_dual_dispatch", &authorize),
+            "a retired (delete-path) stem must authorize deletion"
         );
     }
 }
@@ -26396,7 +27082,7 @@ mod import_closure_equivalence_tests {
 
     /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
     /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_corpus_rows` lens-hygiene work — closure set-identity
+    /// Avoids `discover_floor_witness_roster` lens-hygiene work — closure set-identity
     /// only needs the witness entry roster, not inert-lens classification.
     fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
         let mut entries = BTreeSet::new();
@@ -26983,13 +27669,17 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "bottom_fn".to_string(),
+            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "bottom_fn".to_string(),
+                ),
             );
-            let miss = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                prev.clone(),
-                "absent_fn".to_string(),
+            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                    prev.clone(),
+                    "absent_fn".to_string(),
+                ),
             );
             let _ = tx.send((
                 prev.parents.len(),
@@ -27023,8 +27713,10 @@ mod sigs_env_flat_parents {
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string())
-                .map(|s| s.inferred.name.clone())
+            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
+                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
+            )
+            .map(|s| s.inferred.name.clone())
         };
 
         let b = w2_env("b", &[("f", "FromB"), ("g", "FromBg")], vec![]);

@@ -486,8 +486,12 @@ fn type_leaf_name_for_collapse(n: Node, source_indices: Map<String, NewlineIndex
   if a == "" { n.name } else { a }
 }
 
+fn is_machine_width_phantom_token(name: String) -> Bool {
+  name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
+}
+
 fn rust_type_arg_renders_as_unit(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_width_nat_type_literal(n: n) || is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices))
+  is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) || is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices))
 }
 
 fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -572,7 +576,7 @@ fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: S
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  let type_name = authored_name_at(source_indices: source_indices, node: n)
+  let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
@@ -586,14 +590,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
   match applied_overlay {
     Present { value: applied } =>
-      let outer_name = authored_name_at(source_indices: source_indices, node: n)
+      let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
         render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
       } else {
         render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       }
     Absent =>
-      let name = authored_name_at(source_indices: source_indices, node: n)
+      let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
@@ -687,7 +691,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
-  let name = authored_name_at(source_indices: source_indices, node: n)
+  let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
@@ -705,7 +709,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
-        let outer_name = authored_name_at(source_indices: source_indices, node: n)
+        let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
         if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
           render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {
@@ -726,6 +730,12 @@ fn alias_rhs_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
+data rust_fn_sig_leaf_name_dotted_note: String = "Construction wall for the dotted-render class in FN-SIG TYPE position (sibling of coerce_primitive_type_dotted_fallback_note for primitives and emit_typed_record_lit's bare_qualified_name for record-lit construction). render_rust_fn_sig_type / render_rust_fn_sig_type_applied_binding / render_rust_decl_type all extract a leaf type's name via authored_name_at and then both (a) key lookups against is_container_type/shared_types/rust_fn_sig_peel_closed_alias and (b) pass that same string as literal Rust output via render_rust_shared_type_with_optional's `rendered` argument. A namespace-qualified closure-param or aliased-decl type (e.g. impl Fn(v2.lens.complexity_accumulator_copy.Finding) -> bool) previously reached (b) verbatim -- dots and all, an invalid Rust token sequence rustc reports as 'expected one of !, (, +, ::, or <, found .'. Since every lookup in (a) is keyed on the bare declared name (same reasoning as alias_rhs_qualified_name_routing_note below), the fix is to route the leaf-name extraction through rust_fn_sig_leaf_name (which wraps authored_name_at with qualified_last_segment, the single authority) so both the lookup key and the emitted text are bare together -- not a second dotted-name fallback forked per call site. Every already-bare name renders exactly as before."
+
+fn rust_fn_sig_leaf_name(source_indices: Map<String, NewlineIndex>, n: Node) -> String {
+  qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+}
+
 data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
 
 Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.
@@ -735,7 +745,6 @@ Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the 
 The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.type_annotation {
     Present { value: _ } =>
       if n.connective == Conj && (n.children |> count) == 1 {
@@ -758,9 +767,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent =>
-    if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
-      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-    } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
@@ -768,7 +774,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
         }
       }
-    }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)
@@ -2079,14 +2084,19 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
     let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_type_surface_names(item: item, source_indices: source_indices)))
     let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
-    let already = already_imported_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
+    let local_decl_names = items |> flat_map(item =>
+      let nm = authored_name_at(source_indices: source_indices, node: item)
+      if nm == "" { [] } else { [nm] }
+    )
+    let already = concat(already_imported_names, concat(local_type_names, local_decl_names))
+      |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let unlisted = candidates |> flat_map(name =>
       if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
         []
@@ -3398,13 +3408,85 @@ fn rust_pub_use_braced_equal_prior_covered(line: String, lines: List<String>) ->
   }
 }
 
+fn rust_use_bound_symbol(entry: String) -> String {
+  match entry |> split(delimiter: " as ") |> skip(1) |> first {
+    Present { value: bound_name } => bound_name
+    Absent => entry
+  }
+}
+
+data strip_repeated_use_symbols_note: String = "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a per-line projection against it — linear in total bound symbols (an owner line always retains its owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost rule, 2026-07-10)."
+
+fn rust_use_line_bound_symbols(line: String) -> List<String> {
+  if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
+    []
+  } else {
+    let braced = rust_pub_use_braced_names(line: line)
+    if braced |> count > 0 {
+      braced |> map(entry => rust_use_bound_symbol(entry: entry))
+    } else {
+      let singleton = rust_pub_use_singleton_name(line: line)
+      if singleton == "" { [] } else { [singleton] }
+    }
+  }
+}
+
+fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
+  let owners = lines |> fold(init: empty_map(), f: (acc, line) =>
+    rust_use_line_bound_symbols(line: line) |> fold(init: acc, f: (inner, bound) =>
+      if map_contains_key(inner, bound) { inner } else { map_insert(inner, bound, line) }
+    )
+  )
+  lines |> flat_map(line =>
+    if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
+      [line]
+    } else {
+      let braced = rust_pub_use_braced_names(line: line)
+      if braced |> count > 0 {
+        let fresh_bounds = unique_strings(items: braced |> map(entry => rust_use_bound_symbol(entry: entry)))
+          |> filter(bound => match map_get(owners, bound) {
+            Present { value: owner } => owner == line
+            Absent => false
+          })
+        let kept = fresh_bounds |> flat_map(bound =>
+          match braced |> filter(entry => rust_use_bound_symbol(entry: entry) == bound) |> first {
+            Present { value: entry } => [entry]
+            Absent => []
+          }
+        )
+        if kept |> count == 0 {
+          []
+        } else if (kept |> count) == (braced |> count) {
+          [line]
+        } else {
+          match line |> split(delimiter: "::{") |> first {
+            Present { value: prefix } => [concat(prefix, "::{", kept |> join(separator: ", "), "};")]
+            Absent => [line]
+          }
+        }
+      } else {
+        let singleton = rust_pub_use_singleton_name(line: line)
+        if singleton == "" {
+          [line]
+        } else {
+          match map_get(owners, singleton) {
+            Present { value: owner } => if owner == line { [line] } else { [] }
+            Absent => [line]
+          }
+        }
+      }
+    }
+  )
+}
+
 fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   let exact = unique_strings(items: lines |> filter(line => line != ""))
-  exact |> filter(line =>
+  let covered = exact |> filter(line =>
     rust_pub_use_singleton_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_equal_prior_covered(line: line, lines: exact) == false
   )
+  strip_repeated_use_symbols(lines: covered)
 }
 
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>) -> String {
@@ -4898,24 +4980,39 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
 
 data optional_pattern_unknown_parent_note: String = "Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a let-in-lambda pipeline) reroutes."
 
+data variant_pattern_dotted_qualification_note: String = "Construction wall for the dotted-render class in PATTERN position (sibling of alias_rhs_qualified_name_routing_note, which covers TYPE position). A namespace-QUALIFIED variant/parent name in a match pattern (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent_enum from annotate_pattern_parent_enums's authored_name_at) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Rust pattern position never needs a crate::-qualified path (only import-line synthesis, a separate seam, brings the bare enum into scope) so the fix is simpler than alias_rhs: route both the variant name and the resolved parent through qualified_last_segment (v1.std.core, the same single authority) via variant_pattern_qualified_path, shared by emit_variant_pattern and emit_variant_pattern_rc_aware so the dotted-render fix is not forked a third time. Every already-bare pattern renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
+
+fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?) -> String {
+  match resolved_parent {
+    Present { value: parent } =>
+      let parent_leaf = qualified_last_segment(name: parent)
+      if parent_leaf == "Witness" { concat("v1_rt::Witness::", rust_name) }
+      else { concat(parent_leaf, "::", rust_name) }
+    Absent => rust_name
+  }
+}
+
+fn variant_pattern_shape_key(rust_name: String, resolved_parent: String?) -> String {
+  match resolved_parent {
+    Present { value: parent } => concat(qualified_last_segment(name: parent), "::", rust_name)
+    Absent => rust_name
+  }
+}
+
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let resolved_parent = pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: name)
+  let bare_name = qualified_last_segment(name: name)
+  let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+  let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if name == "Present" { "Some" } else { "None" }
-  } else { name }
+    if bare_name == "Present" { "Some" } else { "None" }
+  } else { bare_name }
   let qualified = if optional_variant {
     rust_name
   } else {
-	    match resolved_parent {
-	      Present { value: parent } =>
-	        if parent == "Witness" { concat("v1_rt::Witness::", rust_name) }
-	        else { concat(parent, "::", rust_name) }
-	      Absent => rust_name
-	    }
+    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
   }
-  if optional_variant && name == "Present" && field_bindings |> count == 1 {
+  if optional_variant && bare_name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Present { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -4932,12 +5029,12 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       Present { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
           let fb_pat = field_binding_pattern(n: fb)
-          let pos_path = list_push(list_push(path_prefix, name), "0")
+          let pos_path = list_push(list_push(path_prefix, bare_name), "0")
           let bind_name = pattern_string_binding_name(path: pos_path)
           if is_string_lit_pattern(p: fb_pat) {
             concat(qualified, "(ref ", bind_name, ")")
           } else {
-            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: bare_name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
             let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: pos_path, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
             concat(qualified, "(", inner_pat, ")")
           }
@@ -4945,20 +5042,17 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
-            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
             concat(qualified, " { ref ", bind_name, ", .. }")
           } else {
-            let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
           }
         }
       Absent => qualified
     }
   } else if field_bindings |> count == 0 {
-    let shape_key = match resolved_parent {
-      Present { value: parent } => concat(parent, "::", name)
-      Absent => name
-    }
+    let shape_key = variant_pattern_shape_key(rust_name: rust_name, resolved_parent: resolved_parent)
     let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
       || set_contains(emit_info.positional_payload_variants, qualified)
     let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
@@ -4970,10 +5064,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      let shape_key2 = match resolved_parent {
-        Present { value: parent } => concat(parent, "::", name)
-        Absent => name
-      }
+      let shape_key2 = variant_pattern_shape_key(rust_name: rust_name, resolved_parent: resolved_parent)
       let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
         || set_contains(emit_info.positional_payload_variants, qualified)
       let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
@@ -4986,9 +5077,9 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           let field_path = if fb_name == "0" {
-            list_push(list_push(path_prefix, name), "0")
+            list_push(list_push(path_prefix, bare_name), "0")
           } else {
-            list_push(list_push(path_prefix, name), fb_name)
+            list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
           concat("ref ", bind_name)
@@ -4997,9 +5088,9 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
               let field_path = if fb_name == "0" {
-                list_push(list_push(path_prefix, name), "0")
+                list_push(list_push(path_prefix, bare_name), "0")
               } else {
-                list_push(list_push(path_prefix, name), fb_name)
+                list_push(list_push(path_prefix, bare_name), fb_name)
               }
               let pat_str = emit_pattern(pattern: fb_pat, path_prefix: field_path, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
@@ -5041,14 +5132,15 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      if is_optional_variant_name(name: n) && is_optional_parent(parent_enum: parent_enum) {
+      let bare_n = qualified_last_segment(name: n)
+      if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
           match fbs |> first {
             Present { value: fb } =>
               let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               RcPatternAnalysis {
                 matches_rc_variant: false,
-                matches_option_rc_variant: n == "Present" && inner.matches_rc_variant,
+                matches_option_rc_variant: bare_n == "Present" && inner.matches_rc_variant,
                 needs_rc_pattern: inner.needs_rc_pattern,
                 ref_bound_fields: []
               }
@@ -5056,7 +5148,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
           }
         } else { empty_rc_pattern_analysis() }
       } else {
-        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+        let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
           Absent => false
@@ -5064,7 +5156,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         let ref_bound_fields = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let inner_scrut = if fb_name == "0" {
-            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: bare_n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
           } else { "" }
           if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: inner_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
             [fb_name]
@@ -5124,23 +5216,19 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
 }
 
 fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let resolved_parent = pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: name)
+  let bare_name = qualified_last_segment(name: name)
+  let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+  let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if name == "Present" { "Some" } else { "None" }
-  } else { name }
+    if bare_name == "Present" { "Some" } else { "None" }
+  } else { bare_name }
   let qualified = if optional_variant {
     rust_name
   } else {
-	    match resolved_parent {
-	      Present { value: parent } =>
-	        if parent == "Witness" { concat("v1_rt::Witness::", rust_name) }
-	        else { concat(parent, "::", rust_name) }
-	      Absent => rust_name
-	    }
+    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
   }
-  if optional_variant && name == "Present" && field_bindings |> count == 1 {
+  if optional_variant && bare_name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Present { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -5158,12 +5246,12 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       Present { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
           let fb_pat = field_binding_pattern(n: fb)
-          let pos_path = list_push(list_push(path_prefix, name), "0")
+          let pos_path = list_push(list_push(path_prefix, bare_name), "0")
           let bind_name = pattern_string_binding_name(path: pos_path)
           if is_string_lit_pattern(p: fb_pat) {
             concat(qualified, "(ref ", bind_name, ")")
           } else {
-            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: bare_name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: pos_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
             concat(qualified, "(", inner_pat, ")")
@@ -5172,23 +5260,20 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
-            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
             concat(qualified, " { ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
           }
         }
       Absent => qualified
     }
   } else if field_bindings |> count == 0 {
-    let shape_key = match resolved_parent {
-      Present { value: parent } => concat(parent, "::", name)
-      Absent => name
-    }
+    let shape_key = variant_pattern_shape_key(rust_name: rust_name, resolved_parent: resolved_parent)
     let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
       || set_contains(emit_info.positional_payload_variants, qualified)
     let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
@@ -5200,10 +5285,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      let shape_key2 = match resolved_parent {
-        Present { value: parent } => concat(parent, "::", name)
-        Absent => name
-      }
+      let shape_key2 = variant_pattern_shape_key(rust_name: rust_name, resolved_parent: resolved_parent)
       let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
         || set_contains(emit_info.positional_payload_variants, qualified)
       let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
@@ -5216,9 +5298,9 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           let field_path = if fb_name == "0" {
-            list_push(list_push(path_prefix, name), "0")
+            list_push(list_push(path_prefix, bare_name), "0")
           } else {
-            list_push(list_push(path_prefix, name), fb_name)
+            list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
           concat("ref ", bind_name)
@@ -5230,9 +5312,9 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
               let field_path = if fb_name == "0" {
-                list_push(list_push(path_prefix, name), "0")
+                list_push(list_push(path_prefix, bare_name), "0")
               } else {
-                list_push(list_push(path_prefix, name), fb_name)
+                list_push(list_push(path_prefix, bare_name), fb_name)
               }
               let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: field_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
@@ -5250,7 +5332,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      if is_optional_variant_name(name: n) && is_optional_parent(parent_enum: parent_enum) {
+      let bare_n = qualified_last_segment(name: n)
+      if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
           match fbs |> first {
             Present { value: fb } =>
@@ -5261,16 +5344,16 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           }
         } else { "" }
       } else {
-        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: "", type_summaries: emit_info.type_summaries)
+        let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: "", type_summaries: emit_info.type_summaries)
         let preludes = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           if fb_name == "0" {
-            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: bare_n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
             let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             let inner_preludes = rc_pattern_preludes(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
             if inner_preludes == "" { [] } else { [inner_preludes] }
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), path_prefix: list_push(list_push([], n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -5359,6 +5442,8 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
+data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
+
 fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String {
   if string_contains(s: name, pattern: ".") {
     let leaf = qualified_last_segment(name: name)
@@ -5366,7 +5451,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String
       Present { value: info } =>
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
       Absent =>
-        emit_ident(name: name, target: Rust)
+        emit_ident(name: leaf, target: Rust)
     }
   } else {
     emit_ident(name: name, target: Rust)
@@ -6085,7 +6170,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     }
   } else { scope }
   let ordered_args = order_typed_call_args(args: args, func: func, scope: collection_scope)
-  let callee = lookup_item(registry: registry, name: func)
+  let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
@@ -6123,7 +6208,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
-    else { emit_ident(name: func, target: Rust) }
+    else { emit_value_ref_ident(name: func, registry: registry) }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
@@ -6848,7 +6933,7 @@ fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<St
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
-      pattern_parent_enum(name: n, parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
+      pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
     _ => none
   }
 }
@@ -7309,7 +7394,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         Present { value: rt_name }
       } else { none }
   }
-  match qualified_name {
+  let bare_qualified_name = match qualified_name {
+    Present { value: qn } => Present { value: qualified_last_segment(name: qn) }
+    Absent => none
+  }
+  let bare_parent_enum = match parent_enum {
+    Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
+    Absent => none
+  }
+  match bare_qualified_name {
     Absent =>
       let is_product = is_product_type(n: resolved_type)
       if is_product && resolved_type.ident_span == none {
@@ -7380,18 +7473,18 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
-          let rt_name = authored_name_at(source_indices: si, node: resolved_type)
+          let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
           if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
             && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
-            parent_enum
+            bare_parent_enum
           }
       }
       let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
@@ -7407,7 +7500,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
+      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
         if tn == "Present" { "Some" } else { "None" }
       } else { tn }
@@ -7444,7 +7537,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           match fields |> first {
             Present { value: f } =>
               let f_value = field_init_node_value(n: f)
-              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
               let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: "0")
                 && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
               let field_val = if needs_wrap {
@@ -7457,7 +7550,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
-          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
             && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
           let field_val = if needs_wrap {

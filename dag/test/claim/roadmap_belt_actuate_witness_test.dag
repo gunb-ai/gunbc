@@ -35,6 +35,8 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
   belt_dispatch_ok_status_labels,
+  belt_dispatch_result_exemplars,
+  belt_dispatch_all_status_labels,
   BeltClaudePreflight, ClaudePreflightOk, ClaudePreflightRefused,
   belt_claude_preflight_decision,
 }
@@ -336,6 +338,35 @@ fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
 }
 
+data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls a 7th VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same six labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
+
+fn d4_wire_contract_labels() -> List<String> {
+  ["spawned", "already_live", "node_not_found", "already_done_signed_off", "observe_refused", "spawn_failed"]
+}
+
+fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
+  map(exemplars, r => belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
+}
+
+fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
+  d4_exemplars_reconcile(exemplars: belt_dispatch_result_exemplars())
+    && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
+}
+
+fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
+  [
+    DispatchSpawned { node_id: "a", session_name: "s" },
+    DispatchAlreadyLive { node_id: "a", session_name: "s" },
+    DispatchNodeNotFound { node_id: "a" },
+    DispatchNodeAlreadyDone { node_id: "a" },
+    DispatchObserveRefused { node_id: "a", reason: "x" },
+  ]
+}
+
+fn witness_exemplar_roster_missing_variant_reds() -> Bool {
+  !d4_exemplars_reconcile(exemplars: d4_exemplars_missing_one())
+}
+
 fn preflight_refused_step(p: BeltClaudePreflight) -> String {
   match p {
     ClaudePreflightRefused { step: st, detail: _ } => st
@@ -443,6 +474,8 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_dispatch_result_refusals_not_ok()
     && witness_dispatch_status_labels_glued_to_ok_set()
     && witness_dispatch_status_labels_pin_wire_contract()
+    && witness_exemplar_roster_reconciles_variant_set()
+    && witness_exemplar_roster_missing_variant_reds()
     && witness_preflight_refuses_missing_claude()
     && witness_preflight_refuses_unknown_home()
     && witness_preflight_refuses_unreadable_store()

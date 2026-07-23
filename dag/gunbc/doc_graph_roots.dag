@@ -78,6 +78,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "dissolves with the emitter residual classes it maps (dotted-alias #6981, generic-T fold closures)" },
   },
   HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "srv2-05-native-agreement-divergence-diagnosis",
+    work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },
+  },
+  HandAuthoredDocBind {
     home: PlanDoc,
     slug: "rc-ownership-wrap-decision-design",
     work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
@@ -106,6 +112,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "witness-realization-plan",
     work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row when its P1 lands" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-floor-time-45-72-band-attribution",
+    work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
   },
 ]
 
