@@ -108,10 +108,10 @@ jobs:
           retention-days: 3
           compression-level: 0
         timeout-minutes: 10
-  ci:
+  regen:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
-    timeout-minutes: 130
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -136,7 +136,7 @@ jobs:
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
         timeout-minutes: 5
-      - name: gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)
+      - name: gunbc ci regen (self-host fixed-point — required)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
@@ -150,6 +150,34 @@ jobs:
           fi
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
         timeout-minutes: 15
+  ci:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [build, regen]
+    timeout-minutes: 115
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+        timeout-minutes: 5
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
@@ -256,14 +284,21 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
     timeout-minutes: 30
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -286,12 +321,75 @@ jobs:
         run: |
           git config user.name "gunbc-ci-auto-heal"
           git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
-          git add ".github/workflows/ci.yml" ".github/workflows/falsifier.yml" ".gitignore" "ROADMAP.md" "DESIGN.md" ".githooks/pre-push" ".githooks/pre-commit" ".github/fleet-converge.sh" "dag/gunbc/stage0_crate_layout_generated.dag" "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs" "dag/gunbc/stage0_crate_partition_generated.dag" ".github/live-deploy-srv1-apply.sh" ".github/live-deploy-srv1-retract.sh" "docs/plans/idea-machine.md" "docs/plans/algebraic-rewrite-optimization.md" "docs/plans/dag-v2-defork-audit.md" "docs/plans/v2-self-hosting.md" "docs/plans/m5-fixture-store-consolidation.md" "docs/plans/model-realization-fork.md" "docs/plans/ci-merge-freshness.md" "docs/plans/seed-debt-bundle-item-2.md" "docs/plans/axiom-syllogism-lens.md" "docs/plans/invert-hand-maintained.md" "docs/plans/fail-closed-lockdown.md" "docs/plans/format-model-reconciliation.md" "docs/plans/regime2-shared-emission-fold.md" "docs/plans/shell-emission-model.md" "docs/plans/construction-justification-rule.md" "docs/plans/emission-ingestion-inverse.md" "docs/plans/testgen-oracle.md" "docs/plans/disposition-carrier.md" "docs/plans/fold-ergonomics.md" "docs/plans/m4-universal-hermetic-corpus.md" "docs/plans/wiring-liveness-preflight.md" "docs/plans/interpreter-kernel-d.md" "docs/plans/inert-layer-lens.md" "docs/plans/compile-clean-forcecheck.md" "docs/plans/expressibility-frontier.md" "docs/plans/p1-where-clause-lowering.md" "docs/plans/intent-linearity-design-draft.md" "docs/plans/solve-higher-order-design.md" "docs/plans/language-target-self-host-frontier.md" "docs/plans/self-applying-lenses.md" "docs/plans/budget-tree.md" "docs/plans/cardinality-refinement.md" "docs/plans/compute-envelope-model.md" "docs/plans/input-envelope-roadmap.md" "docs/plans/ci-selection-vs-scheduling.md" "docs/plans/ci-process-end-to-end.md" "docs/plans/ci-oom-reclassification.md" "docs/plans/bounded-input-cost-envelope-scheduling.md" "docs/plans/ci-humming.md" "docs/plans/edge-b-rust-dag-provenance-brief.md" "docs/plans/resolver-type-name-collision-wall.md" "docs/plans/realization-measurement-loop.md" "docs/plans/host-effect-orchestration.md" "docs/plans/ci-floor-fractal-gantt.md" "docs/plans/resolver-pathology-profile-receipt.md" "docs/plans/representation-minimization.md" "docs/plans/reference-grounding-migration.md" "docs/plans/typescript-gap-census.md" "docs/plans/cli-run-hollowing-plan.md" "docs/plans/fleet-acceptance-criteria.md" "docs/plans/structural-quadratic-wall-coverage-audit.md" "docs/plans/ci-performance-tanking-evidence.md"
+          if [ -e ".github/workflows/ci.yml" ]; then git add ".github/workflows/ci.yml"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/workflows/ci.yml"; fi
+          if [ -e ".github/workflows/falsifier.yml" ]; then git add ".github/workflows/falsifier.yml"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/workflows/falsifier.yml"; fi
+          if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
+          if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
+          if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
+          if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
+          if [ -e ".githooks/pre-commit" ]; then git add ".githooks/pre-commit"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-commit"; fi
+          if [ -e "dag/gunbc/stage0_crate_layout_generated.dag" ]; then git add "dag/gunbc/stage0_crate_layout_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0_crate_layout_generated.dag"; fi
+          if [ -e "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs" ]; then git add "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; fi
+          if [ -e "dag/gunbc/stage0_crate_partition_generated.dag" ]; then git add "dag/gunbc/stage0_crate_partition_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0_crate_partition_generated.dag"; fi
+          if [ -e ".github/live-deploy-srv1-apply.sh" ]; then git add ".github/live-deploy-srv1-apply.sh"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/live-deploy-srv1-apply.sh"; fi
+          if [ -e ".github/live-deploy-srv1-retract.sh" ]; then git add ".github/live-deploy-srv1-retract.sh"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/live-deploy-srv1-retract.sh"; fi
+          if [ -e "docs/plans/idea-machine.md" ]; then git add "docs/plans/idea-machine.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/idea-machine.md"; fi
+          if [ -e "docs/plans/algebraic-rewrite-optimization.md" ]; then git add "docs/plans/algebraic-rewrite-optimization.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/algebraic-rewrite-optimization.md"; fi
+          if [ -e "docs/plans/dag-v2-defork-audit.md" ]; then git add "docs/plans/dag-v2-defork-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/dag-v2-defork-audit.md"; fi
+          if [ -e "docs/plans/v2-self-hosting.md" ]; then git add "docs/plans/v2-self-hosting.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/v2-self-hosting.md"; fi
+          if [ -e "docs/plans/m5-fixture-store-consolidation.md" ]; then git add "docs/plans/m5-fixture-store-consolidation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/m5-fixture-store-consolidation.md"; fi
+          if [ -e "docs/plans/model-realization-fork.md" ]; then git add "docs/plans/model-realization-fork.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/model-realization-fork.md"; fi
+          if [ -e "docs/plans/ci-merge-freshness.md" ]; then git add "docs/plans/ci-merge-freshness.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-merge-freshness.md"; fi
+          if [ -e "docs/plans/seed-debt-bundle-item-2.md" ]; then git add "docs/plans/seed-debt-bundle-item-2.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/seed-debt-bundle-item-2.md"; fi
+          if [ -e "docs/plans/axiom-syllogism-lens.md" ]; then git add "docs/plans/axiom-syllogism-lens.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/axiom-syllogism-lens.md"; fi
+          if [ -e "docs/plans/invert-hand-maintained.md" ]; then git add "docs/plans/invert-hand-maintained.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/invert-hand-maintained.md"; fi
+          if [ -e "docs/plans/fail-closed-lockdown.md" ]; then git add "docs/plans/fail-closed-lockdown.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/fail-closed-lockdown.md"; fi
+          if [ -e "docs/plans/format-model-reconciliation.md" ]; then git add "docs/plans/format-model-reconciliation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/format-model-reconciliation.md"; fi
+          if [ -e "docs/plans/regime2-shared-emission-fold.md" ]; then git add "docs/plans/regime2-shared-emission-fold.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/regime2-shared-emission-fold.md"; fi
+          if [ -e "docs/plans/shell-emission-model.md" ]; then git add "docs/plans/shell-emission-model.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/shell-emission-model.md"; fi
+          if [ -e "docs/plans/construction-justification-rule.md" ]; then git add "docs/plans/construction-justification-rule.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/construction-justification-rule.md"; fi
+          if [ -e "docs/plans/emission-ingestion-inverse.md" ]; then git add "docs/plans/emission-ingestion-inverse.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/emission-ingestion-inverse.md"; fi
+          if [ -e "docs/plans/testgen-oracle.md" ]; then git add "docs/plans/testgen-oracle.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/testgen-oracle.md"; fi
+          if [ -e "docs/plans/disposition-carrier.md" ]; then git add "docs/plans/disposition-carrier.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/disposition-carrier.md"; fi
+          if [ -e "docs/plans/fold-ergonomics.md" ]; then git add "docs/plans/fold-ergonomics.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/fold-ergonomics.md"; fi
+          if [ -e "docs/plans/m4-universal-hermetic-corpus.md" ]; then git add "docs/plans/m4-universal-hermetic-corpus.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/m4-universal-hermetic-corpus.md"; fi
+          if [ -e "docs/plans/wiring-liveness-preflight.md" ]; then git add "docs/plans/wiring-liveness-preflight.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/wiring-liveness-preflight.md"; fi
+          if [ -e "docs/plans/interpreter-kernel-d.md" ]; then git add "docs/plans/interpreter-kernel-d.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/interpreter-kernel-d.md"; fi
+          if [ -e "docs/plans/inert-layer-lens.md" ]; then git add "docs/plans/inert-layer-lens.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/inert-layer-lens.md"; fi
+          if [ -e "docs/plans/compile-clean-forcecheck.md" ]; then git add "docs/plans/compile-clean-forcecheck.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compile-clean-forcecheck.md"; fi
+          if [ -e "docs/plans/expressibility-frontier.md" ]; then git add "docs/plans/expressibility-frontier.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/expressibility-frontier.md"; fi
+          if [ -e "docs/plans/p1-where-clause-lowering.md" ]; then git add "docs/plans/p1-where-clause-lowering.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/p1-where-clause-lowering.md"; fi
+          if [ -e "docs/plans/intent-linearity-design-draft.md" ]; then git add "docs/plans/intent-linearity-design-draft.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/intent-linearity-design-draft.md"; fi
+          if [ -e "docs/plans/solve-higher-order-design.md" ]; then git add "docs/plans/solve-higher-order-design.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/solve-higher-order-design.md"; fi
+          if [ -e "docs/plans/language-target-self-host-frontier.md" ]; then git add "docs/plans/language-target-self-host-frontier.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/language-target-self-host-frontier.md"; fi
+          if [ -e "docs/plans/self-applying-lenses.md" ]; then git add "docs/plans/self-applying-lenses.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/self-applying-lenses.md"; fi
+          if [ -e "docs/plans/budget-tree.md" ]; then git add "docs/plans/budget-tree.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/budget-tree.md"; fi
+          if [ -e "docs/plans/cardinality-refinement.md" ]; then git add "docs/plans/cardinality-refinement.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cardinality-refinement.md"; fi
+          if [ -e "docs/plans/compute-envelope-model.md" ]; then git add "docs/plans/compute-envelope-model.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compute-envelope-model.md"; fi
+          if [ -e "docs/plans/input-envelope-roadmap.md" ]; then git add "docs/plans/input-envelope-roadmap.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/input-envelope-roadmap.md"; fi
+          if [ -e "docs/plans/ci-selection-vs-scheduling.md" ]; then git add "docs/plans/ci-selection-vs-scheduling.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-selection-vs-scheduling.md"; fi
+          if [ -e "docs/plans/ci-process-end-to-end.md" ]; then git add "docs/plans/ci-process-end-to-end.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-process-end-to-end.md"; fi
+          if [ -e "docs/plans/ci-oom-reclassification.md" ]; then git add "docs/plans/ci-oom-reclassification.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-oom-reclassification.md"; fi
+          if [ -e "docs/plans/bounded-input-cost-envelope-scheduling.md" ]; then git add "docs/plans/bounded-input-cost-envelope-scheduling.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/bounded-input-cost-envelope-scheduling.md"; fi
+          if [ -e "docs/plans/ci-humming.md" ]; then git add "docs/plans/ci-humming.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-humming.md"; fi
+          if [ -e "docs/plans/edge-b-rust-dag-provenance-brief.md" ]; then git add "docs/plans/edge-b-rust-dag-provenance-brief.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/edge-b-rust-dag-provenance-brief.md"; fi
+          if [ -e "docs/plans/resolver-type-name-collision-wall.md" ]; then git add "docs/plans/resolver-type-name-collision-wall.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/resolver-type-name-collision-wall.md"; fi
+          if [ -e "docs/plans/realization-measurement-loop.md" ]; then git add "docs/plans/realization-measurement-loop.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/realization-measurement-loop.md"; fi
+          if [ -e "docs/plans/host-effect-orchestration.md" ]; then git add "docs/plans/host-effect-orchestration.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/host-effect-orchestration.md"; fi
+          if [ -e "docs/plans/ci-floor-fractal-gantt.md" ]; then git add "docs/plans/ci-floor-fractal-gantt.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-floor-fractal-gantt.md"; fi
+          if [ -e "docs/plans/resolver-pathology-profile-receipt.md" ]; then git add "docs/plans/resolver-pathology-profile-receipt.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/resolver-pathology-profile-receipt.md"; fi
+          if [ -e "docs/plans/representation-minimization.md" ]; then git add "docs/plans/representation-minimization.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/representation-minimization.md"; fi
+          if [ -e "docs/plans/reference-grounding-migration.md" ]; then git add "docs/plans/reference-grounding-migration.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/reference-grounding-migration.md"; fi
+          if [ -e "docs/plans/typescript-gap-census.md" ]; then git add "docs/plans/typescript-gap-census.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/typescript-gap-census.md"; fi
+          if [ -e "docs/plans/cli-run-hollowing-plan.md" ]; then git add "docs/plans/cli-run-hollowing-plan.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cli-run-hollowing-plan.md"; fi
+          if [ -e "docs/plans/fleet-acceptance-criteria.md" ]; then git add "docs/plans/fleet-acceptance-criteria.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/fleet-acceptance-criteria.md"; fi
+          if [ -e "docs/plans/structural-quadratic-wall-coverage-audit.md" ]; then git add "docs/plans/structural-quadratic-wall-coverage-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/structural-quadratic-wall-coverage-audit.md"; fi
+          if [ -e "docs/plans/ci-performance-tanking-evidence.md" ]; then git add "docs/plans/ci-performance-tanking-evidence.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-performance-tanking-evidence.md"; fi
           if git diff --cached --quiet; then
             echo "chore-heal: no generated-artifact drift on this tree; nothing to commit"
           else
             git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
-            git push origin HEAD:main
-            echo "chore-heal: pushed regenerated generated artifacts to main"
+            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+            echo "chore-heal: pushed regenerated generated artifacts to the triggering branch"
           fi
         timeout-minutes: 5
