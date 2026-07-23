@@ -82,6 +82,10 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
+data ci_regen_heal_if: String = "github.event_name == 'pull_request'"
+
+data ci_regen_heal_if_note: String = "The generated-artifact heal runs on pull_request ONLY (operator-directed 2026-07-23: 'i think we can disable main pushes for now — i don't expect this to be needed on main — we can just fail CI on main if regen somehow fails there'). It auto-regenerates drifted artifacts and pushes the fix back to the PR branch, so drift is repaired on the branch before it reaches main. The push event (main) is deliberately EXCLUDED: main is protected by a ruleset that requires the 'ci' status check, so a heal push to main is rejected (GH013 repository-rule violation, receipt 2026-07-23), and — more fundamentally — a main-drift auto-push is not wanted. On main the ci job's own drift gate reds honestly if regen ever drifts (fail-closed, DESIGN §5), which is the correct main behavior: by the time a change reaches main it should already be green because its PR auto-healed. merge_group and workflow_dispatch are also excluded: a merge-queue ref is not a pushable branch, and a manual dispatch has no branch-heal intent."
+
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
 data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22, fail-fast lane): cancel-in-progress is true for pull_request / push / workflow_dispatch (supersede stale runs on new commits) and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). The expression is the single authority; dissolve-on: a typed EventStopPolicy row per trigger replaces the hand-spelled string when the workflow model carries event-grain policy by construction."

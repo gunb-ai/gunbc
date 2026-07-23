@@ -7,6 +7,7 @@ import v2.workflow.witness_admission {
   witness_admission_manifest_covers_row
 }
 import std.witness_admission {
+  FalsifierRehomedBinWet,
   WitnessConsumerCadence,
   FalsifierSelfHostWet,
   BinWitnessWet,
@@ -113,6 +114,24 @@ fn witness_discovery_row_consumer_holds() -> Bool {
   }
 }
 
+fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
+    function: "floor_skip_discovery_keystone_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierRehomedBinWet => true
+    _ => false
+  }
+}
+
+fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(
+    entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
+    function: "floor_skip_discovery_keystone_holds"
+  )
+}
+
 fn witness_explicit_manifest_nonempty_holds() -> Bool {
   length(xs: witness_admission_explicit_consumer_manifest()) > 0
 }
@@ -127,5 +146,7 @@ test fn witness_admission_invariant_holds() -> Bool {
     && witness_complement_wet_falsifier_consumer_holds()
     && witness_offline_execution_lane_consumer_holds()
     && witness_discovery_row_consumer_holds()
+    && witness_rehomed_bin_wet_consumer_holds()
+    && witness_rehomed_bin_wet_manifest_covers_holds()
     && witness_explicit_manifest_nonempty_holds()
 }
