@@ -82,8 +82,6 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
-data ci_regen_validate_if: String = "!(github.ref == 'refs/heads/main' && github.event_name == 'push')"
-
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
 data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22, fail-fast lane): cancel-in-progress is true for pull_request / push / workflow_dispatch (supersede stale runs on new commits) and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). The expression is the single authority; dissolve-on: a typed EventStopPolicy row per trigger replaces the hand-spelled string when the workflow model carries event-grain policy by construction."
