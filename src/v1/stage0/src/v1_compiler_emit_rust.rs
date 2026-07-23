@@ -15,6 +15,9 @@ pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{is_container_type, is_kernel_type};
@@ -36,7 +39,6 @@ pub use crate::v1_compiler_emit::{
     module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
     rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
-    wrap_shared_type,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
@@ -88,7 +90,7 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
-    test_conventions_for_target, visibility_for_target,
+    test_conventions_for_target, visibility_for_target, wrap_shared_type,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
 pub use crate::v1_compiler_ownership::OwnershipProof;
@@ -102,8 +104,6 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::AlgebraFieldKind::*;
-use crate::v1_std_core::BinOp::*;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
@@ -118,7 +118,6 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::OptionalValue;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::LiteralValue::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
