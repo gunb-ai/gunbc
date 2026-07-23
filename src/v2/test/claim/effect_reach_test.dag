@@ -160,14 +160,16 @@ test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
 data live_03_normalize_facts: List<ModuleImportFact> = [
   ModuleImportFact {
     module: "test.claim.self_host_03_normalize_behavioral_witness",
-    imports: ["tools.self_host_03_normalize_behavioral_transport"]
+    imports: ["tools.self_host_module_behavioral_transport_roster"]
   },
   ModuleImportFact {
-    module: "tools.self_host_03_normalize_behavioral_transport",
+    module: "tools.self_host_module_behavioral_transport_roster",
     imports: [
       "tools.self_host_curated_seed_linked_harness",
+      "v2.std.algebra",
       "v2.std.collection",
-      "std.logic"
+      "v2.std.logic",
+      "v2.std.text"
     ]
   },
   ModuleImportFact {
@@ -189,9 +191,9 @@ data live_03_normalize_facts: List<ModuleImportFact> = [
 
 data live_03_normalize_data_inits: List<DataInitDecl> = [
   DataInitDecl {
-    qualified_name: "tools.self_host_03_normalize_behavioral_transport.sn_source_rel",
-    module: "tools.self_host_03_normalize_behavioral_transport",
-    name: "sn_source_rel",
+    qualified_name: "tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_transport_roster",
+    module: "tools.self_host_module_behavioral_transport_roster",
+    name: "compiler_module_behavioral_transport_roster",
     literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
   }
 ]

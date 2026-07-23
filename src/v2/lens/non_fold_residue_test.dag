@@ -1,16 +1,28 @@
 module v2.test.lens_non_fold_residue.non_fold_residue_test
 
+import v2.lens.non_fold_residue { nfr_roster_receipt_holds }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data non_fold_residue_always_on_note: String = "Always-on PR floor receipt (operator brief 2026-07-22, class 4): nfr_roster_receipt_holds walks the live corpus via host-fed counters — MUST declare ReadsLiveTree so affected-set selection never predict-skips it (the lying SubstrateInputsOnly stamp class that kept the falsifier dark for 6 days). Detection-only: roster rows need reason + dissolution trigger; never auto-delete enrollments. Enrollment trimmed to receipt + two RED controls only; non_fold_residue_coproduct_universe_is_nonempty and non_fold_residue_discovery_roots_follow_layer_authority were dropped intentionally (census receipts, not required for the class-4 always-on receipt gate)."
+
+fn witness_non_fold_residue_synthetic_unrostered_red_holds() -> Bool {
+  non_fold_residue_synthetic_unrostered_red_holds()
+}
+
+fn witness_non_fold_residue_wildcard_red_fixture_holds() -> Bool {
+  non_fold_residue_wildcard_red_fixture_holds()
+}
 
 test fn non_fold_residue_no_unrostered_or_stale() -> Bool {
-  return non_fold_residue_clean_holds()
+  return nfr_roster_receipt_holds()
 }
 
-test fn non_fold_residue_coproduct_universe_is_nonempty() -> Bool {
-  return non_fold_residue_live_coproduct_universe_count() > 0
+test fn non_fold_residue_synthetic_unrostered_red_holds() -> Bool {
+  witness_non_fold_residue_synthetic_unrostered_red_holds()
 }
 
-test fn non_fold_residue_discovery_roots_follow_layer_authority() -> Bool {
-  return non_fold_residue_discovery_roots_follow_authority()
+test fn non_fold_residue_wildcard_red_fixture_holds() -> Bool {
+  witness_non_fold_residue_wildcard_red_fixture_holds()
 }

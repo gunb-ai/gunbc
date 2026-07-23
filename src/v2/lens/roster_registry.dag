@@ -1,0 +1,70 @@
+module v2.lens.roster_registry
+
+import gunbc.roster_registry {
+  GroupMembership,
+  ByContainment,
+  ByDerivation,
+  DeclaredFrontier,
+  RosterRegistration,
+  roster_registry,
+  registration_membership_is_standard
+}
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding
+}
+import std.disposition { SingleAuthority }
+import v2.std.algebra { count_where, fold_list, list_snoc_item, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data roster_registry_lens_note: String = "Group-of-units standard-representation lens (operator ruling 2026-07-22, roadmap group 5a): every registration in gunbc.roster_registry must carry standard membership provenance — ByContainment (positional), ByDerivation (computed relation), or DeclaredFrontier with a nonempty reason AND a nonempty dissolve_on trigger. A DeclaredFrontier row with an empty reason or trigger is the NICKNAME class (asserted, string-keyed, no trigger) and reds. Scope honesty: this lens checks ENROLLED registrations only — unregistered bare lists are invisible to it and are caught at review by the 5a rule until the enforcement-intent thread absorbs the registry (see roster_registry_visibility_note and roster_registry_enforcement_intent_convergence_note on the carrier)."
+
+type NonStandardRegistration {
+  roster_module_path: String
+  roster_decl_name: String
+}
+
+data empty_nonstandard_registrations: List<NonStandardRegistration> = []
+
+fn nonstandard_registrations_from(
+  registrations: List<RosterRegistration>
+) -> List<NonStandardRegistration> {
+  fold_list(
+    xs: registrations,
+    empty: empty_nonstandard_registrations,
+    cons: fn(acc, r) {
+      if registration_membership_is_standard(r: r) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: NonStandardRegistration {
+            roster_module_path: r.roster.module_path,
+            roster_decl_name: r.roster.decl_name
+          }
+        )
+      }
+    }
+  )
+}
+
+fn roster_registry_nonstandard_count_from(registrations: List<RosterRegistration>) -> Int {
+  count_where(
+    xs: registrations,
+    predicate: fn(r) { !registration_membership_is_standard(r: r) }
+  )
+}
+
+fn roster_registry_nonstandard_count() -> Int {
+  roster_registry_nonstandard_count_from(registrations: roster_registry)
+}
+
+fn roster_registry_standard_holds() -> Bool {
+  roster_registry_nonstandard_count() == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

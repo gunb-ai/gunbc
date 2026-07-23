@@ -1,0 +1,293 @@
+module tools.self_host_module_behavioral_transport_roster
+
+import tools.self_host_curated_seed_linked_harness {
+  CuratedSeedLinkedShimWrite,
+  CuratedSeedLinkedClaimRun,
+  cssl_seed_linked_behavioral_receipt
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data compiler_module_behavioral_transport_roster_doc: String = "The modeled per-module behavioral-receipt producer (Gate-1 receipt lane B1): one config row per src/v2/compiler/self_host/frontier.dag module, one generic dispatch fn (compiler_module_behavioral_receipt_for) replacing the 16 hand-authored tools.self_host_<mod>_behavioral_transport.dag files this roster supersedes (00_compile, 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer, 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks, program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data only (shim paths, driver path, pass marker, supplementary claim-runs) migrated verbatim from those files; the seed-vs-emitted execution stays entirely in the shared kernel (tools.self_host_curated_seed_linked_harness), so a new frontier row's receipt is one roster row, not a new file. Fail-closed: an unrecognized module_path returns false (never a fabricated pass) — see compiler_module_behavioral_receipt_for. tools.self_host_logic_behavioral_transport and tools.namespace_import_closure_behavioral_transport are deliberately NOT migrated here: neither is keyed by a frontier row (logic predates the frontier; namespace_import_closure proves an emitter CLASS property, not a per-module fact — see falsifier_self_host_wet_emit_class_note in v2.compiler.self_host.wet_receipt_enrollment)."
+
+type ModuleBehavioralTransportConfig {
+  module_path: String
+  shim_lib_rel: String
+  shim_writes: List<CuratedSeedLinkedShimWrite>
+  driver_rel: String
+  pass_marker: String
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+}
+
+data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransportConfig> = [
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/00_compile.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_00_compile_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/01_tokenize.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_01_tokenize_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_01_TOKENIZE_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/02_parse.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_02_parse_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_02_PARSE_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/03_body_producer.dag",
+    shim_lib_rel: "dag/tools/self_host_body_producer_shims/lib.rs",
+    shim_writes: [
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_node.rs",
+        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_node.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_algebra.rs",
+        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_algebra.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_diagnostic.rs",
+        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_diagnostic.rs"
+      }
+    ],
+    driver_rel: "dag/tools/self_host_body_producer_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/manual/structured_body_dispatch.dag",
+        function: "structured_body_dispatch_accepts_transform_call"
+      }
+    ]
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/03_ingest.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_03_ingest_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/03_normalize.dag",
+    shim_lib_rel: "dag/tools/self_host_03_normalize_shims/lib.rs",
+    shim_writes: [
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_algebra.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_collection.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_grammar.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_diagnostic.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_node.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_compilers_sugar.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_compiler_body_lowering_fold.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_compiler_normalized_tree.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_extdeps_languages_dag.rs",
+        source_rel: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
+      }
+    ],
+    driver_rel: "dag/tools/self_host_03_normalize_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/03_resolve.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_03_resolve_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_03_RESOLVE_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/04_infer.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_04_infer_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/compiler/pipeline/infer_stage_test.dag",
+        function: "pipeline_infer_add_fixture_relationship_green"
+      }
+    ]
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/07_target_carriers.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_target_carriers_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/manual/target_carriers_fidelity_test.dag",
+        function: "target_carriers_declared_loss_fidelity_holds"
+      }
+    ]
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/discovery_enumeration.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_discovery_enumeration_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/discovery_enumeration_test.dag",
+        function: "discovery_enumeration_unified_claim_arm_modules_holds"
+      }
+    ]
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/materialization_carriers.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_materialization_carriers_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_MATERIALIZATION_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/parse_engine_hooks.dag",
+    shim_lib_rel: "dag/tools/self_host_parse_engine_hooks_shims/lib.rs",
+    shim_writes: [
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_node.rs",
+        source_rel: "dag/tools/self_host_parse_engine_hooks_shims/v2_std_node.rs"
+      }
+    ],
+    driver_rel: "dag/tools/self_host_parse_engine_hooks_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/parse_engine_hooks_test.dag",
+        function: "parse_engine_hooks_symbols_match_grammar_productions"
+      }
+    ]
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/program_assembly.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_program_assembly_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/program_partition.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_program_partition_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_PROGRAM_PARTITION_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/source_authority.dag",
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: "dag/tools/self_host_source_authority_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_SOURCE_AUTHORITY_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: []
+  },
+  ModuleBehavioralTransportConfig {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    shim_lib_rel: "dag/tools/self_host_use_site_verdict_shims/lib.rs",
+    shim_writes: [
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_node.rs",
+        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_node.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_algebra.rs",
+        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_algebra.rs"
+      },
+      CuratedSeedLinkedShimWrite {
+        dest_rel: "v2_std_collection.rs",
+        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_collection.rs"
+      }
+    ],
+    driver_rel: "dag/tools/self_host_use_site_verdict_shims/witness_main.rs",
+    pass_marker: "SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS",
+    claim_runs: [
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/use_site_verdict_test.dag",
+        function: "use_site_verdict_round_trips_every_variant"
+      },
+      CuratedSeedLinkedClaimRun {
+        entry_rel: "src/v2/test/claim/use_site_verdict_test.dag",
+        function: "use_site_verdict_absent_edge_is_distinguishable_from_unclassified"
+      }
+    ]
+  }
+]
+
+fn module_behavioral_transport_config_if_matches(
+  module_path: String,
+  cfg: ModuleBehavioralTransportConfig
+) -> Optional<ModuleBehavioralTransportConfig> {
+  if cfg.module_path == module_path {
+    optional_present(value: cfg)
+  } else {
+    optional_absent()
+  }
+}
+
+fn module_behavioral_transport_config_for(module_path: String) -> Optional<ModuleBehavioralTransportConfig> {
+  fold_list(
+    xs: compiler_module_behavioral_transport_roster,
+    empty: Absent,
+    cons: fn(acc, cfg) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => module_behavioral_transport_config_if_matches(module_path: module_path, cfg: cfg)
+      }
+    }
+  )
+}
+
+fn compiler_module_behavioral_receipt_for(module_path: String) -> Bool {
+  match module_behavioral_transport_config_for(module_path: module_path) {
+    Present { value: cfg } => cssl_seed_linked_behavioral_receipt(
+      source_rel: cfg.module_path,
+      shim_lib_rel: cfg.shim_lib_rel,
+      shim_writes: cfg.shim_writes,
+      driver_rel: cfg.driver_rel,
+      pass_marker: cfg.pass_marker,
+      claim_runs: cfg.claim_runs
+    )
+    Absent => false
+  }
+}
