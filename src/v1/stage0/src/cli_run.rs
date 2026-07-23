@@ -13975,6 +13975,13 @@ fn run_discovery_corpus_with_options_inner(
         &index,
         &diff_edits,
     );
+    // Derive every leg for the WHOLE roster here, above the width dispatch, while this
+    // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
+    // of rows, so priming inside `run_discovery_rows` would build one interpreter context
+    // per worker — and width is adaptive, so "n is small here" is not a fact that stays
+    // true (§6). One build covers the run; workers only read the process-wide memo.
+    prime_witness_execution_legs(rows.iter().map(|row| row.entry.as_str()));
+
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
     return match width_policy {
