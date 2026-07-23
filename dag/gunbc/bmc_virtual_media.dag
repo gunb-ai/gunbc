@@ -25,6 +25,8 @@ import extdeps.bmc.virtual_media {
   ConfigfsGadgetParams,
   ConfigfsGadgetTransport,
 }
+import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
+import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
 type BmcVirtualMediaPlan {
   bmc_host: NonEmptyStr
@@ -49,8 +51,8 @@ data srv4_virtual_media_intent: VirtualMediaIntent = VirtualMediaIntent {
 }
 
 data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
-  nbd_server_host: "192.168.1.185",
-  nbd_port: 10809,
+  nbd_server_host: srv1_host_lan_endpoint.address,
+  nbd_port: srv3_nbd_proxy_local_port,
   export_name: "srv4iso",
   nbd_device: "/dev/nbd0",
   udc_port: "1e6a0000.usb-vhub:p3",

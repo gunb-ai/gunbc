@@ -9,6 +9,8 @@ import gunbc.bmc_virtual_media {
   srv4_vm_gadget_setup_script,
   srv4_vm_gadget_setup_ops,
 }
+import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
+import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
 fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> String {
   fold(ops, init: "", f: (acc, op) => match op {
@@ -23,14 +25,23 @@ fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> Strin
 
 test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
   let cfg = srv4_nbd_server_config_text()
-  string_contains(s: cfg, pattern: "port = 10809")
+  string_contains(s: cfg, pattern: concat("port = ", to_string(srv3_nbd_proxy_local_port)))
     && string_contains(s: cfg, pattern: "[srv4iso]")
     && string_contains(s: cfg, pattern: "exportname = /var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso")
     && string_contains(s: cfg, pattern: "readonly = true")
 }
 
 test fn srv4_nbd_client_attaches_named_export() -> Bool {
-  string_contains(s: srv4_nbd_client_attach_command_text(), pattern: "'nbd-client' '-N' 'srv4iso' '192.168.1.185' '10809' '/dev/nbd0'")
+  string_contains(
+    s: srv4_nbd_client_attach_command_text(),
+    pattern: concat(
+      "'nbd-client' '-N' 'srv4iso' '",
+      concat(
+        srv1_host_lan_endpoint.address as String,
+        concat("' '", concat(to_string(srv3_nbd_proxy_local_port), "' '/dev/nbd0'")),
+      ),
+    ),
+  )
 }
 
 test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
