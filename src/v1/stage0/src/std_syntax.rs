@@ -60,6 +60,7 @@ pub enum BodyKind {
     NoBody,
     ServiceBody,
     ResourceBody,
+    AliasBody,
 }
 
 #[derive(
@@ -200,6 +201,8 @@ pub struct NoBody;
 pub struct ServiceBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResourceBody;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AliasBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FuncForm;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
