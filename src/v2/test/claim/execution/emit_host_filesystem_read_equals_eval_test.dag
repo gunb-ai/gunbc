@@ -1,5 +1,6 @@
 module v2.test.execution.emit_host_filesystem_read_equals_eval
 
+import extdeps.filesystem.filesystem_io
 import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached_with_run_args }
 import v2.compiler.eval { inputs_root_only }
 import v2.compiler.target_carriers { source_medium }

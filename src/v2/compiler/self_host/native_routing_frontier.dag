@@ -94,10 +94,15 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     family: "classical_not_ingested",
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
+  ),
+  retained_parity_open(
+    family: "filesystem_read",
+    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    f: "emit_host_filesystem_read_equals_eval_holds"
   )
 ]
 
-data native_routing_frontier_family_count_expected: Int = 9
+data native_routing_frontier_family_count_expected: Int = 10
 
 fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {

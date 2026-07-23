@@ -1,0 +1,42 @@
+module v2.lens.emitted_binary_effect_confinement
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { fold_list }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  HostRuntimeRowPresent,
+  TargetEmitHostRuntimeRow,
+  target_emit_host_runtime_row_unconfigured
+}
+
+data emitted_binary_effect_confinement_law: String = "Construction-time refusal gating which NEW witness families (neat-carp-312, Task 4) may build a real host-effecting HostTransportDescriptor for the emitted-native execution path. meta_exec_confinement.dag scans the .dag IMPORT GRAPH and has zero visibility into text baked into a generated Rust src/main.rs; this lens instead gates the .dag-level CONSTRUCTION SITE that builds that text, before any Rust is emitted. Refusal reuses the existing v2.std.host_transport.TargetEmitHostRuntimeRow sum type (HostRuntimeRowPresent | HostRuntimeRowAbsent) rather than inventing a second refusal carrier: a non-rostered family gets HostRuntimeRowAbsent, and configured_emit_host_runtime_row_from_target_row already fails closed on Absent with a typed, located diagnostic (emit_host_runtime_row_unconfigured_diagnostic) — no panic, no string-matching. Scope is deliberately narrow: only families landed under this lane are enrolled; the 9 pre-existing families (add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) predate this wall and are out of this lane's remit — widening the roster to retrofit them is a separate, deliberate decision, not a side effect of this wall existing. No escape hatch: emitted_family_effect_admitted is a pure roster membership check with no override/bypass parameter."
+
+data emitted_effect_family_roster: List<String> = [
+  "filesystem_read_family",
+  "shell_exec_run_family"
+]
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) { acc || (s == target) }
+  )
+}
+
+fn emitted_family_effect_admitted(family: String) -> Bool {
+  list_contains_str(xs: emitted_effect_family_roster, target: family)
+}
+
+fn emitted_family_runtime_row_gated(
+  family: String,
+  present: EmitHostRuntimeRow
+) -> TargetEmitHostRuntimeRow {
+  if emitted_family_effect_admitted(family: family) {
+    HostRuntimeRowPresent { row: present }
+  } else {
+    target_emit_host_runtime_row_unconfigured
+  }
+}

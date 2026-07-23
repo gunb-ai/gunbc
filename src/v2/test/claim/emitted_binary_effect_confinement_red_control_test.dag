@@ -1,0 +1,57 @@
+module v2.test.claim.emitted_binary_effect_confinement_red_control
+
+import v2.lens.emitted_binary_effect_confinement {
+  emitted_family_effect_admitted,
+  emitted_family_runtime_row_gated
+}
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent,
+  HostTransportDescriptor,
+  TargetEmitHostRuntimeRow
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED control (neat-carp-312): a synthetic family name that was never added to emitted_effect_family_roster attempts to build a TargetEmitHostRuntimeRow via the exact same construction-site call (emitted_family_runtime_row_gated) the two landed families (rust_filesystem_read_family_runtime_row, rust_shell_exec_run_family_runtime_row) actually call in rust_test.dag -- this is the real gated code path, not a re-implementation of the check. A synthetic HostTransportDescriptor stands in for a real one since the wall fires on the family-name lookup alone and never inspects transport contents (fail-closed on identity, not on payload shape)."
+
+fn synthetic_unrostered_transport() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^emitted_binary_effect_confinement_red_control_synthetic_identity,
+    workspace: [],
+    build: [],
+    run: ProcessInvocation {
+      program: HostToolProgram { executable: "true" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn synthetic_unrostered_row() -> TargetEmitHostRuntimeRow {
+  emitted_family_runtime_row_gated(
+    family: "not_a_real_registered_family",
+    present: EmitHostRuntimeRow {
+      transport: synthetic_unrostered_transport(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  )
+}
+
+test fn emitted_family_effect_admitted_refuses_unrostered_family() -> Bool {
+  emitted_family_effect_admitted(family: "not_a_real_registered_family") == false
+}
+
+test fn emitted_family_runtime_row_gated_refuses_unrostered_family() -> Bool {
+  match synthetic_unrostered_row() {
+    HostRuntimeRowAbsent => true
+    HostRuntimeRowPresent { row: _ } => false
+  }
+}
+
+test fn emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family() -> Bool {
+  emitted_family_effect_admitted(family: "filesystem_read_family")
+    && emitted_family_effect_admitted(family: "shell_exec_run_family")
+}
