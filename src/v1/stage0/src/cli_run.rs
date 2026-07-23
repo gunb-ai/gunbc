@@ -21856,6 +21856,236 @@ mod pool_heads_oracle_tests {
     }
 }
 
+// ── CommitWitnessClaim roster resolvability (PR-time detector) ─────────────────────────────────
+//
+// Every explicit `CommitWitnessClaim` row on the GithubActionsCiJob surface must resolve its
+// entry module and name every `check_fn` — the #7060 class (witness moved, roster row stale →
+// `no main function found` on every main CI run until #7079). Host-fed; dissolve-on: the
+// `.dag` authority evaluates `project_ci_floor_witness_entries` without this re-parse once
+// fn-body reflection can read the roster at compile time.
+
+const COMMIT_WORKFLOW_ENTRY: &str = "dag/gunbc/commit_workflow.dag";
+const CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN: &str = "ci_floor_commit_witness_claim_schedule";
+
+fn schedule_witness_pairs_from_value(
+    ctx: &v1_interpreter::InterpContext,
+    val: &v1_interpreter::Value,
+) -> Result<Vec<(String, String)>, String> {
+    let v1_interpreter::Value::List(items) = val else {
+        return Err(format!(
+            "{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN} did not return a List: {val:?}"
+        ));
+    };
+    let mut pairs = Vec::new();
+    for item in items.iter() {
+        let v1_interpreter::Value::Record { fields, .. } = item else {
+            return Err(format!(
+                "{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN} element is not a Record: {item:?}"
+            ));
+        };
+        let entry = commit_witness_field_str(ctx, fields, "entry")?;
+        let function = commit_witness_field_str(ctx, fields, "function")?;
+        pairs.push((entry, function));
+    }
+    Ok(pairs)
+}
+
+fn commit_witness_field_str(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Result<String, String> {
+    match ctx.field(fields, name) {
+        Some(v1_interpreter::Value::Str(s)) => Ok(s.clone()),
+        other => Err(format!("{name} not a String: {other:?}")),
+    }
+}
+
+fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let val = v1_interpreter::run_in_context(&ctx, CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN, true)
+        .map_err(|e| format!("{CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN}: {e}"))?;
+    schedule_witness_pairs_from_value(&ctx, &val)
+}
+
+pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let mut entry_cache = std::collections::HashMap::new();
+    matches!(
+        commit_witness_claim_pair_resolvability_with_index(
+            &index,
+            &roots,
+            entry,
+            function,
+            &mut entry_cache,
+        ),
+        CommitWitnessClaimPairResolvability::Resolvable
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CommitWitnessClaimPairResolvability {
+    Resolvable,
+    EntryMissing { detail: String },
+    EntryResolveFailed { detail: String },
+    FunctionNotFound,
+}
+
+#[derive(Debug, Clone)]
+enum RosterEntryRegistryCache {
+    EntryMissing { detail: String },
+    EntryResolveFailed { detail: String },
+    Functions(std::collections::HashSet<String>),
+}
+
+fn roster_entry_registry_cache(
+    index: &MultiEntryIndex,
+    roots: &[String],
+    entry: &str,
+) -> RosterEntryRegistryCache {
+    let entry_path = match resolve_entry_file_under_roots(roots, entry) {
+        Ok(p) => p,
+        Err(detail) => {
+            return RosterEntryRegistryCache::EntryMissing { detail };
+        }
+    };
+    let (graph, source_indices) = match resolve_entry_with_index(index, &entry_path) {
+        Ok(r) => r,
+        Err(detail) => {
+            return RosterEntryRegistryCache::EntryResolveFailed { detail };
+        }
+    };
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    RosterEntryRegistryCache::Functions(ctx.item_registry.keys().cloned().collect())
+}
+
+fn commit_witness_claim_pair_resolvability_with_index(
+    index: &MultiEntryIndex,
+    roots: &[String],
+    entry: &str,
+    function: &str,
+    entry_cache: &mut std::collections::HashMap<String, RosterEntryRegistryCache>,
+) -> CommitWitnessClaimPairResolvability {
+    let cached = entry_cache
+        .entry(entry.to_string())
+        .or_insert_with(|| roster_entry_registry_cache(index, roots, entry));
+    match cached {
+        RosterEntryRegistryCache::EntryMissing { detail } => {
+            CommitWitnessClaimPairResolvability::EntryMissing {
+                detail: detail.clone(),
+            }
+        }
+        RosterEntryRegistryCache::EntryResolveFailed { detail } => {
+            CommitWitnessClaimPairResolvability::EntryResolveFailed {
+                detail: detail.clone(),
+            }
+        }
+        RosterEntryRegistryCache::Functions(names) => {
+            if names.contains(function) {
+                CommitWitnessClaimPairResolvability::Resolvable
+            } else {
+                CommitWitnessClaimPairResolvability::FunctionNotFound
+            }
+        }
+    }
+}
+
+pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
+    let Ok(pairs) = ci_floor_commit_witness_claim_pairs() else {
+        return vec![(
+            "dag/gunbc/commit_workflow.dag".to_string(),
+            CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN.to_string(),
+            "schedule_projection_failed".to_string(),
+        )];
+    };
+    let roots = witness_layer_roots();
+    let index = build_multi_entry_index(&roots);
+    let mut entry_cache = std::collections::HashMap::new();
+    let mut defects = Vec::new();
+    for (entry, function) in pairs {
+        let cause = match commit_witness_claim_pair_resolvability_with_index(
+            &index,
+            &roots,
+            &entry,
+            &function,
+            &mut entry_cache,
+        ) {
+            CommitWitnessClaimPairResolvability::Resolvable => continue,
+            CommitWitnessClaimPairResolvability::EntryMissing { detail } => {
+                format!("entry_missing:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::EntryResolveFailed { detail } => {
+                format!("entry_resolve_failed:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::FunctionNotFound => {
+                "function_not_found".to_string()
+            }
+        };
+        defects.push((entry, function, cause));
+    }
+    defects
+}
+
+pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
+    let defects = commit_witness_claim_roster_defects();
+    for (entry, function, cause) in &defects {
+        eprintln!(
+            "COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL count={} entry={entry} function={function} cause={cause}",
+            defects.len()
+        );
+    }
+    defects.len() as i64
+}
+
+pub fn commit_witness_claim_roster_holds() -> bool {
+    commit_witness_claim_roster_unresolvable_count() == 0
+}
+
+pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
+    let fixture = vec![(
+        "m.dag".to_string(),
+        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
+            .to_string(),
+    )];
+    nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
+}
+
+pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
+    let fixture = vec![(
+        "m.dag".to_string(),
+        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n"
+            .to_string(),
+    )];
+    !nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
+}
+
+pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
+    !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
+}
+
+pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
+    let fixture = vec![(
+        "synthetic_red_fixture.dag".to_string(),
+        "module synthetic_red_fixture\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
+            .to_string(),
+    )];
+    let sites = nfr_residue_sites(&fixture);
+    let site = "synthetic_red_fixture.dag::f";
+    sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
@@ -21880,6 +22110,16 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
     "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
+    // 2026-07-23 backfill: #7088 (CI fail-fast cheap-gate early batch) landed two sites
+    // unrostered on main — same masking class as the dated blocks below (the landing PR's
+    // affected-set selection predict-skipped the corpus-read nfr witness), surfaced on the
+    // first post-#7085 always-on PR-time receipt (PR #7110's floor) and confirmed by worktree
+    // bisect: unrostered_count 0 at #7092 -> 2 at #7088. Both are structural equality with an
+    // off-variant `_ =>` arm (Gate membership/enrollment tests), siblings to the *_eq rows in
+    // the 2026-07-18 block; dissolve with derived equality from inhabitance (dag/std/algebra,
+    // DESIGN §3/§4) or with #7088's own cheap-gate membership fold migration.
+    "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",
+    "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
     // 2026-07-19 backfill: #6857 (effect-reach census lens) landed this site unrostered on
     // main — same masking class as the 2026-07-18 block above (affected-set selection
     // predict-skipped the corpus-read nfr witness for its landing diff; surfaced here when

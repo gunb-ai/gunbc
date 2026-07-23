@@ -1004,7 +1004,7 @@ fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let form = find_item_form(forms: dag_syntax_spec.item_forms, keyword: kw)
   match form {
     Present { value: f } => parse_item_by_form(tokens: tokens, ctx: ctx, form: f)
-    Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
+    Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
   }
 }
 
@@ -1080,6 +1080,7 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: ItemForm) ->
     ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    AliasBody => parse_alias_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     NoBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
@@ -2971,6 +2972,44 @@ fn parse_data_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "data" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_data_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
+}
+
+fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens)
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let name = r.name
+  let name_span = r.span
+  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect(tokens: r.tokens, expected: ExpectEq)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+
+  let r = parse_dotted_ident(tokens: r.tokens)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let target_path = r.name
+
+  let target_prop = make_field_init_node(
+    name: "namespace_alias_target",
+    value: make_expr_node(
+      expr_data: ExprLiteral { value: LitStr { value: target_path } },
+      children: [],
+      inferred: none,
+      span: r.span
+    ),
+    span: start_span,
+    name_span: no_span()
+  )
+
+  let item = Node {
+    name: name, span: start_span, ident_span: Present { value: name_span }, children: [],
+    params: [], inferred: none, return_cardinality: Required, uses: [],
+    body: none, connective: NoConnective, transport: none,
+    properties: [target_prop], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+  ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: ctx, err: none }
 }
 
 fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {

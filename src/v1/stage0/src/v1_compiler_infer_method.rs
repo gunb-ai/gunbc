@@ -391,6 +391,36 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "commit_witness_claim_roster_unresolvable_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "commit_witness_claim_pair_resolvable".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_wildcard_red_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_total_fold_green_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_roster_red_fixture_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_synthetic_unrostered_red_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "complexity_linearity_syntactic_finding_count".to_string(),
             int_type(),
         );
