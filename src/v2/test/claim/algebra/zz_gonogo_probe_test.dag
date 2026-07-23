@@ -1,0 +1,24 @@
+module v2.test.claim.algebra.zz_gonogo_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type SymbolPath = FreeMonoid<Symbol>
+
+fn two_elems() -> SymbolPath {
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Empty } }
+}
+
+fn snd_present(path: SymbolPath) -> Bool {
+  match path {
+    Empty => false
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+  }
+}
+
+test fn tail_rematch_gonogo() -> Bool {
+  snd_present(path: two_elems()) == true
+}
