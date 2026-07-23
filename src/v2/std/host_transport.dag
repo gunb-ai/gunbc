@@ -1,6 +1,6 @@
 module v2.std.host_transport
 
-import v2.std.algebra { length, contains }
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.diagnostic {
@@ -13,7 +13,6 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node { Node, Symbol }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
@@ -128,22 +127,13 @@ fn configured_emit_host_runtime_row_from_target_row(
   }
 }
 
-data emitted_effect_family_roster: List<String> = [
-  "filesystem_read_family",
-  "shell_exec_run_family"
-]
-
-fn emitted_family_effect_admitted(family: String) -> Bool {
-  contains(xs: emitted_effect_family_roster, item: family, eq: fn(a, b) { a == b })
-}
+type EmittedEffectFamily
+  = FilesystemReadFamily
+  | ShellExecRunFamily
 
 fn emitted_family_runtime_row_gated(
-  family: String,
+  family: EmittedEffectFamily,
   present: EmitHostRuntimeRow
 ) -> TargetEmitHostRuntimeRow {
-  if emitted_family_effect_admitted(family: family) {
-    HostRuntimeRowPresent { row: present }
-  } else {
-    target_emit_host_runtime_row_unconfigured
-  }
+  HostRuntimeRowPresent { row: present }
 }
