@@ -496,44 +496,60 @@ type AliasApplyRowSplit {
   conflict: Optional<String>
 }
 
+type AliasApplyConflictScan {
+  seen: Map<String, String>
+  conflict: Optional<String>
+}
+
 fn alias_apply_rows_conflict(rows: List<WalkTargetAliasPlanRow>) -> Optional<String> {
-  fold(
+  let scanned = fold(
     rows,
-    init: optional_absent(),
+    init: AliasApplyConflictScan { seen: empty_map(), conflict: optional_absent() },
     f: fn(acc, row) {
-      match acc {
+      match acc.conflict {
         Present { value: _ } => acc
         Absent =>
-          fold(
-            rows,
-            init: optional_absent(),
-            f: fn(inner, other) {
-              match inner {
-                Present { value: _ } => inner
-                Absent =>
-                  if row.key.binding == other.key.binding
-                    && row.pre_flip_qualified_path != other.pre_flip_qualified_path {
-                    optional_present(
-                      value: concat(
-                        "ALIAS_APPLY_CONFLICT: binding=",
+          match v2.std.collection.map_get(acc.seen, row.key.binding) {
+            Accepted { value: Present { value: prior_target }, diagnostics: _ } =>
+              if prior_target == row.pre_flip_qualified_path {
+                acc
+              } else {
+                AliasApplyConflictScan {
+                  seen: acc.seen,
+                  conflict: optional_present(
+                    value: concat(
+                      "ALIAS_APPLY_CONFLICT: binding=",
+                      concat(
+                        row.key.binding,
                         concat(
-                          row.key.binding,
-                          concat(
-                            " has divergent targets ",
-                            concat(row.pre_flip_qualified_path, concat(" vs ", other.pre_flip_qualified_path))
-                          )
+                          " has divergent targets ",
+                          concat(prior_target, concat(" vs ", row.pre_flip_qualified_path))
                         )
                       )
                     )
-                  } else {
-                    optional_absent()
-                  }
+                  )
+                }
               }
-            }
-          )
+            Accepted { value: Absent, diagnostics: _ } =>
+              AliasApplyConflictScan {
+                seen: map_insert(acc.seen, row.key.binding, row.pre_flip_qualified_path),
+                conflict: optional_absent()
+              }
+            Rejected { diagnostics: _ } =>
+              AliasApplyConflictScan {
+                seen: acc.seen,
+                conflict: optional_present(
+                  value: concat(
+                    "ALIAS_APPLY_CONFLICT: binding-map lookup rejected for binding=",
+                    row.key.binding
+                  )
+                )
+              }
+          }
       }
     }
   )
+  scanned.conflict
 }
 
 fn alias_apply_split_rows_by_presence(
