@@ -232,3 +232,35 @@ here as they land.
 
 **Process lesson (workflow lane, ts-wf-node-schema):** rank-1 was priced without checking that
 its fix had already merged — receipt freshness applies at the DIAGNOSIS grain, not only dispatch.
+
+### 9.1 Pi-bench completion (2026-07-23, later): the pooling-footprint trade + four new rows
+
+The full Pi-vs-srvN paired decomposition landed after the section-9 correction and both
+qualifies it and extends it:
+
+- **The pooled-child win has a memory cliff.** On the Pi, pooled 73m ≈ spawn-sum 66m —
+  the win vanishes because the pooled process's UNIONED closure (~2.7GB) thrashes where
+  12 small sequential children (~700MB each) do not. The same cliff exists inside 16GiB
+  slot cgroups under fleet pressure: #7122's own post-rework acceptance corroborates
+  (pooled cheap gates 3.08m and ingest 6.90m vs idle-srv1 counterfactuals of ~1.6/~1.8 —
+  the gap is slot contention). §9's "pooled child now, low risk" is QUALIFIED: pooling
+  pays fully only alongside per-worker index shrink; under a capped slot, size pools to
+  the slot (K sub-pools) rather than one union.
+- **Teardown tail (~2.5–3.1 min, twice-confirmed):** the floor process spends minutes
+  freeing its own ~16GB retained store at exit (swap grows during Drop on the Pi;
+  #7122's R4 row independently shows "+3.1m post-b7 executor teardown inside ci_job").
+  Classic fix shape: end-of-floor fast-exit after receipts flush (no full Drop of a
+  store the process is about to abandon) — priced ~2.5–3 min, near-zero risk.
+- **Selection-control step: 4m51s with no audit row** — a real post-floor lever this
+  ledger never carried (its 15m cap was treated as envelope; the measured cost was not).
+- **Whole-tree baselines:** strict resolve 23m48s / 31.4GB on srv (~7x compile-clean's
+  3.5m / 5.9GB); compile-clean is 86% reconcile. Infeasible outright on the Pi.
+- **A standing red flag, not a lever (§5 class — two enforcement surfaces disagree):**
+  bare `gunbc compile` on the CI-green tree exits with 2,652 unlisted-import errors —
+  the floor receipt path tolerates hygiene the CLI enforces. Same class as the
+  fleet_converge_emit standalone-closure failures and the import-strip Class-B
+  pool-coincidence finding; needs an owner and a single hygiene authority, not a
+  per-surface tolerance.
+- **Bench heuristic worth keeping:** Pi/srv stretch ~8x = CPU-shaped; 25–78x =
+  memory-shaped. This single signal killed the ingest-bin myth (sub-second on the Pi)
+  and exposed the pooling/footprint trade.

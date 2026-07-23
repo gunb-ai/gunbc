@@ -85,8 +85,10 @@ reverted always-on resolve cache are both early receipts of the same coupling.
    split as the 5s law. Until this exists, every other fix leaks.
 2. **The identity authority** — ComputationIdentity over resolve/index demand (the
    designed duplicate-work lane): one authority, five grains become derivations.
-   Interim instances that are already priced: pooled-per-gate child (13–17 min,
-   measured), the #7122 residuals.
+   Interim instances that are already priced: pooled-per-gate child (13–17 min
+   measured idle; QUALIFIED by the Pi bench — the win has a memory cliff under
+   capped slots, so it pays fully only alongside per-worker index shrink), the
+   #7122 residuals.
 3. **The retention lane** — M2 eviction / W3 resolved-graph store, so the cap stops
    eating wins; and the honest cap conversation happens per-run (refuse at the cap,
    never crawl — the governor's terminal arm).
