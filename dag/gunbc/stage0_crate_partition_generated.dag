@@ -38,6 +38,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       modules: [
         "std_content_hash",
         "std_coercion",
+        "std_currency",
         "std_decl_ref",
         "std_disposition",
         "std_error_primitives",

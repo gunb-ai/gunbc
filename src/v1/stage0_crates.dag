@@ -49,7 +49,8 @@ fn stage0_crate_allow_block() -> String {
     "    suspicious_double_ref_op,",
     "    clippy::all",
     ")]",
-    "#![deny(unreachable_patterns)]"
+    "#![deny(unreachable_patterns)]",
+    "#![recursion_limit = \"256\"]"
   ] |> join(separator: "\n")
 }
 

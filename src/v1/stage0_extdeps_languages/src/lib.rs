@@ -16,6 +16,7 @@
     clippy::all
 )]
 #![deny(unreachable_patterns)]
+#![recursion_limit = "256"]
 
 pub use v1_stage0_extdeps_base::*;
 pub use v1_stage0_runtime::*;
