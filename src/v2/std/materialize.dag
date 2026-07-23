@@ -3,6 +3,7 @@ module v2.std.materialize
 import std.types { ContentHash }
 import v2.std.node { Node, content_hash, node_subtree_nodes }
 import std.realization { Materialization, Recompute, Memoize, Share }
+import std.computation_identity { ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingConcept, identity_permits_share }
 import v2.std.algebra { any, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -93,4 +94,18 @@ fn materialize_redundant_computation_count(root: Node) -> Int {
 
 fn materialize_has_duplicate_computation(root: Node) -> Bool {
   materialize_redundant_computation_count(root: root) > 0
+}
+
+data materialize_identity_grade_note: String = "First consumer of std.computation_identity (census R1): a Share verdict from this module is StructurallyIdentical-grade evidence — equal occurrence-independent content_hash — and nothing weaker. Verdicts this module cannot ground (a peer equal only under normalization, or only extensionally) are IdentityUnknown with a located cause, never silently Recompute-as-distinct: the lattice arm names the missing analysis."
+
+fn materialize_share_identity_grade() -> ComputationIdentity {
+  StructurallyIdentical
+}
+
+fn materialize_share_grade_permits_share() -> Bool {
+  identity_permits_share(ci: materialize_share_identity_grade())
+}
+
+fn materialize_ungrounded_identity(detail: String) -> ComputationIdentity {
+  IdentityUnknown { cause: MissingConcept { detail: detail } }
 }
