@@ -1,0 +1,102 @@
+module gunbc.host_axis_caps
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+  membership_effects,
+  EffectsOrRefusal,
+  EffectsReady,
+  ApplyRefused,
+  membership_upsert_count,
+  membership_teardown_count,
+  membership_refusal_count,
+}
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+}
+
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->Upsert, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberTeardownRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->Upsert of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+
+type CapMember {
+  dropin_path: NonEmptyStr
+  content: String
+}
+
+data caps_managed_dropin_paths: List<NonEmptyStr> = [
+  gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
+  gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
+]
+
+fn cap_is_managed_path(p: NonEmptyStr) -> Bool {
+  fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as String == p as String))
+}
+
+fn cap_member_key(m: CapMember) -> NonEmptyStr {
+  m.dropin_path
+}
+
+fn cap_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn cap_member_value_eq(a: CapMember, b: CapMember) -> Bool {
+  a.content == b.content
+}
+
+fn cap_member_ownership(m: CapMember) -> Ownership? {
+  if cap_is_managed_path(p: m.dropin_path) {
+    Present { value: Owned }
+  } else {
+    Present { value: Ensured }
+  }
+}
+
+fn cap_dropin_content(property: NonEmptyStr, bytes_value: NonEmptyStr) -> String {
+  join(["[Service]\n", property as String, "=", bytes_value as String, "\n"], "")
+}
+
+fn desired_cap_member(dropin_path: NonEmptyStr, property: NonEmptyStr, bytes_value: NonEmptyStr) -> CapMember {
+  CapMember {
+    dropin_path: dropin_path,
+    content: cap_dropin_content(property: property, bytes_value: bytes_value),
+  }
+}
+
+fn cap_upsert_script(m: CapMember) -> String {
+  join([
+    "printf '%s' '", m.content, "' > ", m.dropin_path as String, "\n",
+    "systemctl daemon-reload\n",
+  ], "")
+}
+
+fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: cap_member_key,
+    key_eq: cap_member_key_eq,
+    value_eq: cap_member_value_eq,
+    ownership_of: cap_member_ownership,
+  )
+}
+
+fn caps_effects(desired: List<CapMember>, observed: List<CapMember>) -> EffectsOrRefusal<CapMember> {
+  membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_upsert_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_upsert_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_teardown_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
