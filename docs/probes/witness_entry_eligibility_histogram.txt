@@ -1,4 +1,4 @@
-# witness_entry_eligibility_histogram stamp=2026-07-23T17:05Z total_entries=876
+# witness_entry_eligibility_histogram stamp=2026-07-23T17:07Z total_entries=876
 disposition	reason	count
 InterpretedRetained	BulkFlipPendingCensusIncomplete	698
 EmitIneligible	OfflineLocalRecipe	82
