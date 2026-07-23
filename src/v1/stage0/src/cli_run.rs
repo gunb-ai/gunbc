@@ -5622,6 +5622,48 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
     index.entry_closure_sources.borrow().len()
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory-attribution probe accessors (measurement instruments, NOT policy —
+// consumed by `measure_discovery_retention` and the env-gated experiment arms
+// in `index_schedule_entry_completed`). Un-gated pub so the release probe bin
+// can drive them; they read or drop pure caches only (recompute-on-miss is the
+// correctness license, same as schedule-derived eviction).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Drop every memoized resolved graph (the per-subject ReferenceTier). Returns the
+/// count dropped. Pure-cache clear: a later same-subject demand recomputes.
+pub fn probe_clear_resolved_graph_memo(index: &MultiEntryIndex) -> usize {
+    let mut memo = index.resolved_graph_memo.borrow_mut();
+    let n = memo.len();
+    memo.clear();
+    n
+}
+
+/// Drop every cached per-entry closure source vector. Returns the count dropped.
+pub fn probe_clear_entry_closure_sources(index: &MultiEntryIndex) -> usize {
+    let mut sources = index.entry_closure_sources.borrow_mut();
+    let n = sources.len();
+    sources.clear();
+    n
+}
+
+/// The entry's import closure over the prebuilt module-graph adjacency (repo-relative
+/// paths) — the same walk schedule-retention arming uses, exposed for the probe's
+/// refcount-trajectory report.
+pub fn probe_entry_import_closure(index: &MultiEntryIndex, entry_path: &str) -> Vec<String> {
+    import_closure_live_paths_with_facts(entry_path, &index.module_graph_facts)
+}
+
+/// Current VmRSS from /proc/self/status (bytes) — the live-resident sibling of
+/// `peak_rss_vhwm_bytes`, so streamed receipts can distinguish a climbing working
+/// set from a historical peak.
+pub fn current_rss_vmrss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmRSS"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.both_closure_edges.borrow().is_some()
@@ -6288,6 +6330,46 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
              schedule_evictions will be 0 BY CONSTRUCTION; unset the env to restore eviction."
         );
     }
+    // Arming receipt: the refcount distribution IS the eviction-power prediction —
+    // a module whose refcount equals the entry count frees only after the LAST
+    // entry, so `modules_at_full` (and the high percentiles) bound what schedule
+    // eviction can ever reclaim mid-run on this schedule. Printed at arm time so
+    // the bound is in the log BEFORE any witness runs (a timed-out run still
+    // carries it), turning the shared-closure-domination hypothesis into a
+    // measured fact per run.
+    {
+        let entries = per_entry.len();
+        let mut rc: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut closure_len_sum: usize = 0;
+        for (_, names) in &per_entry {
+            closure_len_sum += names.len();
+            for name in names {
+                *rc.entry(name.as_str()).or_insert(0) += 1;
+            }
+        }
+        let modules = rc.len();
+        let mut counts: Vec<usize> = rc.values().copied().collect();
+        counts.sort_unstable();
+        let pct = |p: usize| -> usize {
+            if counts.is_empty() {
+                0
+            } else {
+                counts[(counts.len().saturating_sub(1)) * p / 100]
+            }
+        };
+        let rc_max = counts.last().copied().unwrap_or(0);
+        let modules_at_full = counts.iter().filter(|&&c| c == entries && entries > 0).count();
+        let modules_at_max = counts.iter().filter(|&&c| c == rc_max && rc_max > 0).count();
+        eprintln!(
+            "[floor-drain] schedule_arming: entries={entries} modules={modules} \
+             closure_avg={} rc_p50={} rc_p90={} rc_max={rc_max} \
+             modules_at_full={modules_at_full} modules_at_rc_max={modules_at_max} \
+             evict_enabled={evict_enabled}",
+            if entries == 0 { 0 } else { closure_len_sum / entries },
+            pct(50),
+            pct(90),
+        );
+    }
     *index.schedule_retention.borrow_mut() =
         Some(ScheduleRetention::armed(per_entry, evict_enabled));
 }
@@ -6311,6 +6393,23 @@ fn index_record_schedule_module(
 /// normalize-diag, ownership-diag, source-hash). Heads are never touched. A schedule
 /// underflow propagates as a typed, located refusal.
 fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Result<(), String> {
+    // Memory-attribution experiment arms (measurement instruments, default OFF):
+    // drop the named pure cache at every entry boundary so a run's peak isolates
+    // that cache's contribution. GUNBC_EXPERIMENT_DROP_RESOLVED_MEMO=1 clears the
+    // per-subject resolved-graph ReferenceTier (the structure schedule-retention
+    // eviction never touches — and the Rc holder that pins every closure module's
+    // TypedModule env web even after its typed_module_cache entry is removed).
+    // GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES=1 clears the per-entry closure source
+    // vectors. Both are recompute-on-miss caches, so verdicts are unaffected.
+    if std::env::var("GUNBC_EXPERIMENT_DROP_RESOLVED_MEMO").ok().as_deref() == Some("1") {
+        let n = probe_clear_resolved_graph_memo(index);
+        if n > 0 && floor_verbose() {
+            eprintln!("[floor-drain] experiment: dropped resolved_graph_memo entries={n} at entry boundary");
+        }
+    }
+    if std::env::var("GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES").ok().as_deref() == Some("1") {
+        let _ = probe_clear_entry_closure_sources(index);
+    }
     let batch = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
@@ -6719,12 +6818,18 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
     }
 }
 
+/// Per-entry-group drain streaming: DEFAULT ON (opt out with
+/// GUNBC_FLOOR_DRAIN_RETENTION=0). Flipped from opt-in 2026-07-23: the
+/// end-of-walk `[floor-drain] receipt` is written after the last group, so a
+/// run that dies at the step cap mid-discovery (run 30030807467's regime — the
+/// exact case the receipt exists to explain) leaves NO retention evidence.
+/// Streaming one line per completed group makes the growth curve part of every
+/// log, timeout or not — receipts must stream, not accumulate.
 fn floor_drain_retention_detail_enabled() -> bool {
-    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
-        .ok()
-        .as_deref()
-        .map(|v| matches!(v, "1" | "true" | "TRUE"))
-        .unwrap_or(false)
+    !matches!(
+        std::env::var("GUNBC_FLOOR_DRAIN_RETENTION").ok().as_deref(),
+        Some("0") | Some("false") | Some("off")
+    )
 }
 
 fn retention_snapshot_peak(
@@ -6764,10 +6869,16 @@ fn emit_floor_drain_group_line(
     prev: &IndexRetentionSnapshot,
     cur: &IndexRetentionSnapshot,
 ) {
+    // rss_cur (live VmRSS) beside peak_rss (VmHWM): the pair distinguishes a
+    // still-climbing working set from a historical spike, and the per-group
+    // rss_cur delta against the count deltas is the byte-attribution signal
+    // (e.g. typed_cache flat while rss climbs ⇒ the growth is NOT typed-cache
+    // insertion — look at resolved_memo / eval-side).
     eprintln!(
         "[floor-drain] group={group_idx}/{total_groups} \
          typed_cache={}({:+}) parse_cache={}({:+}) resolved_memo={}({:+}) \
-         intern_table={}({:+}) evictions={} peak_rss={}",
+         intern_table={}({:+}) evictions={} schedule_evictions={} retention_unknown={} \
+         rss_cur={} peak_rss={}",
         cur.typed_module_cache_entries,
         cur.typed_module_cache_entries as i64 - prev.typed_module_cache_entries as i64,
         cur.parse_cache_entries,
@@ -6777,6 +6888,11 @@ fn emit_floor_drain_group_line(
         cur.intern_table_entries,
         cur.intern_table_entries as i64 - prev.intern_table_entries as i64,
         cur.typed_cache_evictions,
+        cur.schedule_evictions,
+        cur.retention_unknown,
+        current_rss_vmrss_bytes()
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
         cur.peak_rss_bytes
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
