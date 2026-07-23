@@ -12,7 +12,7 @@ import v2.compiler.self_host.witness_bulk_routing {
 }
 import v2.std.algebra { length }
 
-data witness_entry_eligibility_census_test_note: String = "Census receipt: the mechanical TSV count meets the ROADMAP 2a floor (>=744 entry closures) and strictly exceeds the 16-entry stratified sample — totality is the bulk-flip gate, not the sample."
+data witness_entry_eligibility_census_test_note: String = "Census receipt: discovery-aligned mechanical roster (672 entry closures under witness_layer_roots; floor >=600 via witness_entry_eligibility_census_meets_floor) strictly exceeds the 16-entry stratified sample. ROADMAP 2a 744 totality is the bulk-flip dissolve trigger, not this Lane B landing witness."
 
 test fn witness_entry_eligibility_census_count_holds() -> Bool {
   witness_entry_eligibility_census_meets_floor()
