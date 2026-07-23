@@ -13,7 +13,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data branch_protection_managed_subset_note: String = "This models the SUBSET of GitHub's branch-protection resource that gunbc.branch_protection authors and reconciles — required status checks, required review count, admin enforcement, and the push-restriction allowance list (the classic branch-protection `restrictions` object: users/teams/apps permitted to push when the branch is push-restricted). It is NOT the full protection resource (signatures, linear-history, conversation-resolution, lock, etc. are unmodeled and left untouched by the reconciler — the authority declares only what it owns). GitHub semantics captured faithfully: required_status_checks.strict = require branch up to date before merge; required_status_checks.contexts = the check names that must pass (e.g. the `ci` job); enforce_admins = protection also applies to admins; required_approving_review_count under required_pull_request_reviews; push allowance = the `restrictions` object (present = only these actors push; absent = anyone with write pushes). A GitHub App that direct-pushes heal commits to a push-restricted main appears here as an entry in push_allowance.apps."
+data branch_protection_managed_subset_note: String = "This models the SUBSET of GitHub's branch-protection resource that gunbc.branch_protection authors and reconciles — required status checks, required review count, admin enforcement, and the push-restriction allowance list (the classic branch-protection `restrictions` object: users/teams/apps permitted to push when the branch is push-restricted). It is NOT the full protection resource (signatures, linear-history, conversation-resolution, lock, etc. are unmodeled and left untouched by the reconciler — the authority declares only what it owns). GitHub semantics captured faithfully: required_status_checks.strict = require branch up to date before merge; required_status_checks.contexts = the check names that must pass (e.g. the `ci` job); enforce_admins = protection also applies to admins; required_approving_review_count under required_pull_request_reviews; push_rule = the `restrictions` object modeled AS THE SUM the API actually returns (restrictions null → Unrestricted, i.e. anyone with write pushes; restrictions with a users/teams/apps object → Restricted carrying that allowance). Modeling it as a sum (not a parallel push_restricted Bool plus allowance) makes the illegal state 'unrestricted with a non-empty allowance' unwritable — both cleaner construction (DESIGN §5) and more faithful to the null-or-object the REST response carries. A GitHub App that direct-pushes heal commits to a restricted main appears as an entry in the Restricted allowance's apps."
 
 type RequiredStatusChecks {
   strict: Bool
@@ -26,12 +26,15 @@ type PushAllowance {
   apps: List<String>
 }
 
+type PushRule
+  = Unrestricted
+  | Restricted { allowance: PushAllowance }
+
 type BranchProtectionState {
   required_status_checks: RequiredStatusChecks
   enforce_admins: Bool
   required_approving_review_count: Int
-  push_restricted: Bool
-  push_allowance: PushAllowance
+  push_rule: PushRule
 }
 
 service github.BranchProtection {
@@ -77,7 +80,7 @@ service github.BranchProtection {
       required_status_checks: RequiredStatusChecks
       enforce_admins: Bool
       required_approving_review_count: Int
-      push_allowance: PushAllowance
+      push_rule: PushRule
     }
     output {
       protection: BranchProtectionState
@@ -89,7 +92,7 @@ service github.BranchProtection {
         required_status_checks: required_status_checks,
         enforce_admins: enforce_admins,
         required_approving_review_count: required_approving_review_count,
-        push_allowance: push_allowance
+        push_rule: push_rule
       }
     }
     response {

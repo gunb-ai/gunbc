@@ -1,7 +1,7 @@
 module test.claim.branch_protection_witness
 
 import extdeps.github.branch_protection {
-  BranchProtectionState, RequiredStatusChecks, PushAllowance
+  BranchProtectionState, RequiredStatusChecks, Unrestricted
 }
 import gunbc.branch_protection {
   ProtectionReconcile, ProtectionInSync, ProtectionDrifted, ProtectionObservedUnknown,
@@ -24,8 +24,7 @@ fn sample_observed_drifted() -> BranchProtectionState {
     required_status_checks: RequiredStatusChecks { strict: false, contexts: [] },
     enforce_admins: false,
     required_approving_review_count: 0,
-    push_restricted: false,
-    push_allowance: PushAllowance { users: [], teams: [], apps: [] }
+    push_rule: Unrestricted
   }
 }
 
