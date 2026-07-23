@@ -671,7 +671,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_content_equality_discriminates_count_identical_bytes_holds"),
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "build_artifact_corruption_probe_holds"),
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "witness_bin_readiness_arms_are_discriminating"),
-  bin_wet(entry: "dag/test/claim/floor_skip_discovery_witness_test.dag", f: "floor_skip_discovery_keystone_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_floor_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_perf_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_git_toplevel_resolves_holds"),
@@ -702,7 +701,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_holds_on_live_tree"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_preservation_holds_on_live_tree"),
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_true_by_real_execution"),
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_false_on_wrong_hash_by_real_execution"),
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution"),
@@ -712,6 +710,38 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution")
 ]
+
+data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
+
+data bin_witness_wet_per_row_budget_note: String = "Short/quick-witness discipline for the per-PR wet batch (CI floor endgame D6, operator ruling 2026-07-23): per-PR CI is short/quick witnesses, and a bin-execution row's subprocess wall is invisible to the fast-lane 5-second EVAL deadline by construction (the deadline counts interpreter CPU; child-process wall is host-effect time), so the bin lane carries its own per-row wall budget — this datum. A row whose MEASURED wall exceeds it re-homes to the falsifier wet cadence as a typed frontier row (falsifier_rehomed_bin_wet_rows below, reason + dissolve_on per row), keeping the remaining rows as the per-PR smoke subset so plumbing-diff PRs retain a discriminating signal. Classification basis: run 30009199696's per-row cost table (the 54-row pool's 561s eval was 94 percent three rows: floor_skip_discovery 289s, cross_shard_seam live-tree 183s, dag_compile_clean_perturb 53s — the third is under budget and stays). Enforcement layering: this datum is the classification rule applied at review; the EXECUTABLE wall against silent regrowth is the batch-wall budget (gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds — a new heavy row blows the wet batch's budget and reds with a typed refusal), so an over-budget enrollment cannot ride silently even if review misses it."
+
+type RehomedBinWetRow {
+  entry: String
+  function: String
+  reason: String
+  dissolve_on: String
+}
+
+data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
+  RehomedBinWetRow {
+    entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
+    function: "floor_skip_discovery_keystone_holds",
+    reason: "289s measured on run 30009199696 (4.8x the per-row budget), AND a per-PR duplicate: the row runs the floor_skip_discovery_witness binary that the ci job's own Affected-set selection control step already runs on every PR — the per-PR widen-detector coverage is the step, so the row's per-PR seat bought a second copy of the same suite",
+    dissolve_on: "the selection-control suite's shared-index rework lands the binary under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then either re-enroll per-PR consciously or delete this row as a duplicate of the step (whichever the measured wall admits)"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag",
+    function: "cross_shard_seam_preservation_holds_on_live_tree",
+    reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
+    dissolve_on: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row"
+  }
+]
+
+fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
+  fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {
+    concat(acc, [bin_wet(entry: r.entry, f: r.function)])
+  })
+}
 
 data falsifier_silent_pick_gate_note: String = "Nightly falsifier batch 4 (#6967 consumption, 2026-07-21; #7013 fast-follow hardening 2026-07-22): the SilentPickTelemetry the legacy resolver emits at v1_rt.rs (recorded at src/v1/04_env.dag global_bare LCP pick+tie and src/v1/04_sigs.dag fn-parent first-hit) had zero consumers — a live DESIGN §5 fail-open, since §13 (unique-on-chain resolution, operator-ratified 2026-07-21) rejects every silent-pick arm as a class. This roster runs resolution_divergence_census --closure-scoped (compile-clean closure authority via witness_layer_roots + load_compile_clean_entry_sources, not a blind whole-tree walk) as a bin-execution witness: it enables the telemetry, drains it, and refuses fail-closed in two arms before exit 0 — (1) resolution_divergence_fn_parent_first_hit_subset_refusal: construction invariant that every in-roster fn_parent_first_hit fire is containment_ambiguous (v2.test.* intentional-ambiguity harness modules excluded via resolution_divergence_census_roster_excluded_module_prefixes, green-by-execution witness resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus), then (2) resolution_divergence_silent_pick_refusal (single join authority shared with the binary exit code) on any GENUINE silent-pick — silent_pick_global_bare_lcp_rows, silent_pick_global_bare_lcp_tie_rows, and silent_pick_fn_parent_first_hit_rows joined against containment_ambiguous_rows/diverge_rows via resolution_divergence_silent_pick_genuine_rows, never the raw telemetry count (whole-pool name overlap alone over-fires benign on ~487 corpus sites; the join is the durable condition, review 41032). Refusals are SILENT-PICK-GATE-tagged stdout/stderr — a stable greppable marker chosen because the falsifier's other batches are red for unrelated reasons and an undifferentiated job-conclusion flip would be invisible. Baseline is 0 genuine rows (#6936's Diverge=0), never a tuned threshold — any nonzero genuine row is a fresh regression. `gunbc compile`'s own inline gate (main.rs) is a DIFFERENT, narrower, cost-motivated proxy — not this shared authority: it checks fn_parent_first_hits raw-count only (red-on-any, over-strict direction — safe if wrong) resting on the same construction-proven invariant above (roster exclusion applies at nightly cadence only, not in the compile-path proxy — v2.test.* modules stay outside today's compile-path census universe via /test/ path exclusion) and skips global_bare_lcp entirely (under-strict direction — a genuine global_bare_lcp pick is caught only by the nightly join-filtered falsifier backstop, not at compile time). The compile-path proxy and nightly falsifier remain asymmetric by design (cost), not a single authority today. A whole-tree Wet resolve cannot live on the per-PR affected-set floor (measured: still running past 90s / 3GB+ RSS on a cold run), so this rides the cold nightly whole-corpus control alongside falsifier_self_host_wet_entries and known_red_probe_entries, never the hermetic per-PR discovery corpus. This gate's live paging value is coupled to the falsifier itself being green and alerted on — both separate, unassigned ledger items as of this note; see the falsifier fallout audit. Dissolve-on: §13's unique-on-chain resolution ships as the resolver's actual behavior (no fallback arm to silently pick in the first place) — then telemetry, this witness, and this note all delete together."
 
