@@ -6,13 +6,13 @@ import v2.lens.registry {
   Bound, LensIdV0, Unbound, lens_registry_v0,
   Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
-  DocReachability, DuplicateComputation, EffectReach, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
+  DocReachability, DuplicateComputation, EffectReach, MandatoryTag, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
   MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
   MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
-  RealizationVocabularyContainment, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
+  RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
   Parallelism, EffectEnumeration, Idempotency, Provenance
@@ -216,6 +216,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
+    RosterRegistry => LensInvariantSurface {
+      module: module,
+      projection: ProjectionDeclForest,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyReport,
+      admission: GenuinelyNewInvariant
+    }
     DuplicateComputation => LensInvariantSurface {
       module: module,
       projection: ProjectionShellProgram,
@@ -279,11 +286,11 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    ExtdepsExternalAuthority => LensInvariantSurface {
+    MandatoryTag => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
-      remedy: RemedyReport,
+      remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
     DependencyFidelity => LensInvariantSurface {

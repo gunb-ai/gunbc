@@ -499,6 +499,10 @@ fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
       }
@@ -609,6 +613,10 @@ fn rust_match_host_transport_descriptor() -> HostTransportDescriptor {
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -904,6 +912,10 @@ fn rust_loop_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_loop_emit_host_main_suffix }
       }
@@ -951,6 +963,10 @@ fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescr
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",
@@ -1318,6 +1334,10 @@ fn rust_field_access_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_field_access_emit_host_main_suffix }
       }
@@ -1631,6 +1651,10 @@ fn rust_variant_construct_host_transport_descriptor() -> HostTransportDescriptor
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_variant_construct_emit_host_main_suffix }
       }
@@ -1932,6 +1956,10 @@ fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor 
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_logic_complement_emit_host_main_suffix }
       }
@@ -2182,6 +2210,10 @@ fn rust_bool_fn_host_runtime_row(
             content: FixedText { text: rust_emit_host_cargo_manifest }
           },
           WorkspaceFile {
+            path: "rust-toolchain.toml",
+            content: FixedText { text: rust_emit_host_toolchain_pin }
+          },
+          WorkspaceFile {
             path: "src/main.rs",
             content: EmittedWithSuffix { suffix: main_suffix }
           }
@@ -2421,6 +2453,88 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
     token_class_emit_transforms: base.token_class_emit_transforms,
     authority_source_text: base.authority_source_text,
     runtime_row: rust_logic_family_runtime_row()
+  }
+}
+
+data rust_match_loop_fold_family_prelude: String = "\n\nfn fold_call_callee(xs: i32, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { f(xs, z) }"
+
+data rust_match_loop_fold_family_member_match: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "match",
+  result_expression: "one_or_two()"
+}
+
+data rust_match_loop_fold_family_member_loop: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "loop",
+  result_expression: "one()"
+}
+
+data rust_match_loop_fold_family_member_fold: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "fold",
+  result_expression: "fold_demo(3, 4)"
+}
+
+fn rust_match_loop_fold_family_dispatch_members() -> List<RustEmitHostFamilyMember> {
+  [
+    rust_match_loop_fold_family_member_match,
+    rust_match_loop_fold_family_member_loop,
+    rust_match_loop_fold_family_member_fold
+  ]
+}
+
+fn rust_match_loop_fold_family_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_match_loop_fold_family_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix {
+          suffix: rust_family_main_suffix(
+            prelude: rust_match_loop_fold_family_prelude,
+            members: rust_match_loop_fold_family_dispatch_members()
+          )
+        }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cargo" },
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: HostToolProgram { executable: "cargo" },
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_match_loop_fold_family_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_match_loop_fold_family_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_match_loop_fold_family_target_model_staging() -> TargetModel {
+  let base = rust_match_target_model_staging()
+  TargetModel {
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_match_loop_fold_family_runtime_row()
   }
 }
 
@@ -2923,6 +3037,10 @@ fn rust_rec_nine_host_transport_descriptor() -> HostTransportDescriptor {
         content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
+      },
+      WorkspaceFile {
         path: "src/main.rs",
         content: EmittedWithSuffix { suffix: rust_rec_nine_emit_host_suffix }
       }
@@ -3236,6 +3354,10 @@ fn rust_fold_call_host_transport_descriptor() -> HostTransportDescriptor {
       WorkspaceFile {
         path: "Cargo.toml",
         content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "rust-toolchain.toml",
+        content: FixedText { text: rust_emit_host_toolchain_pin }
       },
       WorkspaceFile {
         path: "src/main.rs",

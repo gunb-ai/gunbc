@@ -1,0 +1,79 @@
+module gunbc.typed_argv_exec
+
+import std.types { String, List, NonEmptyStr }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import extdeps.diagnostic.ssh { ssh_session_exec_argv, SshSessionExecResult }
+
+data typed_argv_exec_note: String = "Realization-edge typed argv dispatch over SSH: one argv shape per op (from extdeps authorities), ssh.Session.ExecArgv transport, portable-argv allowlist before spawn (fail-closed — ssh remote argv is shell-reinterpreted). Wave C5 / bash-emit #5828 slice."
+
+type TypedArgvExecOutcome =
+  | TypedArgvExecConverged { result: SshSessionExecResult }
+  | TypedArgvExecRefused { reason: String }
+
+fn typed_argv_portable_argv_char_allowed(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || (cp >= 48 && cp <= 57)
+    || cp == 46
+    || cp == 95
+    || cp == 45
+    || cp == 47
+    || cp == 64
+}
+
+fn typed_argv_portable_argv_token_at(token: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else {
+    let cp = code_point(ch: char_at(token, i))
+    if !typed_argv_portable_argv_char_allowed(cp: cp) {
+      false
+    } else {
+      typed_argv_portable_argv_token_at(token: token, i: i + 1, len: len)
+    }
+  }
+}
+
+fn typed_argv_portable_argv_token(token: String) -> Bool {
+  let len = string_length(s: token)
+  if len == 0 {
+    false
+  } else {
+    typed_argv_portable_argv_token_at(token: token, i: 0, len: len)
+  }
+}
+
+fn typed_argv_shell_safe_refusal_token(token: String) -> String? {
+  if typed_argv_portable_argv_token(token: token) {
+    none
+  } else {
+    Present {
+      value: concat(
+        "typed_argv: argv token outside portable allowlist (fail-closed; ssh remote argv is shell-reinterpreted): ",
+        token
+      )
+    }
+  }
+}
+
+fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
+  match list_head(xs: argv) {
+    HeadFound { value: token } =>
+      match typed_argv_shell_safe_refusal_token(token: token) {
+        Present { value: why } => Present { value: why }
+        Absent =>
+          match list_tail(xs: argv) {
+            TailFound { tail: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
+            TailAbsent => none
+          }
+      }
+    HeadAbsent => none
+  }
+}
+
+fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => TypedArgvExecRefused { reason: why }
+    Absent => TypedArgvExecConverged { result: ssh_session_exec_argv(host: host, argv: argv) }
+  }
+}

@@ -66,3 +66,7 @@
 ```
 
 Machine-readable: `docs/probes/curated_cargo_frontier_probe_sweep.tsv`
+
+## Related probes
+
+- [Emitter residual site map (2026-07-21)](emitter_residual_site_map_2026-07-21.md) — post-#6981 E0308 histogram → emitter function sites (#7023).

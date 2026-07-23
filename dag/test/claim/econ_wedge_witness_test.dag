@@ -1,0 +1,311 @@
+module test.claim.econ_wedge_witness
+
+import extdeps.cpu.amd { ryzen_5_3600_catalog }
+import extdeps.pricing.github_actions {
+  GithubActionsRunnerPriceRow,
+  github_actions_linux_2core_price,
+}
+import extdeps.pricing.hetzner_dedicated {
+  HetznerDedicatedServerPriceRow,
+  hetzner_ax41_1_ltd_price,
+  hetzner_dedicated_server_threads,
+}
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_fy2026_gross_profit,
+  gitlab_fy2026_revenue,
+}
+import extdeps.sec.issuer.chemed_facts {
+  chemed_fy2025_operating_income,
+  chemed_fy2025_revenue,
+}
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  filed_amount,
+  usd_whole_dollars,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.rollins_facts {
+  rollins_fy2025_operating_income,
+  rollins_fy2025_revenue,
+}
+import gunbc.econ.knowable_wedge {
+  AssumptionsUnknown,
+  FloorCurrencyMismatch,
+  FloorExceedsUmbrella,
+  KnowableWedgeComputed,
+  KnowableWedgeRefused,
+  RunnerThreadCountUnknown,
+  UtilizationUnknown,
+  WedgeAssumptions,
+  WedgeAssumptionsDeclared,
+  WedgeAssumptionsUnknown,
+  derive_github_hetzner_ci_minute_wedge,
+}
+import gunbc.econ.margin_envelope {
+  GrossMargin,
+  MarginEnvelopeDerived,
+  OperatingMargin,
+  derive_margin_envelope_from_filed_facts,
+  margin_envelope_in_band,
+}
+import std.currency { Eur, Usd }
+import std.measure {
+  BasisPoint,
+  MoneyPerMinute,
+  MoneyPerMonth,
+  amortization_months,
+  basis_point,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  money_amount_micro,
+  money_per_minute_micros,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gitlab_fy2026_gross_margin_bp_low: BasisPoint = basis_point(8735)
+
+data gitlab_fy2026_gross_margin_bp_high: BasisPoint = basis_point(8737)
+
+data rollins_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1930)
+
+data rollins_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1931)
+
+data chemed_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1336)
+
+data chemed_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1337)
+
+data github_hetzner_wedge_assumptions: WedgeAssumptions = WedgeAssumptions {
+  runner_utilization_bp: basis_point(10000),
+  amortization_months: amortization_months(60),
+  eur_to_usd_numerator: 109,
+  eur_to_usd_denominator: 100,
+}
+
+data github_hetzner_zero_utilization_assumptions: WedgeAssumptions = WedgeAssumptions {
+  runner_utilization_bp: basis_point(0),
+  amortization_months: amortization_months(60),
+  eur_to_usd_numerator: 109,
+  eur_to_usd_denominator: 100,
+}
+
+data hetzner_ax41_usd_floor_fixture: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: hetzner_ax41_1_ltd_price.server_type,
+  server_type_wire_label: hetzner_ax41_1_ltd_price.server_type_wire_label,
+  cpu: hetzner_ax41_1_ltd_price.cpu,
+  cpu_description: hetzner_ax41_1_ltd_price.cpu_description,
+  memory_bytes: hetzner_ax41_1_ltd_price.memory_bytes,
+  storage_bytes: hetzner_ax41_1_ltd_price.storage_bytes,
+  monthly: MoneyPerMonth {
+    amount: hetzner_ax41_1_ltd_price.monthly.amount,
+    currency: Usd,
+  },
+  setup_fee: hetzner_ax41_1_ltd_price.setup_fee,
+  pricing_citation: "witness-fixture#usd-floor-currency-mismatch",
+}
+
+data github_hetzner_wedge_floor_usd_per_minute: MoneyPerMinute = MoneyPerMinute {
+  amount: money_amount_micro(count: 237),
+  currency: Usd,
+}
+
+data github_hetzner_wedge_spread_usd_per_minute: MoneyPerMinute = MoneyPerMinute {
+  amount: money_amount_micro(count: 5763),
+  currency: Usd,
+}
+
+data github_tiny_umbrella_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: github_actions_linux_2core_price.vcpus,
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 1),
+    currency: Usd,
+  },
+  pricing_citation: "witness-fixture#floor-exceeds-umbrella",
+}
+
+data github_zero_vcpu_runner_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: hardware_thread_count(0),
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
+  per_minute: github_actions_linux_2core_price.per_minute,
+  pricing_citation: "witness-fixture#runner-thread-count-unknown",
+}
+
+fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: gitlab_fy2026_revenue,
+    profit: gitlab_fy2026_gross_profit,
+    margin_kind: GrossMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: gitlab_fy2026_gross_margin_bp_low,
+        high_bp: gitlab_fy2026_gross_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
+  match filed_amount(fact: gitlab_fy2026_gross_profit) {
+    Present { value: gross_profit } => {
+      let perturbed = usd_whole_dollars(
+        count: usd_whole_dollars_count(gross_profit) + 10000000
+      )
+      match derive_margin_envelope_from_filed_facts(
+        revenue: gitlab_fy2026_revenue,
+        profit: FiledMonetaryFact {
+          element: gitlab_fy2026_gross_profit.element,
+          amount: Filed { amount: perturbed },
+          citation: gitlab_fy2026_gross_profit.citation,
+        },
+        margin_kind: GrossMargin,
+      ) {
+        MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+          !margin_envelope_in_band(
+            envelope: env,
+            low_bp: gitlab_fy2026_gross_margin_bp_low,
+            high_bp: gitlab_fy2026_gross_margin_bp_high,
+          )
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+fn w_rollins_operating_margin_envelope_derived() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: rollins_fy2025_revenue,
+    profit: rollins_fy2025_operating_income,
+    margin_kind: OperatingMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: rollins_fy2025_operating_margin_bp_low,
+        high_bp: rollins_fy2025_operating_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_chemed_operating_margin_envelope_derived() -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: chemed_fy2025_revenue,
+    profit: chemed_fy2025_operating_income,
+    margin_kind: OperatingMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: chemed_fy2025_operating_margin_bp_low,
+        high_bp: chemed_fy2025_operating_margin_bp_high,
+      )
+    _ => false
+  }
+}
+
+fn w_hetzner_ax41_threads_cited_from_amd_catalog() -> Bool {
+  hardware_thread_count_value(t: hetzner_dedicated_server_threads(row: hetzner_ax41_1_ltd_price)) == hardware_thread_count_value(t: ryzen_5_3600_catalog.threads)
+    && hardware_thread_count_value(t: ryzen_5_3600_catalog.threads) == 12
+}
+
+fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeComputed { wedge: w } =>
+      money_per_minute_micros(q: w.umbrella_per_minute) == 6000
+        && money_per_minute_micros(q: w.cost_floor_per_minute) == money_per_minute_micros(q: github_hetzner_wedge_floor_usd_per_minute)
+        && money_per_minute_micros(q: w.wedge_per_minute) == money_per_minute_micros(q: github_hetzner_wedge_spread_usd_per_minute)
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsUnknown,
+  ) {
+    KnowableWedgeRefused { cause: AssumptionsUnknown } => true
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_zero_utilization_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: UtilizationUnknown } => true
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_actions_linux_2core_price,
+    floor_row: hetzner_ax41_usd_floor_fixture,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: FloorCurrencyMismatch } => true
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_tiny_umbrella_fixture,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: FloorExceedsUmbrella } => true
+    _ => false
+  }
+}
+
+fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
+  match derive_github_hetzner_ci_minute_wedge(
+    umbrella_row: github_zero_vcpu_runner_fixture,
+    floor_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: WedgeAssumptionsDeclared {
+      assumptions: github_hetzner_wedge_assumptions,
+    },
+  ) {
+    KnowableWedgeRefused { cause: RunnerThreadCountUnknown } => true
+    _ => false
+  }
+}
+
+test fn econ_wedge_witness_holds() -> Bool {
+  w_gitlab_gross_margin_envelope_derived_from_filed_components()
+    && w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit()
+    && w_rollins_operating_margin_envelope_derived()
+    && w_chemed_operating_margin_envelope_derived()
+    && w_hetzner_ax41_threads_cited_from_amd_catalog()
+    && w_github_hetzner_knowable_wedge_derived_with_declared_assumptions()
+    && w_github_hetzner_knowable_wedge_red_on_unknown_assumptions()
+    && w_github_hetzner_knowable_wedge_red_on_zero_utilization()
+    && w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch()
+    && w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella()
+    && w_github_hetzner_knowable_wedge_red_on_zero_runner_threads()
+}

@@ -1,4 +1,7 @@
 module v2.compiler.program_assembly
+
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>,

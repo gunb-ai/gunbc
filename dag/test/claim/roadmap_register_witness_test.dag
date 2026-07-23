@@ -2,19 +2,24 @@ module test.claim.roadmap_register_witness
 
 import std.types { Int, String, Bool }
 import std.markup { MarkupNode, ElementNode, TextNode }
-import gunbc.site.tokens {
+import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl,
+  Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
+  serialize_rules,
+}
+import gunbc.design.theme {
   ThemeRole, theme_roles, themes_coherent, day_theme, night_theme,
-  reduced_motion_block, role_key, respond_fast,
-  Theme, Material, RoleAssignment, role_eq, paint,
-  CanvasRole, FigureLitRole, FieldArea, PointArea,
-  theme_root_css, serialize_rules,
+  role_key, role_eq,
+  Theme, RoleAssignment,
+  CanvasRole, FigureLitRole,
+  theme_root_css,
 }
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import gunbc.site.theme_transition { unthemed_color_decls }
+import gunbc.design.theme_transition { unthemed_color_decls }
 import gunbc.site.mark { render_mark }
-import gunbc.site.interaction {
+import gunbc.design.interaction {
   Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
+  DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
 import gunbc.roadmap_style { roadmap_rules, roadmap_css }
@@ -72,11 +77,11 @@ fn approach_only_rows() -> List<BehaviorRow> {
 fn witness_dropped_row_gap_is_located() -> Bool {
   let gaps = coverage_gaps(elements: roadmap_elements, rows: approach_only_rows())
   gaps.length() == 1
-    && all(gaps, g => g.element == "dispatch-btn" && verb_key(v: g.verb) == "dispatch")
+    && all(gaps, g => element_id_eq(a: g.element, b: DispatchBtnElement) && verb_key(v: g.verb) == "dispatch")
 }
 
 fn witness_unrealized_row_is_counted() -> Bool {
-  let rogue = BehaviorRow { element: "dispatch-btn", verb: Approach, response: Reveal, timing: respond_fast }
+  let rogue = BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Reveal, timing: respond_fast }
   roadmap_unrealized_behaviors(rows: concat(roadmap_behaviors, [rogue])).length() == 1
 }
 

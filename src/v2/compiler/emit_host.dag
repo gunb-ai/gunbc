@@ -4,7 +4,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.build_transport_admission { build_transport_admissible }
-import std.effect_grant { Admitted, EffectOutsideGrant }
+import std.effect_grant { EffectAdmission, Admitted, EffectOutsideGrant }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -328,6 +328,7 @@ fn run_host_process_with_cache(
       outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
     Admitted { via_root: r } =>
       run_host_process_admitted(
+        admission: Admitted { via_root: r },
         workspace_dir: workspace_dir,
         transport: transport,
         target: target,
@@ -339,6 +340,7 @@ fn run_host_process_with_cache(
 }
 
 fn run_host_process_admitted(
+  admission: EffectAdmission,
   workspace_dir: String,
   transport: HostTransportDescriptor,
   target: TargetModel,
@@ -364,13 +366,14 @@ fn run_host_process_admitted(
           )
           let result = if use_cache {
             emit_host_run_transport_cached(
+              admission: admission,
               workspace_dir: workspace_dir,
               files: files,
               build: builds,
               run: run_argv
             )
           } else {
-            emit_host_run_transport(files: files, build: builds, run: run_argv)
+            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv)
           }
           let exit = HostExit {
             outcome: Accepted {
@@ -500,6 +503,10 @@ fn run_test_claim_emit_vs_eval_verdict(
         diagnostic: ds.head
       )
   }
+}
+
+fn emit_host_no_run_args() -> List<String> {
+  []
 }
 
 fn run_test_claim_emit_vs_eval_verdict_from_run(

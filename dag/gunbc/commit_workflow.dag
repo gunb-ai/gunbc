@@ -22,7 +22,6 @@ data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_w
 
 type LocalTidyCheck
   = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
-  | LocalTidyGateCheck { gate: GeneratedArtifactDriftGate }
   | LocalTidyCargoFmtCheck
 
 type CommitWorkflowSurface
@@ -50,6 +49,10 @@ type CommitWorkflowRealizationBinding {
   artifact: GeneratedArtifact
 }
 
+data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Terminal {
+  reason: "GeneratedArtifactDriftGate's GitPrePushHook enrollment REMOVED 2026-07-22 (fleet incident: this gate broke pushes fleet-wide — measured ~61min/2,176 witnesses on a rebased force-push touching measure.dag, since committed_generated_artifacts() regeneration walks the whole generated-artifact corpus, not an affected-set slice). Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): GeneratedArtifactDriftGate stays enrolled on GithubActionsCiJob, which the required `ci` job runs via src/v2/workflow/ci_floor_plan.dag gunbc_ci_floor_batches (dag/gunbc/ci_spec.dag ci_gate list, RunnableSingleClaim on generated_artifact_drift_gate_passes); that same floor run is what stamps the merge-admission receipt tools.merge_admission_gate.dag reads at merge time, so drift is still a hard merge-time wall — pre-push was a redundant SECOND full-corpus run of the same unscoped check (DESIGN §2: duplicated work, not added safety), not the only place it was enforced. This mirrors the fmt precedent recorded in commit_gate_rust_suite_removed_disposition below: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, so it was never a sound enforcement AUTHORITY — only fast local feedback. The pre-push hook keeps the cheap guards (uncommitted-tree check, doc-reachability witness on the ReadsLiveTree entry, cargo fmt --all --check) and gunbc_ci_witness_corpus_only_batches' declared affected-set-scoped test gate (see its own note: deliberately narrowed to the hermetic discovery corpus, not this whole-corpus regen sweep). No skip env var was added — the heavy arm is gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches)."
+}
+
 data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
   reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. AMENDED 2026-07-15 (operator ruling, the falsifier lane): the fmt HALF of this removal is REVERSED — cargo fmt --all --check is re-enrolled as a standalone build-job step (gunbc.ci_spec ci_fmt_gate_note / ci_fmt_gate_line). Every rationale above is a fact about NEXTEST (37 GiB, red, seed-runtime); fmt is 4.3s measured, parse-only, needs no build, and is green — it was collateral damage of a §3 fusion, since tools.rust_gates_ci.run_gates welds both into one ProcessExit, so killing the bundle killed the cheap green half. This amendment does NOT re-enroll RustMonolithGate (still REJECTED below) and does not return nextest to CI. The former claim 'cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook)' is RETRACTED as the enforcement authority: a hook is an escape hatch (§5) — opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, and absent in container worktrees — and it is PROVEN ineffective, not merely theoretically weak: #6658 landed an unformatted .rs on main 2026-07-15 and no gate caught it. The hook remains as fast local feedback, never as the wall. Coverage now: cargo fmt = the required CI path (ci needs:[build], so a red fmt step blocks the required job by construction); cargo nextest run -p v1-compiler-tests still runs LOCALLY, not in CI. Return trigger for NEXTEST — NONE by design: that suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. Compile-level v1 seed breakage is still caught by the required floor's DagCompileCleanGate and RegenVerifyGate; only the seed's runtime test behavior moves local."
 }
@@ -73,7 +76,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
-    surfaces: [GithubActionsCiJob, GitPrePushHook]
+    surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
@@ -90,6 +93,30 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostStalenessGate },
     surfaces: [GithubActionsCiRegenJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/commit_witness_claim_roster_witness_test.dag",
+      check_fns: [
+        "commit_witness_claim_roster_red_control_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/lens/non_fold_residue_test.dag",
+      check_fns: [
+        "non_fold_residue_no_unrostered_or_stale",
+        "non_fold_residue_synthetic_unrostered_red_holds",
+        "non_fold_residue_wildcard_red_fixture_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -402,10 +429,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/meta_exec_confinement/scanner/planted_leak_test.dag",
-      check_fns: [
-        "scanner_planted_meta_exec_leak_detected_holds",
-        "scanner_clean_tree_meta_exec_holds_on_rostered_corpus"
-      ],
+      check_fns: ["scanner_planted_meta_exec_leak_detected_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -642,11 +666,6 @@ fn local_tidy_check_eq(a: LocalTidyCheck, b: LocalTidyCheck) -> Bool {
           entry == entry2 && string_list_eq(left: check_fns, right: check_fns2)
         _ => false
       }
-    LocalTidyGateCheck { gate } =>
-      match b {
-        LocalTidyGateCheck { gate: gate2 } => gate_eq(a: gate, b: gate2)
-        _ => false
-      }
     LocalTidyCargoFmtCheck =>
       match b { LocalTidyCargoFmtCheck => true  _ => false }
   }
@@ -656,10 +675,7 @@ fn project_local_tidy_checks(roster: List<CommitCheckEnrollment>) -> List<LocalT
   let pre_push = filter(roster, e => enrollment_has_surface(e: e, surface: GitPrePushHook))
   concat(
     project_local_tidy_witness_rows(roster: pre_push),
-    concat(
-      project_local_tidy_gate_rows(roster: pre_push),
-      project_local_tidy_fmt_rows(roster: pre_push)
-    )
+    project_local_tidy_fmt_rows(roster: pre_push)
   )
 }
 
@@ -669,17 +685,6 @@ fn project_local_tidy_witness_rows(roster: List<CommitCheckEnrollment>) -> List<
       CommitWitnessClaim { entry, check_fns, kind: _, span: _ } =>
         concat(acc, [LocalTidyWitnessCheck { entry: entry, check_fns: check_fns }])
       CommitSpecGate { gate: _ } => acc
-      CommitCargoFmtCheck => acc
-    }
-  })
-}
-
-fn project_local_tidy_gate_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
-  fold(roster, init: [], f: fn(acc, row) {
-    match row.check {
-      CommitSpecGate { gate: g } =>
-        concat(acc, [LocalTidyGateCheck { gate: g }])
-      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
       CommitCargoFmtCheck => acc
     }
   })
@@ -721,6 +726,10 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
 data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
 data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
+
+fn ci_floor_commit_witness_claim_schedule() -> List<ScheduleWitnessEntry> {
+  project_ci_floor_witness_entries(roster: commit_gate_roster)
+}
 
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {

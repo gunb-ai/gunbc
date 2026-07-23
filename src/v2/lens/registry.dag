@@ -22,7 +22,7 @@ type LensIdV0
   | DocReachability
   | DuplicateComputation
   | EffectReach
-  | ExtdepsExternalAuthority
+  | MandatoryTag
   | ExtdepsShapeTransportPolicy
   | FactCardinality
   | FactDensity
@@ -44,6 +44,7 @@ type LensIdV0
   | MutationAdequacy
   | NonFoldResidue
   | RealizationVocabularyContainment
+  | RosterRegistry
   | ScheduleLens
   | SimulatedRelationship
   | StructuralSimilarity
@@ -176,9 +177,9 @@ data lens_registry_v0_effect_reach: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.effect_reach" }
 }
 
-data lens_registry_v0_extdeps_external_authority: LensRegistryEntryV0 = {
-  lens_id: ExtdepsExternalAuthority
-  module_path: Bound { path: "v2.lens.extdeps_external_authority" }
+data lens_registry_v0_mandatory_tag: LensRegistryEntryV0 = {
+  lens_id: MandatoryTag
+  module_path: Bound { path: "v2.lens.mandatory_tag" }
 }
 
 data lens_registry_v0_extdeps_shape_transport_policy: LensRegistryEntryV0 = {
@@ -341,6 +342,11 @@ data lens_registry_v0_witness_cost_locality: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.witness_cost_locality" }
 }
 
+data lens_registry_v0_roster_registry: LensRegistryEntryV0 = {
+  lens_id: RosterRegistry
+  module_path: Bound { path: "v2.lens.roster_registry" }
+}
+
 data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_complexity,
   lens_registry_v0_cost,
@@ -362,7 +368,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_doc_reachability,
   lens_registry_v0_duplicate_computation,
   lens_registry_v0_effect_reach,
-  lens_registry_v0_extdeps_external_authority,
+  lens_registry_v0_mandatory_tag,
   lens_registry_v0_extdeps_shape_transport_policy,
   lens_registry_v0_fact_cardinality,
   lens_registry_v0_fact_density,
@@ -384,6 +390,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_non_fold_residue,
   lens_registry_v0_realization_vocabulary_containment,
+  lens_registry_v0_roster_registry,
   lens_registry_v0_schedule_lens,
   lens_registry_v0_simulated_relationship,
   lens_registry_v0_structural_similarity,
@@ -479,8 +486,8 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
       EffectReach => true
       _ => false
     }
-    ExtdepsExternalAuthority => match right {
-      ExtdepsExternalAuthority => true
+    MandatoryTag => match right {
+      MandatoryTag => true
       _ => false
     }
     ExtdepsShapeTransportPolicy => match right {
@@ -565,6 +572,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     RealizationVocabularyContainment => match right {
       RealizationVocabularyContainment => true
+      _ => false
+    }
+    RosterRegistry => match right {
+      RosterRegistry => true
       _ => false
     }
     ScheduleLens => match right {

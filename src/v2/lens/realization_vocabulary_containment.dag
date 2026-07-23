@@ -1,5 +1,23 @@
 module v2.lens.realization_vocabulary_containment
 
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.lens.layering_imports {
+  LayerImportFact,
+  layer_import_facts_live
+}
+import v2.std.algebra {
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { Char, String }
+
 
 data target_ast_vocab_modules: List<String> = [
   "extdeps.languages.typescript.program"
@@ -31,10 +49,22 @@ data realization_edge_path_prefixes: List<String> = [
   "dag/gunbc/assimilate/bmc_token_federation"
 ]
 
-data realization_vocab_exception_roster: List<String> = [
-  "dag/gunbc/node_http_server_emit.dag",
-  "dag/tools/build_step.dag"
+data realization_vocab_exception_roster: List<FrontierRow> = [
+  frontier_row(
+    unit: "dag/gunbc/node_http_server_emit.dag",
+    reason: "srv1 dashboard static-server emitter consumes the typescript AST vocabulary outside the realization-edge prefixes (declared interim per the gunbc-served dashboard design, DESIGN open thread)",
+    dissolve_on: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; row deletes with it"
+  ),
+  frontier_row(
+    unit: "dag/tools/build_step.dag",
+    reason: "build-step tooling constructs bash via the bash-AST vocabulary outside the realization-edge prefixes (pre shell-to-intent phase-2 site)",
+    dissolve_on: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; row deletes"
+  )
 ]
+
+fn realization_vocab_exception_paths() -> List<String> {
+  frontier_units(rows: realization_vocab_exception_roster)
+}
 
 data realization_vocab_consumer_scan_roots: List<String> = [
   "dag/std",
@@ -128,11 +158,11 @@ fn realization_vocab_containment_holds(
 }
 
 fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
-  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_roster)
+  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_paths())
 }
 
 fn realization_vocab_containment_holds_canonical(facts: List<LayerImportFact>) -> Bool {
-  realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_roster)
+  realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_paths())
 }
 
 fn realization_vocab_leak_count_live(scan_roots: List<String>) -> Int {
@@ -203,14 +233,14 @@ fn realization_vocab_roster_sound(
 
 fn realization_vocab_roster_stale_count_live(scan_roots: List<String>) -> Int {
   realization_vocab_roster_stale_count(
-    roster: realization_vocab_exception_roster,
+    roster: realization_vocab_exception_paths(),
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }
 
 fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   realization_vocab_roster_sound(
-    roster: realization_vocab_exception_roster,
+    roster: realization_vocab_exception_paths(),
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
   )
 }

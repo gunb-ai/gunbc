@@ -1,0 +1,24 @@
+# Dual-lane census CLI exclude coordination (ephemeral --exclude-subpath probe override only)
+# Historical drift witness: fierce-heron-512 oracle pin (derived(tip) may diverge post-#6938 strip).
+# Authority: whole_tree_probe_exclusion_substrings() in cli_run/census_exclude_derive (pattern ∪ derived closure).
+# Recovered 2026-07-21 on tip 655352 — 4 iterations (27 seeds -> 83 rows) under prior strict semantics.
+
+## Paths (git-readable on session/stern-newt-142)
+EXCLUDE_LIST: docs/probes/census_extra_excludes.txt
+COORDINATION: docs/probes/still-hawk-row-coordination.txt
+PROTOCOL_SCRIPT: target/census-receipts/converge-census-excludes.sh (ephemeral local; 27 seeds in census_extra_excludes_seeds.txt)
+
+## C3 interim census receipt (slice-1 denominator reproduction)
+INVOCATION: ./target/release/resolution_divergence_census $(while IFS= read -r line; do args+=(--exclude-subpath "$line"); done < docs/probes/census_extra_excludes.txt; "${args[@]}")
+PROVENANCE: tip 6553521109, seeds from 0557Z, converge-census-excludes.sh iteration 4
+UNIVERSE: modules_resolved=1188 modules_excluded=1108 (slice-1 oracle: 1161/1094 — tree growth delta)
+sites_checked=41138 agree=38487 diverge=0 containment_ambiguous=53 import_unresolved=1463 neither_bound=1135
+CENSUS_EXIT=0
+
+## C5 post-dissolve census receipt (4e2191e663)
+sites_checked=41149 agree=38576 diverge=0 containment_ambiguous=53 import_unresolved=1385 neither_bound=1135
+CENSUS_EXIT=0
+ATTRIBUTION: -78 import_unresolved = 03_resolve C5 dissolve aligning import-scoped harvest with containment tree (not name_resolve header filter — dead post-graft).
+
+## Converged CLI exclude list (83 rows — identical set for both lanes)
+# Enumerated in docs/probes/census_extra_excludes.txt (one subpath per line, 83 total).

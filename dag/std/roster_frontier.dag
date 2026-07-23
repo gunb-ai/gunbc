@@ -1,0 +1,25 @@
+module std.roster_frontier
+
+data roster_frontier_note: String = "The typed declared-frontier row (DESIGN §7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a unit asserted into a group by hand is admissible only as a counted row carrying its reason and its migration trigger — never a bare string in a nickname list. unit is the member's own key in the roster's unit_kind (a path, a module name, a type name, a site key); reason says why the row exists; dissolve_on names the condition under which the row deletes. The group-grain taxonomy (positional / derived / frontier / nickname) and the registry of enrolled rosters live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file."
+
+type FrontierRow {
+  unit: String
+  reason: String
+  dissolve_on: String
+}
+
+fn frontier_row(unit: String, reason: String, dissolve_on: String) -> FrontierRow {
+  FrontierRow { unit: unit, reason: reason, dissolve_on: dissolve_on }
+}
+
+fn frontier_units(rows: List<FrontierRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.unit]) })
+}
+
+fn frontier_row_well_formed(row: FrontierRow) -> Bool {
+  !(row.unit == "") && !(row.reason == "") && !(row.dissolve_on == "")
+}
+
+fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
+  fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
+}

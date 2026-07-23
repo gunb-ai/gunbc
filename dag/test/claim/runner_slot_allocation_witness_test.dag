@@ -8,6 +8,8 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slice_cap_declared,
   gunbc_committed_runner_slot_allocations,
   gunbc_runner_slot_enforcement_expected_cap,
+  gunbc_floor_minimum_viable_armed_budget_wall_holds,
+  gunbc_floor_minimum_viable_armed_budget_bytes,
 }
 import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,7 +30,7 @@ test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
 }
 
 test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc_committed_runner_slot_allocations() |> count == 2
+  gunbc_committed_runner_slot_allocations() |> count == 3
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
@@ -42,4 +44,12 @@ test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
   byte_size_count(b: gunbc_runner_slot_enforcement_expected_cap()) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+test fn runner_slot_allocation_minimum_viable_armed_budget_wall_holds() -> Bool {
+  gunbc_floor_minimum_viable_armed_budget_wall_holds()
+}
+
+test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
+  byte_size_count(b: gunbc_floor_minimum_viable_armed_budget_bytes()) == byte_size_count(b: byte_size(12884901888))
 }

@@ -11,6 +11,7 @@ import v2.std.collection {
   Optional,
   Present,
   empty_map,
+  list_at_optional,
   map_insert,
   optional_absent,
   optional_present
@@ -141,7 +142,7 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, for_all, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, for_all, is_empty, list_append, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -169,7 +170,7 @@ import v2.std.integer {
   NonZeroD2
 }
 import v2.std.text { String }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -2773,7 +2774,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_sequence(
@@ -5832,11 +5833,27 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<Al
         }
       }
     Absent =>
-      outcome_rejected(Diagnostic {
-        reason: ^alias_binding_row_not_alias_decl,
-        at: node_locus(node: decl),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+      match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
+        Accepted { value: _, diagnostics: _ } =>
+          match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: binding, diagnostics: bd } =>
+              match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
+                Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                Accepted { value: target, diagnostics: td } =>
+                  Accepted {
+                    value: AliasBindingRow { binding: binding, target: target },
+                    diagnostics: diagnostics_merge(outer: bd, inner: td)
+                  }
+              }
+          }
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(Diagnostic {
+            reason: ^alias_binding_row_not_alias_decl,
+            at: node_locus(node: decl),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
   }
 }
 
@@ -5926,15 +5943,137 @@ fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> 
   }
 }
 
-fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+fn namespace_graft_unwrap_module_working_root(root: Node) -> Node {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_module {
-        qualified_name_from_parsed_module_root(root: root)
+        match parse_production_captured_child_optional(node: root) {
+          Present { value: captured } => captured
+          Absent => root
+        }
       } else {
-        qualified_name_from_emit_shaped_module_root(root: root)
+        root
+      }
+    Absent => root
+  }
+}
+
+fn namespace_graft_has_module_header(root: Node) -> Bool {
+  match find_named_child(root: root, name: ^dag_surface_module_header) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn namespace_graft_node_is_conj(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) != 1 {
+        optional_absent()
+      } else {
+        match list_at_optional(xs: node.children, index: 0) {
+          Absent => optional_absent()
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: _ } =>
+                if namespace_graft_node_is_conj(node: edge.target) {
+                  optional_present(value: edge)
+                } else {
+                  optional_absent()
+                }
+              Positional => optional_absent()
+            }
+        }
+      }
+    _ => optional_absent()
+  }
+}
+
+fn namespace_graft_graft_captured_spine(root: Node) -> Optional<Node> {
+  let captured = namespace_graft_unwrap_module_working_root(root: root)
+  if namespace_graft_has_module_header(root: captured) {
+    optional_absent()
+  } else {
+    optional_present(value: captured)
+  }
+}
+
+fn qualified_name_from_graft_spine(root: Node) -> Outcome<QualifiedName> {
+  match namespace_graft_graft_captured_spine(root: root) {
+    Absent =>
+      outcome_rejected(Diagnostic {
+        reason: ^qualified_name_structure_invalid,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    Present { value: captured } =>
+      namespace_graft_qualified_name_from_spine_node(node: captured, acc: Empty)
+  }
+}
+
+fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName) -> Outcome<QualifiedName> {
+  match namespace_graft_spine_segment_edge_optional(node: node) {
+    Present { value: edge } =>
+      match edge.label {
+        Named { name: seg } =>
+          namespace_graft_qualified_name_from_spine_node(
+            node: edge.target,
+            acc: qualified_name_snoc(qn: acc, segment: seg)
+          )
+        Positional =>
+          outcome_rejected(Diagnostic {
+            reason: ^qualified_name_structure_invalid,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
       }
     Absent =>
-      qualified_name_from_emit_shaped_module_root(root: root)
+      if is_empty(xs: acc) {
+        outcome_rejected(Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        outcome_accepted(value: acc)
+      }
+  }
+}
+
+fn namespace_graft_already_grafted(root: Node) -> Bool {
+  let working = namespace_graft_unwrap_module_working_root(root: root)
+  if namespace_graft_has_module_header(root: working) {
+    false
+  } else {
+    match qualified_name_from_graft_spine(root: root) {
+      Accepted { value: qn, diagnostics: _ } => !is_empty(xs: qn)
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+data qualified_name_from_module_node_collapsed_note: String = "SINGLE-AUTHORITY QN reader (dissolves the interim compiler-layer dual-arm wrapper qualified_name_from_module_node_graft_aware, namespace-resolution-design.md section 10 dissolve 1). Grafted roots: QN from containment nesting position (qualified_name_from_graft_spine — the section 10/13 single naming authority; the spine cluster homes here so the reader needs no compiler-layer import). Pre-graft ingress: header-path read (parsed capture or emit-shaped Named edges — parse emits header metadata until the normalize graft fires; no header shim re-stamped onto grafted trees). Wet-ingest RED controls: program_assembly_real_ingest_module_roots_parse_holds + validate_module_roots_red_on_parsed_roots."
+
+fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+  if namespace_graft_already_grafted(root: root) {
+    qualified_name_from_graft_spine(root: root)
+  } else {
+    match parse_production_emitted_identity_optional(node: root) {
+      Present { value: id } =>
+        if id == ^dag_surface_module {
+          qualified_name_from_parsed_module_root(root: root)
+        } else {
+          qualified_name_from_emit_shaped_module_root(root: root)
+        }
+      Absent =>
+        qualified_name_from_emit_shaped_module_root(root: root)
+    }
   }
 }

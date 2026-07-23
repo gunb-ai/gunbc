@@ -32,6 +32,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchSpawnCommands,
   dispatch_spawn_commands,
   dispatch_tmux_session_name,
+  dispatch_worktree_root,
   tmux_ls_argv,
   tmux_kill_session_argv,
   dispatch_live_sessions,
@@ -39,6 +40,12 @@ import gunbc.roadmap_dispatch_actuator {
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import extdeps.gunbc
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.llm.cli {
+  claude_cli_program,
+  claude_trust_store_path,
+  claude_workspace_trust_seeded,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_atom, content_hash_combine }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -117,7 +124,89 @@ type BeltSpawnOutcome
   = Spawned { node_id: String, session_name: String }
   | SpawnFailed { node_id: String, step: String, detail: String }
 
+data belt_claude_preflight_note: String = "Spawn preflights the CLAUDE dependency before any actuation, because both of its failure classes pass the exec seam SILENTLY (§5, found live 2026-07-23): tmux new-session exits 0 even when the inner claude is missing (the pane dies instantly behind a fabricated Spawned), and an unseeded workspace-trust root blocks claude INTERACTIVELY on its per-path trust dialog (a hung session, not an error — --dangerously-skip-permissions does not cover it). Both are decidable BEFORE spawning, so they refuse as typed SpawnFailed rows: claude-on-PATH via the same shell.Which authority belt_exec uses (step claude-cli), then the trust seed for the ONE dispatch worktree root read from the claude trust store and classified by extdeps.llm.cli.claude_workspace_trust_seeded — the modeled home of what was hand-provisioned on srv1 at go-live (ancestor-inheritance makes the single root sufficient; steps claude-trust-home / claude-trust-store / claude-trust-seed, each detail naming the exact convergence). The DECISION is the pure witnessed fn (belt_claude_preflight_decision, every arm exercised on synthetic facts — same shape as belt_observe_from_result); belt_claude_preflight only threads live observations into it. Residue: refuse-with-instructions, not auto-seed — the trust store is claude's own mutable file (claude rewrites it at runtime), so a read-modify-write APPLY arm races the upstream writer; seeding stays with the live_deploy membership convergence (the go-live receipt's named dissolution)."
+
+type BeltClaudePreflight
+  = ClaudePreflightOk
+  | ClaudePreflightRefused { step: String, detail: String }
+
+fn belt_claude_preflight_decision(
+  claude_on_path: Bool,
+  home: String,
+  trust_store_path: String,
+  trust_store_readable: Bool,
+  trust_store_text: String,
+  trust_root: String,
+) -> BeltClaudePreflight {
+  if !claude_on_path {
+    ClaudePreflightRefused {
+      step: "claude-cli",
+      detail: "claude not found on PATH (which exit nonzero); tmux would spawn a pane that dies instantly — fail-closed, no fabricated Spawned",
+    }
+  } else if home == "" {
+    ClaudePreflightRefused {
+      step: "claude-trust-home",
+      detail: "HOME unset or empty — cannot locate the claude trust store (~/.claude.json), so the workspace-trust seed is unknowable; fail-closed",
+    }
+  } else if !trust_store_readable {
+    ClaudePreflightRefused {
+      step: "claude-trust-store",
+      detail: concat(
+        concat("claude trust store unreadable at ", trust_store_path),
+        " — claude blocks on its workspace-trust dialog for an unseeded root; seed it by launching claude once under the dispatch worktree root, or converge via the live_deploy membership",
+      ),
+    }
+  } else if !claude_workspace_trust_seeded(config_text: trust_store_text, project_path: trust_root) {
+    ClaudePreflightRefused {
+      step: "claude-trust-seed",
+      detail: concat(
+        concat(concat("workspace trust not seeded for ", trust_root), " in "),
+        concat(trust_store_path, " (projects entry with hasTrustDialogAccepted: true) — claude would block interactively on its trust dialog; ancestor-dir trust inheritance means seeding this ONE root covers every dispatch worktree"),
+      ),
+    }
+  } else {
+    ClaudePreflightOk
+  }
+}
+
+fn belt_claude_preflight() -> BeltClaudePreflight {
+  let claude_ok = belt_program_available(program: claude_cli_program)
+  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  if !claude_ok || home == "" {
+    belt_claude_preflight_decision(
+      claude_on_path: claude_ok,
+      home: home,
+      trust_store_path: "",
+      trust_store_readable: false,
+      trust_store_text: "",
+      trust_root: dispatch_worktree_root,
+    )
+  } else {
+    let path = claude_trust_store_path(home: home)
+    let r = Filesystem.Read(path: path)
+    belt_claude_preflight_decision(
+      claude_on_path: claude_ok,
+      home: home,
+      trust_store_path: path,
+      trust_store_readable: r.success,
+      trust_store_text: r.content,
+      trust_root: dispatch_worktree_root,
+    )
+  }
+}
+
 fn belt_actuate_spawn(node: RoadmapNode, session_uuid: String, workdir: String) -> BeltSpawnOutcome {
+  match belt_claude_preflight() {
+    ClaudePreflightRefused { step: st, detail: d } =>
+      SpawnFailed { node_id: node.node as String, step: st, detail: d }
+    ClaudePreflightOk => belt_actuate_spawn_exec(node: node, session_uuid: session_uuid, workdir: workdir)
+  }
+}
+
+fn belt_actuate_spawn_exec(node: RoadmapNode, session_uuid: String, workdir: String) -> BeltSpawnOutcome {
   let cmds = dispatch_spawn_commands(node: node, session_uuid: session_uuid)
   match belt_exec_all(cmds: [cmds.worktree_add, cmds.tmux_spawn], workdir: workdir) {
     ExecOk { stdout: _ } =>
@@ -509,40 +598,55 @@ fn belt_dispatch_result_ok(r: BeltDispatchResult) -> Bool {
   }
 }
 
+data belt_dispatch_status_label_note: String = "The ONE wire vocabulary for a dispatch result (DESIGN §3, found live 2026-07-23): the served JSON body's `status` member and the roadmap page's client-side ok-check are two consumers of ONE label set — the dispatch button read a retired belt-A `\{ok, node\}` shape while belt B answered `\{status, ...\}`, so EVERY successful click rendered 'failed' (a silently-wrong UI answer, §5). belt_dispatch_status_label is the per-variant label authority consumed by belt_dispatch_result_json_value; belt_dispatch_ok_status_labels is the ok-subset the page derives its JS predicate from, glued to belt_dispatch_result_ok by witness (a label moved across the ok/refusal line without updating both surfaces goes RED)."
+
+fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
+  match r {
+    DispatchSpawned { node_id: _, session_name: _ } => "spawned"
+    DispatchAlreadyLive { node_id: _, session_name: _ } => "already_live"
+    DispatchNodeNotFound { node_id: _ } => "node_not_found"
+    DispatchNodeAlreadyDone { node_id: _ } => "already_done_signed_off"
+    DispatchObserveRefused { node_id: _, reason: _ } => "observe_refused"
+    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => "spawn_failed"
+  }
+}
+
+data belt_dispatch_ok_status_labels: List<String> = ["spawned", "already_live"]
+
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
   match r {
     DispatchSpawned { node_id: nid, session_name: sn } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "spawned")),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "session_name", value: json_string(s: sn)),
       ])
     DispatchAlreadyLive { node_id: nid, session_name: sn } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "already_live")),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "session_name", value: json_string(s: sn)),
       ])
     DispatchNodeNotFound { node_id: nid } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "node_not_found")),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
       ])
     DispatchNodeAlreadyDone { node_id: nid } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "already_done_signed_off")),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
       ])
-    DispatchObserveRefused { node_id: nid, reason: r } =>
+    DispatchObserveRefused { node_id: nid, reason: r2 } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "observe_refused")),
-        json_kv(key: "reason", value: json_string(s: r)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "reason", value: json_string(s: r2)),
       ])
     DispatchSpawnFailed { node_id: nid, step: st, detail: d } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "spawn_failed")),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
       ])

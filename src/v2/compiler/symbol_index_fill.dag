@@ -1,4 +1,48 @@
 module v2.compiler.symbol_index_fill
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import v2.std.collection {
+  Absent,
+  Map,
+  Optional,
+  Present,
+  empty_map,
+  list_at_optional,
+  map_insert
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
+import v2.std.symbol_index {
+  SymbolIndex,
+  symbol_index_insert,
+  symbol_index_lookup
+}
+import v2.extdeps.languages.dag {
+  alias_binding_row_from_decl_node,
+  dag_surface_module_header_metadata_edge,
+  namespace_graft_spine_segment_edge_optional,
+  qualified_name_from_module_node
+}
+import v2.compiler.namespace_graft {
+  namespace_graft_parse_projection_edge
+}
+
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -17,12 +61,6 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
   }
 }
 
-fn symbol_index_parse_projection_edge(name: Symbol) -> Bool {
-  (name == ^grammar_production_identity_node_projection)
-    || (name == ^grammar_production_captured_node_projection)
-    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
-}
-
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -36,7 +74,7 @@ fn symbol_index_fill_containment_edge(
           path: path,
           node: edge.target
         )
-      } else if symbol_index_parse_projection_edge(name: sym) {
+      } else if namespace_graft_parse_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
@@ -64,7 +102,7 @@ fn symbol_index_fill_containment_edge(
   }
 }
 
-data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transparent descent through parse/grammar wrapper nodes (production shells, sequence/repeat spines) at the current qualified path — edges are still filtered by symbol_index_fill_containment_edge (metadata + _node_projection projections skip path extension). Conj/Disj/Arrow retain explicit semantics; this arm is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain reachable. New TypeNode connectives that carry real named bindings must get an explicit arm before relying on this fallback."
+data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transparent descent through parse/grammar wrapper nodes (production shells, sequence/repeat spines) at the current qualified path — edges are still filtered by symbol_index_fill_containment_edge (module-header metadata + _node_projection projections skip path extension; post-graft containment spine segments descend at the current path via namespace_graft_spine_segment_edge_optional). Conj/Disj/Arrow retain explicit semantics; this arm is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain reachable. New TypeNode connectives that carry real named bindings must get an explicit arm before relying on this fallback."
 
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
@@ -73,9 +111,18 @@ fn symbol_index_fill_containment_node(
 ) -> SymbolIndex {
   match node.kind {
     TypeNode { connective: Conj } =>
-      fold(node.children, init: index, f: fn(acc, edge) {
-        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
-      })
+      match namespace_graft_spine_segment_edge_optional(node: node) {
+        Present { value: spine_edge } =>
+          symbol_index_fill_containment_node(
+            index: index,
+            path: path,
+            node: spine_edge.target
+          )
+        Absent =>
+          fold(node.children, init: index, f: fn(acc, edge) {
+            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+          })
+      }
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
@@ -145,6 +192,46 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
   )
 }
 
+fn symbol_index_fill_alias_binding(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node,
+  decl: Node
+) -> SymbolIndex {
+  match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
+    Rejected { diagnostics: _ } => index
+    Accepted { value: row, diagnostics: _ } =>
+      match symbol_index_lookup(index: index, qualified_path: row.target) {
+        Present { value: resolved } =>
+          symbol_index_insert(
+            index: index,
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
+            resolved: resolved
+          )
+        Absent => index
+      }
+  }
+}
+
+fn symbol_index_fill_alias_bindings(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  fold(
+    node_subtree_nodes(root: root),
+    init: index,
+    f: fn(acc, n) {
+      symbol_index_fill_alias_binding(
+        index: acc,
+        module_qn: module_qn,
+        root: root,
+        decl: n
+      )
+    }
+  )
+}
+
 fn symbol_index_fill_unique_variant_aliases(
   index: SymbolIndex,
   module_qn: QualifiedName,
@@ -181,11 +268,15 @@ fn symbol_index_fill_unique_variant_aliases(
 fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      symbol_index_fill_unique_variant_aliases(
-        index: symbol_index_fill_containment_node(
-          index: index,
-          path: module_qn,
-          node: root
+      symbol_index_fill_alias_bindings(
+        index: symbol_index_fill_unique_variant_aliases(
+          index: symbol_index_fill_containment_node(
+            index: index,
+            path: module_qn,
+            node: root
+          ),
+          module_qn: module_qn,
+          root: root
         ),
         module_qn: module_qn,
         root: root

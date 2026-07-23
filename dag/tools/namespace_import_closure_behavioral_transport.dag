@@ -14,15 +14,19 @@ data nic_discriminating_control_note: String = "DESIGN section 5 discriminating 
 
 data nic_scaffold_dissolution_trigger: String = "SCAFFOLD dissolve-on: nic_provider_source / nic_provider_missing_names_source / nic_consumer_source are hand-authored fixture module sources (String carriers), the meta-harness around the receipt rather than a forked emit path — the emit itself is the real gunbc binary on real bytes. They are embedded rather than committed as .dag files on purpose: the consumer deliberately references a sibling WITHOUT importing it, so committing it under a discovered source root would feed a deliberately-unresolved module to the whole-tree compile-clean gate. DISSOLVES WHEN the step-2 typed refusal lands in the resolver (v1 04_resolve: UnlistedImportUse promoted to an error, or the resolver emitting the use-line intent directly), which deletes the reference_derived_use_lines pass and this receipt with it."
 
-data nic_provider_source: String = "module witness.pilot.emit_provider\n\ntype PilotColor = PilotRed | PilotGreen | PilotBlue\n\nfn pilot_provider_flag() -> Bool \{ true \}\n\nfn pilot_provider_default() -> PilotColor \{ PilotRed \}\n"
+data nic_provider_source: String = "module witness.pilot.emit_provider\n\ntype PilotColor = PilotRed | PilotGreen | PilotBlue\n\ntype PilotWidget = PilotWidgetA | PilotWidgetB\n\nfn pilot_provider_flag() -> Bool \{ true \}\n\nfn pilot_provider_default() -> PilotColor \{ PilotRed \}\n\nfn pilot_provider_widget_default() -> PilotWidget \{ PilotWidgetA \}\n"
 
 data nic_provider_missing_names_source: String = "module witness.pilot.emit_provider\n\ntype PilotUnrelated = PilotUnrelatedA | PilotUnrelatedB\n\nfn pilot_unrelated_flag() -> Bool \{ false \}\n"
 
 data nic_consumer_source: String = "module witness.pilot.emit_consumer\n\nfn pilot_consumer_flag() -> Bool \{ pilot_provider_flag() \}\n\nfn pilot_consumer_default() -> PilotColor \{ pilot_provider_default() \}\n"
 
+data nic_consumer_partial_import_source: String = "module witness.pilot.emit_consumer_partial\n\nimport witness.pilot.emit_provider { PilotColor }\n\nfn pilot_consumer_partial_default() -> PilotColor \{ pilot_provider_default() \}\n"
+
+data nic_consumer_partial_import_type_source: String = "module witness.pilot.emit_consumer_partial_type\n\nimport witness.pilot.emit_provider { PilotColor }\n\nfn pilot_consumer_partial_type_default() -> PilotWidget \{ pilot_provider_widget_default() \}\n"
+
 data nic_scratch_under_workspace_root_note: String = "The fixture SOURCE tree is mktemp'd under the workspace root (target/, already gitignored), not under /tmp, because the v1 CLI's repo-path grant refuses a source path outside the process workspace root (cli_run repo_relative_path_normalized, modeled by gunbc.cli_run_repo_grant) — a bare mktemp -d source root panics the emit. The OUTPUT dir has no such constraint and stays a plain mktemp. target/ rather than a fixed path so concurrent runs cannot collide and so a mid-run auto-commit can never capture the fixture (.gitignore is itself a generated artifact — hand-editing it drifts the artifact gate)."
 
-fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: String) -> Bool {
+fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: String, consumer_source: String, consumer_rel: String) -> Bool {
   let src = shell.Mktemp.DirWithTemplate(
     template: concat(root, "/target/namespace_import_closure_witness_XXXXXX")
   )
@@ -32,8 +36,8 @@ fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: St
     content: provider_source
   )
   let consumer = Filesystem.Write(
-    path: concat(src.path, "/witness/pilot/emit_consumer.dag"),
-    content: nic_consumer_source
+    path: concat(src.path, consumer_rel),
+    content: consumer_source
   )
   let out = shell.Mktemp.Dir()
   let emit = gunbc.WitnessBin.Run(
@@ -42,7 +46,7 @@ fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: St
     args: [
       "compile",
       "--source-root", src.path,
-      "--entry", concat(src.path, "/witness/pilot/emit_consumer.dag"),
+      "--entry", concat(src.path, consumer_rel),
       "--output-dir", out.path,
       "--target", "rust",
       "--dependency-pool-index", "primary-precedence"
@@ -74,13 +78,31 @@ fn nic_behavioral_receipt_holds() -> Bool {
   let green_arm = nic_emitted_crate_builds(
     root: root.path,
     gunbc_bin: gunbc_bin,
-    provider_source: nic_provider_source
+    provider_source: nic_provider_source,
+    consumer_source: nic_consumer_source,
+    consumer_rel: "/witness/pilot/emit_consumer.dag"
+  )
+  let partial_import_arm = nic_emitted_crate_builds(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    provider_source: nic_provider_source,
+    consumer_source: nic_consumer_partial_import_source,
+    consumer_rel: "/witness/pilot/emit_consumer_partial.dag"
+  )
+  let partial_import_type_arm = nic_emitted_crate_builds(
+    root: root.path,
+    gunbc_bin: gunbc_bin,
+    provider_source: nic_provider_source,
+    consumer_source: nic_consumer_partial_import_type_source,
+    consumer_rel: "/witness/pilot/emit_consumer_partial_type.dag"
   )
   let red_arm = nic_emitted_crate_builds(
     root: root.path,
     gunbc_bin: gunbc_bin,
-    provider_source: nic_provider_missing_names_source
+    provider_source: nic_provider_missing_names_source,
+    consumer_source: nic_consumer_source,
+    consumer_rel: "/witness/pilot/emit_consumer.dag"
   )
 
-  gunbc_built && green_arm && (red_arm == false)
+  gunbc_built && green_arm && partial_import_arm && partial_import_type_arm && (red_arm == false)
 }

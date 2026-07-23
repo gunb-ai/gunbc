@@ -6,6 +6,7 @@ import std.emit_on_demand {
   NativeArtifact,
   emit_on_demand_key,
   family_closure_digest,
+  emit_on_demand_family_cache_root,
 }
 import extdeps.realization.emit_on_demand_host {
   native_cache_workspace_root, emit_on_demand_evict_native_cache,
@@ -61,7 +62,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_family_crate_note: String = "Family-grain build receipt (std.emit_on_demand witness_family_build_grain_ruling, operator-directed 2026-07-21): per-witness crates measured ~17s each and LOSE to the interpreter; ONE family crate wins. Members meet + join + complement concatenate into one emitted source (emit_family, per-member target models) under the derived argv-dispatched family main (rust_logic_family_target_model_staging). THE flip receipt is family_crate_one_build_members_warm_holds: the first member run builds the crate (compile_skipped false); every later member run on the same family workspace is compile_skipped TRUE — under per-witness grain each member would be its own ~17s cold build. This module is the ONE executing consumer for the logic family's native execution (suite migration, merry-pike-487 follow-on): the eval-anchored member agreements (interpreted == native via run_test_claim_from_source_emit_vs_eval_cached, per-member fixtures derived from each subject's claim) and the unknown-member refusal all run WARM on the same one-build workspace — the per-witness native builds formerly in emit_on_demand_meet_join_family_witness_test and emit_on_demand_complement_family_witness_test are deleted, those suites keep the pure key/store/budget receipts. REDs: unknown member id refuses (dispatcher exits 2 — refused logical_run, never fabricated octets); the ALL-ALT family (every member the swapped-arms tree) changes family_closure_digest -> new key -> ONE cold rebuild carrying every wrong-fixture discriminator at once (meet 1 -> 0, join 1 -> 0, complement 0 -> 1; members 2..3 warm). Key sensitivity is pure: family digest differs from every member digest (tag-seeded, singleton included) and member LIST ORDER is declared key material."
 
-data family_crate_cache_root: String = "/tmp/gunbc_emit_on_demand_family_crate"
+data family_crate_cache_root: String = emit_on_demand_family_cache_root(family: "family_crate")
 data family_crate_emitter: String = "v2.compiler.emit"
 
 fn family_crate_meet_tree() -> InferredTree {
@@ -392,4 +393,39 @@ test fn emit_on_demand_family_crate_witnesses() -> Bool {
     && family_crate_member_order_key_sensitivity_holds()
     && family_crate_one_build_members_warm_holds()
     && family_crate_member_change_cold_rebuild_holds()
+}
+
+data family_crate_pr_native_note: String = "Per-PR native carrier (routing frontier, 2026-07-22): the NO-EVICT agreement leg — same one-build workspace derivation as the receipts above but under the fixed pr_native test_id and never evicted, so the first CI run on a runner cold-builds once and every later PR run is warm (compile_skipped observed via the cached transport receipts). Assertions are agreement-only (interpreted == native per member), skip-state-agnostic by design: cold and warm runs both green, which is what a per-PR gate needs. Hermetic-clean: no evict intrinsic (which refuses hermetic), and the cached transport runs on the Admitted verdict in every mode."
+
+test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {
+  let members = family_crate_members()
+  let workspace = native_cache_workspace_root(
+    cache_root: family_crate_cache_root_for(test_id: "pr_native"),
+    key: family_crate_native_key(members: members)
+  )
+  match emit_family(
+    members: members,
+    transport_target: rust_logic_family_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      family_crate_meet_join_member_agreement(
+        workspace: workspace,
+        source: source,
+        tree: family_crate_meet_tree(),
+        subgraph: dag_meet_eval_subgraph_fixture,
+        member_id: "meet"
+      )
+        && family_crate_meet_join_member_agreement(
+          workspace: workspace,
+          source: source,
+          tree: family_crate_join_tree(),
+          subgraph: dag_join_eval_subgraph_fixture,
+          member_id: "join"
+        )
+        && family_crate_complement_member_agreement(
+          workspace: workspace,
+          source: source
+        )
+    Rejected { diagnostics: _ } => false
+  }
 }

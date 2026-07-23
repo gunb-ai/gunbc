@@ -54,6 +54,7 @@ type HostEffect =
     }
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
+  | HostIdentityShortHostnameRead
   | LiveDeployApply { spec: DeploymentSpec }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }

@@ -2,21 +2,32 @@ module v2.workflow.witness_admission
 
 import gunbc.ci_layer_roots {
   witness_exclusion_substrings,
+  whole_tree_strict_resolve_exclusion_substrings,
+  whole_tree_resolve_exclusion_substrings,
   bin_witness_wet_entries,
   known_red_probe_entries,
   witness_admission_offline_exclusion_substrings,
-  witness_admission_fixture_exclusion_substrings
+  witness_admission_fixture_exclusion_substrings,
+  witness_exclusion_frontier,
+  WitnessExclusionRow,
+  witness_exclusion_row_is_discovery_selection,
+  witness_exclusion_row_is_no_consumer,
+  witness_exclusion_row_is_bin_witness_wet,
+  witness_exclusion_row_is_known_red,
+  witness_exclusion_row_is_falsifier_wet,
+  falsifier_silent_pick_gate_entries
 }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import std.realization_schedule {
   ScheduleWitnessEntry,
-  schedule_witness_entry_eq
+  schedule_witness_entry_eq,
+  string_list_eq
 }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.witness_admission {
+import std.witness_admission {
   WitnessConsumerCadence,
   WitnessAdmissionRefusal,
   DiscoverySelection,
@@ -29,8 +40,6 @@ import v2.std.witness_admission {
   WitnessAdmissionHolds,
   UnexecutedDeferredWitness
 }
-
-data witness_admission_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
 
 fn schedule_row_matches(
   w: ScheduleWitnessEntry,
@@ -67,6 +76,12 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
   ) {
     FalsifierSelfHostWet
   } else if schedule_contains_entry(
+    xs: falsifier_native_cache_cold_roster(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierSelfHostWet
+  } else if schedule_contains_entry(
     xs: bin_witness_wet_entries,
     entry: entry,
     function: function
@@ -95,12 +110,12 @@ fn witness_consumer_cadence_for_row(
         DiscoverySelection
       } else if path_matches_any_substring(
         path: entry,
-        subs: witness_admission_offline_exclusion_substrings
+        subs: witness_admission_offline_exclusion_substrings()
       ) {
         OfflineLocalRecipe
       } else if path_matches_any_substring(
         path: entry,
-        subs: witness_admission_fixture_exclusion_substrings
+        subs: witness_admission_fixture_exclusion_substrings()
       ) {
         FixtureExplicitRoster
       } else {
@@ -127,7 +142,7 @@ fn witness_admission_refusal_for_row(
 }
 
 fn witness_row_excluded_from_discovery(entry: String) -> Bool {
-  path_matches_any_substring(path: entry, subs: witness_exclusion_substrings)
+  path_matches_any_substring(path: entry, subs: witness_exclusion_substrings())
 }
 
 fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
@@ -171,4 +186,86 @@ fn witness_admission_manifest_covers_row(entry: String, function: String) -> Boo
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
+}
+
+data witness_exclusion_no_consumer_control_pattern: String = "synthetic_orphan_admission_witness_test.dag"
+
+fn witness_exclusion_row_well_formed(row: WitnessExclusionRow) -> Bool {
+  !witness_exclusion_row_is_discovery_selection(row: row)
+    && !(row.pattern == "")
+    && !(row.reason == "")
+    && !(row.dissolve_on == "")
+    && (
+      !witness_exclusion_row_is_no_consumer(row: row)
+        || (row.pattern == witness_exclusion_no_consumer_control_pattern)
+    )
+}
+
+fn witness_exclusion_rows_well_formed(rows: List<WitnessExclusionRow>) -> Bool {
+  !any(
+    xs: rows,
+    predicate: fn(row) { !witness_exclusion_row_well_formed(row: row) }
+  )
+}
+
+fn witness_exclusion_rows_well_formed_holds() -> Bool {
+  witness_exclusion_rows_well_formed(rows: witness_exclusion_frontier)
+}
+
+fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: String) -> Bool {
+  any(
+    xs: xs,
+    predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) }
+  )
+}
+
+fn witness_exclusion_explicit_roster_rows_consistent(
+  rows: List<WitnessExclusionRow>,
+  bin_entries: List<ScheduleWitnessEntry>,
+  probe_entries: List<ScheduleWitnessEntry>
+) -> Bool {
+  !any(
+    xs: rows,
+    predicate: fn(row) {
+      (witness_exclusion_row_is_bin_witness_wet(row: row)
+        && !schedule_entries_cover_pattern(xs: bin_entries, pattern: row.pattern))
+        || (witness_exclusion_row_is_known_red(row: row)
+            && !schedule_entries_cover_pattern(xs: probe_entries, pattern: row.pattern))
+    }
+  )
+}
+
+fn witness_exclusion_bin_witness_wet_universe() -> List<ScheduleWitnessEntry> {
+  concat(bin_witness_wet_entries, falsifier_silent_pick_gate_entries)
+}
+
+fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
+  witness_exclusion_explicit_roster_rows_consistent(
+    rows: witness_exclusion_frontier,
+    bin_entries: witness_exclusion_bin_witness_wet_universe(),
+    probe_entries: known_red_probe_entries
+  )
+}
+
+fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
+  !any(
+    xs: witness_exclusion_frontier,
+    predicate: fn(row) {
+      witness_exclusion_row_is_falsifier_wet(row: row)
+        && !schedule_entries_cover_pattern(
+          xs: falsifier_self_host_wet_entries(),
+          pattern: row.pattern
+        )
+    }
+  )
+}
+
+fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {
+  string_list_eq(
+    left: whole_tree_resolve_exclusion_substrings(),
+    right: concat(
+      witness_exclusion_substrings(),
+      whole_tree_strict_resolve_exclusion_substrings
+    )
+  )
 }

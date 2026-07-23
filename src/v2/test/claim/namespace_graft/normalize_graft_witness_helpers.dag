@@ -1,0 +1,190 @@
+module v2.test.claim.namespace_graft.normalize_graft_witness_helpers
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_graft_spine }
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  ComputationNode,
+  Conj,
+  Named,
+  Node,
+  Positional,
+  TypeNode,
+  well_formed
+}
+import v2.compiler.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_is_metadata_edge,
+  namespace_graft_is_module_shell
+}
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+
+import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
+
+data normalize_graft_witness_helpers_note: String = "§10 normalize-as-ingest execution helpers: tokenize→parse_module→normalize paths exceed per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled in long/namespace_graft_normalize_witness_test.dag."
+
+data ng_norm_module_source: String = ingested_add_module_source
+
+fn ng_norm_parsed_root() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+fn ng_norm_normalized_root() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold(node.children, init: true, f: fn(ok, edge) {
+        if !ok {
+          false
+        } else {
+          match edge.label {
+            Named { name: sym } =>
+              if namespace_graft_is_metadata_edge(name: sym) {
+                false
+              } else {
+                ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
+              }
+            Positional =>
+              ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
+          }
+        }
+      })
+    ComputationNode { behavior: _ } => true
+    _ => true
+  }
+}
+
+fn ng_norm_manual_graft_on_parsed_module_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          namespace_graft_is_module_shell(root: grafted)
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn ng_norm_well_formed_after_manual_graft_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn ng_norm_normalize_accepts_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn ng_norm_manual_qn_on_parsed_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Accepted { value: qn, diagnostics: _ } =>
+              qualified_name_to_dotted_string(qn: qn) == "m"
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn ng_norm_normalize_applies_on_parsed_module_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => namespace_graft_is_module_shell(root: root)
+    Absent => false
+  }
+}
+
+fn ng_norm_graft_after_normalize_body_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: normalized } =>
+      match module_header_containment_graft(root: normalized) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Accepted { value: qn, diagnostics: _ } =>
+              qualified_name_to_dotted_string(qn: qn) == "m"
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn ng_norm_normalize_qn_round_trip_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } =>
+      match qualified_name_from_graft_spine(root: root) {
+        Accepted { value: qn, diagnostics: _ } =>
+          qualified_name_to_dotted_string(qn: qn) == "m"
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn ng_norm_normalize_output_has_zero_metadata_edges_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => ng_norm_grafted_tree_has_no_metadata_edges(node: root)
+    Absent => false
+  }
+}

@@ -1,0 +1,43 @@
+module v2.std.witness_execution_routing
+
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data witness_execution_routing_authority_note: String = "Bulk-native execution routing authority (ROADMAP 2a, Lane B, 2026-07-23): models the ENTRY-GRAIN disposition every discovery witness entry carries on the routing frontier — NativeRouted (per-PR floor runs native against GUNBC_NATIVE_CACHE_ROOT), InterpretedRetained (declared row with reason + dissolve_on — countable debt, never a silent default), or EmitIneligible (typed first-error refusal — residue is a prioritized list, never a silent skip). Family-grain emit-on-demand routing remains on v2.compiler.self_host.native_routing_frontier until the 744-entry census lands Derived Group membership (group 5a); this module is the entry-grain vocabulary both census rows and floor receipts consume. Dissolve-on: every InterpretedRetained row retires when the bulk flip PR's in-PR agreement receipt greens and the entry's disposition flips to NativeRouted or EmitIneligible with measured cause."
+
+type EmitIneligibleCause
+  = HostEffectTransportMissing
+  | ReadsLiveTreeCarrier
+  | EvalBudgetExceeded
+  | EmitAssembleRefuse
+  | ImportClosureCargoRefuse
+  | NamespaceQualifiedRustEmit
+  | TypeRefImportMissing
+  | ClosureNameCollision
+  | LongLaneScheduled
+  | OfflineLocalRecipe
+  | CensusPending
+  | EmitIneligibleUnknown
+
+type InterpretedRetainedReason
+  = BulkFlipPendingCensusIncomplete
+  | HostFedCeiling
+  | EmitOnDemandFamilyGrain
+  | RetainedPendingLongLane
+  | RetainedPendingOfflineRecipe
+  | RetainedReadsLiveTreeCarrier
+
+type WitnessExecutionDisposition
+  = NativeRouted
+  | InterpretedRetained { reason: InterpretedRetainedReason, dissolve_on: String }
+  | EmitIneligible { cause: EmitIneligibleCause, detail: String }
+
+type WitnessExecutionLeg
+  = InterpretedLeg
+  | NativeFamilyLeg { family: String }
+  | NativeDirectLeg
+  | ExecutionRefused { cause: EmitIneligibleCause, detail: String }
+
+data witness_execution_leg_note: String = "Per-witness execution-leg attribution (ROADMAP 2a executor seams): floor receipts name which leg ran — interpreted v1 tree-walk, native family crate (family key cites native_routing_frontier), native direct entry closure, or a typed refusal. Without this axis the bulk flip is unobservable. Dissolve-on: claim_executor receipt lines derive WitnessExecutionLeg from the routing frontier row at run time (construction), replacing post-hoc log inference."
+
+data witness_execution_disposition_predicate_dissolution_note: String = "disposition_is_native / disposition_is_interpreted_retained / disposition_is_emit_ineligible dissolved per review 41625 — roster consumers partition WitnessExecutionDisposition in one pass (WitnessEntryRoutingPartition) or match the coproduct directly; no sibling Bool predicates in std/. execution_leg_is_native dropped per review 41637 — WitnessExecutionLeg is typed vocabulary only until claim_executor derives legs at runtime (witness_execution_leg_note dissolve-on)."

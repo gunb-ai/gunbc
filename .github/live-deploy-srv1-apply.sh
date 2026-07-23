@@ -5,7 +5,7 @@ set -euo pipefail
 # Wave C envelope: deploy-access preflight + sudoers dropin emitted from roster before mutation.
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
-# deploy-access-bootstrap-preflight (principal + historical roster grants)
+# deploy-access-bootstrap-preflight (principal + roster grants)
 _gunbc_principal="$(whoami)"
 if [ "$_gunbc_principal" != "ghrunner" ]; then
   echo "deploy_access: typed refusal before mutation — principal mismatch expected=ghrunner actual=$_gunbc_principal"
@@ -46,11 +46,11 @@ User=briansrls
 Group=briansrls
 EnvironmentFile=/etc/gunbc-tree-sync.env
 ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git "${GUNBC_TREE_SRC}/" /opt/gunbc/gunbc/
-ExecStart=/usr/bin/rsync -rlpt "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
+ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* "${GUNBC_TREE_SRC}/.git/" /opt/gunbc/gunbc/.git/
 GUNBC_TREE_SYNC_EOF
 sudo -n install -m 0644 "$_gunbc_stage/gunbc-tree-sync.service" /etc/systemd/system/gunbc-tree-sync.service
 sudo -n systemctl daemon-reload
-sudo -n systemctl restart gunbc-tree-sync.service
+sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }
 sudo -n install -d -m 0755 /opt/gunbc/bin
 sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc
 sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees

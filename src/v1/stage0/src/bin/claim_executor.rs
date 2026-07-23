@@ -19,9 +19,9 @@ use v1_compiler::cli_run::{
     TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
-    binding_cap_cgroup_dir, binding_high_cgroup_dir, leaf_cgroup_dir, mem_total_bytes,
-    memory_events_field, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
-    AdmittedSlot, MemoryGovernor,
+    binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
+    leaf_cgroup_dir, mem_total_bytes, memory_events_field, memory_pressure_some_avg10,
+    read_cgroup_raw, read_cgroup_u64, AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -45,6 +45,90 @@ fn read_positive_budget_ms(
         Err(msg) => Err(format!(
             "claim_executor: {function} is unavailable (fail-closed): {msg}"
         )),
+    }
+}
+
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `gunbc.ci_spec.gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note`,
+/// type `gunbc.ci_spec.FloorBatchStopPolicy`):
+/// seed-side enum mirror + `run_walk` consumer for the event-scoped batch halt;
+/// policy mapping and plan roster enrollment are delegated to `.dag` eval
+/// (`gunbc_ci_floor_batch_stop_policy_for_github_event`,
+/// `gunbc_ci_floor_plan_uses_batch_stop_policy`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FloorBatchStopPolicy {
+    StopBeforeDependents,
+    FullLedger,
+}
+
+fn plan_uses_floor_batch_stop_policy(plan_ctx: &InterpContext, plan_function: &str) -> bool {
+    match run_in_context_with_args(
+        plan_ctx,
+        "gunbc_ci_floor_plan_uses_batch_stop_policy",
+        &[(
+            Some("plan_function".to_string()),
+            Value::Str(plan_function.to_string()),
+        )],
+        true,
+    ) {
+        Ok(Value::Bool(b)) => b,
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: gunbc_ci_floor_plan_uses_batch_stop_policy returned \
+                 non-bool {other:?} (treating as not enrolled)"
+            );
+            false
+        }
+        Err(msg) => {
+            eprintln!(
+                "claim_executor: gunbc_ci_floor_plan_uses_batch_stop_policy unavailable: {msg}"
+            );
+            false
+        }
+    }
+}
+
+fn resolve_floor_batch_stop_policy(
+    plan_ctx: &InterpContext,
+    plan_function: &str,
+) -> FloorBatchStopPolicy {
+    if !plan_uses_floor_batch_stop_policy(plan_ctx, plan_function) {
+        return FloorBatchStopPolicy::StopBeforeDependents;
+    }
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    match run_in_context_with_args(
+        plan_ctx,
+        "gunbc_ci_floor_batch_stop_policy_for_github_event",
+        &[(Some("event".to_string()), Value::Str(event))],
+        true,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            if plan_ctx.sym_eq(variant_name, "StopBeforeDependents") {
+                FloorBatchStopPolicy::StopBeforeDependents
+            } else if plan_ctx.sym_eq(variant_name, "FullLedger") {
+                FloorBatchStopPolicy::FullLedger
+            } else {
+                eprintln!(
+                    "claim_executor: unrecognized FloorBatchStopPolicy variant \
+                     (defaulting to FullLedger, fail-closed)"
+                );
+                FloorBatchStopPolicy::FullLedger
+            }
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor batch stop policy returned non-variant {other:?} \
+                 (defaulting to FullLedger, fail-closed)"
+            );
+            FloorBatchStopPolicy::FullLedger
+        }
+        Err(msg) => {
+            eprintln!(
+                "claim_executor: floor batch stop policy unavailable \
+                 (defaulting to FullLedger, fail-closed): {msg}"
+            );
+            FloorBatchStopPolicy::FullLedger
+        }
     }
 }
 
@@ -1523,6 +1607,7 @@ fn run_walk(
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
+    stop_policy: FloorBatchStopPolicy,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1699,11 +1784,21 @@ fn run_walk(
             results: batch_results,
         });
         if any_failed {
-            eprintln!(
-                "claim_executor: batch {} had failures — stopping before dependent batches",
-                bi + 1
-            );
-            break;
+            match stop_policy {
+                FloorBatchStopPolicy::StopBeforeDependents => {
+                    eprintln!(
+                        "claim_executor: batch {} had failures — stopping before dependent batches",
+                        bi + 1
+                    );
+                    break;
+                }
+                FloorBatchStopPolicy::FullLedger => {
+                    eprintln!(
+                        "claim_executor: batch {} had failures — continuing (FullLedger stop policy)",
+                        bi + 1
+                    );
+                }
+            }
         }
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
@@ -1784,6 +1879,22 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     out.push_str("{\n  false\n}");
     out.push_str(&text[end..]);
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `v2.workflow.ci_floor_plan.gunbc_floor_arm_time_budget_refusal_plan_functions_claim_executor_seed`,
+/// symbols `gunbc.ci_spec.floor_plan_function` / `plan_artifact_plan_function` /
+/// `gunbc.falsifier_workflow.falsifier_plan_function`):
+/// plan functions whose schedule is a floor walk and therefore subject to arm-time
+/// `FloorBudgetBelowMinimumFootprint` refusal in claim_executor.
+const FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS: &[&str] = &[
+    "gunbc_ci_floor_batches",
+    "gunbc_ci_plan_artifact_batches",
+    "gunbc_falsifier_batches",
+];
+
+fn plan_requires_floor_arm_time_budget_refusal(plan_function: &str) -> bool {
+    FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS.contains(&plan_function)
 }
 
 fn run_perturb_check(
@@ -1899,6 +2010,7 @@ fn run_perturb_check(
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
+        FloorBatchStopPolicy::StopBeforeDependents,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -2123,6 +2235,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         FalsifierSelfHostWetBudgets::default()
     };
+    let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
     drop(plan_ctx);
     phase_mark("plan evaluated");
 
@@ -2148,6 +2261,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             .map(|n| n.get())
             .unwrap_or(1),
     ));
+    if plan_requires_floor_arm_time_budget_refusal(&plan_function) {
+        if let Some(msg) = floor_budget_below_minimum_footprint(governor.budget_bytes()) {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
     phase_mark("memory governor armed; starting batch walk");
     spawn_floor_memory_heartbeat();
 
@@ -2178,6 +2297,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
+        batch_stop_policy,
     );
     match peak_rss_bytes() {
         Some(bytes) => {
@@ -2219,6 +2339,34 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn floor_arm_time_budget_refusal_plan_functions_match_dag_seed_roster() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("src/v2/workflow/ci_floor_plan.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph(&roots, &entry).expect("resolve ci_floor_plan");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let value = run_value(
+            &ctx,
+            "gunbc_floor_arm_time_budget_refusal_plan_function_roster",
+        )
+        .expect("evaluate materialized plan roster");
+        let dag_roster =
+            str_list_from_value(&value, &ctx).expect("plan roster must be List<String>");
+        assert_eq!(
+            dag_roster.as_slice(),
+            FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS,
+            "claim_executor seed const must match ci_floor_plan materialized roster \
+             (dissolve-on: v2 emit of stage0 host constants)"
+        );
+    }
 
     // The materialization-receipt chain by execution: a real entry resolves, a
     // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger

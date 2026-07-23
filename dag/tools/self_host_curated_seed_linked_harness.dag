@@ -11,7 +11,7 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
-data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and optional supplementary claim-run. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_entry_rel = skip supplementary claim-run. Dissolve-on: modeled self-host behavioral-equivalence harness producer emits this carrier's operations without per-module copy-paste (parallel to slb/ssuv_scaffold_dissolution_trigger)."
+data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and zero or more supplementary claim-runs. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_runs = skip supplementary claim-runs. LANDED: the per-module copy-paste this note names is dissolved by tools.self_host_module_behavioral_transport_roster — one config row per frontier module, one generic compiler_module_behavioral_receipt_for(module_path) dispatch, this kernel unchanged as the sole executor."
 
 data cssl_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
 
@@ -21,7 +21,7 @@ data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
 
 data cssl_std_bridge_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges."
 
-data cssl_emit_artifact_sanitize_scaffold_debt: String = "SCAFFOLD — probe-side sanitize in cssl_seed_linked_closure_assembly.rs on every emit-retained artifact (dissolve-on #6775 emitter coherence). Two structural passes, no hand name roster: (1) strip use crate::v1_rt::NAME when the file locally defines pub enum/struct/type NAME (generic-arg-aware — Witness and Optional share the rule); (2) dedupe symbols across sequential pub use braces (transitive re-export collision — emit_produced Optional via grammar+collection). The v2_std_integer.rs blind strip was REMOVED 2026-07-18 (corrupting no-op). Delete sanitize_emitter_artifact_in_place when curated probes pass without CSSL_ASSEMBLE: sanitize scaffold applied stderr."
+data cssl_emit_artifact_sanitize_scaffold_debt: String = "SCAFFOLD — probe-side sanitize in cssl_seed_linked_closure_assembly.rs on every emit-retained artifact. CENSUSED 2026-07-22 (content-diff evidence, not raw fs-write != which false-positives on the pass's own trailing-newline line-rejoin — every write normalizes a trailing newline as a no-op side effect, so the stderr 'sanitize scaffold applied' line still fires on nearly every file even when zero rules changed anything semantically; that stderr line is NOT itself evidence of a live rule). Former rule (1) strip use crate::v1_rt::NAME when the file locally defines pub enum/struct/type NAME (generic-arg-aware — Witness and Optional shared the rule) is DEAD and DELETED: zero real firings across a representative sweep of 13 emit-retained closures (02_parse, 06_translate, 00_compile, 05_eval, materialization_carriers, 05_emit, emit_module, emit_produced, emit_semantic_decl, emit_host, fold_lowering, 03_name_resolve, 03_normalize) — #6981 (emit_imports: field-struct import synth asks provides not physically-defines) and #7033 (fold-closure generic-T, Witness prelude, value-qualified refs) dissolved it at the emitter. Remaining LIVE rule (2): dedupe symbols across sequential pub use braces (transitive re-export collision) — CONFIRMED still firing 2026-07-22 on src/v2/compiler/emit_produced.dag closure, file v2_extdeps_languages_rust.rs: pub use crate::v2_std_collection listing List, Map, Set, Optional carries a duplicate Optional already re-exported one line above via pub use crate::v2_std_grammar listing grammar_formal_terminal, Optional. Named emitter gap: the Rust target's pub-use re-export synthesis (05_emit_rust.dag / the emit_produced.dag closure's import-surface construction — exact function not yet located) does not dedupe a symbol re-exported transitively through two distinct source modules before emitting the pub use line for each; construction fix (single-pass symbol->module ownership map before emitting any pub use block, so a duplicate is unwritable) is owned by crisp-fox-839 (05_emit_rust.dag owner, in-flight PR #7057) — coordinate before editing that file, do not implement here. Dissolution trigger: delete dedupe_pub_use_symbols + this rule's debt note entry when a curated probe sweep (scripts/curated_cargo_frontier_probe_sweep.sh with CSSL_STD_SEED_LINK=1, content-diff not raw stderr) shows zero real firings."
 
 data cssl_closure_assembly_note: String = "Generic closure assembly: dep manifest = gunbc-emitted src/lib.rs pub mod list (structural closure-membership authority). Entry module bytes hash-locked. Emit-retain rule: any module listed in the emitted closure manifest with a matching emitted src sibling .rs is emit-retained — seed lib.rs pub mod presence is external-oracle only and must NOT trigger seed-replace (seed stubs may lack gunbc type surface). Hand shim_lib_rel/shim_writes = optional fast-path override (body_producer / behavioral receipts)."
 
@@ -135,28 +135,42 @@ fn cssl_run_generic_closure_assembly(
   assemble.success && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
 }
 
-fn cssl_supplemental_claim_ok(
+type CuratedSeedLinkedClaimRun {
+  entry_rel: String
+  function: String
+}
+
+fn cssl_supplemental_claim_run_ok(
   root: String,
   gunbc_bin: String,
-  claim_entry_rel: String,
-  claim_function: String
+  run: CuratedSeedLinkedClaimRun
 ) -> Bool {
-  if claim_entry_rel == "" {
-    true
-  } else {
-    let eval = gunbc.WitnessBin.Run(
-      workdir: root,
-      bin_path: gunbc_bin,
-      args: [
-        "run", "--claim-run",
-        "--source-root", "dag",
-        "--source-root", "src/v2",
-        "--entry", claim_entry_rel,
-        "--function", claim_function
-      ]
-    )
-    eval.success
-  }
+  let eval = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", run.entry_rel,
+      "--function", run.function
+    ]
+  )
+  eval.success
+}
+
+fn cssl_supplemental_claims_ok(
+  root: String,
+  gunbc_bin: String,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> Bool {
+  fold_list(
+    xs: claim_runs,
+    empty: true,
+    cons: fn(ok, run) {
+      ok && cssl_supplemental_claim_run_ok(root: root, gunbc_bin: gunbc_bin, run: run)
+    }
+  )
 }
 
 fn cssl_seed_linked_behavioral_receipt(
@@ -165,8 +179,7 @@ fn cssl_seed_linked_behavioral_receipt(
   shim_writes: List<CuratedSeedLinkedShimWrite>,
   driver_rel: String,
   pass_marker: String,
-  claim_entry_rel: String,
-  claim_function: String
+  claim_runs: List<CuratedSeedLinkedClaimRun>
 ) -> Bool {
   let root = git.Core.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
@@ -218,11 +231,10 @@ fn cssl_seed_linked_behavioral_receipt(
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
   let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
   let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
-  let claim_ok = cssl_supplemental_claim_ok(
+  let claim_ok = cssl_supplemental_claims_ok(
     root: root.path,
     gunbc_bin: gunbc_bin,
-    claim_entry_rel: claim_entry_rel,
-    claim_function: claim_function
+    claim_runs: claim_runs
   )
 
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
