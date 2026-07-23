@@ -7,7 +7,7 @@ import gunbc.roster_registry {
   DeclaredFrontier,
   RosterRegistration,
   roster_registry,
-  decl
+  roster_decl
 }
 import v2.lens.roster_registry {
   roster_registry_nonstandard_count,
@@ -24,7 +24,7 @@ data roster_registry_test_note: String = "GREEN: the enrolled registry holds (ev
 
 fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
   RosterRegistration {
-    roster: decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
+    roster: roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
     unit_kind: "synthetic unit",
     membership: membership
   }
@@ -77,7 +77,7 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
       synthetic_registration(membership: ByContainment),
       synthetic_registration(
         membership: ByDerivation {
-          predicate: decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
+          predicate: roster_decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
         }
       ),
       synthetic_registration(

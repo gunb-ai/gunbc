@@ -21,7 +21,7 @@ type RosterRegistration {
   membership: GroupMembership
 }
 
-fn decl(module_path: String, decl_name: String) -> DeclarationRef {
+fn roster_decl(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
@@ -31,7 +31,7 @@ fn decl(module_path: String, decl_name: String) -> DeclarationRef {
 
 data roster_registry: List<RosterRegistration> = [
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     unit_kind: "witness discovery-exclusion path substring",
     membership: DeclaredFrontier {
       reason: "each excluded witness path pattern is an operator-ruled or structurally-forced exception to per-PR hermetic discovery; every row carries its consumer classification, reason, and trigger in-row",
@@ -39,7 +39,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "whole_tree_strict_resolve_exclusion_substrings"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "whole_tree_strict_resolve_exclusion_substrings"),
     unit_kind: "strict-resolve probe path substring",
     membership: DeclaredFrontier {
       reason: "the strict-resolve-broken set, baked as single authority per operator ruling 2026-07-13; per-row audit receipts in whole_tree_strict_resolve_scaffold_exclusion_note",
@@ -47,7 +47,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_entries"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_entries"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs), so the hermetic envelope refuses them by construction; they run as the declared Wet-profiled batch (bin_witness_wet_note)",
@@ -55,7 +55,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "known-red frontier: witnesses red on main for feature gaps owned by named lanes, run on the falsifier probe cadence expecting red; per-entry diagnosis, owner, and trigger in known_red_frontier_note",
@@ -63,7 +63,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "resolution_divergence_census_roster_excluded_module_prefixes"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "resolution_divergence_census_roster_excluded_module_prefixes"),
     unit_kind: "module path prefix",
     membership: DeclaredFrontier {
       reason: "v2.test.* intentional-ambiguity harness modules are excluded from the fn_parent_first_hit subset construction invariant (not from the genuine silent-pick join gate); receipts in falsifier_silent_pick_gate_note",
@@ -71,17 +71,17 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.compiler.self_host.native_routing_frontier", decl_name: "native_routing_frontier_roster"),
+    roster: roster_decl(module_path: "v2.compiler.self_host.native_routing_frontier", decl_name: "native_routing_frontier_roster"),
     unit_kind: "emit-on-demand witness family (subject construct declaration)",
     membership: ByDerivation {
-      predicate: decl(
+      predicate: roster_decl(
         module_path: "v2.compiler.self_host.native_routing_frontier",
         decl_name: "native_routing_row_membership_derived"
       )
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.meta_exec_confinement", decl_name: "meta_exec_confinement_exception_roster"),
+    roster: roster_decl(module_path: "v2.lens.meta_exec_confinement", decl_name: "meta_exec_confinement_exception_roster"),
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
       reason: "paths granted import of the confined meta-exec module outside realization edges; per-row reasons and triggers in-row (aggregate law in meta_exec_confinement_law)",
@@ -89,7 +89,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.realization_vocabulary_containment", decl_name: "realization_vocab_exception_roster"),
+    roster: roster_decl(module_path: "v2.lens.realization_vocabulary_containment", decl_name: "realization_vocab_exception_roster"),
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
       reason: "paths granted import of the bash-AST emit vocabulary outside realization edges; per-row reasons and triggers in-row",
@@ -97,7 +97,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.inert_carrier", decl_name: "inert_carrier_roster"),
+    roster: roster_decl(module_path: "v2.lens.inert_carrier", decl_name: "inert_carrier_roster"),
     unit_kind: "type name",
     membership: DeclaredFrontier {
       reason: "modeled domain carriers with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader); per-row reasons and triggers in-row",
@@ -105,7 +105,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.complexity_linearity_audit", decl_name: "complexity_linearity_migration_debt_roster"),
+    roster: roster_decl(module_path: "v2.lens.complexity_linearity_audit", decl_name: "complexity_linearity_migration_debt_roster"),
     unit_kind: "path::fn site key",
     membership: DeclaredFrontier {
       reason: "closed-coproduct wildcard sites classified migration-debt rather than kernel-permanent; per-row reasons and triggers in-row",
@@ -113,7 +113,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_known_infra_roster"),
+    roster: roster_decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_known_infra_roster"),
     unit_kind: "lens module path",
     membership: DeclaredFrontier {
       reason: "registry-infrastructure modules under v2.lens.* that are not themselves enforcing lenses; per-row reasons and triggers in-row",
@@ -121,7 +121,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster"),
+    roster: roster_decl(module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster"),
     unit_kind: "lens module path",
     membership: DeclaredFrontier {
       reason: "lens modules deliberately without distinct registry rows because they consolidate onto an already-enrolled verdict authority; per-row reasons and triggers in-row (aggregate rationale in lens_registry_completeness_consolidated_roster_note)",
@@ -129,7 +129,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: decl(module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note"),
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note"),
     unit_kind: "long-lane witness file (dag/test/claim/long/, src/v2/test/claim/long/)",
     membership: ByContainment
   }
