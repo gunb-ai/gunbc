@@ -125,6 +125,32 @@ fn fsmg_install_actuator() -> List<MarkdownBlock> {
   ]
 }
 
+fn fsmg_host_convergence() -> List<MarkdownBlock> {
+  [
+    h2(text: "C — Host convergence: the enrollment failure (srv4 OOM receipt, 2026-07-23)"),
+    p(text: "Follow-on: srv4 (put onto runners 2026-07-22) OOM-killed live PR CI the next day. The trace is sharper than any single missing step above: srv4 was never a member of the MODELED fleet at all. gunbc.fleet_intent declares exactly srv1, srv2, srv3, and every convergence value (per-slot MemoryMax/MemorySwapMax, oomd policy, slice cap) is DERIVED from that intent via ci_runner_placement.runner_deployment_plan then host_converge.fleet_converge_policy. The converge did not skip srv4 — its authority cannot NAME a host absent from the intent. The runner installer, an imperative script, was hand-pointed at srv4: a fleet member in GitHub's eyes, a ghost in the model. Membership by hand-action, not by row."),
+    h3(text: "Model without actuator, and the emit is unprovable"),
+    p(text: "The convergence is not un-modeled — it is modeled without a live actuator. host_runner_memory_provision refuses live apply at PerSlotMemoryCap KnobUnimplemented (plan-emit claims nothing; verify-only read-back is the close); oomd is gunbc.oomd_install; the per-slot drop-ins are the 20-fleet-width / 30-fleet-swap / 40-fleet-high files. But on 2026-07-23 gunbc.fleet_converge_emit did not compile at all (104 errors: unresolved Do/Pipeline/If, orch_emit_pipeline missing), so the modeled converge could neither APPLY nor EMIT. This incident is the displaced-cost pricing the actuation lane (roadmap 2-converge-reland, whose own words are: until it lands, every fabric model is paper) was waiting for."),
+    h3(text: "Interim actuation receipt (hand-applied from derived-equal values)"),
+    p(text: "Applied by hand to stop the live OOM, legitimate ONLY because srv4 and srv1 are the same board at 125 GiB RAM, so the RAM-derived per-slot caps are EQUAL (derived-equal, not transplanted); the slice cap was left as srv4's own installer-default 70 percent, never srv1's value. Each axis interim; dissolution = enrollment plus the converge-actuation lane:"),
+    ul(items: [
+      li(text: "swap: 8 GiB -> 127 GiB (a 120 GiB /swap2.img, swappiness 10, fstab-persisted). UNMODELED axis, even for srv1."),
+      li(text: "per-slot MemoryMax: infinity -> 16 GiB. Modeled (refuses to apply)."),
+      li(text: "per-slot MemorySwapMax: infinity -> 32 GiB. Modeled (refuses to apply)."),
+      li(text: "systemd-oomd: package absent -> installed + active. Modeled (oomd_install)."),
+      li(text: "ctrl-runner-reclaim.timer: missing -> active. Orphan ctrl-* axis, unmodeled even for srv1."),
+    ]),
+    p(text: "Effect: per-slot caps bound the balloon (an over-limit build memcg-OOMs its OWN job instead of global-OOM-killing an innocent runner mid-step), swap absorbs spill, and the actions/cache save_state Missing-file flake — OOM fallout — dies with it."),
+    h3(text: "The three fixes this prices (supersede/sharpen A-B above)"),
+    ol(items: [
+      li(text: "Actuation lane (2-converge-reland) is now priced by a real incident, not paper: model + emit + verify exists; the live-apply knob refuses and the emit is currently un-runnable. Landing it is the displaced cost."),
+      li(text: "Swap-device provisioning as a modeled axis: a SwapDevice / SwapFile member on the host-convergence spine (fallocate/mkswap/swapon/fstab as typed host effects, readback via /proc/swaps). The single most stability-critical fact is a hand-memory with no row anywhere, even for srv1."),
+      li(text: "Enrollment wall as CONSTRUCTION, not prose: the runner installer refuses on a host absent from gunbc.fleet_intent. That one refusal makes this entire incident class unwritable. Standing rule: a host takes no fleet work until it is an intent row with a converge receipt."),
+    ]),
+    p(text: "Enrollment prerequisite (why it is step 0, not bureaucracy): emit-and-run converge on an unenrolled host derives NOTHING for it, or worse stamps template drop-ins carrying other hosts' widths. An intent row with BMC-observed memory is where runner_deployment_plan's conservation wall gets the RAM to CHECK whether N runners at the declared caps even fit, refusing PlanUnsound if not — the OOM prevented by arithmetic instead of by swap."),
+  ]
+}
+
 fn fsmg_priority() -> List<MarkdownBlock> {
   [
     h2(text: "Priority"),
@@ -146,12 +172,13 @@ fn fleet_subsumption_manual_gaps_body() -> List<MarkdownBlock> {
   concat(fsmg_slot_provisioning(),
   concat(fsmg_runner_user(),
   concat(fsmg_fresh_host_prereqs(),
-  concat(fsmg_install_actuator(), fsmg_priority()))))))))
+  concat(fsmg_install_actuator(),
+  concat(fsmg_host_convergence(), fsmg_priority())))))))))
 }
 
 data fleet_subsumption_manual_gaps_plan: Plan = Plan {
   slug: "fleet-subsumption-manual-gaps",
-  title: "Fleet subsumption — manual steps the modeling workflow does not yet cover (srv4 receipt, 2026-07-22)",
+  title: "Fleet subsumption — manual steps the modeling workflow does not yet cover (srv4 receipts, 2026-07-22 install + 2026-07-23 host-convergence OOM)",
   body: fleet_subsumption_manual_gaps_body(),
-  dissolution: HasTrigger { text: "Dissolves item-by-item as each gap is modeled and consumed on the live path: A1 MaterializedSecret effect, A2 SecretAccessGrant/ADC, A3 SecretRef liveness probe, B1 RunnerSlotProvision + ActionsRunnerRelease, B2 fleet-runner-user provision, B3 prereq chain completion, B4 configfs install actuator. Fully retired when srv5 (the next host) is subsumed with zero hand-run shell and read-back receipts for every step." },
+  dissolution: HasTrigger { text: "Dissolves item-by-item as each gap is modeled and consumed on the live path: A1 MaterializedSecret effect, A2 SecretAccessGrant/ADC, A3 SecretRef liveness probe, B1 RunnerSlotProvision + ActionsRunnerRelease, B2 fleet-runner-user provision, B3 prereq chain completion, B4 configfs install actuator, C enrollment wall + converge actuation lane + SwapDevice member. The canonical host-state rows land on the operator sheet (1a lane); this doc is the incident receipt. Fully retired when srv5 (the next host) is subsumed with zero hand-run shell and read-back receipts for every step, and a host absent from fleet_intent structurally cannot take fleet work." },
 }
