@@ -252,3 +252,46 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+  heal_generated_artifacts:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [build]
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+        timeout-minutes: 5
+      - name: Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/generated_artifact_gate.dag --function main_wet
+        timeout-minutes: 5
+      - name: Commit + push regenerated artifacts to main (only when drifted; byte-idempotent fixed point terminates the loop)
+        run: |
+          git config user.name "gunbc-ci-auto-heal"
+          git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "chore-heal: no generated-artifact drift on this tree; nothing to commit"
+          else
+            git add -A
+            git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            git push origin HEAD:main
+            echo "chore-heal: pushed regenerated generated artifacts to main"
+          fi
+        timeout-minutes: 5

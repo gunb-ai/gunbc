@@ -49,33 +49,42 @@ fn workflow_contents_is_read(w: Workflow) -> Bool {
   }
 }
 
-test fn heal_job_enrolled_in_ci_workflow() -> Bool {
+fn heal_job_enrolled_in_ci_workflow() -> Bool {
   fold(ci_workflow.jobs, init: false, f: (acc, j) => acc || (j.id == "heal_generated_artifacts"))
 }
 
-test fn heal_job_needs_build_not_ci() -> Bool {
+fn heal_job_needs_build_not_ci() -> Bool {
   ci_heal_generated_artifacts_job().needs == ["build"]
 }
 
-test fn heal_job_runs_on_main_push_only() -> Bool {
+fn heal_job_runs_on_main_push_only() -> Bool {
   match ci_heal_generated_artifacts_job().if_condition {
     Present { value: s } => s == ci_deploy_push_to_main_if
     Absent => false
   }
 }
 
-test fn heal_job_has_scoped_contents_write() -> Bool {
+fn heal_job_has_scoped_contents_write() -> Bool {
   job_contents_is_write(j: ci_heal_generated_artifacts_job())
 }
 
-test fn contents_write_is_scoped_to_heal_only() -> Bool {
+fn contents_write_is_scoped_to_heal_only() -> Bool {
   workflow_contents_is_read(w: ci_workflow)
     && job_has_no_write(j: ci_build_job())
     && job_has_no_write(j: ci_job())
     && job_contents_is_write(j: ci_heal_generated_artifacts_job())
 }
 
-test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
+fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
   (ci_heal_generated_artifact_regen_function == "main_wet")
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
+}
+
+test fn ci_heal_job_witnesses() -> Bool {
+  heal_job_enrolled_in_ci_workflow()
+    && heal_job_needs_build_not_ci()
+    && heal_job_runs_on_main_push_only()
+    && heal_job_has_scoped_contents_write()
+    && contents_write_is_scoped_to_heal_only()
+    && heal_regen_targets_generated_artifact_main_wet()
 }
