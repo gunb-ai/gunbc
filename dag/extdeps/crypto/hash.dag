@@ -11,8 +11,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type HashAlgorithm
-  = Sha256
+type HashAlgorithm =
+  | Sha256
 
 data sha256_authority_note: NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
 
