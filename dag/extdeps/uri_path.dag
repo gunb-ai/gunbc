@@ -158,3 +158,27 @@ fn parse_path_template(raw: String) -> PathTemplateParseResult {
       }
   }
 }
+
+data uri_query_param_note: String = "Query-string parsing, the URI concern's single home (§3) — mirror of the '?' strip match_path_template/parse_path_template already do. uri_query_string returns everything after the first '?' (empty if none); uri_query_param returns the value for a key over the '&'-separated 'k=v' pairs (empty if the key is absent). Kept minimal: no percent-decoding yet (the one consumer, the /sandbox/echo status label, is an ASCII enum), so a decode pass is a named follow-on when a consumer needs it."
+
+fn uri_query_string(path: String) -> String {
+  match path |> split(delimiter: "?") |> skip(1) |> first {
+    Present { value: q } => q
+    Absent => ""
+  }
+}
+
+fn uri_query_param(path: String, key: String) -> String {
+  let pairs = uri_query_string(path: path) |> split(delimiter: "&")
+  fold(pairs, init: "", f: (acc, pair) => {
+    let k = match pair |> split(delimiter: "=") |> first {
+      Present { value: x } => x
+      Absent => ""
+    }
+    let v = match pair |> split(delimiter: "=") |> skip(1) |> first {
+      Present { value: x } => x
+      Absent => ""
+    }
+    if k == key { v } else { acc }
+  })
+}

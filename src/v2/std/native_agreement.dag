@@ -1,0 +1,74 @@
+module v2.std.native_agreement
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List, Optional, Present, Absent, list_at_optional }
+import v2.std.logic { Bool }
+import v2.std.integer { integer_nat_to_decimal_string }
+import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
+import v2.std.text { String }
+
+type NativeAgreementDivergence {
+  member_id: String
+  interpreted_value: String
+  native_value: String
+}
+
+data native_agreement_authority_note: String = "Native-vs-interpreted agreement loudness (ROADMAP 2a Lane B, 2026-07-23): when emit_on_demand family-crate per-PR agreement redds, the floor receipt MUST name the failing member and BOTH runtime answers — the srv2-05 revert (#7091, routed_flip_reverted_note) carried compile_skipped=true x3 then Bool(false) with member and values unknown. This module is the typed divergence carrier + formatter; claim_executor invokes the companion *_failure_receipt fn on Bool(false) witnesses. Verdict-to-divergence extraction lives in v2.compiler.self_host.native_agreement_support (layering: std must not import compiler)."
+
+fn octet_display(octet: Int) -> String {
+  if octet == 0 {
+    "0"
+  } else if octet == 1 {
+    "1"
+  } else {
+    integer_nat_to_decimal_string(value: octet)
+  }
+}
+
+fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
+  match value {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
+    } =>
+      list_at_optional(xs: bytes, index: 1)
+    _ => Absent
+  }
+}
+
+fn runtime_value_octet_label(value: RuntimeValue) -> String {
+  match runtime_value_discriminant_octet(value: value) {
+    Present { value: octet } => octet_display(octet: octet)
+    Absent => "?"
+  }
+}
+
+fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
+  concat(
+    "member=",
+    concat(
+      d.member_id,
+      concat(
+        " interpreted=",
+        concat(d.interpreted_value, concat(" native=", d.native_value))
+      )
+    )
+  )
+}
+
+fn first_native_agreement_divergence(
+  divergences: List<NativeAgreementDivergence>
+) -> Optional<NativeAgreementDivergence> {
+  match divergences {
+    Empty => Absent
+    Cons { head: d, tail: _ } => Present { value: d }
+  }
+}
+
+fn native_agreement_failure_receipt(
+  divergences: List<NativeAgreementDivergence>
+) -> String {
+  match first_native_agreement_divergence(divergences: divergences) {
+    Present { value: d } => format_native_agreement_divergence(d: d)
+    Absent => ""
+  }
+}
