@@ -28,13 +28,17 @@ fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
 }
 
 fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
-  if signoff_accepts(s: rn.signoff) {
-    [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+  if node_is_superseded(rn: rn) {
+    []
   } else {
-    if node_evidence_present(rn: rn, merged: merged) {
-      [TextInline { text: " — ⏳ awaiting sign-off" }]
+    if signoff_accepts(s: rn.signoff) {
+      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
     } else {
-      []
+      if node_evidence_present(rn: rn, merged: merged) {
+        [TextInline { text: " — ⏳ awaiting sign-off" }]
+      } else {
+        []
+      }
     }
   }
 }
