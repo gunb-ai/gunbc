@@ -27,8 +27,8 @@ import v2.extdeps.languages.dag {
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
+  qualified_name_from_module_node,
 }
-import v2.compiler.namespace_graft { qualified_name_from_module_node_graft_aware }
 import v2.std.algebra { list_append, list_snoc_item, length, zip_eq }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
@@ -254,7 +254,7 @@ fn body_lower_arrow_domain_matches_frontend_symbol_index(
   module_tree: Node,
   fn_name: Symbol
 ) -> Bool {
-  match qualified_name_from_module_node_graft_aware(root: module_tree) {
+  match qualified_name_from_module_node(root: module_tree) {
     Accepted { value: module_qn, diagnostics: _ } =>
       let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
       let idx = body_lower_frontend_symbol_index_from_module(tree: module_tree)
