@@ -2185,11 +2185,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plan evaluation, so a naming violation is the cheapest possible failure.
     {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        if let Err(msg) = v1_compiler::cli_run::check_floor_filename_hygiene(&source_roots)
-            .and_then(|_| {
-                v1_compiler::cli_run::discover_floor_corpus_rows(&source_roots, &[], &excludes)
-                    .map(|_| ())
-            })
+        if let Err(msg) =
+            v1_compiler::cli_run::discover_floor_witness_roster(&source_roots, &[], &excludes, &[])
+                .map(|_| ())
         {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
