@@ -98,7 +98,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "dag/test/claim/commit_witness_claim_roster_witness_test.dag",
       check_fns: [
-        "commit_witness_claim_roster_holds",
         "commit_witness_claim_roster_red_control_holds"
       ],
       kind: CorpusWitnessKind,

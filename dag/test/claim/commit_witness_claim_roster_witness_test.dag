@@ -1,8 +1,5 @@
 module test.claim.commit_witness_claim_roster_witness
 
-import v2.workflow.commit_witness_claim_roster {
-  commit_witness_claim_roster_live_unresolvable_count
-}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -12,21 +9,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data synthetic_stale_entry: String = "dag/test/claim/synthetic_missing_roster_witness_test.dag"
 data synthetic_stale_fn: String = "this_witness_function_does_not_exist"
 
-data commit_witness_claim_roster_note: String = "PR-time detector (operator brief 2026-07-22, class 3): every explicit CommitWitnessClaim row on the GithubActionsCiJob surface must resolve its entry and name every check_fn — the #7060 class (stale roster row after fn delete) surfaced as no-main-function-found on 15 main runs until #7079. Detection-only: typed located counted COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL per bad row; never auto-delete enrollments. Dissolve-on: enrollment derived from discovery (module-identity Phase-0 admission invariant). MUST declare ReadsLiveTree — reads commit_workflow.dag roster + resolves every entry closure."
-
-fn witness_commit_witness_claim_roster_live_holds() -> Bool {
-  commit_witness_claim_roster_live_unresolvable_count() == 0
-}
+data commit_witness_claim_roster_fast_lane_note: String = "PR-time roster detector fast lane (operator brief 2026-07-22, class 3): synthetic stale (entry, check_fn) RED proves the resolvability machinery fires — typed COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL on live defects. Full-corpus roster resolvability receipt moved to dag/test/claim/long/commit_witness_claim_roster_witness_test.dag (~210s eval; exceeds 5s fast-lane budget). Detection-only: never auto-delete enrollments. Dissolve-on: enrollment derived from discovery (module-identity Phase-0 admission invariant)."
 
 fn witness_commit_witness_claim_roster_red_holds() -> Bool {
   !commit_witness_claim_pair_resolvable(
     entry: synthetic_stale_entry,
     function: synthetic_stale_fn
   )
-}
-
-test fn commit_witness_claim_roster_holds() -> Bool {
-  witness_commit_witness_claim_roster_live_holds()
 }
 
 test fn commit_witness_claim_roster_red_control_holds() -> Bool {
