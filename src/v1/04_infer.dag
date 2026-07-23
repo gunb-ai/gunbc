@@ -484,6 +484,29 @@ fn namespace_root_from_properties(properties: List<Node>, name: String, source_i
   }
 }
 
+fn namespace_alias_target_path(item: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  find_property_string(props: item.properties, prop_name: "namespace_alias_target", source_indices: source_indices)
+}
+
+fn is_namespace_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match namespace_alias_target_path(item: item, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn namespace_alias_binding_for_target(
+  item: Node,
+  target_node: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> TypeBinding {
+  TypeBinding {
+    name: authored_name_at(source_indices: source_indices, node: item),
+    resolved: target_node,
+    provenance: SubValueUnknown
+  }
+}
+
 fn expr_span(texpr: Node) -> SourceSpan {
   texpr.span
 }
@@ -6203,6 +6226,9 @@ fn build_module_interface(
 
 
 fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding? {
+  if is_namespace_alias_item(item: item, source_indices: source_indices) {
+    Absent
+  } else {
   let has_structure = item.connective != NoConnective
   if has_structure {
     let type_node = Node {
@@ -6248,6 +6274,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
   } else {
     none
   }
+  }
 }
 
 fn symbol_index_insert_item(
@@ -6256,14 +6283,34 @@ fn symbol_index_insert_item(
   item: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> SymbolIndex {
-  let with_decl = match local_binding_for_item(item: item, source_indices: source_indices) {
-    Absent => index
-    Present { value: binding } =>
-      symbol_index_insert_decl(
-        index: index,
-        module_path: module_path,
-        binding: binding
-      )
+  let with_decl = if is_namespace_alias_item(item: item, source_indices: source_indices) {
+    match namespace_alias_target_path(item: item, source_indices: source_indices) {
+      Absent => index
+      Present { value: target_path } =>
+        match symbol_index_lookup(index: index, qualified_name: target_path) {
+          Absent => index
+          Present { value: target_node } =>
+            symbol_index_insert_decl(
+              index: index,
+              module_path: module_path,
+              binding: namespace_alias_binding_for_target(
+                item: item,
+                target_node: target_node,
+                source_indices: source_indices
+              )
+            )
+        }
+    }
+  } else {
+    match local_binding_for_item(item: item, source_indices: source_indices) {
+      Absent => index
+      Present { value: binding } =>
+        symbol_index_insert_decl(
+          index: index,
+          module_path: module_path,
+          binding: binding
+        )
+    }
   }
   if item.transport != none && item.children |> count > 0 {
     symbol_index_insert_service(
@@ -6786,9 +6833,26 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: _ } => [] Absent => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
 
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    match local_binding_for_item(item: item, source_indices: source_indices) {
-      Present { value: binding } => map_insert(acc, intern(table: intern_table, s: binding.name).id, binding)
-      Absent => acc
+    if is_namespace_alias_item(item: item, source_indices: source_indices) {
+      match namespace_alias_target_path(item: item, source_indices: source_indices) {
+        Absent => acc
+        Present { value: target_path } =>
+          match symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
+            Absent => acc
+            Present { value: target_node } =>
+              let binding = namespace_alias_binding_for_target(
+                item: item,
+                target_node: target_node,
+                source_indices: source_indices
+              )
+              map_insert(acc, intern(table: intern_table, s: binding.name).id, binding)
+          }
+      }
+    } else {
+      match local_binding_for_item(item: item, source_indices: source_indices) {
+        Present { value: binding } => map_insert(acc, intern(table: intern_table, s: binding.name).id, binding)
+        Absent => acc
+      }
     }
   )
 
