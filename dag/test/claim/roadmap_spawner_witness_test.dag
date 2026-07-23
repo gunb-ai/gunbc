@@ -187,8 +187,12 @@ fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
   let edges = [RoadmapEdge { child: nid(s: "sp-child"), parent: nid(s: "sp-old") }]
   let doc = fixture_doc(nodes: [node_old, node_child], edges: edges)
   let spawnable = next_spawnable(doc: doc, merged: [])
+  let json = roadmap_dispatch_json(doc: doc, merged: [])
   any(spawnable, n => n.node == nid(s: "sp-child"))
     && !any(spawnable, n => n.node == nid(s: "sp-old"))
+    && string_contains(s: json, pattern: "\"superseded\": ")
+    && string_contains(s: json, pattern: "\"superseded_by\": \"sp-successor-lane\"")
+    && !string_contains(s: json, pattern: "\"node_id\": \"sp-old\", \"title\"")
 }
 
 fn witness_superseded_control_open_parent_still_gates() -> Bool {

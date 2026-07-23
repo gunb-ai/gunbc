@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, Signoff, Unsigned }
+import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
@@ -120,7 +120,7 @@ fn daily_workspace_html(doc: RoadmapDocument, merged: List<Int>) -> String {
   }
 }
 
-fn witness_page_renders_three_buckets() -> Bool {
+fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
@@ -129,9 +129,44 @@ fn witness_page_renders_three_buckets() -> Bool {
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
+    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-superseded\"")
     && string_contains(s: h, pattern: "<h2>Ready</h2>")
     && string_contains(s: h, pattern: "<h2>Upcoming</h2>")
     && string_contains(s: h, pattern: "<h2>Done</h2>")
+    && string_contains(s: h, pattern: "<h2>Superseded</h2>")
+}
+
+fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: SupersededLine { by: by, content: "Old Row" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn witness_superseded_bucket_holds_superseded_only() -> Bool {
+  let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
+  let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
+  let doc = fixture_doc(nodes: [node_old, node_open], edges: [])
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  any(frontier.superseded, n => n.node == nid(s: "old-row"))
+    && !any(frontier.superseded, n => n.node == nid(s: "open-row"))
+    && !any(frontier.ready, n => n.node == nid(s: "old-row"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "old-row"))
+    && !any(frontier.done, n => n.node == nid(s: "old-row"))
+}
+
+fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
+  let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
+  let doc = fixture_doc(nodes: [node_old], edges: [])
+  let h = daily_workspace_html(doc: doc, merged: [])
+  string_contains(s: h, pattern: "Old Row")
+    && string_contains(s: h, pattern: "class=\"status status-superseded\"")
+    && string_contains(s: h, pattern: "→ successor-lane")
+    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
 fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
@@ -157,7 +192,9 @@ test fn roadmap_frontier_witnesses() -> Bool {
     && witness_done_is_merged_sized_node()
     && witness_unsized_excluded_from_frontier()
     && witness_buckets_are_disjoint()
-    && witness_page_renders_three_buckets()
+    && witness_page_renders_four_buckets()
+    && witness_superseded_bucket_holds_superseded_only()
+    && witness_page_places_superseded_node_in_superseded_bucket()
     && witness_page_places_ready_node_in_ready_bucket()
     && witness_authority_daily_workspace_serializes()
 }
