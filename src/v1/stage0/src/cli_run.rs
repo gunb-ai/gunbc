@@ -1185,6 +1185,14 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The `WitnessConsumerCadence` variant names a `witness_exclusion_frontier` row may carry
 /// (`std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
 /// exclusion row claiming discovery is a contradiction and the reader refuses it.
+// 🟡 dissolve-on: this array is a hand-copied projection of the closed `.dag` coproduct
+// `std.witness_admission.WitnessConsumerCadence` (drift is loud — an unknown name panics
+// the reader — but the representation is still dual). Dissolves with
+// `witness_exclusion_rows_from_module_source` below when the host consumes an emitted
+// manifest of the frontier rows instead of parsing the authority source (the same
+// module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
+// tracked with NON_FOLD_RESIDUE_ROSTER's re-home in
+// `gunbc.roster_registry.roster_registry_visibility_note`).
 const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
@@ -1330,6 +1338,11 @@ pub(crate) struct WitnessExclusionRowRaw {
 /// `string_list_data_from_module_source`. Fail-closed: a parse error, a missing data def,
 /// a non-record element, a missing/non-literal `pattern` field, or an unrecognized
 /// classification name is a loud panic, never a silent fallback.
+// 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves when the host
+// consumes an emitted manifest of the frontier rows (rows supplied at the boundary, no
+// host-side source parse), together with WITNESS_EXCLUSION_CLASSIFICATIONS above; the
+// scaffold classification is carried at the model authority in
+// `gunbc.roster_registry.roster_registry_visibility_note`.
 pub(crate) fn witness_exclusion_rows_from_module_source(
     module_rel_path: &str,
     content: &str,
