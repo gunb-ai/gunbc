@@ -11,7 +11,7 @@ import std.layout {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentStep, Artifact, Dependency,
+  DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, SystemdUnit, TailscaleServeMapping,
@@ -143,7 +143,7 @@ data live_deploy_reconcile_binding_note: String = "apply/retract are the two deg
 
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
   match step {
-    Artifact { step: art } => art.path
+    ArtifactStep { step: art } => art.path
     Dependency { step: dep } => dep.package
   }
 }
@@ -170,7 +170,7 @@ fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep>
 fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
   membership_reconcile(
     desired: [],
-    observed: map(deployment_owned_steps_retract_order(), s => Artifact { step: s }),
+    observed: map(deployment_owned_steps_retract_order(), s => ArtifactStep { step: s }),
     key_of: deployment_step_key,
     key_eq: deployment_step_key_eq,
     value_eq: deployment_step_value_eq,
@@ -344,11 +344,11 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
         Dependency { step: dep } => [
           ensure_apt_package_step(pkg: dep.package, privileged: true),
         ]
-        Artifact { step: art } => emit_artifact_upsert(art: art, spec: spec)
+        ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec)
       }
     EffectTeardown { member: step } =>
       match step {
-        Artifact { step: art } => emit_artifact_teardown(art: art, spec: spec)
+        ArtifactStep { step: art } => emit_artifact_teardown(art: art, spec: spec)
         Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)
       }
   }
