@@ -3999,7 +3999,7 @@ pub fn apply_bridge_method_overrides(
     name: String,
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
-    match (overrides.lookup)(name.clone()) {
+    match v1_rt::lookup(&overrides, name.clone()) {
         v1_rt::Witness::Holds {
             value: replacement, ..
         } => replacement.clone(),

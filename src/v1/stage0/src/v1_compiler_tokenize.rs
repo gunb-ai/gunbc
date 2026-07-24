@@ -25,7 +25,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {
-    match (dag_keyword_set().lookup)(text.clone()) {
+    match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
         v1_rt::Witness::Holds { value: _, .. } => true,
         v1_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
@@ -489,7 +489,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             }
         }
         let ch_text = source_char(source.clone(), pos.pos.clone());
-        match (single_punct().lookup)(ch_text.clone()) {
+        match v1_rt::lookup(&single_punct(), ch_text.clone()) {
             v1_rt::Witness::Holds { value: sh, .. } => emit(
                 pos.clone(),
                 sh.clone(),

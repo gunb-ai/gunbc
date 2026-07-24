@@ -7546,9 +7546,15 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
 }
 
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
-  let receiver_type = resolved_type(n: receiver)
-  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
-  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
+  // Runtime-bridged methods (lookup, map_get, …) must stay on v1_rt:: even when a modeled
+  // type (e.g. PartialFunction) also declares an Arrow field with the same name.
+  if map_contains_key(rt_functions(), method_name) {
+    false
+  } else {
+    let receiver_type = resolved_type(n: receiver)
+    let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+    rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
+  }
 }
 
 fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
