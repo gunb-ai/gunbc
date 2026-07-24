@@ -2049,19 +2049,27 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
     }
 }
 
-fn compile_clean_unlisted_import_use_blocks_cached() -> bool {
+fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
     thread_local! {
-        static CACHED: Cell<Option<bool>> = const { Cell::new(None) };
+        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
+        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
     }
     CACHED.with(|c| {
-        if let Some(v) = c.get() {
+        if let Some(v) = c.borrow().clone() {
             return v;
         }
-        let v = compile_clean_unlisted_import_use_blocks_from_policy().unwrap_or_else(|e| {
-            eprintln!("compile-clean policy: refused to read disposition row ({e}); defaulting UnlistedImportUse to non-blocking");
-            false
-        });
-        c.set(Some(v));
+        let v = compile_clean_unlisted_import_use_blocks_from_policy();
+        if let Err(ref e) = v {
+            LOGGED_REFUSAL.with(|logged| {
+                if !logged.get() {
+                    eprintln!(
+                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
+                    );
+                    logged.set(true);
+                }
+            });
+        }
+        *c.borrow_mut() = Some(v.clone());
         v
     })
 }
@@ -2073,7 +2081,10 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnlistedImportUse { .. } => {
-            compile_clean_unlisted_import_use_blocks_cached()
+            match compile_clean_unlisted_import_use_blocks_cached() {
+                Ok(blocks) => blocks,
+                Err(_) => true,
+            }
         }
         _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
     }
@@ -2092,6 +2103,9 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+    if compile_clean_unlisted_import_use_blocks_cached().is_err() {
+        return true;
+    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 

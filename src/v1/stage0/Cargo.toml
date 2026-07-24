@@ -242,6 +242,12 @@ path = "src/bin/parse_witness.rs"
 # lens subsumes this host transport; receipt:
 # `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion.
 [[bin]]
+name = "compile_clean_diagnostic_histogram"
+path = "src/bin/compile_clean_diagnostic_histogram.rs"
+
+# Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
+# NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
+[[bin]]
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
 
