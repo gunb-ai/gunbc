@@ -23,7 +23,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emit_host_native_only_verdict_note: String = "Kernel-D Stage 2: verdict decided solely by the emitted native run's stdout vs a fixed expected octet; eval() never runs classical_not's body here. Entangled shape (classical_not_family_cached_run_with_source) surfaced standalone (DESIGN.md S2)."
+data emit_host_native_only_verdict_note: String = "Kernel-D Stage 2: verdict decided solely by the emitted native run's stdout vs a fixed expected octet; eval() never runs classical_not's body here. Entangled shape (classical_not_family_cached_run_with_source) surfaced standalone (DESIGN.md S2). Shares the classical_not_family ONE-BUILD-grain cache key (classical_not_family_cache_root_for + classical_not_family_native_key_for, same as emit_on_demand_classical_not_native_one_build_holds) rather than an uncached run_emit_host call: an uncached leg here duplicated a full cargo build the family witness already performs, landing two extra cold builds at the CI floor batch's peak-memory point and causing swap-pressure-induced false-negative runs (CI-only, non-reproducing locally) — DESIGN.md S2 duplicate-work, not a new cache mechanism."
 
 data emit_host_native_only_verdict_vs_native_routing_frontier_note: String = "Not a native_routing_frontier row: that module routes EXISTING equals_eval agreement pairs between two legs; this witness has no eval leg to route between (always native, unconditionally), so it is out of that authority's domain rather than a fork of it."
 
@@ -32,7 +32,12 @@ fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: emitted, diagnostics: _ } =>
-          match run_emit_host(
+          let workspace = native_cache_workspace_root(
+            cache_root: classical_not_family_cache_root_for(test_id: "native_one_build"),
+            key: classical_not_family_native_key_for(tree: tree)
+          )
+          match run_emit_host_cached(
+            workspace_dir: workspace,
             target: rust_classical_not_ingested_target_model_staging(),
             source: emitted,
             fixture_inputs: inputs_root_only(root: tree.root)
