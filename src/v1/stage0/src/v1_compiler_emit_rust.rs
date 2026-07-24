@@ -2070,19 +2070,6 @@ pub fn rust_fold_rendered_type_has_spurious_generic_atom(
     }
 }
 
-pub fn rust_fold_rendered_type_has_any_spurious_generic(
-    type_str: String,
-    generic_param_names: Rc<Vec<String>>,
-) -> bool {
-    ["T", "C", "A", "B", "E", "K", "V", "R"].iter().any(|atom| {
-        rust_fold_rendered_type_has_spurious_generic_atom(
-            type_str.clone(),
-            atom.to_string(),
-            generic_param_names.clone(),
-        )
-    })
-}
-
 pub fn type_leaf_is_unbound_in_closure_scope(
     name: String,
     generic_param_names: Rc<Vec<String>>,
@@ -15830,13 +15817,8 @@ pub fn effective_variant_parent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-        qualified_last_segment(name.clone())
-    } else {
-        name.clone()
-    };
     {
-        let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
+        let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
             Some(p) => {
                 if (p.clone() != "".to_string()) {
                     Some(p.clone())
@@ -15851,10 +15833,10 @@ pub fn effective_variant_parent(
             None => match resolved_type.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
                     let rt_name = authored_name_at(source_indices.clone(), rt.clone());
-                    if (((rt.ident_span.clone() != None) && (rt_name.clone() != leaf_name.clone()))
+                    if (((rt.ident_span.clone() != None) && (rt_name.clone() != name.clone()))
                         && variant_belongs_to_enum(
                             emit_info.type_summaries.clone(),
-                            leaf_name.clone(),
+                            name.clone(),
                             rt_name.clone(),
                         ))
                     {
@@ -15903,13 +15885,7 @@ pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemIn
                     ),
                     emit_import_name(leaf.clone(), registry.clone()),
                 ),
-                None => {
-                    if leaf.clone() == "Empty".to_string() {
-                        "Rc::new(vec![])".to_string()
-                    } else {
-                        emit_ident(leaf.clone(), RenderTarget::Rust)
-                    }
-                }
+                None => emit_ident(leaf.clone(), RenderTarget::Rust),
             }
         }
     } else {
@@ -15926,11 +15902,6 @@ pub fn emit_var_ref(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-        qualified_last_segment(name.clone())
-    } else {
-        name.clone()
-    };
     {
         let variant_parent = effective_variant_parent(
             name.clone(),
@@ -15939,16 +15910,13 @@ pub fn emit_var_ref(
             emit_info.clone(),
             source_indices.clone(),
         );
-        if (((leaf_name.clone() == "none".to_string())
-            || (leaf_name.clone() == "None".to_string()))
+        if (((name.clone() == "none".to_string()) || (name.clone() == "None".to_string()))
             && (variant_parent.clone() == None))
         {
             emit_keyword("null".to_string(), RenderTarget::Rust)
         } else {
-            if ((leaf_name.clone() == "true".to_string())
-                || (leaf_name.clone() == "false".to_string()))
-            {
-                emit_keyword(leaf_name.clone(), RenderTarget::Rust)
+            if ((name.clone() == "true".to_string()) || (name.clone() == "false".to_string())) {
+                emit_keyword(name.clone(), RenderTarget::Rust)
             } else {
                 {
                     let moves_by_value =
@@ -15956,15 +15924,15 @@ pub fn emit_var_ref(
                     let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                     let ref_str = match variant_parent.clone() {
                         Some(enum_name) => {
-                            let body = if ((leaf_name.clone() == "Empty".to_string())
+                            let body = if ((name.clone() == "Empty".to_string())
                                 && (enum_name.clone() == "FreeMonoid".to_string()))
                             {
                                 "vec![]".to_string()
                             } else {
-                                if (is_optional_variant_name(leaf_name.clone())
+                                if (is_optional_variant_name(name.clone())
                                     && (enum_name.clone() == "Optional".to_string()))
                                 {
-                                    if (leaf_name.clone() == "Present".to_string()) {
+                                    if (name.clone() == "Present".to_string()) {
                                         "Some".to_string()
                                     } else {
                                         "None".to_string()
@@ -15972,12 +15940,12 @@ pub fn emit_var_ref(
                                 } else {
                                     v1_rt::concat(
                                         v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                        leaf_name.clone(),
+                                        name.clone(),
                                     )
                                 }
                             };
                             if variant_ref_self_wraps(
-                                leaf_name.clone(),
+                                name.clone(),
                                 enum_name.clone(),
                                 shared_types.clone(),
                                 emit_info.corpus_repr.clone(),
@@ -19192,12 +19160,14 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
-        let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(
+        let acc_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(
             acc_type_str.clone(),
+            "T".to_string(),
             emit_info.fn_generic_param_names.clone(),
         );
-        let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(
+        let elem_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(
             elem_type_str.clone(),
+            "T".to_string(),
             emit_info.fn_generic_param_names.clone(),
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
@@ -19207,13 +19177,13 @@ pub fn emit_rust_fold_method_call(
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
-            || acc_render_has_spurious_generic.clone())
+            || acc_render_has_spurious_t.clone())
         {
             "_".to_string()
         } else {
             acc_type_str.clone()
         };
-        let fold_elem_type_str = if elem_render_has_spurious_generic.clone() {
+        let fold_elem_type_str = if elem_render_has_spurious_t.clone() {
             "_".to_string()
         } else {
             elem_type_str.clone()

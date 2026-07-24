@@ -855,16 +855,6 @@ fn rust_fold_rendered_type_has_spurious_generic_atom(type_str: String, atom: Str
   else { string_contains(s: type_str, pattern: concat("<", atom, ">")) }
 }
 
-fn rust_fold_rendered_type_has_any_spurious_generic(type_str: String, generic_param_names: List<String>) -> Bool {
-  fold_list(
-    xs: ["T", "C", "A", "B", "E", "K", "V", "R"],
-    empty: false,
-    cons: fn(acc, atom) {
-      acc || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: atom, generic_param_names: generic_param_names)
-    }
-  )
-}
-
 fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
   if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
     false
@@ -5797,8 +5787,7 @@ fn clone_iterator_suffix() -> String {
 }
 
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  let leaf_name = if string_contains(s: name, pattern: ".") { qualified_last_segment(name: name) } else { name }
-  let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
+  let cached = match map_get(emit_info.variant_to_enum, name) {
     Present { value: p } => if p != "" { Present { value: p } } else { none }
     Absent => none
   }
@@ -5808,7 +5797,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
       match resolved_type {
         Present { value: Resolved { node: rt } } =>
           let rt_name = authored_name_at(source_indices: source_indices, node: rt)
-          if rt.ident_span != none && rt_name != leaf_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: leaf_name, enum_name: rt_name) {
+          if rt.ident_span != none && rt_name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
             variant_parent_from_binding_kind(binding_kind: binding_kind)
@@ -5831,8 +5820,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String
       Present { value: info } =>
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
       Absent =>
-        if leaf == "Empty" { "Rc::new(vec![])" }
-        else { emit_ident(name: leaf, target: Rust) }
+        emit_ident(name: leaf, target: Rust)
     }
   } else {
     emit_ident(name: name, target: Rust)
@@ -5840,24 +5828,23 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>) -> String
 }
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let leaf_name = if string_contains(s: name, pattern: ".") { qualified_last_segment(name: name) } else { name }
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
-  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
-  else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
+  if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
+  else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
 
     let moves_by_value = set_contains(emit_info.movable, name)
     let sharing = language_spec(target: Rust).sharing
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
-        let body = if leaf_name == "Empty" && enum_name == "FreeMonoid" {
+        let body = if name == "Empty" && enum_name == "FreeMonoid" {
           "vec![]"
-        } else if is_optional_variant_name(name: leaf_name) && enum_name == "Optional" {
-          if leaf_name == "Present" { "Some" } else { "None" }
+        } else if is_optional_variant_name(name: name) && enum_name == "Optional" {
+          if name == "Present" { "Some" } else { "None" }
         } else {
-          concat(enum_name, "::", leaf_name)
+          concat(enum_name, "::", name)
         }
-        if variant_ref_self_wraps(name: leaf_name, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr) {
+        if variant_ref_self_wraps(name: name, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr) {
           concat("Rc::new(", body, ")")
         } else { body }
       Absent =>
@@ -6931,11 +6918,11 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
   let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
-  let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
-  let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
+  let acc_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(type_str: acc_type_str, atom: "T", generic_param_names: emit_info.fn_generic_param_names)
+  let elem_render_has_spurious_t = rust_fold_rendered_type_has_spurious_generic_atom(type_str: elem_type_str, atom: "T", generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
-  let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_t { "_" } else { acc_type_str }
+  let fold_elem_type_str = if elem_render_has_spurious_t { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Present { value: init_arg } =>
