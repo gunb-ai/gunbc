@@ -32,7 +32,11 @@ import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
   live_deploy_unit_diagnosis_command,
 }
-import gunbc.roadmap_site_healthz_validate { roadmap_site_healthz_json_string_parses }
+import gunbc.roadmap_site_healthz_validate {
+  roadmap_site_healthz_json_string_parses,
+  roadmap_site_healthz_surface_is_current,
+}
+import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_spec_srv1,
@@ -86,15 +90,41 @@ fn healthz_body_groundable(body: String) -> Bool {
   roadmap_site_healthz_json_string_parses(body: body)
 }
 
+data service_ready_means_serving_this_tree_note: String = "READY was under-specified and the gap was live: it meant 'something answered /healthz', which the PRE-RESTART process satisfies. `gunbc serve` binds its compiled graph ONCE at process start, so between `systemctl restart` and the new process finishing its ~35 s load the OLD process is still answering — a poll that grounds on any answer can therefore green against the very process the deploy is replacing, and the deploy reports success while the dashboard still serves the previous tree. That is not a hypothetical: on 2026-07-24 the live srv1 page was serving the escaped `.node-superseded &gt; .title` selector, the pre-fix `width` chip, no disclosure and no centering, and every check in the system was green. So readiness now means the STRONGER and actually intended thing — the unit is answering AND the surface it answers with is this tree's — which the healthz digest map makes a plain equality (roadmap_site_healthz_surface_is_current). The three refusal causes stay type-distinct because their remedies differ: the probe never landed (network/unit down), the body is not JSON (wrong process on the port), the body is a well-formed fingerprint of ANOTHER tree (graph not rebound / sync incomplete). Each is a typed, located, countable refusal that the poll retries within its bound and that REFUSES at the bound — never a widen, and never a mode that proceeds as if it had not fired. Known and accepted race, named rather than hidden: two main pushes deploying concurrently can have deploy N observe deploy N+1's surface, which refuses honestly ('the surface is not the one I deployed' is true) and self-heals on the next deploy."
+
+type HealthzRefusalCause
+  = HealthzProbeFailed { detail: String }
+  | HealthzBodyUnparseable { body: String }
+  | HealthzSurfaceStale { observed: String, expected: String }
+
+fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
+  match cause {
+    HealthzProbeFailed { detail: d } => d
+    HealthzBodyUnparseable { body: b } =>
+      join(["healthz body failed JSON.parse; body=", b], "")
+    HealthzSurfaceStale { observed: o, expected: e } =>
+      join([
+        "ServedSurfaceStale: the unit answered /healthz but its served surface is not this tree's",
+        " — gunbc serve binds its graph once at process start, so the pre-restart process is still",
+        " answering (or the source sync did not land). observed=", o, " expected=", e,
+      ], "")
+  }
+}
+
 fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
-    DoesNotGround { reason: read.probe_error }
-  } else {
-    if healthz_body_groundable(body: read.body) {
-      Grounds { evidence: ServiceReadyEvidence { body: read.body } }
-    } else {
-      DoesNotGround { reason: "healthz body failed JSON.parse" }
+    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
+  } else if !healthz_body_groundable(body: read.body) {
+    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
+  } else if !roadmap_site_healthz_surface_is_current(observed_body: read.body) {
+    DoesNotGround {
+      reason: healthz_refusal_reason(cause: HealthzSurfaceStale {
+        observed: read.body,
+        expected: roadmap_site_healthz_body(),
+      })
     }
+  } else {
+    Grounds { evidence: ServiceReadyEvidence { body: read.body } }
   }
 }
 
@@ -159,10 +189,12 @@ fn show_healthz_read_for_deploy(
   )
 }
 
+data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL healthz body, not a hand-spelled {\"status\":\"ok\"}. Once readiness means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read — it is precisely the stale-surface case — so a stand-in body would have made the converges-on-healthy witnesses assert the opposite of the contract. Its counterpart witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED."
+
 fn show_healthz_read_fixture_healthy() -> ShowEffectiveRead<HealthzEffectiveRead> {
   ReadObserved {
     value: HealthzEffectiveRead {
-      body: "{\"status\":\"ok\"}",
+      body: roadmap_site_healthz_body(),
       probe_error: "",
     }
   }

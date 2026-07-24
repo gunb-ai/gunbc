@@ -177,6 +177,8 @@ fn witness_superseded_node_marked_no_button() -> Bool {
     && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
+data readable_witness_enrollment_note: String = "The six readability witnesses below (raw-text style serialization, chip min-width, container centering, the <details> disclosure, the dispatch accent) were authored with the fixes they verify but never bundled into this file's only `test fn`, and discovery keys on the `test fn `/`test data ` prefix — so they had ZERO executing consumers and CI was blind to the exact regressions they were written to catch. Proven by execution rather than by reading, 2026-07-24: reverting `.status` min-width back to width (the original defect) left roadmap_page_keystone_holds returning true. That is the orphaned-enrollment shape DESIGN calls coverage by illusion, and an inert witness is a lie about coverage, so they are enrolled here. Every witness in this file is now reachable from this one entry; adding an unbundled `fn witness_*` is the defect to look for in review."
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
@@ -191,6 +193,14 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_rogue_src_script_reds()
     && witness_signed_off_node_doc_has_no_button()
     && witness_superseded_node_marked_no_button()
+    && witness_style_child_combinator_unescaped()
+    && witness_raw_text_close_guard_refuses()
+    && witness_item_detail_disclosure_present()
+    && witness_status_chip_min_width()
+    && witness_dispatch_button_carries_accent()
+    && witness_page_containers_centered()
+    && witness_authority_leads_within_budget()
+    && witness_overlong_lead_reds()
 }
 
 fn witness_style_child_combinator_unescaped() -> Bool {
@@ -230,4 +240,24 @@ fn witness_dispatch_button_carries_accent() -> Bool {
 fn witness_page_containers_centered() -> Bool {
   let h = authority_page_html()
   string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+}
+
+fn witness_authority_leads_within_budget() -> Bool {
+  roadmap_authority_lead_budget_violations().length() == 0
+}
+
+fn overlong_lead_node() -> RoadmapNode {
+  let chunk = "a lead with no separator so the whole line stands "
+  gunbc.roadmap_authority.authored(
+    id: "overlong-lead",
+    done: false,
+    content: join([chunk, chunk, chunk, chunk, chunk, chunk, chunk], ""),
+  )
+}
+
+fn witness_overlong_lead_reds() -> Bool {
+  let v = lead_budget_violations(nodes: [overlong_lead_node()])
+  v.length() == 1
+    && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
+    && lead_budget_violations(nodes: [open_dispatch_node()]).length() == 0
 }

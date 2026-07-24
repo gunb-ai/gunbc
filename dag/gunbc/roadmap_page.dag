@@ -18,7 +18,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, item_is_done, signoff_accepts, signoff_by }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
@@ -220,6 +220,30 @@ fn line_lead(line: RoadmapItem) -> String {
 
 fn lead_nodes(line: RoadmapItem) -> List<MarkupNode> {
   markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: line_lead(line: line)))
+}
+
+data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: everything before the first ' — ' (falling back to the first '. ', then the whole title). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); the corpus cleared it when the three offenders were re-cut (ts-review-sweep, ts-group-census, shelf-sketches), each by moving the ' — ' up to just after its bold headline rather than by deleting content — the body survives verbatim behind the disclosure. Measured distribution at that point: 180 rows under 100 chars, 16 in 100-199, 3 in 200-249, 2 in 250-299, 0 at or over 300."
+
+fn roadmap_lead_budget_chars() -> Int { 300 }
+
+type LeadBudgetViolation {
+  node: String
+  lead_chars: Int
+}
+
+fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation> {
+  fold(nodes, init: [], f: (acc, rn) => {
+    let n = line_lead(line: rn.line).length()
+    if n > roadmap_lead_budget_chars() {
+      concat(acc, [LeadBudgetViolation { node: rn.node as String, lead_chars: n }])
+    } else {
+      acc
+    }
+  })
+}
+
+fn roadmap_authority_lead_budget_violations() -> List<LeadBudgetViolation> {
+  lead_budget_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
 }
 
 fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
