@@ -2022,13 +2022,65 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks is decided by
-// `00_core.dag`, never restated here. `is_interpreter_blocking_diagnostic` is the
-// {ComplexityUnknown, UnlistedImportUse} tolerance this gate has always intended;
-// the prior hand-rolled `!matches!(ComplexityUnknown)` predated UnlistedImportUse's
-// demotion to advisory and silently reded the namespace import strip.
-fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_diagnostic_policy.dag";
+
+/// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
+/// (`compile_clean_unlisted_import_use_enforcement` in `gunbc.compile_clean_diagnostic_policy`).
+/// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
+pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
+    let roots = default_source_roots();
+    let (graph, indices) =
+        resolve_entry_graph_shared(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
+            .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    match v1_interpreter::run_in_context_with_args(&ctx, "compile_clean_unlisted_import_use_blocks", &[], false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("compile_clean_unlisted_import_use_blocks: {e}")),
+    }
+}
+
+fn compile_clean_unlisted_import_use_blocks_cached() -> bool {
+    thread_local! {
+        static CACHED: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+    CACHED.with(|c| {
+        if let Some(v) = c.get() {
+            return v;
+        }
+        let v = compile_clean_unlisted_import_use_blocks_from_policy().unwrap_or_else(|e| {
+            eprintln!("compile-clean policy: refused to read disposition row ({e}); defaulting UnlistedImportUse to non-blocking");
+            false
+        });
+        c.set(Some(v));
+        v
+    })
+}
+
+/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
+/// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
+/// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
+pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
+    use crate::v1_std_core::CompilerDiagnostic;
+    match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => compile_clean_unlisted_import_use_blocks_cached(),
+        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
+    }
+}
+
+/// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
+/// complement of `compile_clean_diagnostic_is_hard` used by the CLI transport so it
+/// does not print advisories as hard errors when the policy row says FloorNotYet.
+pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
+    !compile_clean_diagnostic_is_hard(d)
+        && matches!(
+            d.diagnostic.as_ref(),
+            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+        )
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
