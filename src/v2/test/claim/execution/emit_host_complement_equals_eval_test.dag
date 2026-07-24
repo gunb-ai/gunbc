@@ -85,9 +85,9 @@ fn emit_complement_eval_generic_facts(node: Node) -> InferredFacts {
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
     descent: Holds {
-      value: v2.std.cardinality.TerminationProof {
+      value: TerminationProof {
         non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension { measured: ^emit_complement_eval_generic_descent }
+        strict: RankingDimension { measured: ^emit_complement_eval_generic_descent }
       }
     }
   )

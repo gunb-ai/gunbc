@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality {
-  v2.std.cardinality.TerminationProof,
+  TerminationProof,
   termination_proof_witness_for_node
 }
 import v2.std.collection { Map }
@@ -138,9 +138,9 @@ fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-data loop_descent_fabrication_dissolved_note: String = "The former loop_descent_witness_for hand-fabricated Holds { v2.std.cardinality.TerminationProof { strict: ^dag_loop_measure_sym } } for every loop node because the tag-only multiplicity path unconditionally refused loops. Body-lowering Stage 2 (measure_descent_fact_registry, v2.std.cardinality) derives that exact proof from the measure, so the fabrication is deleted and this test consumes the real derivation."
+data loop_descent_fabrication_dissolved_note: String = "The former loop_descent_witness_for hand-fabricated Holds { TerminationProof { strict: ^dag_loop_measure_sym } } for every loop node because the tag-only multiplicity path unconditionally refused loops. Body-lowering Stage 2 (measure_descent_fact_registry, v2.std.cardinality) derives that exact proof from the measure, so the fabrication is deleted and this test consumes the real derivation."
 
-fn loop_descent_witness_for(node: Node) -> Witness<v2.std.cardinality.TerminationProof> {
+fn loop_descent_witness_for(node: Node) -> Witness<TerminationProof> {
   termination_proof_witness_for_node(n: node)
 }
 

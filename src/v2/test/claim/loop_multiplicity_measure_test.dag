@@ -147,7 +147,7 @@ test fn loop_missing_measure_is_refused() -> Bool {
   )
 }
 
-fn lmm_termination_holds(w: Witness<v2.std.cardinality.TerminationProof>) -> Bool {
+fn lmm_termination_holds(w: Witness<TerminationProof>) -> Bool {
   match w {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false

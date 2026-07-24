@@ -78,7 +78,7 @@ type AlgebraRef {
 
 type InferredFacts {
   grounding: CanonicalGrounding
-  descent: Witness<v2.std.cardinality.TerminationProof>
+  descent: Witness<TerminationProof>
 }
 
 fn inferred_facts_resolved_type(facts: InferredFacts) -> Node {
@@ -93,7 +93,7 @@ fn inferred_facts_canonical_witness(facts: InferredFacts) -> CanonicalGroundingW
   facts.grounding.witness
 }
 
-fn inferred_facts_descent(facts: InferredFacts) -> Witness<v2.std.cardinality.TerminationProof> {
+fn inferred_facts_descent(facts: InferredFacts) -> Witness<TerminationProof> {
   facts.descent
 }
 
@@ -248,7 +248,7 @@ fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-fn infer_descent_witness_for_node(n: Node) -> Witness<v2.std.cardinality.TerminationProof> {
+fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
   match termination_proof_witness_for_node(n: n) {
     Holds { value: proof } => Holds { value: proof }
     Violates { diagnostic: upstream } =>
@@ -275,7 +275,7 @@ fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool
 
 fn inferred_facts_construction(
   grounding: CanonicalGrounding,
-  descent: Witness<v2.std.cardinality.TerminationProof>,
+  descent: Witness<TerminationProof>,
 ) -> Outcome<InferredFacts> {
   if canonical_grounding_admits_infer_facts(grounding: grounding) {
     Accepted {
@@ -294,7 +294,7 @@ fn inferred_facts_construction(
 
 fn inferred_facts_from_grounding(
   grounding: CanonicalGrounding,
-  descent: Witness<v2.std.cardinality.TerminationProof>,
+  descent: Witness<TerminationProof>,
 ) -> Outcome<InferredFacts> {
   inferred_facts_construction(grounding: grounding, descent: descent)
 }

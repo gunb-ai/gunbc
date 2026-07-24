@@ -19,8 +19,8 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.cardinality {
-  v2.std.cardinality.RankingDimension,
-  v2.std.cardinality.TerminationProof,
+  RankingDimension,
+  TerminationProof,
   structural_node_size_termination_proof
 }
 import v2.std.collection { List, Map }
@@ -222,10 +222,10 @@ fn loop_eval_context() -> EvalContext {
   )
 }
 
-fn loop_eval_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
-  v2.std.cardinality.TerminationProof {
+fn loop_eval_loop_termination_proof() -> TerminationProof {
+  TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^loop_eval_measure_sym }
+    strict: RankingDimension { measured: ^loop_eval_measure_sym }
   }
 }
 
@@ -236,7 +236,7 @@ fn loop_eval_node_is_loop(node: Node) -> Bool {
   }
 }
 
-fn loop_eval_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
+fn loop_eval_bounded_descent() -> Witness<TerminationProof> {
   Holds { value: structural_node_size_termination_proof() }
 }
 

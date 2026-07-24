@@ -359,10 +359,10 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
   }
 }
 
-fn subsumption_termination_proof() -> v2.std.cardinality.TerminationProof {
-  v2.std.cardinality.TerminationProof {
+fn subsumption_termination_proof() -> TerminationProof {
+  TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^subsumption_descent_dimension }
+    strict: RankingDimension { measured: ^subsumption_descent_dimension }
   }
 }
 

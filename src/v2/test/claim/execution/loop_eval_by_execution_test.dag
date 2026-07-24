@@ -29,8 +29,8 @@ import v2.std.collection {
   map_insert
 }
 import v2.std.cardinality {
-  v2.std.cardinality.RankingDimension,
-  v2.std.cardinality.TerminationProof,
+  RankingDimension,
+  TerminationProof,
   structural_node_size_termination_proof
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
@@ -298,14 +298,14 @@ fn loop_node_is_loop(node: Node) -> Bool {
   }
 }
 
-fn loop_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
-  v2.std.cardinality.TerminationProof {
+fn loop_loop_termination_proof() -> TerminationProof {
+  TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^dag_loop_measure_sym }
+    strict: RankingDimension { measured: ^dag_loop_measure_sym }
   }
 }
 
-fn loop_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
+fn loop_bounded_descent() -> Witness<TerminationProof> {
   Holds { value: structural_node_size_termination_proof() }
 }
 
