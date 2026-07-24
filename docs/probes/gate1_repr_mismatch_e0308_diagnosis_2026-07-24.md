@@ -189,3 +189,85 @@ derive-completeness fork are different failure shapes with different fixes). Rec
 
 `materialization_carriers`'s missing-generics defect (E0107) is a 5th, much smaller,
 separate residue — worth a follow-up diagnosis of its own, not urgent given its size.
+
+---
+
+## Follow-up (2026-07-24, same day) — #6776 wrap_decision_predicate coverage verdict
+
+Requested by sharp-bee-290 to resolve the Root-3 contradiction above by tracing the code,
+read-only.
+
+### #6776 wrap_decision_predicate — coverage verdict (read-only trace)
+
+#### (a) Is 'Placed' honest or premature?
+
+**Premature.** The predicate itself (`wrap_decision_gate`, `src/v2/compiler/wrap_decision.dag:172`)
+is correct and IS invoked at all 4 declared `TargetOwnershipUseSite` variants
+(`OwnershipAtFunctionReturn/Parameter/StructField/BindingProjection` — confirmed live at
+`06_translate.dag:1859,2938,2978,1589/3246/3442`). The gap is one level up, in the caller
+that decides WHETHER to invoke it.
+
+#### The mechanism (traced, not inferred)
+
+`translate_apply_use_site_ownership_to_projected_boundary` (`06_translate.dag:2888`) is the
+single chokepoint every struct-field / binding-projection / boundary type goes through
+before the gate fires:
+
+```
+o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
+f: fn(wire) {
+  match wire.kind {
+    TargetTypeExprAtom =>
+      ... translate_apply_use_site_ownership_to_projected_type(...)   // <- gate fires
+    _ => outcome_accepted(projected)                                  // <- gate SKIPPED
+  }
+}
+```
+
+`wire.kind` is `TargetTypeExprAtom` only for a bare, non-parametrized type reference. Any
+field/boundary whose declared type is already a composite shape — `Option<CostShape>`,
+`Rc<Node>`, `Witness<X>`, `List<Node>`, i.e. `Instantiation`-kind wire — falls into the
+`_` arm and passes through **completely unwrapped, no gate consulted at all**. This is a
+structural blind spot, not a mis-classification inside the predicate: the predicate never
+runs, so it can't be blamed for the outcome.
+
+This is exactly the shape of the RC_WRAP survivals (`Option<CostShape>` emitted bare where
+`Rc<Option<CostShape>>` was needed) and explains why OWNERSHIP/RC_WRAP together are ~20% of
+E0308 across every deep module post-#6776 — every field/boundary declared as a generic
+instantiation over an ownership-bearing carrier bypasses the gate identically, corpus-wide.
+
+#### Why the witness suite didn't catch it
+
+`wrap_decision_predicate_witness_holds` (`wrap_decision_predicate_test.dag:238`) is 7
+sub-tests, every one calling `wrap_decision_gate` **directly** with a hand-built
+`source_carrier` — none of them go through
+`translate_apply_use_site_ownership_to_projected_boundary`'s `wire.kind` dispatch, so none
+exercise the branch that skips the gate. `wrap_decision_node_struct_field_is_box` (the one
+struct-field test) uses `target_carrier_node_node()` — a bare atom carrier — so it lands in
+the `TargetTypeExprAtom` arm and never touches the `_` bypass. The suite proves "the
+predicate decides correctly when invoked," not "the predicate is invoked on every field
+shape" — registration-tested, not coverage-tested (the same gap class as prior
+registration≠enforcement findings in this repo).
+
+#### (b) Extension of #6776, or new work?
+
+**Extension.** `wrap_decision_gate` itself needs no change — it already takes a
+`source_carrier: Node` and could be handed the composite's ownership-bearing inner atom(s)
+just as well as a bare one. The fix is in the caller: `translate_apply_use_site_ownership_
+to_projected_boundary` needs to recurse into `Instantiation`-kind wire (or the
+projection needs to route each generic type argument's carrier back through the same gate)
+instead of short-circuiting on `_ => outcome_accepted(projected)`. No new predicate, no new
+`TargetOwnershipUseSite` variant — this is closing a caller-side blind spot in the existing
+brick's invocation, plus a witness gap (add a composite-field fixture, e.g.
+`Option<Node>`-typed struct field, to `wrap_decision_predicate_test.dag` so the coverage
+hole itself is closed, not just the emitter symptom).
+
+#### Recommendation for the plan
+
+Correct `v1_deletion_plan.dag`'s `wrap_decision_predicate` `brick_state` from `Placed` to
+reflect the residual (e.g. a sub-brick or a noted reopen) rather than leaving it as a closed
+bar-brick with ~20%-of-E0308 worth of its own domain still open. Sub-wall #4 should be
+staffed as "extend #6776's caller to cover Instantiation-kind boundaries" — same owner/
+context as the original landing, not a fresh design.
+
+No emitter code changed; this is a read trace only, per the bound.
