@@ -211,20 +211,32 @@ one PR.** Structure:
 - **Pre-PR probe (nothing lands).** The D2 measurement pass runs on a branch: a pooled
   warm-cost row for **every** gate (batches 2/4/5 rostered from `gunbc_ci_floor_gates`, not
   guessed), measured on **fleet-class hardware (srv)** — the Pi lesson: a warm win measured
-  only on the 125 GB build box is not evidence for the capped runners. Output: (a) the
-  placement roster, (b) the filled expectation sheet below. This is also where "well within
-  5s" gets its empirical check (operator: "we do some testing ourselves to see what is
-  acceptable").
-- **PR-1 — the single redesign PR.** `CiSpec` placement axis with the measured roster (D3) ·
-  gauntlet split · `DiffBaseline` (D5) · the probe TSV as the receipt basis. **D4 is excluded
-  — resolved 2026-07-24 (review finding: hidden serialization):** its falsifier-green
-  precondition requires PR-0 on main plus up to one 4h cadence window, which cannot sit
-  inside an atomic PR; D4 ships as a **fast-follow micro-PR** (one workflow-authority row +
-  `ci.yml` regen, citing the first green cadence run in its body). D1 needs nothing here
-  (already landed on main); D1b is explicitly excluded — #7129-lineage work in the same file
-  as D0's fixes, belongs to that owner (§9.6). Each piece carries its own witness battery so
-  review is per-piece, but the landing is atomic — and so is the revert: one `git revert`
-  restores today's process wholesale. The concentration is deliberate.
+  only on the 125 GB build box is not evidence for the capped runners. (The fleet IS
+  reachable: branch CI runs execute on the capped srv slots; a `workflow_dispatch` harness on
+  the probe branch is the instrument — no special access.) Output: (a) the placement roster,
+  (b) the filled expectation sheet below. This is also where "well within 5s" gets its
+  empirical check (operator: "we do some testing ourselves to see what is acceptable").
+  **Added 2026-07-24 (lens reintroduction rides PR-1):** the probe also runs the v2-door lens
+  audit over the corpus — route a non-blocking `validate_then_compile` pass and inventory
+  every violation the seed door has been silently stamping past (`empty_complexity_report`) —
+  so PR-1 flips the door knowing its red set in advance instead of discovering it on landing
+  day.
+- **PR-1 — the single ATOMIC redesign PR (operator ruling 2026-07-24: "CI entirely reworked
+  atomically — specifically so we don't have to deal with migrations").** Contents: `CiSpec`
+  placement axis with the measured roster (D3) · gauntlet split (D3b) · `DiffBaseline` (D5) ·
+  the **derived clamp model** replacing the hand-set budget rows (§9.8: per-unit hard max +
+  expected-average aggregate) · **the lens-door reintroduction (`ts-lens-door`)** — the
+  floor's three seed-path compile sites route through the v2 door so
+  `always_required_root_lenses` execute on CI, `empty_complexity_report` stamping deletes,
+  and `lens_contract_complexity` flips AuditOnly → Blocking with a planted-quadratic RED;
+  violations the probe's lens audit surfaced are fixed in-PR or landed as a counted typed
+  quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
+  skip). **D4 rides PR-1 iff a green falsifier cadence run exists at landing time** (D0 is
+  merging ahead, so the cadence has runway to green); otherwise it stays the fast-follow
+  micro-PR citing the first green run. D1 needs nothing here (landed); D1b stays excluded
+  (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
+  is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
+  concentration is deliberate and operator-chosen.
 
 ### The before/after expectation sheet (X filled by the probe; every row falsification-bounded)
 
@@ -295,10 +307,20 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    `budget = fixed_overhead + selected_units × per_unit_rate[host_class]`, with the per-unit
    rate the operator-signed constant (it is the regression dial the humans already compute by
    hand in every one of these triages) and the 55-min step timeout staying the absolute
-   backstop. **Interim (today):** ONE operator-signed raise of `[2]` to ~1680s on MAIN's
-   budget row (covers max observed 1629 with ~3% margin; real run wall ≈43–44 min, well under
-   the 55-min cap) — signed once on main, not re-litigated per branch; accepted cost: the wall
-   is regression-insensitive for small runs until re-denomination, priced and dissolving there.
+   backstop. **Operator ruling (2026-07-24): no interim raise — the clamp model lands with
+   PR-1 atomically.** The signed shape is TWO constants per unit class, with different jobs:
+   a **hard max per unit** (witness: 5s — the existing fast-lane authority, unchanged, typed
+   refusal per witness) and an **expected average** as the aggregate coefficient (witness:
+   1s). Batch clamp = overhead + units × average (full corpus ≈ 300s + 2,316 × 1s ≈ 44 min,
+   under the 55-min cap, ~1.6× the honest healthy wall — catches runaway quickly, never
+   refuses legitimate work); the per-unit max protects the tail the average can't see.
+   Changing either constant requires an appended operator-signed line (the existing
+   `budget_note` discipline re-pointed at these constants; the unit count needs no signature —
+   the schedule computes it). The hand-set `gunbc_ci_floor_batch_wall_budget_seconds` rows
+   delete. These clamps are declared interim mechanics: the structural wall is the complexity
+   lens (§8 — every clamp is `cost ≤ a + b·n`, the linearity assertion the lens makes
+   structurally at compile time), and the clamp demotes to host-pathology backstop when the
+   lens goes Blocking.
 
 Sign-offs recorded here with name + date once reviewed.
 
