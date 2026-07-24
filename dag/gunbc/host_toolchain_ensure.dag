@@ -6,8 +6,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import gunbc.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host_identity_access { host_identity_srv1_access, host_identity_srv2_access, host_identity_srv4_access }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_operator_access }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_effect {
@@ -45,7 +45,9 @@ fn host_toolchain_ensure_access(host: HostIdentity) -> DeployAccess? {
     Present { value: host_identity_srv2_access }
   } else { if host == operator_host_srv3 {
     Present { value: ci_deploy_srv1_operator_access }
-  } else { none } } }
+  } else { if host == operator_host_srv4 {
+    Present { value: host_identity_srv4_access }
+  } else { none } } } }
 }
 
 fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> HostEffect {

@@ -39,6 +39,7 @@ import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
+import gunbc.repo_identity { gunbc_default_branch_name }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
@@ -633,9 +634,9 @@ data ci_workflow: Workflow = {
   name: "ci",
   on: [
     WorkflowDispatch { inputs: [] },
-    Push { branches: ["main"], paths: [] },
+    Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
-      branches: ["main"],
+      branches: [gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
     },
     MergeGroup

@@ -1,3 +1,0 @@
-module gunbc.ci_diff_defaults
-
-data ci_merge_base_ref: String = "origin/main"
