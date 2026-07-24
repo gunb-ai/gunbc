@@ -23,6 +23,8 @@ type OutputChannel
   | ShellTrace
   | Instrumentation
 
+data shell_trace_channel_note: String = "ShellTrace governs the ROUTINE scaffolding of a host effect ONLY — the pre-spawn `$ argv` echo and the `[shell] done exit=… bytes` completion count. That is Ambient content (observation law 4: routine collapses), so at Normal it is Suppressed, surfacing only at Verbose; the profile now matches Instrumentation's debug-only shape. The FAILURE evidence — a diverging effect's stderr — is a DIFFERENT content class with the OPPOSITE attention (Anomaly: always surfaced, never collapsed), so it does NOT ride this channel: it is gated by `effect_stream_disposition` (SurfaceContent) alone and carries its own command identity, so a failure is self-describing even though the routine echo went silent. Routing both classes through one channel was a state-space conflation at the channel grain (two contents, opposite attention, one gate) — the exact confusion the observation model dissolves by deriving attention PER EVENT rather than per channel. Convergence: when shell effects become observation events, `trace_emit(channel)` stops being the gate and derived attention replaces this split; until then this is the two-mechanism fix, not a third decision mechanism (operator ruling, 2026-07-24)."
+
 type VerbosityEnv {
   verbose: Bool
   quiet: Bool
@@ -53,7 +55,7 @@ fn channel_decision(channel: OutputChannel, verbosity: Verbosity) -> OutputDecis
     }
     ShellTrace => match verbosity {
       Quiet => Suppressed
-      Normal => Condensed
+      Normal => Suppressed
       Verbose => Full
     }
     Instrumentation => match verbosity {
