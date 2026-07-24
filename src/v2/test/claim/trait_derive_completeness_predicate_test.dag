@@ -1,25 +1,26 @@
 module v2.test.claim.trait_derive_completeness_predicate
 
 import v2.compiler.trait_derive_completeness {
-  trait_derive_completeness_gate_is_satisfied
-}
-import v2.std.compilers.target_model {
   ReprDeriveAdd,
   ReprDeriveClone,
   ReprDeriveOrd,
   ReprDeriveSerialize,
-  ReprDeriveElemKernelInt,
   ReprDeriveElemKernelString,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemUnknown,
-  TargetCollectionWitnessOrd,
-  int_kernel_type_node,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_derive_elem_shape,
-  repr_grounding_derive_surface_binding_for_coproduct,
-  repr_grounding_derive_surface_binding_for_record,
   repr_grounding_derive_trait_satisfied,
   repr_grounding_derive_traits_for_collection_witness,
+  trait_derive_completeness_gate_is_satisfied,
+  trait_derive_int_kernel_type_node
+}
+import v2.extdeps.languages.rust {
+  rust_trait_derive_surface_binding_for_coproduct,
+  rust_trait_derive_surface_binding_for_record
+}
+import v2.std.compilers.target_model {
+  TargetCollectionWitnessOrd,
   symbol_kernel_type_node
 }
 import v2.std.algebra { Cons, Empty }
@@ -36,7 +37,7 @@ import v2.std.node {
   TypeNode
 }
 
-data trait_derive_completeness_predicate_note: String = "Derisk witnesses for E0308 sub-wall 2: repr_grounding_derive_completeness_predicate is the single authority for whether a grounded element carries the Clone/arith/serde (+ Ord/Eq) derives its collection repr or declaration surface requires. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
+data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
 
 fn tdc_nullary_enum_node() -> Node {
   Node {
@@ -130,14 +131,14 @@ test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
 }
 
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
-  repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: int_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: int_kernel_type_node())
+  repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_completeness_predicate(
       required: Cons {
         head: ReprDeriveAdd,
         tail: Cons { head: ReprDeriveClone, tail: Cons { head: ReprDeriveSerialize, tail: Empty } }
       },
-      elem: int_kernel_type_node()
+      elem: trait_derive_int_kernel_type_node()
     )
 }
 
@@ -155,11 +156,11 @@ test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
 test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
   tdc_elem_shape_is_nullary_enum_copy(elem: tdc_nullary_enum_node())
     && tdc_binding_is(
-      binding: repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node()),
+      binding: rust_trait_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node()),
       expected: ^rust_decl_derive_enum_copy_binding
     )
     && tdc_binding_is(
-      binding: repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node()),
+      binding: rust_trait_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node()),
       expected: ^rust_decl_derive_enum_binding
     )
 }
@@ -170,11 +171,11 @@ test fn tdc_symbol_kernel_string_shape() -> Bool {
 
 test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
   tdc_binding_is(
-    binding: repr_grounding_derive_surface_binding_for_record(heap_allocated: true),
+    binding: rust_trait_derive_surface_binding_for_record(heap_allocated: true),
     expected: ^rust_decl_derive_struct_binding
   )
     && tdc_binding_is(
-      binding: repr_grounding_derive_surface_binding_for_record(heap_allocated: false),
+      binding: rust_trait_derive_surface_binding_for_record(heap_allocated: false),
       expected: ^rust_decl_derive_struct_copy_binding
     )
 }

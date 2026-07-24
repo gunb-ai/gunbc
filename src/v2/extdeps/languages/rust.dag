@@ -152,7 +152,6 @@ import v2.std.compilers.target_model {
   ValueCharUnicodeScalar,
   ValueSymbolToOwnedString,
   char_kernel_type_node,
-  repr_grounding_derive_surface_binding_for_coproduct,
   symbol_kernel_type_node,
   target_atom_realization_catalog_node,
   TargetFunctionSignatureRealization,
@@ -2171,12 +2170,51 @@ fn rust_decl_shared_derive_productions() -> List<FormalProduction> {
   ]
 }
 
+fn rust_coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
+  match edge.target.kind {
+    TypeNode { connective: Conj } =>
+      match edge.target.children {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+    _ => false
+  }
+}
+
+fn rust_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
+  fold_list(
+    xs: edges,
+    empty: true,
+    cons: fn(acc, edge) { acc && !rust_coproduct_variant_edge_has_payload(edge: edge) }
+  )
+}
+
+fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Symbol {
+  match coproduct.kind {
+    TypeNode { connective: Disj } =>
+      if rust_coproduct_all_variants_nullary(edges: coproduct.children) {
+        ^rust_decl_derive_enum_copy_binding
+      } else {
+        ^rust_decl_derive_enum_binding
+      }
+    _ => ^rust_decl_derive_enum_binding
+  }
+}
+
+fn rust_trait_derive_surface_binding_for_record(heap_allocated: Bool) -> Symbol {
+  if heap_allocated {
+    ^rust_decl_derive_struct_binding
+  } else {
+    ^rust_decl_derive_struct_copy_binding
+  }
+}
+
 fn rust_decl_struct_derive_binding() -> Symbol {
   ^rust_decl_derive_struct_binding
 }
 
 fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Symbol {
-  repr_grounding_derive_surface_binding_for_coproduct(coproduct: coproduct)
+  rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct)
 }
 
 fn rust_decl_derive_binding_spellings() -> Map<Symbol, String> {
