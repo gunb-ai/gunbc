@@ -194,6 +194,7 @@ pub enum AlgebraProfile {
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
     BooleanAlgebraCollectionProfile,
+    PointwisePowerCollectionProfile,
     FreeMonoidScalarProfile,
     FreeMonoidCollectionProfile,
     PartialFunctionProfile,
@@ -303,7 +304,7 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
                 AlgebraProfile::FreeMonoidCollectionProfile,
             ),
             "Set".to_string(),
-            AlgebraProfile::BooleanAlgebraCollectionProfile,
+            AlgebraProfile::PointwisePowerCollectionProfile,
         ),
         "Map".to_string(),
         AlgebraProfile::PartialFunctionProfile,
@@ -722,6 +723,27 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
             callback_element_position: None,
         }),
     ])
+}
+
+pub fn pointwise_power_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
+    Rc::new(vec![Rc::new(AlgebraFieldTemplate {
+        name: "member".to_string(),
+        param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::CallableOf {
+            params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            }),
+        })]),
+        return_type: Rc::new(AlgebraTypeTemplate::CallableOf {
+            params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            }),
+        }),
+        size_effect: None,
+        cost_shape: None,
+        callback_element_position: None,
+    })])
 }
 
 pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
@@ -1444,6 +1466,7 @@ pub fn algebra_method_template_name(name: String) -> bool {
             AlgebraProfile::ApproximateFieldProfile,
             AlgebraProfile::BooleanAlgebraProfile,
             AlgebraProfile::BooleanAlgebraCollectionProfile,
+            AlgebraProfile::PointwisePowerCollectionProfile,
             AlgebraProfile::FreeMonoidScalarProfile,
             AlgebraProfile::FreeMonoidCollectionProfile,
             AlgebraProfile::PartialFunctionProfile,
@@ -1475,6 +1498,7 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
         AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
         AlgebraProfile::BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates(),
+        AlgebraProfile::PointwisePowerCollectionProfile => pointwise_power_collection_templates(),
         AlgebraProfile::FreeMonoidScalarProfile => free_monoid_scalar_templates(),
         AlgebraProfile::FreeMonoidCollectionProfile => free_monoid_collection_templates(),
         AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
@@ -1487,6 +1511,7 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
         AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),
         AlgebraProfile::BooleanAlgebraCollectionProfile => Rc::new(vec!["T".to_string()]),
+        AlgebraProfile::PointwisePowerCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::FreeMonoidScalarProfile => Rc::new(vec![]),
         AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
@@ -1507,6 +1532,8 @@ pub struct ApproximateFieldProfile;
 pub struct BooleanAlgebraProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BooleanAlgebraCollectionProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PointwisePowerCollectionProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FreeMonoidScalarProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -986,12 +986,20 @@ mod compiler_tests {
             "set[int]"
         );
         assert_eq!(
+            apply_inhabitant_template1("set[{0}]".into(), "int".into()),
+            "set[int]"
+        );
+        assert_eq!(
             apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()),
             "dict[str, int]"
         );
         assert_eq!(
             apply_inhabitant_template1("[]{0}".into(), "int64".into()),
             "[]int64"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()),
+            "map[int64]struct{}"
         );
         assert_eq!(
             apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()),
