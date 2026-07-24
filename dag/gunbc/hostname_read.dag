@@ -1,7 +1,7 @@
 module gunbc.hostname_read
 
 import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.os.hostname { hostname_short_read_argv }
+import extdeps.os.hostname
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
