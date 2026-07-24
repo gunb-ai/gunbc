@@ -211,6 +211,16 @@ the CI renderer's contract (§3a) and the sequencing:
   is the same selection authority projected per touched file, not new telemetry. A refusal
   that traces to selection (a hub-file full-corpus run over budget) names the causing file in
   its explanation.
+  **Attribution grain is the DECLARATION, not the file (operator, 2026-07-24):** under each
+  touched file, list the qualified names the diff actually touches (diff hunks ∩ declaration
+  spans — both already exist) with their change kind (edited / new / removed), then the
+  witness count that follows. Honesty note: witness counts are attributed at the grain
+  selection actually computes (module-level import closure today), stated as "via the N
+  modules that reference these" — the display must never imply decl-grain selection before it
+  exists. When the namespace lane's containment tree lands decl-grain selection, the SAME
+  display shrinks the sets with zero format change — the UI leads, selection catches up. This
+  is the containment-tree authority surfacing in the UX: a qualified name is a position, and
+  the user reads their diff as positions touching witnesses.
   **Tone (operator, 2026-07-24):** arm's-length lines are plain sentences a human can read
   without decoding — "still in witness discovery: entry 214 of 602, pace 2.1s per entry
   (expected ~1s)" — never dense `key=value` chains; the dense form lives only in receipt
