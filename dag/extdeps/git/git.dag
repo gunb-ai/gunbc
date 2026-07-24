@@ -241,6 +241,10 @@ fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
   }
 }
 
+fn git_remote_ref(parts: GitRemoteRefParts) -> GitRef {
+  concat(concat(parts.remote, "/"), parts.ref_name) as GitRef
+}
+
 fn git_shell_join_argv(argv: List<String>) -> String {
   fold(argv, init: "", f: (acc, token) => if acc == "" { token } else { concat(concat(acc, " "), token) })
 }
