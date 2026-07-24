@@ -44,6 +44,7 @@ mod direct_import_precedence_over_transitive_leak_test;
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_collection_optional_grounding_witness_test;
+#[cfg(test)]
 mod faithful_string_element_char_witness_test;
 #[cfg(test)]
 mod field_import_surface_generic_arg_test;

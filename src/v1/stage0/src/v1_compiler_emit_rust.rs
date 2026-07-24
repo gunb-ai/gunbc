@@ -450,7 +450,7 @@ pub fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> bool {
     }
 }
 
-pub fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> bool {
+pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
     (name.clone() == "FreeMonoid".to_string())
 }
 
@@ -458,9 +458,8 @@ pub fn is_host_optional_carrier_alias(name: String) -> bool {
     (name.clone() == "Optional".to_string())
 }
 
-pub fn is_grounded_coproduct_native_alias(name: String, corpus_repr: RustCorpusRepr) -> bool {
-    (is_host_freemonoid_vec_alias(name.clone(), corpus_repr.clone())
-        || is_host_optional_carrier_alias(name.clone()))
+pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
+    (is_host_freemonoid_vec_alias(name.clone()) || is_host_optional_carrier_alias(name.clone()))
 }
 
 pub fn is_host_optional_carrier_type(
@@ -5529,7 +5528,6 @@ pub fn emit_module_full(
                     if ((is_type_def_item(item.clone()) && is_coproduct_type(item.clone()))
                         && !is_grounded_coproduct_native_alias(
                             authored_name(scope.type_env.clone(), item.clone()),
-                            emit_info.corpus_repr.clone(),
                         ))
                     {
                         __result.push(item);
@@ -8206,7 +8204,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.clone().iter().cloned() {
-                        __result.push(if is_grounded_coproduct_native_alias(parent.clone(), emit_info.corpus_repr.clone()) {
+                        __result.push(if is_grounded_coproduct_native_alias(parent.clone()) {
                     "".to_string()
                 } else {
                     {
@@ -8276,10 +8274,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                                 }
                                 __found
                             } == false)
-                                && !is_grounded_coproduct_native_alias(
-                                    en.clone(),
-                                    emit_info.corpus_repr.clone(),
-                                ))
+                                && !is_grounded_coproduct_native_alias(en.clone()))
                             {
                                 __result.push(en);
                             }
@@ -10428,7 +10423,7 @@ pub fn emit_type_def_from_connective(
                         ">;".to_string(),
                     )
                 }
-            } else if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone())
+            } else if is_host_freemonoid_vec_alias(item_text.clone())
             {
                 {
                     let elem_csv = Rc::new({
