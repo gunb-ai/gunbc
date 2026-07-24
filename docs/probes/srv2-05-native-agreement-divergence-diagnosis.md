@@ -42,7 +42,7 @@ Evidence supporting R2 stale-artifact over cold-cache miss:
 1. **Agreement loudness (LANDING THIS PR):** `v2.std.native_agreement` + `*_failure_receipt` companion — failures name `member=` and `interpreted=` / `native=` octet labels.
 2. **Do not re-flip** complement/meet_join until warm agreement greens on **≥2 distinct runner hosts** with loud receipts.
 3. **srvN hygeine:** Evict `GUNBC_NATIVE_CACHE_ROOT` for key `8f21f541808ddb22` on affected runners before re-flip experiment; falsifier cold control continues exercising both legs.
-4. **744-entry census:** Mechanical roster in `docs/probes/witness_entry_eligibility_census.tsv`; per-entry cssl first-error sweep on srvN names remaining `EmitIneligible` classes before bulk flip.
+4. **744-entry census:** The classification rules are `v2.compiler.self_host.witness_entry_eligibility_census` — the roster is derived from them at run time. (This step used to name `docs/probes/witness_entry_eligibility_census.tsv`; that committed carrier and its hand-synced count pin were deleted 2026-07-23 because they were a materialized copy of those same rules that drifted between regens.) Per-entry cssl first-error sweep on srvN still names the remaining `EmitIneligible` classes before bulk flip.
 
 ## Receipt hooks
 

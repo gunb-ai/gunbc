@@ -13,9 +13,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-data go_l1_nat_semiring_rung2_l1_host_gate: String = "scripts/v2-nat-semiring-go-compiler-slice-gate.sh"
+data go_l1_nat_semiring_rung2_l1_host_gate: String = "UNREALIZED — no host gate is bound. This row named scripts/v2-nat-semiring-go-compiler-slice-gate.sh, a file that did not exist in the tree at 2026-07-23 (and is not in any commit reachable from main), so the gate it declared has never run. Recorded as an unbound declaration rather than a path, because a path here reads as coverage that was never there (DESIGN section 5). Binding it means a modeled host-effect gate enrolled on a cadence, not a restored shell file."
 
-data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v2-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "go_l1_compiler_slice_receipt_v1 — schema name only; no emitter is bound while go_l1_nat_semiring_rung2_l1_host_gate is UNREALIZED."
 
 fn l1_go_receipt_atom(sym: Symbol) -> Node {
   Node {

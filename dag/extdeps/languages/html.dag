@@ -7,7 +7,7 @@ import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupBracket, MarkupMedium, EscapeHtml,
   VoidTagRendering, OmitClose,
-  serialize_markup_node_with,
+  serialize_markup_node_with, tag_in_set,
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
 }
@@ -250,6 +250,10 @@ data html5_void_tags: List<String> = [
   "input", "link", "meta", "param", "source", "track", "wbr",
 ]
 
+data html5_raw_text_tags_note: String = "The HTML spec's raw-text elements (HTML Standard section 13.1.2, 'Raw text elements'): script and style. Their text content is NOT entity-decoded by browsers, so entity-ESCAPING it at serialization corrupts it — a CSS child combinator '>' emitted as '&gt;' silently kills the rule in every browser (the roadmap strikethrough incident, 2026-07-24; same escape class as the dispatch-button inline-script incident). Serialization emits their text raw; the one hazard — content containing the element's own close sequence — REFUSES at try_serialize_html_source (typed, located), never emits corrupted output. textarea/title are the spec's escapable-raw-text class (entities ARE decoded there) and deliberately stay in the escaping default."
+
+data html5_raw_text_tags: List<String> = ["script", "style"]
+
 fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [],
@@ -257,6 +261,7 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
     text_escape: EscapeHtml,
     void_tags: html5_void_tags,
     void_rendering: OmitClose,
+    raw_text_tags: html5_raw_text_tags,
   }
 }
 
@@ -289,12 +294,45 @@ type HtmlEmitResult
   = EmitOk { html: String }
   | EmitRejected { reason: String }
 
+fn raw_text_children_text(children: List<MarkupNode>) -> String {
+  fold(children, init: "", f: (acc, c) => match c {
+    TextNode { text: t } => concat(acc, t)
+    ElementNode { tag: _, attrs: _, children: _ } => acc
+  })
+}
+
+fn raw_text_hazard(node: MarkupNode) -> String {
+  match node {
+    TextNode { text: _ } => ""
+    ElementNode { tag: t, attrs: _, children: kids } =>
+      if tag_in_set(tag: t, tags: html5_raw_text_tags) {
+        if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
+          join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")
+        } else {
+          raw_text_children_hazard(children: kids)
+        }
+      } else {
+        raw_text_children_hazard(children: kids)
+      }
+  }
+}
+
+fn raw_text_children_hazard(children: List<MarkupNode>) -> String {
+  fold(children, init: "", f: (acc, c) => if acc == "" { raw_text_hazard(node: c) } else { acc })
+}
+
 fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
-    Absent =>
-      EmitOk { html: serialize_html_source(node: node) }
+    Absent => {
+      let hazard = raw_text_hazard(node: node)
+      if hazard == "" {
+        EmitOk { html: serialize_html_source(node: node) }
+      } else {
+        EmitRejected { reason: hazard }
+      }
+    }
   }
 }
 

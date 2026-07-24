@@ -4,10 +4,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { Cons, Empty, length, filter }
-import v2.compiler.self_host.witness_entry_eligibility_census {
-  witness_entry_eligibility_census_entry_count,
-  witness_entry_eligibility_census_meets_floor
-}
 import v2.std.witness_execution_routing {
   WitnessExecutionDisposition,
   InterpretedRetained,
@@ -193,13 +189,12 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
 
 data witness_bulk_routing_census_forward_constructors_note: String = "Forward census constructors (review 41647): RetainedPendingLongLane and RetainedPendingOfflineRecipe are the retention-axis counterparts to EmitIneligible LongLaneScheduled / OfflineLocalRecipe — distinct variants on InterpretedRetainedReason, not string tags. Roster rows use record literals; helpers land with the 744-entry sweep."
 
-data witness_bulk_routing_cssl_family_extension_note: String = "Cssl/family routing extension (Lane B substance): emit-on-demand family entries classify via census_emit_on_demand_family_grain (family-grain native_routing_frontier authority until Derived Group membership subsumes); all other pending rows use census_pending_interpreted_retained until the srvN cssl sweep names ImportClosureCargoRefuse / NamespaceQualifiedRustEmit / TypeRefImportMissing first-error classes. Full roster count = witness_entry_eligibility_census_entry_count (TSV carrier); sample roster remains the 16-entry stratified slice until bulk flip."
+data witness_bulk_routing_cssl_family_extension_note: String = "Cssl/family routing extension (Lane B substance): emit-on-demand family entries classify via census_emit_on_demand_family_grain (family-grain native_routing_frontier authority until Derived Group membership subsumes); all other pending rows use census_pending_interpreted_retained until the srvN cssl sweep names ImportClosureCargoRefuse / NamespaceQualifiedRustEmit / TypeRefImportMissing first-error classes. Full roster is whatever floor discovery finds under witness_layer_roots — a live-tree fact the classification fns disposition per entry at run time, never a pinned count; sample roster remains the 16-entry stratified slice until bulk flip."
 
-data witness_bulk_routing_census_totality_note: String = "Lane B landing: totality witness gates on witness_entry_eligibility_census_meets_floor (full witness_layer_roots roster, currently 864). ROADMAP 744 claim-only count is the bulk-flip dissolve trigger (srvN sweep), not this PR's pinned authority — retargeted review 41817."
+data witness_bulk_routing_census_totality_note: String = "Lane B landing: this witness asserts the fact this module actually owns — its stratified sample roster is the declared size. It formerly also gated on witness_entry_eligibility_census_meets_floor, a >=600 floor over a hand-synced entry-count literal; that literal was deleted 2026-07-23 with the census carrier. It was never a totality proof, and its three copies had already drifted apart (this note said 864, the census literal said 880, the pin test recorded healing 876 -> 879 -> 880) precisely because no consumer executed between regens. Roster totality is now observed where it is real: claim_executor derives every discovered entry's leg from the census classification at run time, and an entry it cannot classify stops the floor (cli_run witness_execution_leg_label, fail-closed) — so an unclassified entry reds a run instead of silently missing from a committed file. ROADMAP 744 claim-only count remains the bulk-flip dissolve trigger (srvN sweep)."
 
 fn witness_bulk_routing_census_totality_holds() -> Bool {
-  witness_entry_eligibility_census_meets_floor()
-    && length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
+  length(xs: witness_bulk_routing_sample_roster) == witness_bulk_entry_count_expected
 }
 
 fn retained_pending_long_lane(entry: String) -> WitnessEntryRoutingRow {
