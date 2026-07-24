@@ -7,8 +7,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import gunbc.ci_gate { Gate }
 import gunbc.ci_spec {
-  CiSpec, DiffPolicy, DiffMergeBase, Gate,
+  CiSpec, DiffPolicy, DiffMergeBase,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
   gunbc_ci_regen_floor_gates,
   ci_release_features,
