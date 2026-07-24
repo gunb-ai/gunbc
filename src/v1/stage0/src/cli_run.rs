@@ -2033,7 +2033,12 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
         resolve_entry_graph_shared(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
             .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    match v1_interpreter::run_in_context_with_args(&ctx, "compile_clean_unlisted_import_use_blocks", &[], false) {
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "compile_clean_unlisted_import_use_blocks",
+        &[],
+        false,
+    ) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
         Ok(other) => Err(format!(
             "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
@@ -2066,7 +2071,9 @@ fn compile_clean_unlisted_import_use_blocks_cached() -> bool {
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => compile_clean_unlisted_import_use_blocks_cached(),
+        CompilerDiagnostic::UnlistedImportUse { .. } => {
+            compile_clean_unlisted_import_use_blocks_cached()
+        }
         _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
     }
 }
@@ -2093,10 +2100,22 @@ pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -
 }
 
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(
-    diagnostics: &im::Vector<Rc<ErrorNode>>,
-) -> bool {
+pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count()
+}
+
+pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_advisory(d))
+        .count()
 }
 
 pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
@@ -3115,13 +3134,16 @@ pub struct UnlistedImportCensusRow {
     pub binding_source: UnlistedImportBindingSource,
 }
 
-fn compile_clean_whole_tree_resolved() -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+fn compile_clean_whole_tree_resolved(
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
         Some(s) => s,
     };
-    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(sources.into())))
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
 }
 
 fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
@@ -3132,10 +3154,7 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
         .collect()
 }
 
-fn definer_module_for_name(
-    graph: &ResolvedGraph,
-    name: &str,
-) -> Option<String> {
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
     if let Some(info) = graph.item_registry.get(name) {
         return Some(info.module_name.clone());
     }
@@ -3224,7 +3243,9 @@ pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensus
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
 pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&CompileCleanScopePlan::WholeTree)? {
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
+        &CompileCleanScopePlan::WholeTree,
+    )? {
         None => return Ok(true),
         Some(s) => s,
     };

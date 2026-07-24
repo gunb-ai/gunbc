@@ -32,8 +32,8 @@ fn unlisted_import_use() -> Rc<ErrorNode> {
 
 #[test]
 fn policy_row_floor_not_yet_is_non_blocking() {
-    let blocks = compile_clean_unlisted_import_use_blocks_from_policy()
-        .expect("policy row must resolve");
+    let blocks =
+        compile_clean_unlisted_import_use_blocks_from_policy().expect("policy row must resolve");
     assert!(
         !blocks,
         "FloorNotYet must not block UnlistedImportUse (issue 11 staging row)"

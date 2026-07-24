@@ -559,7 +559,7 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
-                if cli_run::compile_clean_vec_has_hard_errors(&result.diagnostics) {
+                if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref()) {
                     std::process::exit(1);
                 }
             } else {
@@ -591,7 +591,8 @@ fn main() {
                     render_diagnostics(&result);
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
-                    if cli_run::compile_clean_vec_has_hard_errors(&result.diagnostics) {
+                    if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref())
+                    {
                         std::process::exit(1);
                     }
                 }
@@ -664,8 +665,8 @@ fn render_diagnostics(result: &PipelineResult) {
         render_one_diagnostic(d, &index_map, "");
     }
 
-    let hard = cli_run::compile_clean_vec_hard_error_count(&result.diagnostics);
-    let advisory = cli_run::compile_clean_vec_advisory_count(&result.diagnostics);
+    let hard = cli_run::compile_clean_im_vector_hard_error_count(result.diagnostics.as_ref());
+    let advisory = cli_run::compile_clean_im_vector_advisory_count(result.diagnostics.as_ref());
     if advisory > 0 {
         eprintln!(
             "\n{hard} blocking error(s), {advisory} advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
