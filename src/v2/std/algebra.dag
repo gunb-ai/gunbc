@@ -20,6 +20,7 @@ import std.algebra {
   Monoid,
   OrderedRing,
   Ordering,
+  PointwisePower,
   Ring,
   Semigroup,
   Semiring,
@@ -775,11 +776,6 @@ fn is_prefix_of<T>(
   }
 }
 
-type PointwisePower<T> {
-  member: fn(T) -> Bool
-}
-
-type Homomorphism<C, Source, Target> {
   source: C<Source>
   target: C<Target>
   map: fn(Source) -> Target

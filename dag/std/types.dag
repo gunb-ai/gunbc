@@ -1,6 +1,6 @@
 module std.types
 
-import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
+import std.algebra { FreeMonoid, PartialFunction, PointwisePower, kernel_algebra_profile, algebra_type_param_names }
 
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
@@ -59,10 +59,10 @@ fn is_ordered_element_collection(name: String) -> Bool {
 data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "Set": "BooleanAlgebra",
-  "set": "BooleanAlgebra",
-  "Map": "PartialFunction",
-  "map": "PartialFunction",
+  "Set": "PointwisePower",
+  "set": "PointwisePower",
+  "Map": "Map",
+  "map": "Map",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
   "BooleanAlgebra": "BooleanAlgebra",
@@ -74,10 +74,10 @@ data container_template_algebra_rows: Map<String, String> = {
 data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "Set": "BooleanAlgebra",
-  "set": "BooleanAlgebra",
-  "Map": "PartialFunction",
-  "map": "PartialFunction"
+  "Set": "PointwisePower",
+  "set": "PointwisePower",
+  "Map": "Map",
+  "map": "Map"
 }
 
 fn container_template_algebra(name: String) -> String? {
@@ -102,8 +102,10 @@ type Bytes
 type Char = Int where unicode_scalar, brand("Char")
 
 type List<element> = FreeMonoid<element>
-type Set<element> = BooleanAlgebra<element>
-type Map<key, value> = PartialFunction<key, value>
+type Set<element> = PointwisePower<element>
+type Map<key, value> {
+  lookup: fn(key) -> Witness<value>
+}
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)

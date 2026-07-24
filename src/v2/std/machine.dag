@@ -1,29 +1,12 @@
 module v2.std.machine
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-type Bit = Bool
-type Byte {
-  bits: List<Bit>
-}
-type Word8 {
-  bytes: List<Byte>
-}
+type Bit = std.bit.Bit
+type Byte = std.bit.Byte
+type Word8 = std.bit.Word8
+type Word16 = std.bit.Word16
+type Word32 = std.bit.Word32
+type Word64 = std.bit.Word64
+type Word128 = std.bit.Word128
 
-type Word16 {
-  bytes: List<Byte>
-}
-
-type Word32 {
-  bytes: List<Byte>
-}
-
-type Word64 {
-  bytes: List<Byte>
-}
-
-type Word128 {
-  bytes: List<Byte>
-}
 type MachineWidth<bits>
 type PointerWidth

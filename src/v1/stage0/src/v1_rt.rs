@@ -713,7 +713,7 @@ pub fn is_emoji_ident(cp: i64) -> bool {
 
 // FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra
 // so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.
-pub fn freemonoid_empty<T>() -> Rc<Vec<T>> {
+pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {
     Rc::new(Vec::new())
 }
 
