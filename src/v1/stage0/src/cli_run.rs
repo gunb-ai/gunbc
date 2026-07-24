@@ -8627,15 +8627,24 @@ mod witness_execution_leg_derivation_tests {
     /// entry argument would still produce plausible receipt lines, and reds here instead.
     #[test]
     fn leg_labels_derive_per_class_from_the_dag_authority() {
-        let native = witness_execution_leg_label(
+        let ws = process_workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+
+        let entries = [
             "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
-        );
-        let family_grain = witness_execution_leg_label(
             "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
-        );
-        let interpreted = witness_execution_leg_label(
             "src/v2/test/claim/self_host/witness_bulk_routing_test.dag",
-        );
+        ];
+        prime_witness_execution_legs(&index, entries);
+
+        let native = witness_execution_leg_label(entries[0]);
+        let family_grain = witness_execution_leg_label(entries[1]);
+        let interpreted = witness_execution_leg_label(entries[2]);
 
         assert_eq!(native, "NativeFamilyLeg{family_crate}");
         assert_eq!(family_grain, "InterpretedLeg{EmitOnDemandFamilyGrain}");
