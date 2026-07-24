@@ -138,10 +138,6 @@ name = "measure_discovery_retention"
 path = "src/bin/measure_discovery_retention.rs"
 
 [[bin]]
-name = "measure_discovery_retention"
-path = "src/bin/measure_discovery_retention.rs"
-
-[[bin]]
 name = "resolution_divergence_census"
 path = "src/bin/resolution_divergence_census.rs"
 

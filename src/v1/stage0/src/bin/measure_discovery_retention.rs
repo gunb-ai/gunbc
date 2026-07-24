@@ -21,8 +21,15 @@
 //! diagnostics). The `--refcount-report` prints the schedule-arming histogram over
 //! the slice (the eviction-power bound) without resolving anything.
 //!
-//! Measurement instrument only: resolves (and optionally builds an eval context);
-//! never runs witnesses, never writes.
+//! `--real-drain` switches to the REAL width=1 discovery drain over the scan dirs
+//! (`run_discovery_corpus_with_options`, Serial, selection Off, hermetic): witnesses
+//! execute, drain-level arming + schedule/graph eviction run exactly as the CI
+//! inline drain, and the streamed `[floor-drain]` receipts carry the curve. Pair a
+//! `GUNBC_SCHEDULE_RETENTION_EVICT=0` run (retain-all pole) against a default run
+//! for the end-to-end retention A/B with verdict equivalence.
+//!
+//! Without `--real-drain`: measurement instrument only — resolves (and optionally
+//! builds an eval context); never runs witnesses, never writes.
 
 use std::process::ExitCode;
 
@@ -30,6 +37,8 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, current_rss_vmrss_bytes, index_retention_snapshot,
     make_eval_context, peak_rss_vhwm_bytes, probe_clear_entry_closure_sources,
     probe_clear_resolved_graph_memo, probe_entry_import_closure, resolve_entry_with_index,
+    run_discovery_corpus_with_options, witness_exclusion_substrings, DiscoveryCorpusOptions,
+    DiscoveryWidthPolicy, NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -79,6 +88,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut drop_entry_sources = false;
     let mut with_eval_context = false;
     let mut refcount_report = false;
+    let mut real_drain = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -111,6 +121,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--drop-entry-sources" => drop_entry_sources = true,
             "--with-eval-context" => with_eval_context = true,
             "--refcount-report" => refcount_report = true,
+            "--real-drain" => real_drain = true,
             other => {
                 eprintln!("measure_discovery_retention: unknown argument: {other}");
                 return Err(ExitCode::from(2));
@@ -123,6 +134,51 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("measure_discovery_retention: at least one --source-root required");
         return Err(ExitCode::from(2));
     }
+
+    if real_drain {
+        // The REAL width=1 drain over the scan dirs: run_discovery_corpus_with_options
+        // (Serial ≡ the CI inline-drain regime for retention: drain-level arming, one
+        // private process-shared index, per-entry completion driving schedule + graph
+        // eviction, [floor-drain] receipts streaming). Witnesses actually execute
+        // (hermetic), so this is the end-to-end arm for the retention A/B — pair a
+        // GUNBC_SCHEDULE_RETENTION_EVICT=0 run (retain-all pole) against a default
+        // run and diff the RSS curves + verdicts.
+        eprintln!(
+            "[probe] real_drain roots={source_roots:?} scan_dirs={scan_dirs:?} (Serial, selection Off, hermetic)"
+        );
+        let summary = run_discovery_corpus_with_options(
+            &source_roots,
+            &scan_dirs,
+            &[],
+            ExecutionMode::Hermetic,
+            DiscoveryWidthPolicy::Serial,
+            DiscoveryCorpusOptions {
+                node_frontier_selection: NodeFrontierSelectionMode::Off,
+                explicit_roster_only: false,
+                exclude_substrings: witness_exclusion_substrings(),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| {
+            eprintln!("measure_discovery_retention: real drain failed: {e}");
+            ExitCode::from(1)
+        })?;
+        eprintln!(
+            "[probe] real_drain done total={} passed={} skipped={} failures={} \
+             rss_cur_mib={} rss_peak_mib={}",
+            summary.total,
+            summary.passed,
+            summary.skipped,
+            summary.failures.len(),
+            mib(current_rss_vmrss_bytes()),
+            mib(peak_rss_vhwm_bytes()),
+        );
+        for f in summary.failures.iter().take(200) {
+            eprintln!("[probe] real_drain FAIL {f}");
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+
     for dir in &scan_dirs {
         walk_test_entries(std::path::Path::new(dir), &mut entries);
     }

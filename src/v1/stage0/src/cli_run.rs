@@ -5531,6 +5531,13 @@ pub struct MultiEntryIndex {
     // GUNBC_RESOLVED_GRAPH_CACHE_DIR (the disk tier is opt-in separately).
     // Without the install-back, N same-subject resolves each retained an independent
     // graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
+    // Retention is SCHEDULE-GOVERNED at entry grain when retention is armed
+    // (modeled `schedule_retention_resolved_graph_scope_is_per_entry`): an entry's
+    // subjects drop at its completion, because each memoized graph holds every
+    // closure module's TypedModule env web by Rc and is exactly the holder that
+    // made per-module eviction free ~nothing (run 30030807467: ~40–120 MiB of
+    // per-graph assembly residue × 602 entries = the swap crawl). Unarmed paths
+    // (single-claim, tests, probe bins) keep process-lifetime retention.
     resolved_graph_memo: RefCell<
         HashMap<
             String,
@@ -6128,6 +6135,11 @@ pub struct ScheduleEvictionBatch {
     pub raw_files: Vec<String>,
     /// The module names dropped this step (for the located receipt line).
     pub module_names: Vec<String>,
+    /// Resolved-graph subjects (closure content digests) recorded while this entry
+    /// was current — the entry's `resolved_graph_memo` rows, dropped with it (the
+    /// modeled `schedule_retention_resolved_graph_scope_is_per_entry` grain). Empty
+    /// on the disabled measurement pole, like the module fields.
+    pub subjects: Vec<String>,
 }
 
 /// Schedule-derived per-module retention bookkeeping (pure). Refcount is keyed by
@@ -6147,11 +6159,22 @@ pub struct ScheduleRetention {
     /// hit re-records idempotently so a module first cached under an earlier entry
     /// still carries its keys when its refcount finally reaches zero).
     cache_keys: std::collections::HashMap<String, ModuleCacheKeys>,
+    /// entry path → the resolved-graph subjects (closure content digests) installed
+    /// or served from `resolved_graph_memo` while that entry resolved. Entry grain,
+    /// not refcounted: a subject digests the entry's own closure sources (the entry
+    /// file included), so distinct entries share one only in the identical-closure
+    /// edge case — where the drop degrades to recompute-on-miss, the same license
+    /// module eviction ships on.
+    entry_subjects: std::collections::HashMap<String, Vec<String>>,
     /// names already counted as RetentionUnknown (cached but reachability-uncomputable)
     /// — counted once, retained forever (never evicted).
     unknown_counted: HashSet<String>,
     schedule_evictions: u64,
     retention_unknown: u64,
+    /// Resolved-graph rows actually freed by schedule-driven entry completion
+    /// (memo subjects + process-resolve-store rows), counted at the index layer
+    /// where the removal happens.
+    graph_evictions: u64,
     /// Measurement pole (RED #1): false ⇒ compute everything, drop nothing.
     evict_enabled: bool,
 }
@@ -6185,11 +6208,36 @@ impl ScheduleRetention {
             refcount,
             entry_closures,
             cache_keys: std::collections::HashMap::new(),
+            entry_subjects: std::collections::HashMap::new(),
             unknown_counted: HashSet::new(),
             schedule_evictions: 0,
             retention_unknown: 0,
+            graph_evictions: 0,
             evict_enabled,
         }
+    }
+
+    /// Record a resolved-graph subject against the entry whose resolve produced or
+    /// re-demanded it (install AND memo-hit paths both record, idempotently), so the
+    /// entry's completion can drop exactly its graph rows. Keys that are not
+    /// scheduled entries (the compile-clean gate's phase label, prelude entries) are
+    /// recorded too but never completed — they are the arm-time clear's territory.
+    pub fn record_subject(&mut self, entry: &str, subject: &str) {
+        let subjects = self.entry_subjects.entry(entry.to_string()).or_default();
+        if !subjects.iter().any(|s| s == subject) {
+            subjects.push(subject.to_string());
+        }
+    }
+
+    /// Count resolved-graph rows the index layer actually freed for this schedule
+    /// (memo subjects + process-resolve-store rows) — the removal happens where the
+    /// cache handles live, the count lives with the rest of the retention receipts.
+    pub fn note_graph_evictions(&mut self, n: u64) {
+        self.graph_evictions += n;
+    }
+
+    pub fn evict_enabled(&self) -> bool {
+        self.evict_enabled
     }
 
     /// Record a module's cache keys as it reconciles (hit or miss; idempotent). A
@@ -6217,11 +6265,26 @@ impl ScheduleRetention {
     /// wrong verdict against evicted state). `RetentionUnknown` names carry no refcount
     /// entry, so they are never decremented and never evicted.
     pub fn entry_completed(&mut self, entry: &str) -> Result<ScheduleEvictionBatch, String> {
-        let names = match self.entry_closures.get(entry) {
-            Some(names) => names.clone(),
-            None => return Ok(ScheduleEvictionBatch::default()),
+        let mut batch = match self.entry_closures.get(entry) {
+            Some(names) => {
+                let names = names.clone();
+                self.decrement_closure(entry, &names)?
+            }
+            // No armed closure (arming could not compute it): module retention for
+            // this entry's closure is RetentionUnknown territory, but the GRAPH rows
+            // are still exact at entry grain — the entry's rows completed, so its
+            // recorded subjects drop below regardless.
+            None => ScheduleEvictionBatch::default(),
         };
-        self.decrement_closure(entry, &names)
+        // Entry grain for graph rows: the completed entry's recorded subjects can
+        // never be re-demanded by its own (finished) rows; a later identical-closure
+        // entry recomputes on miss. Disabled pole drops nothing, same as modules.
+        if self.evict_enabled {
+            if let Some(subjects) = self.entry_subjects.remove(entry) {
+                batch.subjects = subjects;
+            }
+        }
+        Ok(batch)
     }
 
     /// Test injection for RED #3: run the decrement over an EXPLICIT closure, so a
@@ -6285,6 +6348,9 @@ impl ScheduleRetention {
     pub fn retention_unknown(&self) -> u64 {
         self.retention_unknown
     }
+    pub fn graph_evictions(&self) -> u64 {
+        self.graph_evictions
+    }
 }
 
 /// Arm schedule-derived retention for a discovery run over `rows`. Only the private
@@ -6296,6 +6362,13 @@ impl ScheduleRetention {
 /// declared, typed frontier, never a silent widen. A per-entry closure that cannot be
 /// computed is skipped (its modules become counted `RetentionUnknown` at reconcile),
 /// so arming never fails the run.
+///
+/// DRAIN-LEVEL CONTRACT: callers arm ONCE per drain with the drain's FULL sorted
+/// schedule (the Serial branch and the width=1 inline drain), never per entry group
+/// — `rows` IS the refcount universe, so an under-scoped `rows` under-counts every
+/// module's remaining demand and converts eviction into per-entry cold re-typecheck
+/// (the #7129 per-group arming defect). Re-arming replaces the previous schedule:
+/// correct exactly when the previous drain has fully completed.
 fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
     if index.cross_worker_store.is_some() {
         return;
@@ -6360,14 +6433,30 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
         let rc_max = counts.last().copied().unwrap_or(0);
         let modules_at_full = counts.iter().filter(|&&c| c == entries && entries > 0).count();
         let modules_at_max = counts.iter().filter(|&&c| c == rc_max && rc_max > 0).count();
+        // Pre-drain resolved-graph rows (batch-1 compile-clean gate's whole-tree
+        // subject, prelude plan/producer subjects): no scheduled entry can ever
+        // re-demand them from the memo — the gate subject digests a DIFFERENT
+        // source set than any entry closure — so they are dead weight for the
+        // whole drain, and the gate's is the single largest graph in the process.
+        // Live prelude consumers keep their graphs via their own Rc handles (the
+        // floor runner ctx, the PROCESS_RESOLVE_STORE rows), so this frees exactly
+        // the unreferenced residue. Typed-cache warmth (the intentional batch-1 →
+        // batch-2 share, PR #6766) lives in typed_module_cache and is untouched.
+        let predrain_memo_dropped = if evict_enabled {
+            probe_clear_resolved_graph_memo(index)
+        } else {
+            0
+        };
         eprintln!(
             "[floor-drain] schedule_arming: entries={entries} modules={modules} \
              closure_avg={} rc_p50={} rc_p90={} rc_max={rc_max} \
              modules_at_full={modules_at_full} modules_at_rc_max={modules_at_max} \
-             evict_enabled={evict_enabled}",
+             evict_enabled={evict_enabled} predrain_memo_dropped={predrain_memo_dropped} \
+             resolve_store_rows={}",
             if entries == 0 { 0 } else { closure_len_sum / entries },
             pct(50),
             pct(90),
+            process_resolve_store_len(),
         );
     }
     *index.schedule_retention.borrow_mut() =
@@ -6386,6 +6475,37 @@ fn index_record_schedule_module(
     if let Some(sr) = index.schedule_retention.borrow_mut().as_mut() {
         sr.record_module(name, typed_key, raw_file);
     }
+}
+
+/// Record a resolved-graph subject against the entry that demanded it (no-op when
+/// unarmed). Called from `resolved_graph_from_sources_with_index` on both the memo
+/// hit and the install, where the phase label IS the entry file for entry resolves.
+fn index_record_schedule_subject(index: &MultiEntryIndex, entry: &str, subject: &str) {
+    if let Some(sr) = index.schedule_retention.borrow_mut().as_mut() {
+        sr.record_subject(entry, subject);
+    }
+}
+
+/// Drop the completed entry's rows from the thread-local `PROCESS_RESOLVE_STORE`
+/// (the share `resolve_entry_graph_shared` installs when a wet witness re-resolves
+/// its entry in-process). Keyed `(roots, entry_file)`; the entry component is
+/// matched exactly, then by canonical file identity so a path-spelling variant
+/// cannot silently pin (the store row would otherwise hold the graph for process
+/// lifetime after schedule eviction freed everything else). Returns rows dropped.
+fn process_resolve_store_evict_entry(entry_file: &str) -> usize {
+    PROCESS_RESOLVE_STORE.with(|s| {
+        let mut store = s.borrow_mut();
+        let before = store.len();
+        store.retain(|(_, entry), _| entry != entry_file && !same_canonical_file(entry, entry_file));
+        before - store.len()
+    })
+}
+
+/// Current row count of the thread-local `PROCESS_RESOLVE_STORE` — the retention
+/// receipt's visibility into the second graph pin (the handoff's "worth a receipt
+/// line if the numbers don't close" seam).
+fn process_resolve_store_len() -> usize {
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow().len())
 }
 
 /// Drive one entry-completion: decrement the entry's closure refcounts and drop the
@@ -6410,14 +6530,36 @@ fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Resul
     if std::env::var("GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES").ok().as_deref() == Some("1") {
         let _ = probe_clear_entry_closure_sources(index);
     }
-    let batch = {
+    let (batch, evict_enabled) = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
-            Some(sr) => sr.entry_completed(entry)?,
+            Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
             None => return Ok(()),
         }
     };
-    if batch.module_names.is_empty() {
+    // Graph rows at entry grain (modeled `schedule_retention_resolved_graph_scope_
+    // is_per_entry`): the completed entry's memoized ResolvedGraph is the Rc holder
+    // that pins its whole closure's TypedModule env web — per-module eviction below
+    // frees ~nothing while it stays (run 30030807467 diagnosis). The store rows are
+    // the wet-witness re-resolve pin (`resolve_entry_graph_shared`), same grain.
+    let mut graphs_dropped: u64 = 0;
+    if !batch.subjects.is_empty() {
+        let mut memo = index.resolved_graph_memo.borrow_mut();
+        for subject in &batch.subjects {
+            if memo.remove(subject).is_some() {
+                graphs_dropped += 1;
+            }
+        }
+    }
+    if evict_enabled {
+        graphs_dropped += process_resolve_store_evict_entry(entry) as u64;
+    }
+    if graphs_dropped > 0 {
+        if let Some(sr) = index.schedule_retention.borrow_mut().as_mut() {
+            sr.note_graph_evictions(graphs_dropped);
+        }
+    }
+    if batch.module_names.is_empty() && graphs_dropped == 0 {
         return Ok(());
     }
     {
@@ -6440,7 +6582,7 @@ fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Resul
     }
     if floor_verbose() {
         eprintln!(
-            "[floor-drain] schedule_eviction: entry='{entry}' modules={} typed_keys={} raw_files={}",
+            "[floor-drain] schedule_eviction: entry='{entry}' modules={} typed_keys={} raw_files={} graph_rows={graphs_dropped}",
             batch.module_names.len(),
             batch.typed_keys.len(),
             batch.raw_files.len()
@@ -6514,6 +6656,7 @@ mod schedule_retention_red_controls {
             "schedule_retention_heads_stay_resident",
             "schedule_retention_retain_on_unknown",
             "schedule_retention_underflow_refuses",
+            "schedule_retention_resolved_graph_scope_is_per_entry",
         ] {
             assert!(modeled_bool(&dag, flag), "modeled {flag} must be true");
         }
@@ -6563,14 +6706,51 @@ mod schedule_retention_red_controls {
         );
         sr.record_module("m", "tk", "f");
         sr.record_module("orphan", "tk_o", "f_o"); // not in any closure → RetentionUnknown
+        sr.record_subject("a", "subj_a");
         let batch = sr.entry_completed("a").expect("no underflow");
         assert!(batch.module_names.is_empty(), "disabled pole drops nothing");
+        assert!(
+            batch.subjects.is_empty(),
+            "disabled pole drops no graph rows either"
+        );
         assert_eq!(sr.schedule_evictions(), 0);
         assert_eq!(
             sr.retention_unknown(),
             1,
             "counting still on with eviction off"
         );
+    }
+
+    /// GREEN (entry-grain graph rows): a subject recorded while an entry resolves is
+    /// returned exactly at that entry's completion — including for an entry whose
+    /// MODULE closure the arming could not compute (module retention degrades to
+    /// RetentionUnknown, but the graph row is still exact at entry grain). Recording
+    /// is idempotent; a foreign key (the compile-clean gate's phase label) is never
+    /// completed, so its subjects never enter a batch.
+    #[test]
+    fn schedule_subjects_drop_at_entry_grain() {
+        let mut sr = ScheduleRetention::armed(
+            vec![("a".to_string(), vec!["m".into()])], // b has NO armed closure
+            true,
+        );
+        sr.record_module("m", "tk", "f");
+        sr.record_subject("a", "subj_a");
+        sr.record_subject("a", "subj_a"); // idempotent re-record (memo hit path)
+        sr.record_subject("b", "subj_b");
+        sr.record_subject("floor-compile-clean-gate", "subj_gate");
+
+        let batch_a = sr.entry_completed("a").expect("no underflow");
+        assert_eq!(batch_a.subjects, vec!["subj_a".to_string()]);
+        assert_eq!(batch_a.module_names, vec!["m".to_string()]);
+
+        // b: closure never armed → no module rows, but its graph row still drops.
+        let batch_b = sr.entry_completed("b").expect("no underflow");
+        assert!(batch_b.module_names.is_empty());
+        assert_eq!(batch_b.subjects, vec!["subj_b".to_string()]);
+
+        // The gate's foreign key was recorded but is never a completed entry, so its
+        // subject never entered a batch (arm-time clearing owns pre-drain rows).
+        assert_eq!(sr.graph_evictions(), 0, "index layer owns the actual count");
     }
 
     /// RED #3 (reachability corruption → typed refusal): a schedule whose arming
@@ -6669,14 +6849,28 @@ mod schedule_retention_red_controls {
         super::resolve_entry_with_index(&index, &entry_a).expect("resolve a");
         super::resolve_entry_with_index(&index, &entry_b).expect("resolve b");
 
-        // Both closures reconciled → all three modules cached.
+        // Both closures reconciled → all three modules cached, and each entry's
+        // assembled graph is memoized under its closure subject.
         let full = super::typed_module_cache_len_for_test(&index);
         assert_eq!(full, 3, "entry_a + entry_b + shared_lib cached");
+        assert_eq!(
+            super::index_retention_snapshot(&index).resolved_graph_memo_entries,
+            2,
+            "one memoized graph per resolved entry"
+        );
 
         // Completing A drops entry_a's unique module; shared_lib stays (B needs it).
+        // A's memoized GRAPH drops too (entry grain) — the Rc holder that would
+        // otherwise pin A's whole closure env web past the module eviction.
         super::index_schedule_entry_completed(&index, &entry_a).expect("complete a");
         let after_a = super::typed_module_cache_len_for_test(&index);
         assert_eq!(after_a, 2, "entry_a evicted; shared_lib + entry_b remain");
+        let snap_a = super::index_retention_snapshot(&index);
+        assert_eq!(
+            snap_a.resolved_graph_memo_entries, 1,
+            "entry_a's graph row dropped at its completion"
+        );
+        assert_eq!(snap_a.graph_evictions, 1);
 
         // Completing B drops entry_b AND the now-unreachable shared_lib.
         super::index_schedule_entry_completed(&index, &entry_b).expect("complete b");
@@ -6689,6 +6883,11 @@ mod schedule_retention_red_controls {
         let snap = super::index_retention_snapshot(&index);
         assert_eq!(snap.schedule_evictions, 3);
         assert_eq!(snap.retention_unknown, 0);
+        assert_eq!(
+            snap.resolved_graph_memo_entries, 0,
+            "no graph rows outlive their entries"
+        );
+        assert_eq!(snap.graph_evictions, 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -6714,6 +6913,14 @@ pub struct IndexRetentionSnapshot {
     /// Counted `RetentionUnknown` rows: modules cached but reachability-uncomputable,
     /// retained (correctness-fail-closed) — visible and prioritizable, never absorbed.
     pub retention_unknown: u64,
+    /// Schedule-driven resolved-graph rows freed at entry completion (memo subjects
+    /// + process-resolve-store rows) — the entry-grain tier above per-module
+    /// eviction; zero here with a climbing rss and flat typed_cache is the memo-pin
+    /// signature (run 30030807467).
+    pub graph_evictions: u64,
+    /// Live thread-local `PROCESS_RESOLVE_STORE` rows — the wet-witness re-resolve
+    /// graph pin, visible so a non-closing byte budget has its receipt.
+    pub resolve_store_entries: usize,
     pub peak_rss_bytes: Option<u64>,
 }
 
@@ -6814,6 +7021,13 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
             .as_ref()
             .map(|s| s.retention_unknown())
             .unwrap_or(0),
+        graph_evictions: index
+            .schedule_retention
+            .borrow()
+            .as_ref()
+            .map(|s| s.graph_evictions())
+            .unwrap_or(0),
+        resolve_store_entries: process_resolve_store_len(),
         peak_rss_bytes: peak_rss_vhwm_bytes(),
     }
 }
@@ -6854,6 +7068,8 @@ fn retention_snapshot_peak(
         typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
         schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
         retention_unknown: a.retention_unknown.max(b.retention_unknown),
+        graph_evictions: a.graph_evictions.max(b.graph_evictions),
+        resolve_store_entries: a.resolve_store_entries.max(b.resolve_store_entries),
         peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
             (Some(x), Some(y)) => Some(x.max(y)),
             (Some(x), None) => Some(x),
@@ -6877,7 +7093,8 @@ fn emit_floor_drain_group_line(
     eprintln!(
         "[floor-drain] group={group_idx}/{total_groups} \
          typed_cache={}({:+}) parse_cache={}({:+}) resolved_memo={}({:+}) \
-         intern_table={}({:+}) evictions={} schedule_evictions={} retention_unknown={} \
+         resolve_store={}({:+}) intern_table={}({:+}) evictions={} \
+         schedule_evictions={} graph_evictions={} retention_unknown={} \
          rss_cur={} peak_rss={}",
         cur.typed_module_cache_entries,
         cur.typed_module_cache_entries as i64 - prev.typed_module_cache_entries as i64,
@@ -6885,10 +7102,13 @@ fn emit_floor_drain_group_line(
         cur.parse_cache_entries as i64 - prev.parse_cache_entries as i64,
         cur.resolved_graph_memo_entries,
         cur.resolved_graph_memo_entries as i64 - prev.resolved_graph_memo_entries as i64,
+        cur.resolve_store_entries,
+        cur.resolve_store_entries as i64 - prev.resolve_store_entries as i64,
         cur.intern_table_entries,
         cur.intern_table_entries as i64 - prev.intern_table_entries as i64,
         cur.typed_cache_evictions,
         cur.schedule_evictions,
+        cur.graph_evictions,
         cur.retention_unknown,
         current_rss_vmrss_bytes()
             .map(|b| b.to_string())
@@ -6907,14 +7127,17 @@ fn emit_floor_drain_receipt(
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
-         intern_table_peak={} evictions={} schedule_evictions={} retention_unknown={} \
+         resolve_store_peak={} intern_table_peak={} evictions={} \
+         schedule_evictions={} graph_evictions={} retention_unknown={} \
          peak_rss={} cap_entries={}",
         peaks.typed_module_cache_entries,
         peaks.parse_cache_entries,
         peaks.resolved_graph_memo_entries,
+        peaks.resolve_store_entries,
         peaks.intern_table_entries,
         peaks.typed_cache_evictions,
         peaks.schedule_evictions,
+        peaks.graph_evictions,
         peaks.retention_unknown,
         peaks
             .peak_rss_bytes
@@ -7262,6 +7485,11 @@ fn resolved_graph_from_sources_with_index(
 > {
     let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
+    // Schedule-retention subject bookkeeping (entry grain, modeled
+    // `schedule_retention_resolved_graph_scope_is_per_entry`): record on EVERY
+    // demand — hit or install — so the armed schedule can drop this entry's graph
+    // rows at its completion. No-op when unarmed.
+    index_record_schedule_subject(index, entry_file, &subject);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
     // front of the opt-in cross-process store. A subject this process has already
     // assembled is served by reference, eliminating the per-entry reconcile assembly
@@ -14908,6 +15136,9 @@ fn run_discovery_corpus_with_options_inner(
     let floor_stream = floor_stream_enabled();
     return match width_policy {
         DiscoveryWidthPolicy::Serial => {
+            // Arm schedule-derived retention ONCE over the full serial schedule
+            // (rows are sorted by entry; an entry passed can never be read again).
+            index_arm_schedule_retention(&index, &rows);
             let summary = run_discovery_rows(
                 &rows,
                 &index,
@@ -15005,6 +15236,14 @@ fn run_discovery_corpus_with_options_inner(
                     color: floor_color,
                     stream: floor_stream,
                 };
+                // Arm schedule-derived retention ONCE over the drain's FULL schedule
+                // — the whole sorted row set, not the per-group slice the loop below
+                // hands run_discovery_rows. Arming per group collapsed refcounts to a
+                // single entry's demand (see the note in run_discovery_rows): every
+                // completion evicted the entry's whole closure, so the shared prefix
+                // re-typechecked cold on the next entry while the resolved-graph memo
+                // kept the evicted bytes alive — the #7129 crawl's time half.
+                index_arm_schedule_retention(&index, &rows);
                 let mut summaries = Vec::new();
                 let drain_detail = floor_drain_retention_detail_enabled();
                 let total_groups = groups.len();
@@ -15537,10 +15776,15 @@ fn run_discovery_rows(
     }
     // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
     let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
-    // Arm schedule-derived retention over this shard's schedule (private index only —
-    // the serial floor-drain regime). Rows are sorted by entry, so an entry's rows are
-    // contiguous and, once passed, the entry can never be read again.
-    index_arm_schedule_retention(index, rows);
+    // Schedule-derived retention is armed at the DRAIN level (the Serial branch and
+    // the width=1 inline drain arm ONCE over the drain's FULL schedule), never here:
+    // this fn runs once per entry group in the inline drain, and arming per group
+    // collapsed the schedule to one entry — every closure module hit refcount zero
+    // at that entry's completion, evicting the shared prefix the next entry
+    // immediately re-typechecked cold (the #7129 wiring defect behind run
+    // 30030807467's crawl: per-entry cold typecheck AND memo-pinned bytes).
+    // Unarmed callers (worker threads, tests driving rows directly) keep pre-M2
+    // process-lifetime retention — strictly additive, same frontier as before.
     // The entry whose per-module state becomes unreachable once `row.entry` moves on.
     let mut schedule_prev_entry: Option<String> = None;
     let mut current_entry: Option<String> = None;
