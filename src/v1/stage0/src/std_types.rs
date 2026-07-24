@@ -151,6 +151,8 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
+            __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
+            __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
             Rc::new(__m)
         };
     }
