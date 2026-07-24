@@ -125,11 +125,14 @@ fn build_cache_ensure_daemon_body(arch_token: NonEmptyStr, digest: Digest) -> St
     join(["cat > \"", build_cache_systemd_user_unit_path, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
     build_cache_systemd_user_unit_body(),
     "__GUNBC_SCCACHE_UNIT__",
+    "sudo -n loginctl enable-linger \"$USER\"",
     "systemctl --user daemon-reload",
     "systemctl --user enable --now sccache.service",
     "",
   ], "\n")
 }
+
+data build_cache_user_service_linger_note: String = "A `systemd --user` manager is torn down when the user's last session ends, so on a headless runner host an enabled user unit stops the moment the provisioning ssh connection closes — the daemon would be observed healthy by the read-back in the same connection and be gone before the first CI job. enable-linger keeps the manager running without a login, which is what makes the user-scope handler viable at all. It does NOT settle open question 1 of the srvN build-cache design (user service vs system service for the shared daemon) — that handler choice is still operator-open; this only makes the handler already selected in tree behave as modeled."
 
 fn build_cache_read_back_body(binary: String) -> String {
   join([
