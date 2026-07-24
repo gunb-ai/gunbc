@@ -169,6 +169,32 @@ protocol. Long-term convergence: the event schema is the shared wire contract, a
 Go module can become one more renderer of it — cross-repo UX consistency by shared authority,
 not by imitation.
 
+## 6b. Interaction with the CI two-tier rework (addendum 2026-07-24)
+
+The P0 model and the five laws are context-independent and change NOT AT ALL. What changes is
+the CI renderer's contract (§3a) and the sequencing:
+
+- **Three new event classes to render.** (a) Derived-clamp refusals (the rework replaces
+  hand-set batch budgets with `overhead + units × avg`): render the refusal WITH its
+  arithmetic — units, coefficient, overhead, actual wall, implied s/unit — so budget triage
+  stops being a hand computation (every triage this week recomputed s/entry manually).
+  (b) Placement dispositions: a run's summary names the PrTier/Gauntlet split — what ran,
+  what deferred, and where the deferred work executes. (c) Lens findings (the door
+  reintroduction): Anomaly-class, render immediately, never collapsed.
+- **The heartbeat's identity line keys on clamp units:** `k/n units · s/unit vs signed avg` —
+  the regression dial, live in the log.
+- **AttentionLevel grounds on the signed constants** (§9.8 of the redesign): over-average =
+  Notable, over-max/refused = Anomaly. No invented thresholds.
+- **The pain point migrates to the gauntlet.** Post-rework, PR-tier runs are short and mostly
+  Ambient; the long quiet runs live in the gauntlet/falsifier context (whole-corpus, cold) —
+  that context is the escalation law's primary home, and the flagship crawl-window replay is
+  exactly a gauntlet-profile run, so P1's acceptance is unchanged.
+- **Sequencing:** P0 (pure `.dag` model + glyph authority) lands anytime — zero carrier
+  overlap with the rework. **P1's renderer wiring lands AFTER the atomic CI PR** — both touch
+  the floor's emit sites, and churning those twice is the migration the operator ruled out.
+  P3's census enumerates the POST-rework emit sites. D4's deletion removes the
+  selection-control step as a subject.
+
 ## 7. Non-goals
 
 No external logging framework; no dashboard rebuild; no new telemetry sources in P0–P1 (render
