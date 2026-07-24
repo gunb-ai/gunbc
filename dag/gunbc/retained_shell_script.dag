@@ -45,3 +45,15 @@ fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
     dissolves_to: retained_srvn_takeover_ref,
   }
 }
+
+data retained_foreign_emit_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.workflow.bash_emit",
+  decl_name: "bash_emit_program",
+  field: WholeDeclaration,
+}
+
+data retained_foreign_note: String = "Default dissolve-on for foreign-executor / bootstrap shell.Exec.Run sites (GHA run:, cron, git hooks, CI gates, pre-runtime bootstrap): the v2 bash emit backend (emit(intent, Bash) via v2.workflow.bash_emit), a bounded roster not a growth surface (shell->dag census section 5.C). retained_foreign is the 2-arg counted bridge for that shared dissolve target; it returns TransportScript for direct shell.Exec.Run positions."
+
+fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
+  retained_transport(body: body, reason: reason, dissolves_to: retained_foreign_emit_ref)
+}
