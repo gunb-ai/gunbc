@@ -1,9 +1,20 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
+//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / issue 11) — host transport for the
+//! whole-tree UnlistedImportUse census with binding-source attribution (Dispatch 1 input).
 //!
-//! Emits a TSV keyed (file, referenced_name, binding_source) for Dispatch 1 consumption.
+//! Runs the same resolve kernel as compile-clean (`witness_layer_roots` whole-tree closure
+//! + `compile_to_resolved`) but emits every `UnlistedImportUse` row with binding-source
+//! classification (listed-import | pool-coincidence | definer-resolvable).
+//!
 //! NOT floor-enrolled — run standalone. Do NOT invoke from cargo tests (whole-tree OOM risk).
+//! Carrier: `CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER` in `cli_run.rs`.
+//!
+//! DISSOLUTION: delete this bin and the marker-gated helpers when the namespace-only lane
+//! deletes the import grammar and binding-source attribution is modeled in the substrate
+//! (`docs/plans/namespace-resolution-design.md` §8) OR a floor-enrolled census lens
+//! subsumes this transport. Receipt: `rg cli_run_compile_clean_unlisted_import_census
+//! src/v1/stage0` == 1 until deletion.
 
 use std::collections::BTreeMap;
 use std::io::Write;

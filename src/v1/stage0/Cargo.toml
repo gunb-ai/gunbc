@@ -246,7 +246,10 @@ name = "compile_clean_diagnostic_histogram"
 path = "src/bin/compile_clean_diagnostic_histogram.rs"
 
 # Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-# NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
+# SCAFFOLD — host transport; carrier CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER
+# in cli_run.rs. NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
+# DISSOLVES WHEN namespace lane deletes import grammar + binding-source modeled in substrate.
+# Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion.
 [[bin]]
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"

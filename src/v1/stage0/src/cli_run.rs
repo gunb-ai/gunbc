@@ -665,6 +665,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_unlisted_import_census"
+        );
+    }
+
+    #[test]
     fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
@@ -3149,6 +3157,17 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .cloned()
         .collect())
 }
+
+// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
+// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
+// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
+// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_unlisted_import_census";
+
+// INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
+// DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
 /// Binding-source attribution for the UnlistedImportUse census (issue 11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

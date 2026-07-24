@@ -41,3 +41,14 @@ type UnlistedImportBindingSource
   | DefinerResolvable
 
 data unlisted_import_binding_source_note: String = "Binding-source attribution for the UnlistedImportUse census (issue 11). ListedImport = the referencing module has an import edge to the definer module but the specific name is absent from that import's name list (classic selective-import SVN miss). PoolCoincidence = no import edge to the definer; the name resolves only because the definer module is already in the compilation pool via an unrelated import elsewhere (#6985 Class B). DefinerResolvable = the reference binds via namespace/containment (qualified projection) without an import edge or pool accident — the terminal namespace-lane shape every row must eventually reach."
+
+data unlisted_import_use_census_hand_rust_dissolve_trigger: String = "dissolve-on: compile_clean_unlisted_import_census hand-Rust transport (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled census lens subsumes the host transport; receipt rg cli_run_compile_clean_unlisted_import_census src/v1/stage0 == 1 until deletion."
+
+data unlisted_import_use_census_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.compile_clean_diagnostic_policy",
+    decl_name: "unlisted_import_use_census_hand_rust_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}
