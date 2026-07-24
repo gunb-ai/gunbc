@@ -77,7 +77,7 @@ data wet_template_entry_count_note: String = "Eleven template rows: the Gate-4 s
 fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 11)
     && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
-    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 10)
+    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 11)
 }
 
 fn witness_parse_engine_hooks_binding_present() -> Bool {
