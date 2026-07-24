@@ -13,7 +13,7 @@ fn srv3_bmc_target() -> NodeControlPlane {
 
 fn srv3_host_effect_script_resolves(effect: HostEffect) -> Bool {
   match srv3_host_effect_script_for(effect: effect) {
-    Present { value: script } => script != ""
+    Present { value: script } => script.body != ""
     Absent => false
   }
 }
@@ -320,7 +320,7 @@ test fn srv3_host_effect_observe_script_resolves_via_script_for() -> Bool {
       effect: Srv3InstallReconcileObserve { include_git_meta: true },
     ) {
       Present { value: script } =>
-        string_contains(s: script, pattern: "Srv3InstallObserveReceipt: surface=serve")
+        string_contains(s: script.body, pattern: "Srv3InstallObserveReceipt: surface=serve")
       Absent => false
     }
 }
