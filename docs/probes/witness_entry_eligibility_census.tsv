@@ -1,4 +1,4 @@
-# witness_entry_eligibility_census stamp=2026-07-24T00:55Z grain=entry_closure roots=witness_layer_roots(test.dag with test fn/data)
+# witness_entry_eligibility_census stamp=2026-07-24T02:09Z grain=entry_closure roots=witness_layer_roots(test.dag with test fn/data)
 entry	module_path	subject_module	subject_decl	disposition	retained_or_ineligible_reason	first_error_class	execution_leg
 dag/test/claim/accelerator_demo_execution_witness_test.dag	test.claim.accelerator_demo_execution_witness	test.claim.accelerator_demo_execution_witness	witness_entry	InterpretedRetained	BulkFlipPendingCensusIncomplete	CensusPending	InterpretedLeg
 dag/test/claim/accelerator_demo_gpu_witness_test.dag	test.claim.accelerator_demo_gpu_witness	test.claim.accelerator_demo_gpu_witness	witness_entry	InterpretedRetained	BulkFlipPendingCensusIncomplete	CensusPending	InterpretedLeg
