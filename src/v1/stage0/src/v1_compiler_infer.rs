@@ -555,7 +555,7 @@ pub struct FieldRecursionResult {
 pub fn classify_field_recursion(
     field_node: Rc<Node>,
     parent_name: String,
-    recursive_type_set: Rc<set<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldRecursionResult>> {
     {
@@ -645,7 +645,7 @@ pub fn collect_fields_inductive(
     fields: Rc<Vec<Rc<Node>>>,
     parent_name: String,
     variant_name: String,
-    recursive_type_set: Rc<set<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
@@ -674,7 +674,7 @@ pub fn collect_fields_inductive(
 
 pub fn collect_item_inductive_fields(
     item: Rc<Node>,
-    recursive_type_set: Rc<set<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
@@ -709,7 +709,7 @@ pub fn collect_item_inductive_fields(
 
 pub fn build_item_inductive_fields(
     items: Rc<Vec<Rc<Node>>>,
-    recursive_type_set: Rc<set<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.clone().iter().cloned().fold(
@@ -17249,7 +17249,7 @@ pub fn variant_has_positional_payload_shape(
 pub fn build_fielded_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<set<String>> {
+) -> Rc<BTreeSet<String>> {
     {
         let result = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
@@ -17315,17 +17315,15 @@ pub fn build_fielded_variants(
 pub fn build_positional_payload_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<set<String>> {
+) -> Rc<BTreeSet<String>> {
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<set<String>>, m: Rc<TypedModule>| {
+        |acc: Rc<BTreeSet<String>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
             let si = m.type_env.clone().source_indices.clone();
-            items
-                .clone()
-                .iter()
-                .cloned()
-                .fold(acc, |inner: Rc<set<String>>, item: Rc<Node>| {
+            items.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<BTreeSet<String>>, item: Rc<Node>| {
                     let is_enum = match v1_rt::map_get(
                         &type_summaries,
                         authored_name_at(si.clone(), item.clone()),
@@ -17342,7 +17340,7 @@ pub fn build_positional_payload_variants(
                             let variants = item.children.clone();
                             variants.clone().iter().cloned().fold(
                                 inner.clone(),
-                                |vacc: Rc<set<String>>, variant: Rc<Node>| {
+                                |vacc: Rc<BTreeSet<String>>, variant: Rc<Node>| {
                                     if variant_has_positional_payload_shape(
                                         variant.clone(),
                                         si.clone(),
@@ -17363,7 +17361,8 @@ pub fn build_positional_payload_variants(
                     } else {
                         inner.clone()
                     }
-                })
+                },
+            )
         },
     )
 }
@@ -17458,11 +17457,11 @@ pub fn build_emit_graph_info(
             fielded_variants: fielded.clone(),
             positional_payload_variants: positional.clone(),
             shared_types: v1_rt::rc_empty_set::<String>(),
-            ownership_index: v1_rt::rc_empty_map::<String, Rc<set<String>>>(),
+            ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             movable: v1_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe.clone(),
             owned_bindings: v1_rt::rc_empty_set::<String>(),
-            read_only_params_index: v1_rt::rc_empty_map::<String, Rc<set<String>>>(),
+            read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
             fn_generic_param_names: Rc::new(vec![]),
@@ -17703,7 +17702,7 @@ pub fn import_module_path_at(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExportIndexModuleAccum {
     pub index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    pub seen_names: Rc<set<String>>,
+    pub seen_names: Rc<BTreeSet<String>>,
 }
 
 pub fn export_index_merge_module(
@@ -17832,7 +17831,7 @@ pub fn rewire_inherited_str_binding(
     module_index: Rc<HashMap<String, Rc<TypedModule>>>,
     consumer: Rc<TypedModule>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    local_names: Rc<set<String>>,
+    local_names: Rc<BTreeSet<String>>,
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     name: String,

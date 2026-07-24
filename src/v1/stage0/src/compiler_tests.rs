@@ -865,6 +865,10 @@ mod compiler_tests {
             coerce_container_template(RenderTarget::Rust, "PartialFunction".into()),
             Some("HashMap<{0}, {1}>".to_string())
         );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "Set".into()),
+            Some("BTreeSet<{0}>".to_string())
+        );
     }
 
     #[test]
@@ -940,6 +944,10 @@ mod compiler_tests {
         assert_eq!(
             apply_inhabitant_template1("Vec<{0}>".into(), "i64".into()),
             "Vec<i64>"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("BTreeSet<{0}>".into(), "i64".into()),
+            "BTreeSet<i64>"
         );
         assert_eq!(
             apply_inhabitant_template1("BTreeSet<{0}>".into(), "i64".into()),
