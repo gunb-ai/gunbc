@@ -657,6 +657,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn resolved_graph_cache_compile_clean_diag_union_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER,
+            "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal"
+        );
+    }
+
+    #[test]
     fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
@@ -3111,6 +3119,13 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 // ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
+
+/// INTERIM hand-Rust scaffold (issue 11 / extdeps.realization.resolved_graph
+/// `resolved_graph_cache_compile_clean_diagnostic_union_scaffold`): cross-process
+/// resolved-graph cache hits are refused until the disk artifact carries the
+/// compile-clean diagnostic union. Receipt: `rg resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal src/v1/stage0` == 1 until dissolution.
+pub(crate) const CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER: &str =
+    "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal";
 
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.

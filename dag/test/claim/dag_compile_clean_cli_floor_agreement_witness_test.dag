@@ -3,6 +3,7 @@ module test.claim.dag_compile_clean_cli_floor_agreement_witness
 import tools.dag_compile_clean_cli_floor_agreement {
   witness_cli_floor_policy_agreement_holds,
   witness_policy_row_is_floor_not_yet,
+  witness_policy_row_drives_predicate,
   witness_enforced_flip_red_control,
   cli_floor_agreement_note
 }
