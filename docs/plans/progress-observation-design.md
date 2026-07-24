@@ -189,9 +189,17 @@ the CI renderer's contract (§3a) and the sequencing:
   Ambient; the long quiet runs live in the gauntlet/falsifier context (whole-corpus, cold) —
   that context is the escalation law's primary home, and the flagship crawl-window replay is
   exactly a gauntlet-profile run, so P1's acceptance is unchanged.
-- **Sequencing + delivery (operator ruling 2026-07-24, REAFFIRMED against the P0-carve-out
-  argument): ONE atomic PR** — P0 through P3 land together, entirely, after the atomic CI
-  rework PR. The controlling rationale is **completeness as the merge bar**: the operator
+- **Sequencing + delivery (operator ruling 2026-07-24, third revision — INTEGRATE): the
+  observation stack merges INTO #7162.** P0–P3 are complete on the observation branch;
+  instead of landing after the CI rework, the branch merges into #7162 so the emit sites
+  are rewritten ONCE, in their final post-rework shape, and the new log format is visible
+  in #7162's own CI runs upfront. Ownership protocol: the #7162 worker owns the branch and
+  performs the merge + the emit-family wiring (they own the emit sites); the observation
+  worker reviews against their own REDs. Wiring order: the five rostered structured
+  families flip to stream projections NOW (visible immediately); the ~75 raw eprintln
+  residue flips after the remaining floor pieces land (it stays a counted frontier — the
+  census wall keeps it honest). #7168 closes as absorbed; commit authorship preserves the
+  record. Prior text (lands-after sequencing) superseded: The controlling rationale is **completeness as the merge bar**: the operator
   merges only finished work — a landed P0 with no renderer is vocabulary nobody can see,
   exactly the consumed-by-nothing state the consumption rule forbids. The shared-emit-site
   rationale is secondary (real for P1–P3, not P0) and is not the load-bearing reason; #7168
