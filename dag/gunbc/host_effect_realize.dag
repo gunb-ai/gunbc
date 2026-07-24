@@ -50,7 +50,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
-import extdeps.toolchain.types { Architecture }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import gunbc.host_converge_realize {
   interpret_host_converge,
@@ -1120,7 +1120,7 @@ fn realize_provision_build_cache_body(
                 "host_effect_apply: ProvisionBuildCache refused — the cited sccache release ",
                 sccache_release_0_15_0.version as String,
                 " publishes no musl tarball for architecture ",
-                arch as String,
+                architecture_diagnostic_name(arch: arch) as String,
                 "; fail-closed, no default arch.",
               ],
               "",
@@ -1134,7 +1134,7 @@ fn realize_provision_build_cache_body(
                 reason: join(
                   [
                     "host_effect_apply: ProvisionBuildCache refused — no pinned sha256 in the cited release row for architecture ",
-                    arch as String,
+                    architecture_diagnostic_name(arch: arch) as String,
                     "; fail-closed, never install unverified.",
                   ],
                   "",
