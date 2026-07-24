@@ -27,7 +27,7 @@ import gunbc.roadmap_component {
 }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
-import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of }
+import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
   okabe_ito, solarized,
@@ -67,14 +67,23 @@ type BandPaint {
   ink: Swatch
 }
 
+data workspace_chosen_set_note: String = "GRADUATION (operator choice 2026-07-24, after auditioning live: 'okabe-ito actually looks pretty good — could we use that somehow?'): okabe-ito is the workspace's chosen band set. The default paints ARE the audition derivation — fills from the okabe mapping rows, inks picked per fill by the WCAG kernel (black wins every light fill; the graduated-default witness raises the bar to AA normal text, which every pairing clears). island-pastel demotes to a one-click audition option, built over its for-use completion so venom and the in-family inks stay modeled — and the kernel derivation REPRODUCES the old hand ink rows exactly (mint-ink wins on mint, ivory on venom), which is the in-family rule shown to be derivable rather than hand-held. Flipping the choice back is this one fn body plus the toggle defaults."
+
 fn workspace_band_paints() -> List<BandPaint> {
-  [
-    BandPaint { key: "invite", fill: island_mint, ink: island_mint_ink },
-    BandPaint { key: "in-progress", fill: island_butter, ink: island_butter_ink },
-    BandPaint { key: "ok", fill: island_aqua, ink: island_aqua_ink },
-    BandPaint { key: "fail", fill: island_venom, ink: island_ivory },
-    BandPaint { key: "loud", fill: island_venom, ink: island_ivory },
-  ]
+  audition_paints(a: audition_okabe_ito)
+}
+
+data okabe_bluish_green_pressed_note: String = "The press stop joins the chosen set's mapping (the graduation obligation the auditioner note named): bluish_green deepened one press stop, a Derived completion anchored on the cited fill — same rule as mint-pressed was for island."
+
+data okabe_bluish_green_pressed: Swatch = Swatch { name: "bluish-green-pressed", color: Srgb8 { r: 0, g: 133, b: 97 } }
+
+data okabe_ito_for_workspace: SwatchSetForUse = SwatchSetForUse {
+  name: "okabe-ito-for-workspace",
+  base: okabe_ito,
+  completions: [
+    swatch_derived(sw: okabe_bluish_green_pressed, anchor_name: "bluish_green", note: "bluish_green deepened one press stop — the press-receipt fill (okabe_bluish_green_pressed_note)"),
+  ],
+  use_note: "the chosen band set needs its press stop; the completion lives at this layer",
 }
 
 fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
@@ -87,7 +96,7 @@ fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
       decl(prop: CustomProperty { name: join(["band-", r.key], "") }, value: swatch_paint(sw: r.fill)),
       decl(prop: CustomProperty { name: join(["band-", r.key, "-ink"], "") }, value: swatch_paint(sw: r.ink)),
     ])),
-    [decl(prop: CustomProperty { name: "band-invite-pressed" }, value: swatch_paint(sw: island_mint_pressed))])
+    [decl(prop: CustomProperty { name: "band-invite-pressed" }, value: swatch_paint(sw: okabe_bluish_green_pressed))])
 }
 
 data auditioner_note: String = "The swatch auditioner (remodel W1f, operator 2026-07-24: deliberately undecided on swatches — so switching must cost a click, not a restructure). Each audition set emits its band vars under :root[data-swatch-set=NAME] — the data-theme selector grammar reused verbatim, emitted AFTER the band blocks so an audition choice overrides both themes uniformly. The FILL mapping per set is five hand rows (which hue plays danger is a design call); the INK per fill is DERIVED — the set's own swatch with the highest computed WCAG contrast against that fill, by the same cited kernel that grades the palette — so an audition set never ships an illegible pairing by construction. A set whose fill mapping fails to resolve emits NO block and the sandbox witness counts it red — absence is loud, never a fabricated color. The island default is the absent attribute. Residue, named: the press fill (--band-invite-pressed) stays island-derived under audition — the press stop joins the mapping when a set graduates from audition to chosen."
@@ -115,6 +124,18 @@ data audition_okabe_ito: AuditionSet = AuditionSet {
   ],
 }
 
+data audition_island: AuditionSet = AuditionSet {
+  set_name: "island-pastel",
+  set: for_use_combined_set(u: island_pastel_for_workspace),
+  fills: [
+    AuditionFillRow { key: "invite", swatch_name: "mint" },
+    AuditionFillRow { key: "in-progress", swatch_name: "butter" },
+    AuditionFillRow { key: "ok", swatch_name: "aqua" },
+    AuditionFillRow { key: "fail", swatch_name: "venom" },
+    AuditionFillRow { key: "loud", swatch_name: "venom" },
+  ],
+}
+
 data audition_solarized: AuditionSet = AuditionSet {
   set_name: "solarized",
   set: solarized,
@@ -127,7 +148,7 @@ data audition_solarized: AuditionSet = AuditionSet {
   ],
 }
 
-data audition_sets: List<AuditionSet> = [audition_okabe_ito, audition_solarized]
+data audition_sets: List<AuditionSet> = [audition_island, audition_solarized]
 
 fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
   swatches_of(s: s) |> filter(sw => sw.name == name) |> first

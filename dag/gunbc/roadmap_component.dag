@@ -643,8 +643,8 @@ data swatch_toggle_note: String = "The auditioner control (remodel W1f): cycles 
 
 data swatch_storage_key: String = "gunbc.swatch-set"
 data swatch_toggle_class: String = "swatch-toggle"
-data swatch_default_set_value: String = "island-pastel"
-data swatch_audition_a: String = "okabe-ito"
+data swatch_default_set_value: String = "okabe-ito"
+data swatch_audition_a: String = "island-pastel"
 data swatch_audition_b: String = "solarized"
 data swatch_audition_values: List<String> = [swatch_audition_a, swatch_audition_b]
 data swatch_toggle_label_prefix: String = "swatches · "

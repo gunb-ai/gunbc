@@ -27,12 +27,12 @@ fn sandbox_html() -> String {
 fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
   let css = sandbox_css()
   all(audition_sets, a => audition_set_resolved(a: a))
-    && string_contains(s: css, pattern: ":root[data-swatch-set=\"okabe-ito\"]")
+    && string_contains(s: css, pattern: ":root[data-swatch-set=\"island-pastel\"]")
     && string_contains(s: css, pattern: ":root[data-swatch-set=\"solarized\"]")
     && all(audition_sets, a => all(audition_paints(a: a), p =>
       srgb8_contrast_ratio_x100(a: p.ink.color, b: p.fill.color) >= wcag_aa_large_text_and_graphics_hundredths))
     && map(audition_sets, a => a.set_name) == swatch_audition_values
-    && swatch_default_set_value == island_pastel.name
+    && swatch_default_set_value == okabe_ito.name
 }
 
 fn witness_auditioner_missing_swatch_is_loud() -> Bool {

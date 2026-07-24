@@ -21,6 +21,7 @@ import gunbc.design.palette {
 import gunbc.roadmap_style {
   island_venom, island_pastel_for_workspace,
   island_mint_ink, island_butter_ink, island_aqua_ink, island_mint_pressed,
+  workspace_band_paints, okabe_ito_for_workspace, okabe_bluish_green_pressed,
 }
 import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
 import std.measure { uint8_channel_inclusive_max }
@@ -228,6 +229,14 @@ fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
     && grade_rank(g: on_loam.grade) == 0
 }
 
+fn witness_graduated_default_clears_text_aa() -> Bool {
+  count(workspace_band_paints()) == 5
+    && all(workspace_band_paints(), p =>
+      srgb8_contrast_at_least(a: p.ink.color, b: p.fill.color, threshold_hundredths: wcag_aa_normal_text_hundredths))
+    && swatch_set_for_use_admissible(u: okabe_ito_for_workspace)
+    && swatch_paint(sw: okabe_bluish_green_pressed) == "#008561"
+}
+
 fn witness_for_use_refuses_empty_and_duplicate() -> Bool {
   !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [], use_note: "control" })
     && !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [swatch_filed(sw: Swatch { name: "mint", color: island_venom.color })], use_note: "control" })
@@ -257,5 +266,6 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_workspace_for_use_completion_admissible()
     && witness_venom_carries_ivory_text_and_refuses_loam()
     && witness_in_family_inks_carry_their_fills()
+    && witness_graduated_default_clears_text_aa()
     && witness_for_use_refuses_empty_and_duplicate()
 }
