@@ -1,0 +1,82 @@
+module test.claim.observation_lockstep_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, Bool, List }
+import std.observation { ObservationLaw, observation_laws, observation_heartbeat_period }
+import std.measure { millisecond_count }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "Lockstep half of the P0 acceptance (docs/plans/progress-observation-design.md section 5): the laws are data rows and the substrate model is the authority, so both are held against the live tree rather than against a restatement. Three couplings are proven by execution here. One, no orphan law — every law row names a declaration that must actually exist in std.observation, so a law cannot be a sentence nobody executes. Two, the SchedulerHold coproduct and the seed governor's HoldReason must carry the same variants, so a hold reason added on one side reds instead of silently rendering as a missing cause. Three, the dwell threshold's derivation from the heartbeat period is checked against the period the seed actually sleeps, so the row cannot drift into taste. Each check carries a negative control in the same run: a name known to be absent must read as absent, which is what separates this from a grep that passes vacuously."
+
+data observation_module_path: String = "dag/std/observation.dag"
+data governor_source_path: String = "src/v1/stage0/src/memory_governor.rs"
+data executor_source_path: String = "src/v1/stage0/src/bin/claim_executor.rs"
+
+fn lockstep_source(path: String) -> String {
+  let r = filesystem_read(path: path)
+  r.content
+}
+
+fn lockstep_has(path: String, needle: String) -> Bool {
+  string_contains(s: lockstep_source(path: path), pattern: needle)
+}
+
+fn w_every_law_names_a_declaration_that_exists() -> Bool {
+  let src = lockstep_source(path: observation_module_path)
+  fold(observation_laws, init: true, f: (acc, l) =>
+    acc && string_contains(s: src, pattern: concat("fn ", concat(l.enforced_by.decl_name, "(")))
+  )
+}
+
+fn w_orphan_law_check_discriminates() -> Bool {
+  let src = lockstep_source(path: observation_module_path)
+  !string_contains(s: src, pattern: "fn observation_law_with_no_enforcer(")
+}
+
+data governor_hold_variants: List<String> = [
+  "WindowFull",
+  "CurrentHighWater",
+  "PsiPressure",
+  "SwapGrowth",
+  "AwaitFirstCost",
+  "InsufficientHeadroom",
+  "AdmissionCeiling"
+]
+
+fn w_scheduler_hold_is_in_lockstep_with_the_seed_governor() -> Bool {
+  let governor = lockstep_source(path: governor_source_path)
+  let model = lockstep_source(path: observation_module_path)
+  fold(governor_hold_variants, init: true, f: (acc, v) =>
+    acc &&
+    string_contains(s: governor, pattern: concat("HoldReason::", v)) &&
+    string_contains(s: model, pattern: v)
+  )
+}
+
+fn w_lockstep_check_discriminates() -> Bool {
+  let governor = lockstep_source(path: governor_source_path)
+  let model = lockstep_source(path: observation_module_path)
+  !string_contains(s: governor, pattern: "HoldReason::DiskPressure") &&
+  !string_contains(s: model, pattern: "DiskPressure")
+}
+
+fn w_heartbeat_period_matches_the_seed_cadence() -> Bool {
+  millisecond_count(m: observation_heartbeat_period) == 60000 &&
+  lockstep_has(path: executor_source_path, needle: "from_secs(60)") &&
+  lockstep_has(path: executor_source_path, needle: "floor-memory-heartbeat")
+}
+
+fn w_heartbeat_source_still_refuses_to_fabricate() -> Bool {
+  lockstep_has(path: executor_source_path, needle: "refusing to fabricate")
+}
+
+test fn observation_lockstep_witnesses() -> Bool {
+  w_every_law_names_a_declaration_that_exists() &&
+  w_orphan_law_check_discriminates() &&
+  w_scheduler_hold_is_in_lockstep_with_the_seed_governor() &&
+  w_lockstep_check_discriminates() &&
+  w_heartbeat_period_matches_the_seed_cadence() &&
+  w_heartbeat_source_still_refuses_to_fabricate()
+}

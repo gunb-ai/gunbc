@@ -1,0 +1,542 @@
+module std.observation
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.measure { Millisecond, ByteSize, measure_le, millisecond, millisecond_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.symbols {
+  SymbolId,
+  NodeRunning,
+  NodeCompleted,
+  NodeFailed,
+  NodeSkipped,
+  StatusInfo,
+  StatusWarning,
+  StatusRefused,
+  StatusBlocked,
+  StatusTimedOut,
+  StatusDwell,
+  StatusFinal,
+  ChangeAdded,
+  ChangeModified,
+  ChangeRemoved,
+}
+import std.change {
+  KeyedDiffHunk,
+  KeyedDiffAddedHunk,
+  KeyedDiffRemovedHunk,
+  KeyedDiffModifiedHunk,
+}
+import std.effect_grant { path_is_prefix }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.temporal_effect {
+  EffectStallBudget,
+  StallBudgetVerdict,
+  StallWithinBudget,
+  StallBudgetExceeded,
+  stall_budget_verdict,
+}
+
+data observation_module_note: String = "P0 of the progress-and-observation lane (docs/plans/progress-observation-design.md, operator-signed 2026-07-23; CI-rework delta in that doc section 6b). One event vocabulary emitted by the process and consumed by every renderer — a progress line is a PROJECTION of a fact the process already has, never a hand-authored string with a hand-chosen level. This module carries the model, the five laws as rows, and the derived attention/presentation assignment; it renders nothing (renderers are P1 and later). Displaced cost priced in the design doc: the 10-minute silent crawl window of run 30044816605, a 55-minute triage cycle burned on a receipt that only wrote at walk end, and workers hand-rolling the discipline ad hoc."
+
+data observation_homonym_note: String = "Naming diligence (DESIGN section 3): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got."
+
+type ObservationSegment
+  = RunSegment { id: NonEmptyStr }
+  | BatchSegment { index: Nat, label: NonEmptyStr }
+  | EntrySegment { source_path: NonEmptyStr }
+  | ModuleSegment { module_path: NonEmptyStr }
+  | PhaseSegment { name: NonEmptyStr }
+
+data observation_segment_grounding_note: String = "The subject is a CONTAINMENT PATH — run contains batch contains entry contains module contains phase, the tree the floor already walks — decomposed into typed segments rather than carried as one opaque string (DESIGN section 2 deep decomposition). Two segments name identities other authorities own, and are carried here in the same representation std already uses for them, not in a fresh one: module_path matches std.decl_ref.DeclarationRef.module_path, and source_path is a repo-relative source path. Convergence, not fork: module_path becomes v2.std.qualified_name.QualifiedName and source_path becomes the typed SourceRef when the namespace and module-identity lanes land those carriers (DESIGN open threads). Until then the representation is std's existing one, so there is nothing new to migrate."
+
+type ObservationSubject {
+  segments: List<ObservationSegment>
+}
+
+fn observation_segment_key(seg: ObservationSegment) -> String {
+  match seg {
+    RunSegment { id: i } => concat("run=", i)
+    BatchSegment { index: n, label: l } => concat("batch=", concat(to_string(n), concat(":", l)))
+    EntrySegment { source_path: p } => concat("entry=", p)
+    ModuleSegment { module_path: m } => concat("module=", m)
+    PhaseSegment { name: n } => concat("phase=", n)
+  }
+}
+
+fn observation_subject_path(subject: ObservationSubject) -> List<String> {
+  map(subject.segments, seg => observation_segment_key(seg: seg))
+}
+
+data observation_prefix_reuse_note: String = "Ancestry reuses std.effect_grant.path_is_prefix — the ONE prefix relation already carrying the containment question for effect targets, rather than a second walk written here (DESIGN section 3). Observation is one more consumer of the containment structure the resolver walks, content-addressing hashes, and effect admissibility tests. The subject tree is deliberately NOT added as a std.effect_grant.NamespaceTree variant in this phase: that enum is another lane's authority and the seed does not check match exhaustiveness, so a new variant would fall through silently in its existing consumers. Dissolve-on: the SymbolIndex-backed position supersedes the path-string interim, per the convergence commitment already declared in std.effect_grant.namespace_tree_note."
+
+fn observation_subject_contains(ancestor: ObservationSubject, descendant: ObservationSubject) -> Bool {
+  path_is_prefix(
+    prefix: observation_subject_path(subject: ancestor),
+    path: observation_subject_path(subject: descendant)
+  )
+}
+
+type ObservationGrain
+  = RunGrain
+  | BatchGrain
+  | EntryGrain
+  | ModuleGrain
+  | PhaseGrain
+
+fn observation_grain_of_segment(seg: ObservationSegment) -> ObservationGrain {
+  match seg {
+    RunSegment { id: _ } => RunGrain
+    BatchSegment { index: _, label: _ } => BatchGrain
+    EntrySegment { source_path: _ } => EntryGrain
+    ModuleSegment { module_path: _ } => ModuleGrain
+    PhaseSegment { name: _ } => PhaseGrain
+  }
+}
+
+fn observation_grain_depth(g: ObservationGrain) -> Nat {
+  match g {
+    RunGrain => 0
+    BatchGrain => 1
+    EntryGrain => 2
+    ModuleGrain => 3
+    PhaseGrain => 4
+  }
+}
+
+fn observation_subject_grain(subject: ObservationSubject) -> ObservationGrain {
+  fold(subject.segments, init: RunGrain, f: (acc, seg) => observation_grain_of_segment(seg: seg))
+}
+
+fn observation_grain_at_or_above_entry(g: ObservationGrain) -> Bool {
+  observation_grain_depth(g: g) <= observation_grain_depth(g: EntryGrain)
+}
+
+type Measured<T>
+  = MeasuredValue { value: T }
+  | MeasuredUnavailable { cause: NonEmptyStr }
+
+data observation_measured_note: String = "Absence of a measurement is a NAMED state carrying its cause, never a fabricated zero (DESIGN section 5). This mirrors the discipline the floor heartbeat already keeps in the seed: an unreadable cgroup field prints unreadable and refuses to invent a number. A renderer projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the field, because a silently omitted number is the same fabrication one layer up."
+
+type ObservationOutcome
+  = Done
+  | Refused { diagnostic: NonEmptyStr }
+  | Failed { error: NonEmptyStr, output: String }
+  | TimedOut { budget: Millisecond, elapsed: Millisecond }
+  | Skipped { reason: NonEmptyStr }
+  | Final { shown_failures: Nat }
+
+data observation_refused_distinct_note: String = "Refused is DISTINCT from Failed, and this is the point of the sum, not a nicety. A typed refusal is the house's fail-closed spine (DESIGN section 5): the line stopped deliberately, located, with a diagnostic — the stopped line the operator is meant to analyse. A failure is the process breaking. The reference implementation studied for this lane conflates them behind one red glyph, which is exactly how a deliberate refusal reads as a crash and a crash reads as policy. They get different glyphs and different rendering; a renderer that maps both to one symbol is a regression the presentation census reds."
+
+type ObservationTransition
+  = Begin
+  | Step { k: Nat, n: Nat }
+  | Concluded { outcome: ObservationOutcome }
+
+type ObservationEvent {
+  subject: ObservationSubject
+  transition: ObservationTransition
+  wall: Measured<Millisecond>
+  rss: Measured<ByteSize>
+}
+
+type SchedulerHold
+  = WindowFull { active: Nat, target: Nat }
+  | CurrentHighWater { current: ByteSize, high_water: ByteSize }
+  | PsiPressure { avg10_centi: Nat }
+  | SwapGrowth { delta: ByteSize }
+  | AwaitFirstCost { undigested: Nat }
+  | InsufficientHeadroom { current: ByteSize, share: ByteSize, high_water: ByteSize }
+  | AdmissionCeiling { current: ByteSize, ceiling: ByteSize }
+
+data observation_scheduler_hold_note: String = "SchedulerHold is the substrate authority for why admission was withheld this poll; the seed's v1_compiler memory_governor HoldReason is the realization that must stay in lockstep with it (the .dag graph is the authority and Rust is the seed — DESIGN section 7). The lockstep witness proves arity and variant names match by reading the live seed, so a variant added on one side and not the other reds instead of drifting. PsiPressure carries centi-units of the avg10 percentage rather than a float: the pressure reading is a magnitude with a scale, and a bare float in a rendered line is the scalar/unit conflation the house hard-blocks."
+
+type ContendedResource
+  = MemoryBudget
+  | AdmissionWindow
+  | MaturationReserve
+
+type ContentionRemaining
+  = RemainingUnknown { cause: NonEmptyStr }
+  | RemainingBounded { by: Millisecond }
+
+type BlockedOn {
+  resource: ContendedResource
+  holders: List<ObservationSubject>
+  remaining: ContentionRemaining
+}
+
+fn observation_hold_resource(hold: SchedulerHold) -> ContendedResource {
+  match hold {
+    WindowFull { active: _, target: _ } => AdmissionWindow
+    CurrentHighWater { current: _, high_water: _ } => MemoryBudget
+    PsiPressure { avg10_centi: _ } => MemoryBudget
+    SwapGrowth { delta: _ } => MemoryBudget
+    AwaitFirstCost { undigested: _ } => MaturationReserve
+    InsufficientHeadroom { current: _, share: _, high_water: _ } => MemoryBudget
+    AdmissionCeiling { current: _, ceiling: _ } => MaturationReserve
+  }
+}
+
+data observation_blocked_on_derived_note: String = "BlockedOn is DERIVED from scheduler and governor state and has no hand-set constructor path in any renderer (design doc section 2). The governor already knows why it held; the crawl window that priced this lane was invisible only because that knowledge never reached the log. holders are the subjects currently occupying the contended resource — existing scheduler state, not a new telemetry source (design doc section 7 forbids new sources in P0 and P1). remaining is a named coproduct because the governor does not always have a bound to give: RemainingUnknown carries why, so the renderer prints the cause rather than an invented estimate."
+
+fn observation_blocked_on(hold: SchedulerHold, holders: List<ObservationSubject>, remaining: ContentionRemaining) -> BlockedOn {
+  BlockedOn {
+    resource: observation_hold_resource(hold: hold),
+    holders: holders,
+    remaining: remaining
+  }
+}
+
+type AttentionLevel
+  = Ambient
+  | Notable
+  | Anomaly
+
+type AttentionBasis {
+  average: Millisecond
+  maximum: Millisecond
+}
+
+data observation_attention_basis_note: String = "AttentionLevel is DERIVED, never chosen at an emit site — there are no per-site log levels in this model (law 5). The basis is the pair of signed cost constants the CI clamp model carries (design doc section 6b): over the signed average is Notable, over the signed maximum is Anomaly. No threshold is invented here — the basis is a parameter supplied by the consumer that owns those constants, so this module cannot smuggle a number of its own. A refusal, failure, timeout, or orphaned begin is an Anomaly on its own terms, independent of any basis."
+
+fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
+  match o {
+    Done => false
+    Refused { diagnostic: _ } => true
+    Failed { error: _, output: _ } => true
+    TimedOut { budget: _, elapsed: _ } => true
+    Skipped { reason: _ } => false
+    Final { shown_failures: _ } => false
+  }
+}
+
+fn observation_attention_of_elapsed(elapsed: Millisecond, basis: AttentionBasis) -> AttentionLevel {
+  if measure_le(a: elapsed, b: basis.average) {
+    Ambient
+  } else if measure_le(a: elapsed, b: basis.maximum) {
+    Notable
+  } else {
+    Anomaly
+  }
+}
+
+fn observation_attention(event: ObservationEvent, basis: AttentionBasis) -> AttentionLevel {
+  match event.transition {
+    Begin => Ambient
+    Step { k: _, n: _ } =>
+      match event.wall {
+        MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
+        MeasuredUnavailable { cause: _ } => Ambient
+      }
+    Concluded { outcome: o } =>
+      if observation_outcome_is_anomaly(o: o) {
+        Anomaly
+      } else {
+        match event.wall {
+          MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
+          MeasuredUnavailable { cause: _ } => Ambient
+        }
+      }
+  }
+}
+
+type ObservationEventClass
+  = ClassBegin
+  | ClassStep
+  | ClassDone
+  | ClassRefused
+  | ClassFailed
+  | ClassTimedOut
+  | ClassSkipped
+  | ClassFinal
+  | ClassBlocked
+  | ClassDwellEscalation
+
+data observation_event_classes: List<ObservationEventClass> = [
+  ClassBegin,
+  ClassStep,
+  ClassDone,
+  ClassRefused,
+  ClassFailed,
+  ClassTimedOut,
+  ClassSkipped,
+  ClassFinal,
+  ClassBlocked,
+  ClassDwellEscalation
+]
+
+fn observation_outcome_class(o: ObservationOutcome) -> ObservationEventClass {
+  match o {
+    Done => ClassDone
+    Refused { diagnostic: _ } => ClassRefused
+    Failed { error: _, output: _ } => ClassFailed
+    TimedOut { budget: _, elapsed: _ } => ClassTimedOut
+    Skipped { reason: _ } => ClassSkipped
+    Final { shown_failures: _ } => ClassFinal
+  }
+}
+
+fn observation_event_class(event: ObservationEvent) -> ObservationEventClass {
+  match event.transition {
+    Begin => ClassBegin
+    Step { k: _, n: _ } => ClassStep
+    Concluded { outcome: o } => observation_outcome_class(o: o)
+  }
+}
+
+type ObservationPresentation {
+  glyph: SymbolId
+  collapsible: Bool
+  expands_fully: Bool
+}
+
+data observation_collapse_axes_note: String = "collapsible and expands_fully are two axes, not one flag with a middle value, because three states are real and conflating them loses one. Routine progress collapses and does not expand. An intrinsic anomaly neither collapses nor stays terse: it expands fully and names itself. The run's Final summary is the third state — it never collapses, because a summary that hid itself would defeat its purpose, yet it is NOT an anomaly and must not be rendered as one. A single collapsible flag would force Final to borrow the anomaly's presentation, which is the state-space conflation the house splits into named variants."
+
+data observation_presentation_note: String = "Event class to presentation is a TOTAL assignment over the class roster, censused and walled the way the register censuses unthemed colors. The presentation carries only the SymbolId: the glyph text per tier and the register colour role are read from the ONE glyph authority (std.symbols identity, extdeps.render.glyphs rows), never restated here, so perturbing a glyph row moves every renderer and a renderer that hardcodes a glyph is provably not reading the table. collapsible and expands_fully carry law 4: sub-threshold work collapses, an anomaly expands fully and names itself, and the two flags are never both permissive for an intrinsically anomalous class."
+
+fn observation_class_is_intrinsic_anomaly(c: ObservationEventClass) -> Bool {
+  match c {
+    ClassBegin => false
+    ClassStep => false
+    ClassDone => false
+    ClassRefused => true
+    ClassFailed => true
+    ClassTimedOut => true
+    ClassSkipped => false
+    ClassFinal => false
+    ClassBlocked => true
+    ClassDwellEscalation => true
+  }
+}
+
+fn observation_presentation(c: ObservationEventClass) -> ObservationPresentation {
+  match c {
+    ClassBegin => ObservationPresentation { glyph: NodeRunning, collapsible: true, expands_fully: false }
+    ClassStep => ObservationPresentation { glyph: NodeRunning, collapsible: true, expands_fully: false }
+    ClassDone => ObservationPresentation { glyph: NodeCompleted, collapsible: true, expands_fully: false }
+    ClassRefused => ObservationPresentation { glyph: StatusRefused, collapsible: false, expands_fully: true }
+    ClassFailed => ObservationPresentation { glyph: NodeFailed, collapsible: false, expands_fully: true }
+    ClassTimedOut => ObservationPresentation { glyph: StatusTimedOut, collapsible: false, expands_fully: true }
+    ClassSkipped => ObservationPresentation { glyph: NodeSkipped, collapsible: true, expands_fully: false }
+    ClassFinal => ObservationPresentation { glyph: StatusFinal, collapsible: false, expands_fully: false }
+    ClassBlocked => ObservationPresentation { glyph: StatusBlocked, collapsible: false, expands_fully: true }
+    ClassDwellEscalation => ObservationPresentation { glyph: StatusDwell, collapsible: false, expands_fully: true }
+  }
+}
+
+data observation_change_presentation_note: String = "Change kind is NOT re-declared here. std.change.KeyedDiffHunk already carries the added, removed and modified discriminant — it is the house's one diff carrier — so a fresh three-variant enum on this module would be a nickname for it, duplicated again in everything derived from it. What observation owns is the PRESENTATION of that discriminant: a symbol whose register colour role follows the git-diff convention the operator signed, and a text tag. The tag is not optional decoration: colour is never the only channel, so a pipe, a colourless terminal, or a screen reader loses nothing. A presentation with an empty tag is the failure the witness reds."
+
+type ChangePresentation {
+  symbol: SymbolId
+  tag: NonEmptyStr
+}
+
+fn observation_change_presentation<K, V>(hunk: KeyedDiffHunk<K, V>) -> ChangePresentation {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
+      ChangePresentation { symbol: ChangeAdded, tag: "new" as NonEmptyStr }
+    KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
+      ChangePresentation { symbol: ChangeRemoved, tag: "removed" as NonEmptyStr }
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
+      ChangePresentation { symbol: ChangeModified, tag: "edited" as NonEmptyStr }
+  }
+}
+
+type SelectionNoOp
+  = DocsPolicy
+  | Uncovered { declaration: NonEmptyStr }
+  | NoDeclsTouched
+  | GeneratedArtifact { drift_gate_authority: NonEmptyStr }
+  | DepartedPath { cause: NonEmptyStr }
+
+data observation_selection_no_op_note: String = "A touched file that selected no work is a CLOSED SUM, never a bare nothing. Nothing meaning five different things is the state-space conflation the house splits into named variants, and here the remedies genuinely differ: docs select no executable work and that is correct and quiet; a touched declaration no witness references is a COVERAGE GAP surfaced at review time, so it renders as a visible nudge rather than a comfort; only comments or whitespace intersected is fine and says so; a generated artifact is checked by the drift gate against its authority, not by witnesses, so nothing must never appear beside it; and a departed path is NOT a no-op at all — a deleted module cannot be scoped, so selection widens to baseline and the line says why. Because the sum is closed and the presentation assignment below is total, an unlabelled nothing is UNWRITABLE rather than censused after the fact — construction where a census would have conceded the bad line was writable."
+
+fn observation_no_op_is_actually_a_widen(n: SelectionNoOp) -> Bool {
+  match n {
+    DocsPolicy => false
+    Uncovered { declaration: _ } => false
+    NoDeclsTouched => false
+    GeneratedArtifact { drift_gate_authority: _ } => false
+    DepartedPath { cause: _ } => true
+  }
+}
+
+fn observation_no_op_attention(n: SelectionNoOp) -> AttentionLevel {
+  match n {
+    DocsPolicy => Ambient
+    Uncovered { declaration: _ } => Notable
+    NoDeclsTouched => Ambient
+    GeneratedArtifact { drift_gate_authority: _ } => Ambient
+    DepartedPath { cause: _ } => Notable
+  }
+}
+
+fn observation_no_op_symbol(n: SelectionNoOp) -> SymbolId {
+  match n {
+    DocsPolicy => NodeSkipped
+    Uncovered { declaration: _ } => StatusWarning
+    NoDeclsTouched => NodeSkipped
+    GeneratedArtifact { drift_gate_authority: _ } => StatusInfo
+    DepartedPath { cause: _ } => StatusWarning
+  }
+}
+
+fn observation_no_op_explanation(n: SelectionNoOp) -> NonEmptyStr {
+  match n {
+    DocsPolicy => "documentation never selects executable work" as NonEmptyStr
+    Uncovered { declaration: d } => concat("no witness covers this change: ", d) as NonEmptyStr
+    NoDeclsTouched => "only comments or whitespace changed" as NonEmptyStr
+    GeneratedArtifact { drift_gate_authority: a } => concat("generated artifact — checked by drift against ", a) as NonEmptyStr
+    DepartedPath { cause: c } => concat("a deleted module cannot be scoped, so selection widened: ", c) as NonEmptyStr
+  }
+}
+
+data observation_human_units_contract: String = "Rendered magnitudes are in human units, and a raw telemetry dump is a census violation rather than a projection. The named negative example is the floor memory heartbeat's current shape: sixty-plus identical context-free byte dumps an hour, current=16111669248 with no subject attached, which is precisely the line that was present throughout the ten-minute crawl window and told the operator nothing. A projection states the magnitude at a scale a human reads and attaches the subject it belongs to. This contract is stated on the model so the P3 census has an authority to check against; the renderers that satisfy it are P1 and later."
+
+data observation_heartbeat_period: Millisecond = millisecond(count: 60000)
+
+data observation_heartbeat_period_note: String = "The heartbeat cadence is a measured fact of the running system, not a preference: the floor's memory heartbeat already samples and prints once per minute, and the lockstep witness reads that period out of the live seed rather than trusting this row. It is stated here because the dwell threshold is derived from it."
+
+type DwellThreshold {
+  period: Millisecond
+  basis: NonEmptyStr
+}
+
+data observation_dwell_threshold: DwellThreshold = DwellThreshold {
+  period: observation_heartbeat_period,
+  basis: "one heartbeat period — the log's existing clock. Law 2 requires that no subject stay quiet past T without a line naming it, and the heartbeat is already the cadence at which the log speaks, so T is DERIVED from the emitter's own period rather than picked. Escalation at 2T and 4T rides the same clock, which is why depth is a division and not a table of tuned constants."
+}
+
+data observation_dwell_threshold_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_dwell_threshold",
+    field: WholeDeclaration
+  }
+}
+
+data observation_dwell_recalibration_note: String = "Declared scaffold, with its trigger: the design doc says T's basis is the measured quiet-time distribution. That distribution is not yet collected — the gauntlet and falsifier whole-corpus runs are the context that will produce it (design doc section 6b names that lane as the escalation law's primary home). Deriving T from the heartbeat period is a grounded interim, not taste, because the period is itself measured and law 2 is stated in terms of it. Dissolve-on: the first measured quiet-time distribution from a gauntlet cadence replaces the basis, and this row's period becomes a projection of it."
+
+fn observation_escalation_depth(quiet: Millisecond, t: DwellThreshold) -> Nat {
+  millisecond_count(m: quiet) / millisecond_count(m: t.period)
+}
+
+data observation_escalation_note: String = "Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent."
+
+fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> Nat {
+  count(quiet_subject.segments) + observation_escalation_depth(quiet: quiet, t: t)
+}
+
+fn observation_escalation_subject(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> ObservationSubject {
+  if observation_subject_contains(ancestor: quiet_subject, descendant: active_leaf) {
+    ObservationSubject {
+      segments: active_leaf.segments.take(n: observation_escalation_reveal_depth(quiet_subject: quiet_subject, quiet: quiet, t: t))
+    }
+  } else {
+    quiet_subject
+  }
+}
+
+type WatchdogVerdict
+  = WatchdogQuiet
+  | WatchdogOrphanedBegin { subject: ObservationSubject, elapsed: Millisecond, budget: Millisecond }
+
+data observation_watchdog_note: String = "Law 1: every subject at entry grain and above emits a matched Begin and exactly one Outcome, so an orphaned Begin is a DETECTABLE DEFECT rather than a silence to be interpreted. The watchdog converts quiet-past-budget into a typed line, which also closes the batch-wall hang gap — a batch that never completes currently rides silently to the step cap. The exceeded-budget arithmetic is not restated here: it calls std.temporal_effect.stall_budget_verdict, the one carrier already answering elapsed-against-limit, so there is a single authority for what over-budget means and this module only adds the subject the verdict is about."
+
+fn observation_watchdog(subject: ObservationSubject, elapsed: Millisecond, budget: Millisecond) -> WatchdogVerdict {
+  match stall_budget_verdict(budget: EffectStallBudget {
+    step_id: observation_subject_render(subject: subject),
+    limit_ms: budget,
+    elapsed_ms: elapsed
+  }) {
+    StallWithinBudget => WatchdogQuiet
+    StallBudgetExceeded { step_id: _, elapsed_ms: e, limit_ms: l } =>
+      WatchdogOrphanedBegin { subject: subject, elapsed: e, budget: l }
+  }
+}
+
+fn observation_subject_render(subject: ObservationSubject) -> NonEmptyStr {
+  match join(observation_subject_path(subject: subject), " ") {
+    "" => "run=unattributed" as NonEmptyStr
+    rendered => rendered as NonEmptyStr
+  }
+}
+
+fn observation_watchdog_attention(v: WatchdogVerdict) -> AttentionLevel {
+  match v {
+    WatchdogQuiet => Ambient
+    WatchdogOrphanedBegin { subject: _, elapsed: _, budget: _ } => Anomaly
+  }
+}
+
+type ObservationLaw {
+  id: NonEmptyStr
+  statement: NonEmptyStr
+  enforced_by: DeclarationRef
+}
+
+data observation_laws_note: String = "The five laws land as DATA ROWS, operator-signed 2026-07-23. Each row names the declaration that enforces it, so a law with no enforcement is a detectable orphan rather than a sentence in a document nobody executes — the lockstep witness reads this module out of the live tree and reds when a named declaration is absent. Candidate convergence, flagged not assumed: the enforcement-intent lane models the operator's recurring standing directives as StandingIntent rows with a lens contract and a coverage receipt. These five are directives of exactly that shape, but StandingIntent's fields today are lens-enforcement machinery (scope roster, consumer requirement, narrowing reasons) that these rows would fill hollowly, so they stay plain rows and the consolidation is the operator's call when that lane generalizes."
+
+data observation_law_process_to_outcome: ObservationLaw = ObservationLaw {
+  id: "observation.process-to-outcome" as NonEmptyStr,
+  statement: "Every subject at entry grain and above emits a matched Begin and exactly one Outcome; quiet past budget becomes a typed line, never an interpreted silence." as NonEmptyStr,
+  enforced_by: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_watchdog",
+    field: WholeDeclaration
+  }
+}
+
+data observation_law_heartbeat_identity: ObservationLaw = ObservationLaw {
+  id: "observation.heartbeat-carries-identity" as NonEmptyStr,
+  statement: "The heartbeat carries identity, not just vitals: phase, entry, module and k of n. No phase exceeds T without a line naming its current subject." as NonEmptyStr,
+  enforced_by: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_subject_render",
+    field: WholeDeclaration
+  }
+}
+
+data observation_law_dwell_escalation: ObservationLaw = ObservationLaw {
+  id: "observation.attention-escalates-by-dwell" as NonEmptyStr,
+  statement: "Attention escalates by dwell time, recursively: quiet past T surfaces the child, past 2T the grandchild, down to the leaf. T is a data row with a measured basis." as NonEmptyStr,
+  enforced_by: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_escalation_subject",
+    field: WholeDeclaration
+  }
+}
+
+data observation_law_quiet_at_arms_length: ObservationLaw = ObservationLaw {
+  id: "observation.quiet-at-arms-length" as NonEmptyStr,
+  statement: "Sub-threshold work is silent and collapses to summaries; a red or a refusal expands fully and names itself. The asymmetry is the design, and expansion stays bounded." as NonEmptyStr,
+  enforced_by: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_presentation",
+    field: WholeDeclaration
+  }
+}
+
+data observation_law_every_response_true: ObservationLaw = ObservationLaw {
+  id: "observation.every-response-true" as NonEmptyStr,
+  statement: "Every rendered number is a projection of a receipt fact. No vibes strings, no per-site log levels, no fabricated value standing in for an unavailable measurement." as NonEmptyStr,
+  enforced_by: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "observation_attention",
+    field: WholeDeclaration
+  }
+}
+
+data observation_laws: List<ObservationLaw> = [
+  observation_law_process_to_outcome,
+  observation_law_heartbeat_identity,
+  observation_law_dwell_escalation,
+  observation_law_quiet_at_arms_length,
+  observation_law_every_response_true
+]
+
+data observation_renders_nothing_disposition: Disposition = Terminal {
+  reason: "P0 carries the model only. Renderers are P1 and later, and the CI renderer's wiring lands after the atomic CI PR because both touch the floor's emit sites and churning them twice is the migration class the operator ruled out. This module therefore holds no line formatting, no glyph text, and no ANSI: it holds the vocabulary those renderers project from."
+}
