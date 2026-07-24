@@ -1,0 +1,229 @@
+module std.trait_derive_shape
+
+import std.algebra { Cons, Empty }
+
+data trait_derive_shape_note: String = "Single authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Consumed by v2.compiler.trait_derive_completeness (v2 Node elem-shape classifier) and v1.compiler.trait_derive_emit (v1 seed emitter derive selection). Dissolve-on: table migrates to derived rows when emit arms are total."
+
+type ReprGroundingDeriveTrait
+  = ReprDeriveClone
+  | ReprDeriveCopy
+  | ReprDerivePartialEq
+  | ReprDeriveEq
+  | ReprDerivePartialOrd
+  | ReprDeriveOrd
+  | ReprDeriveSerialize
+  | ReprDeriveDeserialize
+  | ReprDeriveAdd
+  | ReprDeriveSub
+  | ReprDeriveMul
+  | ReprDeriveDiv
+  | ReprDeriveRem
+  | ReprDeriveNeg
+
+type ReprGroundingDeriveElemShape
+  = ReprDeriveElemKernelString
+  | ReprDeriveElemKernelInt
+  | ReprDeriveElemKernelBool
+  | ReprDeriveElemKernelUnit
+  | ReprDeriveElemNullaryEnumCopy
+  | ReprDeriveElemUnknown
+
+fn repr_grounding_derive_shape_has_trait(
+  shape: ReprGroundingDeriveElemShape,
+  derive_trait: ReprGroundingDeriveTrait
+) -> Bool {
+  match shape {
+    ReprDeriveElemKernelString =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
+    ReprDeriveElemKernelInt =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDeriveCopy => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        ReprDeriveAdd => true
+        ReprDeriveSub => true
+        ReprDeriveMul => true
+        ReprDeriveDiv => true
+        ReprDeriveRem => true
+        ReprDeriveNeg => true
+      }
+    ReprDeriveElemKernelBool =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDeriveCopy => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
+    ReprDeriveElemKernelUnit =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDeriveCopy => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
+    ReprDeriveElemNullaryEnumCopy =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDeriveCopy => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
+    ReprDeriveElemUnknown => false
+  }
+}
+
+fn trait_derive_list_contains(traits: List<ReprGroundingDeriveTrait>, derive_trait: ReprGroundingDeriveTrait) -> Bool {
+  traits |> any(t => t == derive_trait)
+}
+
+fn trait_derive_list_push_unique(traits: List<ReprGroundingDeriveTrait>, derive_trait: ReprGroundingDeriveTrait) -> List<ReprGroundingDeriveTrait> {
+  if trait_derive_list_contains(traits: traits, derive_trait: derive_trait) {
+    traits
+  } else {
+    Cons { head: derive_trait, tail: traits }
+  }
+}
+
+fn repr_grounding_derive_completeness_predicate(
+  required: List<ReprGroundingDeriveTrait>,
+  shape: ReprGroundingDeriveElemShape
+) -> Bool {
+  required |> all(dt => repr_grounding_derive_shape_has_trait(shape: shape, derive_trait: dt))
+}
+
+fn record_derive_traits_heap() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveClone,
+    tail: Cons {
+      head: ReprDerivePartialEq,
+      tail: Cons {
+        head: ReprDeriveSerialize,
+        tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+      }
+    }
+  }
+}
+
+fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveClone,
+    tail: Cons {
+      head: ReprDeriveCopy,
+      tail: Cons {
+        head: ReprDerivePartialEq,
+        tail: Cons {
+          head: ReprDeriveSerialize,
+          tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+fn record_derive_traits(heap_allocated: Bool) -> List<ReprGroundingDeriveTrait> {
+  match heap_allocated {
+    true => record_derive_traits_heap()
+    false => record_derive_traits_copy()
+  }
+}
+
+fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveClone,
+    tail: Cons {
+      head: ReprDeriveCopy,
+      tail: Cons {
+        head: ReprDerivePartialEq,
+        tail: Cons {
+          head: ReprDeriveEq,
+          tail: Cons {
+            head: ReprDerivePartialOrd,
+            tail: Cons {
+              head: ReprDeriveOrd,
+              tail: Cons {
+                head: ReprDeriveSerialize,
+                tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveClone,
+    tail: Cons {
+      head: ReprDerivePartialEq,
+      tail: Cons {
+        head: ReprDeriveSerialize,
+        tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+      }
+    }
+  }
+}
+
+fn trait_rust_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+  match derive_trait {
+    ReprDeriveClone => "Clone"
+    ReprDeriveCopy => "Copy"
+    ReprDerivePartialEq => "PartialEq"
+    ReprDeriveEq => "Eq"
+    ReprDerivePartialOrd => "PartialOrd"
+    ReprDeriveOrd => "Ord"
+    ReprDeriveSerialize => "serde::Serialize"
+    ReprDeriveDeserialize => "serde::Deserialize"
+    ReprDeriveAdd => "std::ops::Add"
+    ReprDeriveSub => "std::ops::Sub"
+    ReprDeriveMul => "std::ops::Mul"
+    ReprDeriveDiv => "std::ops::Div"
+    ReprDeriveRem => "std::ops::Rem"
+    ReprDeriveNeg => "std::ops::Neg"
+  }
+}
+
+fn trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
+  concat(
+    "#[derive(Debug",
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveClone) { ", Clone" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveCopy) { ", Copy" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDerivePartialEq) { ", PartialEq" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveEq) { ", Eq" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDerivePartialOrd) { ", PartialOrd" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveOrd) { ", Ord" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveSerialize) { ", serde::Serialize" } else { "" },
+    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveDeserialize) { ", serde::Deserialize" } else { "" },
+    ")]"
+  )
+}

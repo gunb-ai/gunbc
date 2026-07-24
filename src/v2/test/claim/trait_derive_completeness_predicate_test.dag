@@ -5,16 +5,18 @@ import v2.compiler.trait_derive_completeness {
   ReprDeriveClone,
   ReprDeriveOrd,
   ReprDeriveSerialize,
-  ReprDeriveElemKernelString,
-  ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemUnknown,
   TraitDeriveCompletenessIncomplete,
   TraitDeriveCompletenessSatisfied,
-  repr_grounding_derive_completeness_predicate,
+  repr_grounding_derive_completeness_predicate_for_elem,
   repr_grounding_derive_elem_shape,
   repr_grounding_derive_trait_satisfied,
   trait_derive_completeness_gate_for_collection_witness,
   trait_derive_int_kernel_type_node
+}
+import std.trait_derive_shape {
+  ReprDeriveElemKernelString,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemUnknown
 }
 import v2.extdeps.languages.rust {
   rust_trait_derive_surface_binding_for_coproduct,
@@ -145,7 +147,7 @@ test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
   repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
-    && repr_grounding_derive_completeness_predicate(
+    && repr_grounding_derive_completeness_predicate_for_elem(
       required: Cons {
         head: ReprDeriveAdd,
         tail: Cons { head: ReprDeriveClone, tail: Cons { head: ReprDeriveSerialize, tail: Empty } }

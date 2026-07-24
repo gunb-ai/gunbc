@@ -676,7 +676,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolve_on: nfr_dissolve_wildcard_total
   },
   FrontierRow {
-    unit: "src/v2/compiler/trait_derive_completeness.dag::repr_grounding_derive_shape_has_trait",
+    unit: "dag/std/trait_derive_shape.dag::repr_grounding_derive_shape_has_trait",
     reason: nfr_reason_trait_derive_shape_table,
     dissolve_on: nfr_dissolve_trait_derive_shape_table
   },

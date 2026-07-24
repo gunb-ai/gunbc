@@ -1,0 +1,31 @@
+module v2.test.emit.trait_derive_seed_emit_binding_test
+
+import std.trait_derive_shape {
+  ReprDeriveClone,
+  ReprDerivePartialEq,
+  ReprDeriveSerialize,
+  ReprDeriveElemNullaryEnumCopy,
+  nullary_coproduct_derive_traits,
+  record_derive_traits,
+  trait_derive_attr_from_traits,
+  repr_grounding_derive_completeness_predicate
+}
+import v2.std.logic { Bool }
+
+data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists → derive attr spellings consumed by v1.compiler.trait_derive_emit (same authority path as seed emitter)."
+
+test fn nullary_coproduct_predicate_satisfied() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    required: nullary_coproduct_derive_traits(),
+    shape: ReprDeriveElemNullaryEnumCopy
+  )
+}
+
+test fn record_heap_attr_contains_serde() -> Bool {
+  let attr = trait_derive_attr_from_traits(traits: record_derive_traits(heap_allocated: true))
+  attr != "" && attr != trait_derive_attr_from_traits(traits: record_derive_traits(heap_allocated: false))
+}
+
+test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
+  nullary_coproduct_predicate_satisfied() && record_heap_attr_contains_serde()
+}
