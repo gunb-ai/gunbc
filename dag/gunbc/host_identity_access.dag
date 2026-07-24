@@ -23,6 +23,11 @@ data host_identity_srv2_access: DeployAccess = host_identity_ssh_access(
   ssh_host: operator_host_srv2 as NonEmptyStr,
 )
 
+data host_identity_srv4_access: DeployAccess = host_identity_ssh_access(
+  host: srv4_host,
+  ssh_host: operator_host_srv4 as NonEmptyStr,
+)
+
 fn host_identity_operator_principal_name() -> NonEmptyStr {
   grounded_posix_principal_name(
     p: fleet_posix_principal(key: FleetAccountOperator)

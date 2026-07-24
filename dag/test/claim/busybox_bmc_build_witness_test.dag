@@ -13,5 +13,8 @@ test fn busybox_build_is_modeled_and_grounded() -> Bool {
     && string_contains(s: all, pattern: "'EXTRA_CFLAGS=-march=armv5te -mfloat-abi=soft'")
     && string_contains(s: all, pattern: "CONFIG_STATIC=y")
     && string_contains(s: all, pattern: "/var/lib/gunbc/artifacts/netboot/busybox")
+    && string_contains(s: all, pattern: "'-fsL'")
+    && string_contains(s: all, pattern: "'--strip-components=1'")
+    && string_contains(s: all, pattern: "'mkdir' '-p'")
     && list_length(items: cmds) == 8
 }

@@ -172,9 +172,9 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
   let build_script = ci_release_build_script()
   string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
-    string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
+    !string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: yaml, pattern: "$ROOT/target/release/claim_executor") &&
-    string_contains(s: build_script, pattern: "env -u RUSTC_WRAPPER") &&
+    !string_contains(s: build_script, pattern: "env -u RUSTC_WRAPPER") &&
     !string_contains(s: floor_script, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: floor_script, pattern: "$ROOT/target/release/claim_executor")
 }
