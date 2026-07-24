@@ -407,6 +407,17 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
   }
 }
 
+fn rust_scalar_checkpoint_render_base(dag_name: String, corpus_repr: RustCorpusRepr) -> String? {
+  match lookup_checkpoint(target: Rust, dag_name: dag_name) {
+    Present { value: cp } => Present { value: cp.target_type }
+    Absent =>
+      match rust_seed_host_numeric_alias(name: dag_name, corpus_repr: corpus_repr) {
+        Present { value: host } => Present { value: host }
+        Absent => none
+      }
+  }
+}
+
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
   if name == "List" || name == "FreeMonoid" {
     Present { value: "Vec" }
@@ -584,6 +595,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     }
   } else {
 
+    match rust_scalar_checkpoint_render_base(dag_name: base_name, corpus_repr: corpus_repr) {
+      Present { value: scalar } => scalar
+      Absent =>
     let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
@@ -597,6 +611,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
+    }
   }
 }
 
