@@ -235,13 +235,26 @@ fn is_host_optional_carrier_alias(name: String) -> Bool {
   name == "Optional"
 }
 
+fn is_host_diagnostics_carrier_alias(name: String) -> Bool {
+  name == "Diagnostics"
+}
+
 fn is_grounded_coproduct_native_alias(name: String) -> Bool {
   is_host_freemonoid_vec_alias(name: name)
     || is_host_optional_carrier_alias(name: name)
+    || is_host_diagnostics_carrier_alias(name: name)
 }
 
 fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) == "Optional" && n.children |> count > 0
+}
+
+fn is_host_diagnostics_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) == "Diagnostics"
+}
+
+fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String {
+  concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", shared_types: shared_types), ">")
 }
 
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
