@@ -7,11 +7,11 @@ type UnlistedImportUseEnforcement
   = FloorNotYet
   | Enforced
 
-data unlisted_import_use_enforcement_note: String = "Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 / ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced = blocking (terminal promotion when namespace-only resolution deletes the import grammar — DISSOLVES WHEN UnlistedImportUse promoted to an error per namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path (consume_floor_compile_clean_gate_verdict) and the standalone CLI transport (gunbc compile --target dag) must read this row — never restate the predicate in either consumer (DESIGN section 3)."
+data unlisted_import_use_enforcement_note: String = "Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 / ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced = blocking (terminal promotion when namespace-only resolution deletes the import grammar — DISSOLVES WHEN UnlistedImportUse promoted to an error per namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path (consume_floor_compile_clean_gate_verdict via floor_compile_clean_emit_ok_via_index) and the standalone CLI transport (gunbc compile --target dag) read this row — never restate the predicate in either consumer (DESIGN section 3)."
 
 data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
 
-data compile_clean_unlisted_import_use_enforcement_dissolve_on: String = "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN v1 04_resolve promotes UnlistedImportUse to an error (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger); the row flips to Enforced and both consumers red together via compile_clean_unlisted_import_use_blocks()."
+data compile_clean_unlisted_import_use_enforcement_dissolve_on: String = "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN v1 04_resolve promotes UnlistedImportUse to an error (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger); the row flips to Enforced and both consumers (floor_compile_clean_emit_ok_via_index + CLI) red together via compile_clean_unlisted_import_use_blocks()."
 
 data compile_clean_diagnostic_policy_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

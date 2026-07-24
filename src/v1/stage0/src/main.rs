@@ -683,8 +683,6 @@ fn render_one_diagnostic(
 ) {
     let severity = if cli_run::compile_clean_diagnostic_is_advisory(d) {
         "advisory"
-    } else if cli_run::compile_clean_diagnostic_is_hard(d) {
-        "error"
     } else {
         "error"
     };

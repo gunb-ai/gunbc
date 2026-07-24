@@ -2050,6 +2050,35 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
 }
 
 fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
+    thread_local! {
+        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
+        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
+    }
+    CACHED.with(|c| {
+        if let Some(v) = c.borrow().clone() {
+            return v;
+        }
+        let v = compile_clean_unlisted_import_use_blocks_from_policy();
+        if let Err(ref e) = v {
+            LOGGED_REFUSAL.with(|logged| {
+                if !logged.get() {
+                    eprintln!(
+                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
+                    );
+                    logged.set(true);
+                }
+            });
+        }
+        *c.borrow_mut() = Some(v.clone());
+        v
+    })
+}
+
+fn compile_clean_policy_read_refuses_gate() -> bool {
+    compile_clean_unlisted_import_use_blocks_cached().is_err()
+}
+
+/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
@@ -2078,7 +2107,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_unlisted_import_use_blocks_cached().is_err() {
+    if compile_clean_policy_read_refuses_gate() {
         return true;
     }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
@@ -2086,11 +2115,17 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
 
 /// `PipelineResult` adapter for the compile CLI transport.
 pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
+    if compile_clean_policy_read_refuses_gate() {
+        return true;
+    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
 pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+    if compile_clean_policy_read_refuses_gate() {
+        return true;
+    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
@@ -2918,7 +2953,7 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
-    let (graph, si) = match resolved_graph_from_sources_with_index(
+    let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
         ResolveTypecheckGate::Strict,
@@ -2930,6 +2965,10 @@ fn floor_compile_clean_emit_ok_via_index(
             return false;
         }
     };
+    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
+        return false;
+    }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
         Rc::new(si.values().cloned().collect::<im::Vector<_>>());
     let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
@@ -3233,13 +3272,14 @@ pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensus
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
 pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
+    let roots = default_source_roots();
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(
         &CompileCleanScopePlan::WholeTree,
     )? {
         None => return Ok(true),
         Some(s) => s,
     };
-    Ok(floor_compile_clean_emit_ok(sources))
+    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots))
 }
 
 /// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
@@ -5797,6 +5837,7 @@ pub struct MultiEntryIndex {
             (
                 Rc<v1_compiler_compile::ResolvedGraph>,
                 Rc<HashMap<String, Rc<NewlineIndex>>>,
+                Rc<im::Vector<Rc<ErrorNode>>>,
             ),
         >,
     >,
@@ -7458,6 +7499,40 @@ fn resolve_entry_with_parse_cache(
     let sources = load_sources_for_entry_with_pool(index, entry_file)?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
     resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+        .map(|(graph, si, _compile_clean_diags)| (graph, si))
+}
+
+fn compile_clean_diags_from_resolved_stages(
+    resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+    norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+    typed: &Rc<v1_compiler_compile::ResolvedGraph>,
+    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    let mut acc = im::Vector::new();
+    for d in resolve_diags.iter() {
+        acc.push_back(d.clone());
+    }
+    acc.extend(norm_diags.iter().cloned());
+    for d in typed.diagnostics.iter() {
+        acc.push_back(d.clone());
+    }
+    acc.extend(ownership_diags.iter().cloned());
+    Rc::new(acc)
+}
+
+fn compile_clean_diags_from_typed_graph_only(
+    graph: &Rc<v1_compiler_compile::ResolvedGraph>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    Rc::new(
+        graph
+            .diagnostics
+            .iter()
+            .cloned()
+            .fold(im::Vector::new(), |mut acc, d| {
+                acc.push_back(d);
+                acc
+            }),
+    )
 }
 
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
@@ -7488,6 +7563,7 @@ fn resolved_graph_from_sources_with_index(
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
     ),
     String,
 > {
@@ -7497,8 +7573,9 @@ fn resolved_graph_from_sources_with_index(
     // front of the opt-in cross-process store. A subject this process has already
     // assembled is served by reference, eliminating the per-entry reconcile assembly
     // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
-    if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
-        return Ok((graph.clone(), si.clone()));
+    if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
+    {
+        return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
     // the share above on hit so later same-subject demands never re-decode.
@@ -7508,11 +7585,16 @@ fn resolved_graph_from_sources_with_index(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
-                return Ok((hit.graph, hit.source_indices));
+                let compile_clean_diags = compile_clean_diags_from_typed_graph_only(&hit.graph);
+                index.resolved_graph_memo.borrow_mut().insert(
+                    subject,
+                    (
+                        hit.graph.clone(),
+                        hit.source_indices.clone(),
+                        compile_clean_diags.clone(),
+                    ),
+                );
+                return Ok((hit.graph, hit.source_indices, compile_clean_diags));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
         }
@@ -7687,11 +7769,22 @@ fn resolved_graph_from_sources_with_index(
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
+    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
+        &graph.diagnostics,
+        &norm_diags,
+        &typed,
+        &ownership_diags,
+    );
+
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index
-        .resolved_graph_memo
-        .borrow_mut()
-        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
+    index.resolved_graph_memo.borrow_mut().insert(
+        subject.clone(),
+        (
+            typed.clone(),
+            source_indices.clone(),
+            compile_clean_diags.clone(),
+        ),
+    );
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -7703,7 +7796,7 @@ fn resolved_graph_from_sources_with_index(
         }
     }
 
-    Ok((typed, source_indices))
+    Ok((typed, source_indices, compile_clean_diags))
 }
 
 /// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
