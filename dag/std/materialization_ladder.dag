@@ -8,7 +8,7 @@ import std.realization {
 import std.disposition { Disposition, Terminal }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
-  reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
+  reason: "Structural coproduct/path readers over LadderLadderFrame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
 }
 
 data materialization_ladder_provider_tier_predicate_contract: Disposition = Terminal {
@@ -30,10 +30,10 @@ data materialization_ladder_note: String = "The state x decision law for redunda
 type FrameKind
   = SharedStateFrame
   | IsolatedChildrenFrame
-  | ReplayedFrame { attempts: Int }
+  | ReplayedLadderFrame { attempts: Int }
   | UnboundedSiblingsFrame
 
-type Frame {
+type LadderLadderFrame {
   name: String
   kind: FrameKind
 }
@@ -46,7 +46,7 @@ type DemandNature
 
 type FrameDemand {
   identity: String
-  site: List<Frame>
+  site: List<LadderLadderFrame>
   nature: DemandNature
 }
 
@@ -69,7 +69,7 @@ type ProviderTier
 
 type CacheProvider {
   id: String
-  scope: List<Frame>
+  scope: List<LadderLadderFrame>
   coverage: CacheCoverage
   tier: ProviderTier
   eviction: EvictionClass
@@ -142,7 +142,7 @@ fn space_packed_eviction(budget: String) -> EvictionClass {
 
 fn provider_row(
   id: String,
-  scope: List<Frame>,
+  scope: List<LadderLadderFrame>,
   coverage: CacheCoverage,
   tier: ProviderTier,
   eviction: EvictionClass
@@ -151,13 +151,13 @@ fn provider_row(
 }
 
 type LadderVerdict
-  = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
+  = AuthoredDuplication { identity: String, lca: List<LadderLadderFrame>, site_count: Int }
   | DeadComputation { identity: String }
-  | Discharged { identity: String, lca: List<Frame>, provider_id: String }
-  | RefusedNoProvider { identity: String, lca: List<Frame> }
-  | RefusedScopeTooNarrow { identity: String, lca: List<Frame>, provider_id: String }
-  | RefusedExistenceKeyed { identity: String, lca: List<Frame>, provider_id: String }
-  | RefusedUnmodeledWorldRead { identity: String, lca: List<Frame> }
+  | Discharged { identity: String, lca: List<LadderLadderFrame>, provider_id: String }
+  | RefusedNoProvider { identity: String, lca: List<LadderLadderFrame> }
+  | RefusedScopeTooNarrow { identity: String, lca: List<LadderLadderFrame>, provider_id: String }
+  | RefusedExistenceKeyed { identity: String, lca: List<LadderLadderFrame>, provider_id: String }
+  | RefusedUnmodeledWorldRead { identity: String, lca: List<LadderLadderFrame> }
   | ExemptFreshEffect { identity: String }
   | AcceptedBelowCostFloor { identity: String }
   | AcceptedSingleRecompute { identity: String }
@@ -166,11 +166,11 @@ type LadderVerdict
 
 type DeclaredComputation {
   identity: String
-  frame: List<Frame>
+  frame: List<LadderLadderFrame>
   nature: DemandNature
 }
 
-data empty_frame_path: List<Frame> = []
+data empty_frame_path: List<LadderLadderFrame> = []
 data no_cache_providers: List<CacheProvider> = []
 data no_cost_floor_exemptions: List<String> = []
 
@@ -179,35 +179,35 @@ fn frame_kind_eq(a: FrameKind, b: FrameKind) -> Bool {
     SharedStateFrame => match b {
       SharedStateFrame => true
       IsolatedChildrenFrame => false
-      ReplayedFrame { attempts: _ } => false
+      ReplayedLadderFrame { attempts: _ } => false
       UnboundedSiblingsFrame => false
     }
     IsolatedChildrenFrame => match b {
       SharedStateFrame => false
       IsolatedChildrenFrame => true
-      ReplayedFrame { attempts: _ } => false
+      ReplayedLadderFrame { attempts: _ } => false
       UnboundedSiblingsFrame => false
     }
-    ReplayedFrame { attempts: la } => match b {
+    ReplayedLadderFrame { attempts: la } => match b {
       SharedStateFrame => false
       IsolatedChildrenFrame => false
-      ReplayedFrame { attempts: rb } => la == rb
+      ReplayedLadderFrame { attempts: rb } => la == rb
       UnboundedSiblingsFrame => false
     }
     UnboundedSiblingsFrame => match b {
       SharedStateFrame => false
       IsolatedChildrenFrame => false
-      ReplayedFrame { attempts: _ } => false
+      ReplayedLadderFrame { attempts: _ } => false
       UnboundedSiblingsFrame => true
     }
   }
 }
 
-fn frame_eq(a: Frame, b: Frame) -> Bool {
+fn frame_eq(a: LadderLadderFrame, b: LadderFrame) -> Bool {
   (a.name == b.name) && frame_kind_eq(a: a.kind, b: b.kind)
 }
 
-fn frame_path_is_prefix(prefix: List<Frame>, path: List<Frame>) -> Bool {
+fn frame_path_is_prefix(prefix: List<LadderLadderFrame>, path: List<LadderLadderFrame>) -> Bool {
   match prefix.first() {
     Absent => true
     Present { value: ph } => match path.first() {
@@ -219,7 +219,7 @@ fn frame_path_is_prefix(prefix: List<Frame>, path: List<Frame>) -> Bool {
   }
 }
 
-fn frame_path_lca(a: List<Frame>, b: List<Frame>) -> List<Frame> {
+fn frame_path_lca(a: List<LadderLadderFrame>, b: List<LadderLadderFrame>) -> List<LadderLadderFrame> {
   match a.first() {
     Absent => empty_frame_path
     Present { value: ah } => match b.first() {
@@ -234,16 +234,16 @@ fn frame_path_lca(a: List<Frame>, b: List<Frame>) -> List<Frame> {
   }
 }
 
-fn frame_declares_emergent(f: Frame) -> Bool {
+fn frame_declares_emergent(f: LadderFrame) -> Bool {
   match f.kind {
     SharedStateFrame => false
     IsolatedChildrenFrame => false
-    ReplayedFrame { attempts: n } => n > 1
+    ReplayedLadderFrame { attempts: n } => n > 1
     UnboundedSiblingsFrame => true
   }
 }
 
-fn declared_emergent_prefix(site: List<Frame>) -> List<Frame> {
+fn declared_emergent_prefix(site: List<LadderLadderFrame>) -> List<LadderLadderFrame> {
   match site.first() {
     Absent => empty_frame_path
     Present { value: h } =>
@@ -260,7 +260,7 @@ fn declared_emergent_prefix(site: List<Frame>) -> List<Frame> {
   }
 }
 
-fn frame_path_last_is_shared_state(path: List<Frame>) -> Bool {
+fn frame_path_last_is_shared_state(path: List<LadderLadderFrame>) -> Bool {
   if path.count() == 0 {
     false
   } else {
@@ -269,7 +269,7 @@ fn frame_path_last_is_shared_state(path: List<Frame>) -> Bool {
       Present { value: last_frame } => match last_frame.kind {
         SharedStateFrame => true
         IsolatedChildrenFrame => false
-        ReplayedFrame { attempts: _ } => false
+        ReplayedLadderFrame { attempts: _ } => false
         UnboundedSiblingsFrame => false
       }
     }
@@ -346,7 +346,7 @@ fn group_is_redundant(group: List<FrameDemand>) -> Bool {
   (group.count() > 1) || group_has_declared_emergent_site(group: group)
 }
 
-fn group_obligation_lca(group: List<FrameDemand>) -> List<Frame> {
+fn group_obligation_lca(group: List<FrameDemand>) -> List<LadderLadderFrame> {
   match group.first() {
     Absent => empty_frame_path
     Present { value: head_demand } =>
@@ -402,7 +402,7 @@ fn group_has_nature_conflict(group: List<FrameDemand>) -> Bool {
   group |> fold(init: false, f: (acc, d) => acc || !nature_eq(a: d.nature, b: head_nature))
 }
 
-fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
+fn discharge_verdict(identity: String, lca: List<LadderLadderFrame>, providers: List<CacheProvider>) -> LadderVerdict {
   let content_covering = providers |> filter(p =>
     provider_is_store_tier(p: p)
       && provider_covers_identity(p: p, identity: identity)

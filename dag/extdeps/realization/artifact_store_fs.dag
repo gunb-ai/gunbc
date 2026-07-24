@@ -9,7 +9,7 @@ import std.effect_grant {
   NamespacePosition,
   Admitted, EffectOutsideGrant,
 }
-import std.materialization_ladder { Frame }
+import std.materialization_ladder { LadderFrame }
 import std.artifact_store_scratch_grant {
   artifact_store_scratch_read_admissible,
   artifact_store_scratch_write_admissible,

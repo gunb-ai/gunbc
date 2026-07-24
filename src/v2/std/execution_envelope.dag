@@ -11,14 +11,14 @@ import std.effect_axes {
   region_substrate_closure_root, region_repo_root, region_frame_scratch_root,
   envelope_live_tree_intersects,
 }
-import std.materialization_ladder { Frame, SharedStateFrame }
+import std.materialization_ladder { LadderFrame, SharedStateFrame }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 
 data execution_envelope_note: String = "P-C execution-mode PRESETS (docs/plans/effect-namespace-grants.md line 30, owned silent-ibex-417): the ExecutionMode = Hermetic | Wet | Record axis re-expressed as three NAMED envelopes over the std.effect_grant model -- names for envelopes during migration, DELETED at the end (dissolve-on = the seed ExecutionMode enum, src/v1/stage0/src/std_execution_mode.rs, retires once every consumer selects a HandlerBinding per grant instead of a per-process mode). These are the first envelope-derived consumers the deferred-projections note required: derive_live_tree_disposition computes v2.std.live_tree.LiveTreeDisposition from the envelope (std.effect_axes.envelope_live_tree_intersects), the bridge that lets the 763 hand-stamped witness rows retire onto a COMPUTED disposition (the falsifier keeps enforcing). Record is reach-IDENTICAL to Wet by construction (both drive real transports; Record additionally CAPTURES fixtures, an orthogonal axis the reach model does not carry) -- the same two-variant dispatch partition the seed's execution_mode_is_wet_dispatch already names, now a derived fact rather than a boolean. SCAFFOLD: presets + this whole module delete when the enum retires."
 
-data hermetic_frame: Frame = Frame { name: "hermetic-preset", kind: SharedStateFrame }
-data wet_frame: Frame = Frame { name: "wet-preset", kind: SharedStateFrame }
-data record_frame: Frame = Frame { name: "record-preset", kind: SharedStateFrame }
+data hermetic_frame: Frame = LadderFrame { name: "hermetic-preset", kind: SharedStateFrame }
+data wet_frame: Frame = LadderFrame { name: "wet-preset", kind: SharedStateFrame }
+data record_frame: Frame = LadderFrame { name: "record-preset", kind: SharedStateFrame }
 
 fn hermetic_envelope() -> Envelope {
   Envelope {

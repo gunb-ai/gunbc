@@ -5,13 +5,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ladder_witness_note: String = "Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for. Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame (unbounded sibling runs over time)."
 
-fn wf() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "workflow", kind: IsolatedChildrenFrame } }
-fn job(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
-fn step(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
-fn retry(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
-fn fleet() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
+fn wf() -> std.materialization_ladder.LadderFrame { std.materialization_ladder.LadderLadderFrame { name: "workflow", kind: IsolatedChildrenFrame } }
+fn job(name: String) -> std.materialization_ladder.LadderFrame { std.materialization_ladder.LadderLadderFrame { name: name, kind: SharedStateFrame } }
+fn step(name: String) -> std.materialization_ladder.LadderFrame { std.materialization_ladder.LadderLadderFrame { name: name, kind: SharedStateFrame } }
+fn retry(name: String) -> std.materialization_ladder.LadderFrame { std.materialization_ladder.LadderLadderFrame { name: name, kind: ReplayedFrame { attempts: 3 } } }
+fn fleet() -> std.materialization_ladder.LadderFrame { std.materialization_ladder.LadderLadderFrame { name: "fleet", kind: UnboundedSiblingsFrame } }
 
-fn demand(identity: String, site: List<std.materialization_ladder.Frame>, nature: DemandNature) -> FrameDemand {
+fn demand(identity: String, site: List<std.materialization_ladder.LadderFrame>, nature: DemandNature) -> FrameDemand {
   FrameDemand { identity: identity, site: site, nature: nature }
 }
 

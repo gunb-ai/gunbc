@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, List, String, Bool }
 import std.access { AccessDecision, Permit, Deny }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.materialization_ladder { Frame, SharedStateFrame }
+import std.materialization_ladder { LadderFrame, SharedStateFrame }
 import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
 import std.effects { ExecuteEffect }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
@@ -70,7 +70,7 @@ type DeployAuthorizationQuery {
   envelope: Envelope
 }
 
-data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame }
+data deploy_access_frame: Frame = LadderFrame { name: "deploy", kind: SharedStateFrame }
 
 data deploy_access_authorization_query_note: String = "Wave C (shell-intent-emit-realization-design.md): deploy-preflight is an AUTHORIZATION QUERY — the deploy frame requires the current principal to hold Execute grants over privileged command paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user). Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant (never a parallel grant vocabulary). Observation and effect-plan execution live in gunbc.ci_deploy_access_observe at the realization edge; emission lives in gunbc.ci_deploy_access_emit + gunbc.ci_deploy_sudoers."
 

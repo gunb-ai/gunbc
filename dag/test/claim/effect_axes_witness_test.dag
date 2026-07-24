@@ -6,7 +6,7 @@ import std.effect_grant {
   Read, Write, RealTransport, Replay,
   LifecycleByConvention,
 }
-import std.materialization_ladder { Frame, SharedStateFrame }
+import std.materialization_ladder { LadderFrame, SharedStateFrame }
 import std.effect_axes {
   EffectRegion, SubstrateClosure, RepoTree, FrameScratch, UnclassifiedRegion,
   classify_region,
@@ -21,7 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnl
 
 data effect_axes_witness_note: String = "Discriminating witnesses for the P-C derived axes (std.effect_axes) and the ExecutionMode presets (v2.std.execution_envelope). classify_region is derived from the grant root position via position_under (each region + the UnclassifiedRegion residue). The three axes over the presets: hermetic reads substrate-closure + writes frame-scratch, so replayable AND isolated AND NOT live-tree; wet reads+writes the repo tree for real, so NOT replayable AND NOT isolated AND reads-live; record is reach-identical to wet by construction (capture is orthogonal). derive_live_tree_disposition bridges to the real v2.std.live_tree.LiveTreeDisposition (the retire target for the 763 hand-stamped rows). Two REDs pin the fail-closed choices: an UnclassifiedRegion read is ASSUMED live (unknown region never silently skips); and a Replay-bound RepoTree read is replayable AND NOT live -- the binding-aware control that would flip if live_tree_intersects were root-only, proving 'replayable => SubstrateInputsOnly' holds."
 
-data red_frame: Frame = Frame { name: "axes-red", kind: SharedStateFrame }
+data red_frame: Frame = LadderFrame { name: "axes-red", kind: SharedStateFrame }
 
 fn unclassified_read_envelope() -> Envelope {
   Envelope {
