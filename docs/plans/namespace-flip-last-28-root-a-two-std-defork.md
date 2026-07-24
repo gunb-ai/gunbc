@@ -199,14 +199,25 @@ their import.
   tree, not by an import list — so every reference that today resolves *only because* an import
   dragged its target into the pool (#6985 Class-B pool-membership-coincidence) must instead be
   written `container.member` at the use site.
-- **Worklist = the policy census.** The sibling policy dispatch (below) produces a TSV attributing
-  all 2,652 `UnlistedImportUse` references as `listed-import | pool-coincidence |
-  definer-resolvable`. The **pool-coincidence** rows are exactly the refs that need inline
-  qualification. Consume that census; do not re-derive the frontier.
-- **Acceptance (the done-line):** in a throwaway worktree, strip the import lines and compile clean
-  under NamespaceOnlyY → `HISTOGRAM_TOTAL_HARD 0`. If it is 0 with imports stripped, the imports are
-  provably redundant and Dispatch 2 is unblocked. clever-pike-49 owns this flip-oracle run (isolated
-  worktree, no worker flips the bool in the session tree).
+- **Worklist = the forked-name refs the *witness corpus* exposes (NOT the policy census).**
+  Established by execution, correcting an earlier guess: under the flip a bare *unlisted* ref only
+  breaks when its name is **forked** (2+ reachable defs) and the compilation closure sees both.
+  Almost all forks are benign (the ~30-name integer tower is referenced in disjoint closures). The
+  ambiguous ones surface in the **witness corpus** — lens/test files whose closure sees both defs —
+  e.g. `TerminationProof`/`RankingDimension` across ~56 witness files (see
+  [formal-concepts extdeps grounding](formal-concepts-extdeps-grounding.md)) and `Nat`/`Zero`/`Succ`
+  across ~26. The policy census (the sibling dispatch's `UnlistedImportUse` TSV) is **not** this
+  worklist — it is `UnlistedImportUse`-scoped, resolves each name to one definer, and does not
+  contain the forked refs (a *listed* import to a forked name still breaks under the flip).
+- **The `compile_clean_diagnostic_histogram` is a *partial* oracle.** Proven by execution: strip the
+  qualifications, keep the flip on, re-run → still `HISTOGRAM_TOTAL_HARD 0`. The histogram and the
+  floor's compile-clean *gate* share an exclusion scope (`whole_tree_strict_resolve_exclusion_substrings`:
+  `/test/`, several `lens/*`) that never sees the ambiguous closures. So `residue = 0` held for
+  compile-clean scope but not the whole tree.
+- **Acceptance (the done-line) = the FLOOR / `ci` job green under the flip** (the whole witness
+  corpus), *not* the histogram. That is the consumer that compiles the lens/test files with both
+  forked defs in closure. clever-pike-49 owns the flip-oracle verification; the histogram remains a
+  fast compile-clean-scope check, the floor the completeness gate.
 - **Not in scope:** deleting the actual import lines or the import grammar — that is Dispatch 2.
   Dispatch 1 leaves imports in place (harmless once redundant); it only makes them redundant.
 
