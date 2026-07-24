@@ -87,6 +87,12 @@ fn witness_merge_group_uses_push_parent() -> Bool {
     && selected_ref(res: res) == "origin/main"
 }
 
+fn witness_schedule_no_override_is_push_parent() -> Bool {
+  let res = resolve_case(override_ref: none, event_name: "schedule", base_ref: none)
+  arm_tag(res: res) == "push_parent"
+    && selected_ref(res: res) == "origin/main"
+}
+
 fn witness_unknown_event_refuses() -> Bool {
   arm_tag(res: resolve_case(override_ref: none, event_name: "deployment_status", base_ref: none)) == "refused"
 }
@@ -107,6 +113,7 @@ test fn diff_baseline_resolution_holds() -> Bool {
     && witness_bootstrap_no_event_is_push_parent()
     && witness_operator_override_is_typed_arm()
     && witness_merge_group_uses_push_parent()
+    && witness_schedule_no_override_is_push_parent()
     && witness_unknown_event_refuses()
     && witness_pull_request_empty_base_refuses()
     && witness_pull_request_absent_base_refuses()
