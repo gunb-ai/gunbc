@@ -71,14 +71,14 @@ fn witness_owned_vs_ensured_typed() -> Bool {
   let spec = deployment_spec_srv1()
   let has_owned = fold(spec.steps, init: false, f: (acc, s) =>
     match s {
-      Artifact { step: _ } => true
+      ArtifactStep { step: _ } => true
       Dependency { step: _ } => acc
     }
   )
   let has_ensured = fold(spec.steps, init: false, f: (acc, s) =>
     match s {
       Dependency { step: _ } => true
-      Artifact { step: _ } => acc
+      ArtifactStep { step: _ } => acc
     }
   )
   has_owned && has_ensured
