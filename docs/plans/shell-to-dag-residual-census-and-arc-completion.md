@@ -271,6 +271,29 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
 3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (4 ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
 
+### 4.I — CI foreign-executor sites the census missed (2026-07-24 audit @ `879c5a2699`)
+
+§4 was grounded at `78f43c38`; a three-facet CI audit (2026-07-24) found **five CI `run:` shell sites that landed after that snapshot and are not in the tables above.** Each already carries a rich in-code note — they were tracked *at the site*, never rolled up here. Keyed on file + symbol (the §4 convention). All are foreign-executor (GitHub Actions `run:`), so category **E-emit** (route through the v2 bash rows, a roster not a growth surface) unless a typed-op dissolution is named.
+
+| construction site (file · symbol) | what | executor | class / dissolves to |
+| --- | --- | --- | --- |
+| `ci_spec.dag` · `ci_fmt_gate_line` | `"$CARGO_BIN" fmt --all --check` (build job, first step) | GitHub Actions | **5.B call-the-op** — `cargo.Build.Fmt` · `extdeps/rust/cargo_build.dag` (its `ci_fmt_gate_note` already names this dissolve-on — the same seam `ci_release_build_line` awaits). NOT E-permanent. |
+| `ci_spec.dag` · `gunbc_ci_deploy_invoke` | `ROOT=$(git rev-parse … \|\| pwd); "$ROOT/target/release/gunbc" run … live_deploy_apply_srv1_wet` (deploy job) | GitHub Actions | E-emit (thin `gunbc` invocation wrapped in bash); the `git rev-parse … \|\| pwd` prelude is a §5 fallback (below) |
+| `ci_spec.dag` · `gunbc_ci_heal_regen_invoke` | `gunbc run … generated_artifact_gate main_wet` (heal job) | GitHub Actions | E-emit (same thin-invoke shape; `ci_heal_regen_note` documents it) |
+| `ci_spec.dag` · `ci_heal_git_add_lines` + commit/push | `git add` over `committed_generated_artifact_paths()` (each `[ -e ]`-guarded), `git diff --cached --quiet` gate, `git commit`, `git push origin HEAD:<branch>` (heal job, 76 lines) | GitHub Actions | E-emit — the git verbs dissolve to typed `git.Core.*` ops (Add/Commit/Push); `ci_heal_commit_push_note` already frames it as "the foreign-executor case that renders through bash" |
+| `ci_materialization.dag` · `ci_sccache_provider_shell_injection` | `if sccache --show-stats >/dev/null 2>&1; then RUSTC_WRAPPER=sccache; …; fi` (embedded in "Isolate toolchain dirs") | GitHub Actions | E-emit **+ §5 ABSORBING-FALLBACK** — the opportunistic guard SILENTLY skips caching when the daemon is down (no refusal, no count), exactly the shape of the readiness.dag `\| tail`+`exit 0` at §4.B. Dissolves to a MANDATORY provisioning-ensure (`ci_sccache_opportunistic_detect_scaffold` → srvN build-cache STEP-2) — the sibling of the level-2 `-u RUSTC_WRAPPER` absorbing fallback removed on #7138. |
+
+**§5 absorbing-fallbacks INSIDE the CI scripts** (§5.B rule: each becomes a *modeled outcome*, never re-appended). The census tracked the scripts but not these internal widens:
+
+| site | fallback | fail-closed / modeled form |
+| --- | --- | --- |
+| ~17 `run:` bodies | `git rev-parse --show-toplevel 2>/dev/null \|\| pwd` | scope-widen on non-repo → typed refusal (`git.Core.ShowToplevel` with a `nonzero =>` refuse, not `pwd`) |
+| regen + floor steps | `git fetch --no-tags origin main … \|\| true` | stale-baseline on fetch failure silently corrupts the affected-set diff base → typed refusal or an explicit `DiffBaseUnavailable` marker downstream logic can gate on |
+| `ci_workflow_run_emit.dag:31` · `ci_native_cache_root_toolchain_segment_command` | `rustc -V 2>/dev/null … ; if empty: toolchain-unresolved` slug | cache-poison fallback (all native-cache writes land in one poisoned root) → typed refusal on `rustc -V` failure |
+| `ci_spec.dag:219` · `ci_retry_escalation_level1` | `CARGO_BUILD_JOBS=1` on EAGAIN | masks a fleet-pressure *resource deficit* rather than emitting a typed counted diagnostic (its level-2 sibling `-u RUSTC_WRAPPER` was removed as STEP-2, #7138); recover parallelism-cap as a fleet-admission control, not a per-run silent degrade |
+
+**Adjacent (NOT shell-string) — cross-ref, tracked elsewhere.** The same audit found a second class the CI shares that is *not* a `ShellProgram`/string sink and so does **not** belong in this census: hand-spelled **config** that should DERIVE from an existing model. The exemplar is toolchain isolation — `ToolchainEnvIsolation = SharedHomeAcrossJobs \| PerJobCargoHome{…} \| HermeticContainer` (`extdeps/toolchain/types.dag`) is modeled and consumed by `sccache`/`fleet_intent`, but the workflow emit never reads `env_isolation`; it hand-spells per-job isolation (build isolates, the ci/gate job shares → the rustup `ETXTBSY` race, documented in PROSE in `ci_floor_gate_toolchain_note` on `ci_workflow.dag` rather than modeled/gated). Same shape for the GHA **cache key** (modeled `gha_actions_cache_facts` key-derivation vs the hand-spelled `ci_cache_key_template`), **artifact** upload/download (un-modeled; the dissolve-on artifact-CacheProvider named in `ci_materialization.dag` is undone), and **permissions** (`std.effect_grant` vs per-job `WorkflowPermissions`). These are the model↔realization-fork open thread + roadmap `2-emit-partition`, not the ShellProgram arc; noted here only so the audit's findings aren't lost across the seam.
+
 ### Dissolution trigger for §4
 
 This punch-list folds into the **`host_language_transport_script` lens going live** (4.F): once a compile gate reds any raw-string `shell.Exec.Run` / hand-built transport, new instances are unwritable by construction (§5) and a prose punch-list is redundant. Until then, every row here is discharged by *deletion of the concat*, verified green-by-execution + an injection-RED — never by relocation.
