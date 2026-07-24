@@ -1,12 +1,6 @@
 module v2.std.machine
 
-type Bit = std.bit.Bit
-type Byte = std.bit.Byte
-type Word8 = std.bit.Word8
-type Word16 = std.bit.Word16
-type Word32 = std.bit.Word32
-type Word64 = std.bit.Word64
-type Word128 = std.bit.Word128
+import std.bit { Bit, Byte, Word8, Word16, Word32, Word64, Word128 }
 
 type MachineWidth<bits>
 type PointerWidth
