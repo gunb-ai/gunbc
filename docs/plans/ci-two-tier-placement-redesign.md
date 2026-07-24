@@ -17,7 +17,9 @@ pays whole-tree-shaped prices around a small selected workload.
 - Discovery's 643s per-run resolve contains **18.4s of eval**.
 - 26 cold child processes across batches 1/6/7 cost **~23.0 min ≈ 47.5% of the floor step**,
   identical on trivial diffs — a diff-independent tax.
-  (All from `ci-floor-child-spawn-attribution.md` + its TSVs, 2026-07-23.)
+  (All from `ci-floor-child-spawn-attribution.md` + its TSVs, 2026-07-23. **State has since
+  moved:** #7122 + #7128 pooled these — 6 children on current main, verified §10 row 1; the
+  floor dropped 48.4m → 38m. The diagnosis stands as the history that priced the fix.)
 
 The ~40 minutes is not compilation or testing — it is repeated re-derivation of the same module
 index and closures. The redesign is therefore a **re-partition of placement**, not a rebuild of
@@ -80,16 +82,23 @@ regen cold control, divergence counting. A red is loud and blocks/reverts on mai
 to the #7129 worker as its own close-out PR and sequenced first.)
 
 ```
-D0 #7129 footprint bound — merged, NOT closed: whole-schedule arming hoist
+D0 #7129 — MERGED (bd5afd6bc3), NOT closed: whole-schedule arming hoist
    + the three post-merge P1s (2026-07-24 review, below)
-  └─► D1 child-spawn dissolution — gate claims run on the executor's warm
-      process_shared_index ("resolve once, share by reference")          −13–17 min
-        └─► D2 measurement pass — warm per-gate cost table (TSV receipt);
-            also attributes discovery's 643s resolve fresh and the ~2.5m
-            store-teardown cost (the unledgered rows)
-              └─► D3 CiSpec placement axis (PrTier | Gauntlet) + gauntlet
-                  workflow + revert-on-red policy on main
-D4 selection-control step deletion — independent; can land any time
+D1 child-spawn dissolution — LANDED on main (#7122 one-child-per-call,
+   #7128 cheap_gate_pool union): 26 cold children → 6 pooled children,
+   verified by execution on run 30052571652 (floor 37m58s). Residue:
+   6 pool builds/run (one MultiEntryIndex build each) — dissolves on W3
+   (cross-process typed-module store) or on D1b.
+  └─► D2 measurement pass — warm per-gate cost table (TSV receipt);
+      also attributes discovery's 643s resolve fresh and the ~2.5m
+      store-teardown cost (the unledgered rows)
+        └─► D3 CiSpec placement axis (PrTier | Gauntlet) + gauntlet
+            workflow + revert-on-red policy on main
+D1b (deferred — §9.6) in-process claims: run_claims_in_process landed
+    with #7129 (cli_run.rs:9580), INACTIVE; activation gated on D0
+    close-out + its three fixes. NOT in PR-1.
+D4 selection-control step deletion — PRECONDITION: the falsifier cadence
+    must be green first (today it is red 5/5 by crawl-timeout, §10 row 2)
 D5 DiffBaseline fix — independent; unblocks stacked-PR selection
 ```
 
@@ -114,11 +123,18 @@ model gets wrong:
    adjacency standing in for the real reference closure) — its third appearance; the fix should
    name the one closure authority, not add a third adjacency.
 
-**D1 activation preconditions** (same review): `run_claims_in_process` — the pooling terminal —
-exists but is not activation-ready: it never arms/completes retention, **returns `true` for an
-empty claim list where `claim_batch` refuses** (a §5 fail-open, hard-reject class), and reuses
-stale source snapshots across calls. D1 = close these, then activate; the empty-list refusal
-must be behaviorally identical to `claim_batch`'s.
+**D1b activation preconditions** (same review; status verified by direct read of
+`origin/main:cli_run.rs:9580` on 2026-07-24): `run_claims_in_process` — the in-executor
+terminal, landed inactive with #7129 as its M2 Deliverable 2 — is not activation-ready:
+it **returns `true` for an empty claim list where `claim_batch` refuses** (CONFIRMED by read —
+no empty arm; a §5 fail-open, hard-reject class), never arms/completes retention (CONFIRMED —
+no arming call in the body), and reuses stale source snapshots across calls (plausible,
+unverified). Its own docstring states the safety condition: folding claims into the long-lived
+executor is safe ONLY because schedule-derived eviction bounds retention — which is exactly
+what D0's P1s show is not yet true. So D1b = D0 closes → the three fixes land → activate,
+with empty-list refusal behaviorally identical to `claim_batch`'s. Until then the pooled
+child (which dies and frees) stays the vehicle — per `run_gunbc_claims_pooled_note`'s
+recorded ruling.
 
 Ordering is load-bearing twice: measuring before D1 measures startup, not gates; pooling before
 #7129 hits the memory wall on capped runners (the Pi bench: pooled 72.9m ≈ spawn-sum on a
@@ -186,21 +202,22 @@ one PR.** Structure:
   placement roster, (b) the filled expectation sheet below. This is also where "well within
   5s" gets its empirical check (operator: "we do some testing ourselves to see what is
   acceptable").
-- **PR-1 — the single redesign PR.** `run_claims_in_process` activation fixes + in-executor
-  pooling (D1) · `CiSpec` placement axis with the measured roster (D3) · gauntlet split ·
-  audit-step deletion (D4) · `DiffBaseline` (D5) · the probe TSV as the receipt basis. Each
-  piece carries its own witness battery so review is per-piece, but the landing is atomic —
-  and so is the revert: one `git revert` restores today's process wholesale. The concentration
-  is deliberate.
+- **PR-1 — the single redesign PR.** `CiSpec` placement axis with the measured roster (D3) ·
+  gauntlet split · audit-step deletion (D4, once its falsifier precondition holds) ·
+  `DiffBaseline` (D5) · the probe TSV as the receipt basis. D1 needs nothing here (already
+  landed on main); D1b is explicitly excluded — it is #7129-lineage work in the same file as
+  D0's fixes and belongs to that owner (§9.6). Each piece carries its own witness battery so
+  review is per-piece, but the landing is atomic — and so is the revert: one `git revert`
+  restores today's process wholesale. The concentration is deliberate.
 
 ### The before/after expectation sheet (X filled by the probe; every row falsification-bounded)
 
 | Metric | Before (receipts) | After (expected) | Reworked if |
 |---|---|---|---|
-| trivial/docs-diff ci-job wall | ~40m (23m cold children + 4–5m audit + floor) | ≤ X (single-digit-minutes target) | > 2X |
-| leaf `.dag`-diff floor step | ~38m | ≤ X | > 2X |
-| `.rs`-diff floor step | ~38m (widened baseline) | ≤ before − children − audit | any regression |
-| cold child processes / run | 26 | **0** | any spawn observed |
+| trivial/docs-diff ci-job wall | re-anchor at probe time (attribution-era ~40m predates #7122/#7128) | ≤ X (single-digit-minutes target) | > 2X |
+| leaf `.dag`-diff floor step | 37m58s (run 30052571652) | ≤ X | > 2X |
+| `.rs`-diff floor step | ~38m (widened baseline) | ≤ before − audit − roster moves | any regression |
+| pooled claim_batch children / run | 6 (verified, run 30052571652; was 26 pre-#7122) | ≤ 6; 0 only via D1b/W3 | growth without a cap edit |
 | selection-control step | 4–5m every run | **absent from ci.yml** | present |
 | per-gate warm cost | unmeasured | every `PrTier` row ≤5s, receipt attached | any row over |
 | peak floor RSS / cgroup | 9.2 GB / 10.7 GB | ≤ before + small margin (in-executor pooling is ~0 marginal) | clamp regime entered |
@@ -212,8 +229,12 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
 
 ## 9. Pre-PR decisions (sign-off checklist for plan reviewers)
 
-1. **"Well within 5s" made crisp** — recommendation: warm p95 ≤ 5s per gate row, measured on
-   srv-class; the roster records the measured value, not a pass/fail bit.
+1. **"Well within 5s" made crisp** — the carrier ALREADY EXISTS: the witness discipline's
+   "operator 5 s fast-lane law" (`run_claim_measured` / `budget_completion_outcome`,
+   `cli_run.rs`, landed with #7129), measured in **thread-CPU time** with over-budget
+   converting a silent Pass to a typed refusal. Recommendation: the placement threshold
+   REUSES this authority (§3 — same constant, same measurement discipline), never a second
+   5s definition; the roster records the measured value, not a pass/fail bit.
 2. **Gauntlet home** — recommendation: extend `falsifier.yml` (the cadence already exists) plus
    a post-merge main-push job for the wet set; alternative is cadence-only (cheaper; detection
    latency up to 4h).
@@ -223,5 +244,34 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    acceptable alternative: a tiny separate PR landed before PR-1.
 5. **Non-selectable diffs** — confirmed unchanged in PR-1 (loud widening stays; deferral is a
    later, separate decision).
+6. **D1b vehicle (in-process claims vs pooled children)** — recommendation: keep the pooled
+   child (green today, dies-and-frees) and route `run_claims_in_process` activation to the
+   #7129 worker after D0 closes; PR-1 takes no dependency on it. Rejecting this means PR-1
+   inherits cross-owner `cli_run.rs` surgery — the drag the single-PR directive exists to
+   avoid.
 
 Sign-offs recorded here with name + date once reviewed.
+
+## 10. Issue-closure checklist (operator-requested 2026-07-24; worked through by execution before review)
+
+Every issue from the 2026-07-23/24 CI discussions, keyed to its closing mechanism and the
+verification actually performed. Statuses are honest: LANDED (verified), PLANNED (in PR-0/PR-1),
+BLOCKED (named precondition), OUT-OF-SCOPE (named owner elsewhere — listed so nothing silently
+drops).
+
+| # | Issue | Mechanism | Status · verified how (2026-07-24) |
+|---|---|---|---|
+| 1 | 26 cold child processes (~23 min, 47.5% of floor) | #7122 one-child-per-call + #7128 `cheap_gate_pool` union (K-chunked, cap 16/child) | **LANDED** — 6 pooled children counted in run 30052571652's ci log (readiness-probe quadruples at 6 distinct timestamps); floor 48.4m → 37m58s. Residue: 6 pool builds/run → W3 or D1b |
+| 2 | Selection-control audit (4m08s every run) | D4 deletion; falsifier cadence = surviving control | **BLOCKED — do not delete yet**: falsifier is red 5/5 scheduled runs (latest 30044928186: crawl regime, cgroup pinned 16.1G, swap 32G saturated, one module typecheck 3,171s, killed at the 170m cap). Today the per-PR audit is the only WORKING selection control; deleting it now would be the §5 fail-open. Expected unblock: #7129 eviction + PR-0's P1 fixes let the cold walk finish; D4's PR must cite a green cadence run |
+| 3 | Retention truth (compile-clean graph pinned · all-hit keys unregistered · arming≠loader closure) | PR-0, #7129 worker | **PLANNED/ROUTED** — empty-list fail-open + missing arming CONFIRMED by direct read of `run_claims_in_process` (cli_run.rs:9580); blocker 1 is also the falsifier-crawl mechanism (row 2) and part of the 9.2GB floor |
+| 4 | `run_claims_in_process` fail-open (empty→true) | D1b activation fixes, #7129 worker | **PLANNED/ROUTED** — must NOT activate in PR-1 (§9.6) |
+| 5 | Discovery ~643s resolve (eval 18.4s) | D2 fresh attribution → store-econ class | **OPEN, probe-owned** — stale "fixpoint" lever retired; no fix dispatched before attribution |
+| 6 | Store teardown ~2.5m (paid-twice Drop) | D2 ledger row; store-econ / ROADMAP ① | **OUT-OF-SCOPE for PR-1**, named owner |
+| 7 | Whole-tree startup index every process (#6848 census heads) | census re-grounding on SymbolIndex (namespace lane) | **OUT-OF-SCOPE**, mitigated: 27→7 payments/run via pooling |
+| 8 | DiffBaseline `origin/main` hardcode (stacked-PR mis-selection) | D5 in PR-1 | **PLANNED** — brief already delivered |
+| 9 | Trivial-diff floor tax | rows 1+2 combined | **PARTIALLY LANDED** — children pooled; audit minutes pend row 2; sheet re-anchors Before at probe time |
+| 10 | 9.2GB resident floor | PR-0 blocker-1 (compile-clean unpin) + census (row 7) + walk_memo (named follow-on) | **SPLIT** — largest slice PLANNED (PR-0); residuals named, owned elsewhere |
+| 11 | 2,652 `UnlistedImportUse` fork (CLI vs floor compile-clean policy) | needs an owner — namespace-lane promotion staging vs fail-open fork, undetermined | **UNOWNED — flagged to operator** (not this plan's scope; recorded so it cannot drop) |
+| 12 | `.rs`-diff whole-tree widening | deliberate policy (§3.3, §9.5) | **UNCHANGED BY DESIGN** |
+| 13 | Serial chain ~10m (build 2.4 + regen 5.3 + deploy 2.2) | regen scoping exists; further work unpriced | **OUT-OF-SCOPE**, named residual |
+| 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses it; no second authority |
