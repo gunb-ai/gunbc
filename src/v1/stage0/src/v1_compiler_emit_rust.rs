@@ -10424,40 +10424,41 @@ pub fn emit_type_def_from_connective(
                         ">;".to_string(),
                     )
                 }
-            } else if is_host_freemonoid_vec_alias(item_text.clone()) {
-                {
-                    let elem_csv = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in item.params.clone().iter().cloned() {
-                            __result.push(to_pascal(generic_param_name_at(
-                                p.clone(),
-                                env.source_indices.clone(),
-                            )));
-                        }
-                        __result
-                    })
-                    .join(&", ".to_string());
-                    v1_rt::concat(
+            } else {
+                if is_host_freemonoid_vec_alias(item_text.clone()) {
+                    {
+                        let elem_csv = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in item.params.clone().iter().cloned() {
+                                __result.push(to_pascal(generic_param_name_at(
+                                    p.clone(),
+                                    env.source_indices.clone(),
+                                )));
+                            }
+                            __result
+                        })
+                        .join(&", ".to_string());
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            rust_visibility_prefix(),
-                                            "type ".to_string(),
+                                            v1_rt::concat(
+                                                rust_visibility_prefix(),
+                                                "type ".to_string(),
+                                            ),
+                                            item_text.clone(),
                                         ),
-                                        item_text.clone(),
+                                        type_params.clone(),
                                     ),
-                                    type_params.clone(),
+                                    " = Vec<".to_string(),
                                 ),
-                                " = Vec<".to_string(),
+                                elem_csv.clone(),
                             ),
-                            elem_csv.clone(),
-                        ),
-                        ">;".to_string(),
-                    )
-                }
-            } else {
+                            ">;".to_string(),
+                        )
+                    }
+                } else {
                 {
                     let all_unit_variants = {
                         let mut __all = true;
