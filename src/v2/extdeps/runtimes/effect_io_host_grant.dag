@@ -26,7 +26,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 
 data effect_io_host_grant_note: String = "P-B/P-C effect-io host grant authority (docs/plans/effect-namespace-grants.md 6): the Envelope is the SINGLE per-grant authority for both reach (admit_effect wall) and transport-vs-replay (covering_grant binding). Mode maps to bindings ONCE at runtime construction (effect_io_host_envelope) and dispatch NEVER re-reads ExecutionMode (design line 27, 62 — P-C: 'select handler bindings per grant instead of per-process mode'). A WET runtime carries RealTransport-bound Read+Write grants on the declared backend subtree (frame-wide real ownership — any locator under it admitted by construction); a HERMETIC runtime carries a Replay-bound Read grant and ZERO Write grants (reads served from fixtures, writes refused by absence, fail-closed). EffectIoResourceLocator carries a content-Hash identity projected onto the cited backend tree with locator.identity as the terminal segment; backend/locator mismatch is a located EffectOutsideGrant. FRONTIER (operator-approved 2026-07-22): the Replay grant's fixture_store String is declared (effect_io_host_replay_fixture) but the runtime resolves the actual fixture STORE from the still-passed fixture object — the per-grant store-string resolution is a follow-on. The seed eval_service_op transport selection stays on per-process ExecutionMode on its own declared frontier (v1_interpreter.rs, dissolution-triggered)."
 
-data effect_io_host_frame: Frame = Frame {
+data effect_io_host_frame: LadderFrame = LadderFrame {
   name: "effect-io-host",
   kind: SharedStateFrame
 }

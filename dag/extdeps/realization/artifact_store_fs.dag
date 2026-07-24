@@ -31,21 +31,21 @@ fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
 type ArtifactFsLookup
   = ArtifactFsHit { payload: String }
   | ArtifactFsMiss { path: String }
-  | ArtifactFsRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsRefused { verb: Verb, target: NamespacePosition, frame: LadderFrame }
 
 type ArtifactFsPutResult
   = ArtifactFsPutOk
-  | ArtifactFsPutRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsPutRefused { verb: Verb, target: NamespacePosition, frame: LadderFrame }
   | ArtifactFsPutFailed { path: String }
 
 type ArtifactFsDeleteResult
   = ArtifactFsDeleteOk
-  | ArtifactFsDeleteRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsDeleteRefused { verb: Verb, target: NamespacePosition, frame: LadderFrame }
   | ArtifactFsDeleteFailed { path: String }
 
 type ArtifactFsListResult
   = ArtifactFsListOk { entries: List<String> }
-  | ArtifactFsListRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsListRefused { verb: Verb, target: NamespacePosition, frame: LadderFrame }
   | ArtifactFsListFailed { path: String }
 
 func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {

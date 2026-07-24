@@ -9,7 +9,7 @@ data floor_index_build_share_provider_id: String = "process_shared_index"
 data floor_index_build_identity: String = "union-index-build(dag,src/v2)"
 
 fn floor_executor_process_frame() -> std.materialization_ladder.LadderFrame {
-  std.materialization_ladder.LadderLadderFrame { name: "claim_executor-process", kind: SharedStateFrame }
+  std.materialization_ladder.LadderFrame { name: "claim_executor-process", kind: SharedStateFrame }
 }
 
 data floor_index_build_share_provider: CacheProvider = provider_row(

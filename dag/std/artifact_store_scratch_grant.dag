@@ -17,7 +17,7 @@ import std.materialization_ladder { LadderFrame, SharedStateFrame }
 
 data artifact_store_scratch_grant_note: String = "P-B scratch-grant authority (docs/plans/effect-namespace-grants.md 6): the artifact-store host transport's /tmp/gunbc_* store roots are declared frame-owned scratch grants (LifecycleByConvention). extdeps.realization.artifact_store_fs dispatches Write/Read only on Admitted verdicts from artifact_store_scratch_target_admissible — the SINGLE admission entry. INTERIM HONESTY (segment-prefix limit): grant roots use filesystem_position on segment tmp because NamespacePosition prefix is segment-exact — it cannot express in-segment /tmp/gunbc_* naming; is_gunbc_tmp_scratch_store_root is the precision gate in this same module until SymbolIndex-backed positions dissolve the path-string interim (std.filesystem_path_grant note). dissolve-on = P-C region model + envelope-derived LiveTreeDisposition retires hand-stamped ReadsLiveTree on witness rows."
 
-data artifact_store_scratch_frame: Frame = Frame {
+data artifact_store_scratch_frame: LadderFrame = LadderFrame {
   name: "artifact-store-scratch",
   kind: SharedStateFrame
 }

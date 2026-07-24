@@ -23,7 +23,7 @@ data build_transport_workspace_segment: String = "workspace"
 data build_transport_toolchain_segment: String = "toolchain"
 data build_transport_closure_segment: String = "closure"
 
-data build_transport_frame: Frame = Frame {
+data build_transport_frame: LadderFrame = LadderFrame {
   name: "build-transport",
   kind: SharedStateFrame
 }
