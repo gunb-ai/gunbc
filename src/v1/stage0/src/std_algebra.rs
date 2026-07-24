@@ -152,6 +152,12 @@ pub struct BooleanAlgebra<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
+#[derive(Clone)]
+pub struct PointwisePower<T> {
+    pub member: Rc<dyn Fn(T) -> bool>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
 pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
