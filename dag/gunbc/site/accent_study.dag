@@ -2,11 +2,16 @@ module gunbc.site.accent_study
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.site.tokens {
+import gunbc.design.theme {
   Theme, night_theme, day_theme, theme_var_decls,
+  CanvasRole, role_decl,
+}
+import gunbc.design.material {
   Material, paint, paint_alpha,
-  serialize_rules, BuildRule, StaticRule, decl, role_decl, CssDecl,
-  TextRole, TextDimRole, SurfaceRole, CanvasRole,
+  serialize_rules, BuildRule, StaticRule, decl, CssDecl,
+}
+import gunbc.site.tokens {
+  TextRole, TextDimRole, SurfaceRole,
 }
 import gunbc.site.starlight {
   StarlightRender, study_candidates, verdigris_patina,
@@ -15,7 +20,7 @@ import gunbc.site.starlight {
 import extdeps.astronomy.stellar_classification { stellar_color_perception_quote }
 import gunbc.site.constellation { constellation_svg, layer_stars, layer_import_edges }
 import gunbc.site.moodboard { figure_rules }
-import gunbc.site.register_principles { register_thesis }
+import gunbc.design.principles { register_thesis }
 
 data accent_study_note: String = "Preview-only study page (ninth pass): the accent decision rendered, not debated. Each candidate panel scopes the SAME four figure role vars to one stellar class's materials — the constellation inside is identical fact rows, so the panels differ only in the starlight temperature. The day-atlas exhibit shows the day identity is accent-independent (always ink on paper). The verdigris exhibit shows green entering as patina material on the edges — the only place physics lets green in. Not a committed artifact; the signed class's rows land in tokens.night_theme and this study dissolves."
 
