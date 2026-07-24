@@ -189,11 +189,38 @@ the CI renderer's contract (§3a) and the sequencing:
   Ambient; the long quiet runs live in the gauntlet/falsifier context (whole-corpus, cold) —
   that context is the escalation law's primary home, and the flagship crawl-window replay is
   exactly a gauntlet-profile run, so P1's acceptance is unchanged.
-- **Sequencing:** P0 (pure `.dag` model + glyph authority) lands anytime — zero carrier
-  overlap with the rework. **P1's renderer wiring lands AFTER the atomic CI PR** — both touch
-  the floor's emit sites, and churning those twice is the migration the operator ruled out.
-  P3's census enumerates the POST-rework emit sites. D4's deletion removes the
-  selection-control step as a subject.
+- **Sequencing + delivery (operator ruling 2026-07-24): ONE atomic PR** — P0 through P3 land
+  together, entirely, after the atomic CI rework PR (both touch the floor's emit sites;
+  churning them twice is the migration class the operator ruled out). P3's census enumerates
+  the POST-rework emit sites. D4's deletion removes the selection-control step as a subject.
+- **Human-legibility contract (operator, 2026-07-24 — the census bar, not a style note):**
+  every run opens with a preamble naming what/why/how-much (run id, trigger, diff size,
+  affected set, placement split); the heartbeat is at most one line per minute,
+  **identity-first, vitals-suffix**, in human units (GiB, not raw bytes); raw telemetry dumps
+  (`current=16111669248`-style) are census violations, not projections; readiness probes and
+  shell echoes are Ambient (invisible at arm's length, expandable up close); per-witness PASS
+  lines collapse to counts. `[floor-memory]`'s current shape — 60+ identical
+  context-free byte dumps per hour — is the named negative example the census wall reds.
+
+## 6c. Relation to the frontend / visualization / UX lanes
+
+Same house, different organs — related by shared authority, not by overlap:
+
+- **The thesis IS the register thesis** (site-subsumption lane): *quiet at arm's length;
+  responsive up close; every response true* — §1 applies it to process output deliberately.
+- **The glyph/material table is a design-register instance:** status → glyph → **register
+  color role**, with terminal ANSI as one more material realization of the same roles the
+  site themes route. When the `gunbc.design.*` library (design-register lift) lands, the
+  glyph table's color roles re-ground on it — a named dissolution trigger, NOT a blocking
+  dependency (local role rows land first). The AttentionLevel→presentation total assignment
+  mirrors the site's total role→material theme assignments, totality witnessed the same way.
+- **The dashboard (belt B) is renderer N+1 of the same stream** — §3d already names it: the
+  JSONL event schema is the wire contract; no second telemetry model may grow there.
+- **gunb.ai's `tools/terminal` Go module** is declined as a dependency and named a future
+  renderer of the shared schema — cross-repo UX consistency by shared authority, not
+  imitation.
+
+## 7. Non-goals
 
 ## 7. Non-goals
 
