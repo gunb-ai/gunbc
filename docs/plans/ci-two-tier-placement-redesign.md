@@ -257,7 +257,13 @@ one PR.** Structure:
   quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
   skip). **D4 rides in-PR with the branch-falsifier receipt** (see the delivery restructure
   above — a main-cadence green is impossible pre-merge by construction). D1 needs nothing
-  here (landed); D1b stays excluded (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
+  here (landed); D1b stays excluded (§9.6). **Integration ruling (operator, 2026-07-24): the
+  observation stack (P0–P3, the #7168 branch) merges INTO this PR** — the #7162 worker
+  performs the merge and wires the five rostered emit families to stream projections now
+  (the raw-eprintln residue stays a counted frontier until the remaining floor pieces land),
+  so the emit sites are rewritten once and every subsequent run demos the new log format
+  upfront — including clamp refusals rendering with their derived arithmetic. #7168 closes
+  as absorbed. Each piece carries its own witness battery so review is per-piece, but the landing
   is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
   concentration is deliberate and operator-chosen.
   **Two stage collapses (operator-blessed 2026-07-24 — "too many stages" review):** (a) the
