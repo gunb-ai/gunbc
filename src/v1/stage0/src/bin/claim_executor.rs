@@ -3008,6 +3008,122 @@ mod tests {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn run_seed_heartbeat_line(
+        source_roots: &[String],
+        elapsed_ms: u64,
+        batch_label: &str,
+        entry_index: u64,
+        entry_total: u64,
+        rss: Option<u64>,
+        swap: Option<u64>,
+        pressure: Option<u64>,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_heartbeat_line",
+            &[
+                (Some("elapsed_ms".into()), Value::Int(elapsed_ms as i64)),
+                (Some("batch_index".into()), Value::Int(0)),
+                (
+                    Some("batch_label".into()),
+                    Value::Str(batch_label.to_string()),
+                ),
+                (Some("entry_index".into()), Value::Int(entry_index as i64)),
+                (Some("entry_total".into()), Value::Int(entry_total as i64)),
+                (
+                    Some("rss_bytes".into()),
+                    Value::Int(rss.unwrap_or(0) as i64),
+                ),
+                (Some("rss_available".into()), Value::Bool(rss.is_some())),
+                (
+                    Some("swap_bytes".into()),
+                    Value::Int(swap.unwrap_or(0) as i64),
+                ),
+                (Some("swap_available".into()), Value::Bool(swap.is_some())),
+                (
+                    Some("pressure_bp".into()),
+                    Value::Int(pressure.unwrap_or(0) as i64),
+                ),
+                (
+                    Some("pressure_available".into()),
+                    Value::Bool(pressure.is_some()),
+                ),
+                (Some("emoji".into()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // The floor-memory heartbeat's seed→.dag boundary, proven by execution:
+    // seed_heartbeat_line takes the primitives the heartbeat thread has (elapsed,
+    // batch label, entry position, memory vitals) and projects them through the one
+    // renderer — identity first, human units, no raw byte dump. These golden strings
+    // are the oracle the Rust mirror is proven byte-equal to in the next commit; the
+    // subject is batch-grain (parallel entries → no fabricated per-module detail).
+    #[test]
+    fn seed_heartbeat_line_renders_identity_first_in_human_units() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // The captured crawl window's memory beat: identity first, human units, the
+        // raw byte value absent.
+        let line = run_seed_heartbeat_line(
+            &roots,
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        )
+        .expect("seed_heartbeat_line must resolve and render");
+        assert_eq!(
+            line,
+            "🕐 33 minutes in — still in witness discovery: entry 214 of 602. memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%"
+        );
+        assert!(
+            !line.contains("16107200512"),
+            "raw bytes must not appear: {line}"
+        );
+
+        // An unreadable cgroup field names its cause, never a fabricated zero.
+        let unreadable = run_seed_heartbeat_line(
+            &roots,
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        )
+        .expect("resolve");
+        assert_eq!(
+            unreadable,
+            "🕐 500ms in — still in self-host fixed-point: entry 0 of 2. memory unreadable (cgroup field unreadable), swap 0.0 GiB, pressure unreadable (cgroup field unreadable)"
+        );
+    }
+
     // The materialization-receipt chain by execution: a real entry resolves, a
     // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger
     // totals into the process accumulator. The env latch is process-global and

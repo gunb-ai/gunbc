@@ -3,10 +3,11 @@ module gunbc.observation_seed_render
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode }
-import std.measure { millisecond }
+import std.measure { millisecond, byte_size, basis_point }
 import std.disposition { Disposition, Terminal }
 import std.observation {
   ObservationSubject,
+  BatchSegment,
   PhaseSegment,
   MeasuredValue,
   MeasuredUnavailable,
@@ -15,7 +16,7 @@ import std.observation {
   Done,
   AttentionBasis,
 }
-import gunbc.observation_ci_render { ci_event_line, ci_render_line }
+import gunbc.observation_ci_render { ci_event_line, ci_render_line, ci_heartbeat_line, HeartbeatSample }
 
 data observation_seed_render_note: String = "The seed to .dag render boundary. The v1 seed (claim_executor and its siblings) emits progress lines, but the FORMAT is a single authority in gunbc.observation_ci_render — a raw eprintln in the seed forks that format the way a hand-rolled duration string forks std.measure. This module is the boundary the seed calls across, exactly as cli_run.install_output_policy calls output_policy.resolve_channel_policy: primitive arguments in, a rendered line out, no format logic on the seed side. It constructs the ObservationEvent the seed's occurrence corresponds to (a phase concluding is a Concluded event on a PhaseSegment subject) and projects it through the existing renderer, so the seed cannot drift from the model. It holds no telemetry source and computes no facts of its own; every field it fills came in as an argument the seed already had (observation law 5)."
 
@@ -42,6 +43,38 @@ fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, e
   }
   ci_render_line(
     line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data seed_heartbeat_unreadable_cause: NonEmptyStr = "cgroup field unreadable" as NonEmptyStr
+
+data seed_heartbeat_note: String = "The floor-memory heartbeat's projection. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this (through the interpreter) and its mirror on the same samples and asserts byte-equality, so the format authority stays here in the one renderer and any drift reds. The subject is batch-grain by construction — the floor walks entries in parallel, so there is no single active module to name; the primitive interface carries no module or phase, which is why the mirror is a COMPLETE reflection of this fn over the seed's real input space, never a fabricated per-module detail (observation law 2: identity, never invented)."
+
+fn seed_heartbeat_line(
+  elapsed_ms: Nat,
+  batch_index: Nat,
+  batch_label: NonEmptyStr,
+  entry_index: Nat,
+  entry_total: Nat,
+  rss_bytes: Nat,
+  rss_available: Bool,
+  swap_bytes: Nat,
+  swap_available: Bool,
+  pressure_bp: Nat,
+  pressure_available: Bool,
+  emoji: Bool
+) -> String {
+  ci_render_line(
+    line: ci_heartbeat_line(sample: HeartbeatSample {
+      elapsed: millisecond(count: elapsed_ms),
+      active: ObservationSubject { segments: [ BatchSegment { index: batch_index, label: batch_label } ] },
+      entry_index: entry_index,
+      entry_total: entry_total,
+      rss: if rss_available { MeasuredValue { value: byte_size(rss_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
+      swap: if swap_available { MeasuredValue { value: byte_size(swap_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
+      pressure: if pressure_available { MeasuredValue { value: basis_point(count: pressure_bp) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } }
+    }),
     tier: seed_tier(emoji: emoji)
   )
 }
