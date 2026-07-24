@@ -1,5 +1,9 @@
 module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeReceipt,
+  SelfEmitReady,
+}
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_03_body_producer,
   compiler_frontier_row_06_translate,
@@ -9,8 +13,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_use_site_verdict,
   compiler_frontier_self_emitted_baseline,
   SelfEmitted,
-  FrontierProbeReceipt,
-  SelfEmitReady,
   ProbeStageEmit,
   CompilerModuleFrontierRow
 }
