@@ -49,24 +49,12 @@ pub fn rt_scanner_ops() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {\n".to_string(), "    let start = start.max(0) as usize;\n".to_string()), "    if s.is_ascii() {\n".to_string()), "        let bytes = s.as_bytes();\n".to_string()), "        let mut pos = start.min(bytes.len());\n".to_string()), "        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) { pos += 1; }\n".to_string()), "        return pos as i64;\n".to_string()), "    }\n".to_string()), "    let char_len = s.chars().count();\n".to_string()), "    let start = start.min(char_len);\n".to_string()), "    let mut pos = start;\n".to_string()), "    for ch in s.chars().skip(start) {\n".to_string()), "        if pred(ch.to_string()) { pos += 1; } else { break; }\n".to_string()), "    }\n".to_string()), "    pos as i64\n".to_string()), "}\n\n".to_string()), "pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {\n".to_string()), "    let start = start.max(0) as usize;\n".to_string()), "    if s.is_ascii() {\n".to_string()), "        let bytes = s.as_bytes();\n".to_string()), "        let mut pos = start.min(bytes.len());\n".to_string()), "        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\\t') { pos += 1; }\n".to_string()), "        return pos as i64;\n".to_string()), "    }\n".to_string()), "    let char_len = s.chars().count();\n".to_string()), "    let start = start.min(char_len);\n".to_string()), "    let mut pos = start;\n".to_string()), "    for ch in s.chars().skip(start) {\n".to_string()), "        if ch == ' ' || ch == '\\t' { pos += 1; } else { break; }\n".to_string()), "    }\n".to_string()), "    pos as i64\n".to_string()), "}\n\n".to_string()), "pub fn scan_to_eol(s: &str, start: i64) -> i64 {\n".to_string()), "    let start = start.max(0) as usize;\n".to_string()), "    if s.is_ascii() {\n".to_string()), "        let bytes = s.as_bytes();\n".to_string()), "        let start = start.min(bytes.len());\n".to_string()), "        for i in start..bytes.len() { if bytes[i] == b'\\n' { return i as i64; } }\n".to_string()), "        return bytes.len() as i64;\n".to_string()), "    }\n".to_string()), "    let char_len = s.chars().count();\n".to_string()), "    let start = start.min(char_len);\n".to_string()), "    let mut pos = start;\n".to_string()), "    for ch in s.chars().skip(start) {\n".to_string()), "        if ch == '\\n' { return pos as i64; }\n".to_string()), "        pos += 1;\n".to_string()), "    }\n".to_string()), "    pos as i64\n".to_string()), "}\n\n".to_string()), "pub fn scan_string_end(s: &str, start: i64) -> i64 {\n".to_string()), "    let start = start.max(0) as usize;\n".to_string()), "    if s.is_ascii() {\n".to_string()), "        let bytes = s.as_bytes();\n".to_string()), "        let mut pos = start.min(bytes.len());\n".to_string()), "        while pos < bytes.len() {\n".to_string()), "            if bytes[pos] == b'\\\\' { pos += 2; }\n".to_string()), "            else if bytes[pos] == b'\\\"' { return (pos + 1) as i64; }\n".to_string()), "            else { pos += 1; }\n".to_string()), "        }\n".to_string()), "        return bytes.len() as i64;\n".to_string()), "    }\n".to_string()), "    let char_len = s.chars().count();\n".to_string()), "    let start = start.min(char_len);\n".to_string()), "    let mut pos = start;\n".to_string()), "    let mut escaped = false;\n".to_string()), "    for ch in s.chars().skip(start) {\n".to_string()), "        if escaped {\n".to_string()), "            escaped = false;\n".to_string()), "            pos += 1;\n".to_string()), "        } else if ch == '\\\\' {\n".to_string()), "            escaped = true;\n".to_string()), "            pos += 1;\n".to_string()), "        } else if ch == '\\\"' {\n".to_string()), "            return (pos + 1) as i64;\n".to_string()), "        } else {\n".to_string()), "            pos += 1;\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    pos as i64\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn rt_freemonoid_host_ops() -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra\n".to_string(),
-                    "// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.\n".to_string(),
-                ),
-                "pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {\n    Rc::new(Vec::new())\n}\n\n".to_string(),
-            ),
-            "pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n    let mut out = xs.as_ref().clone();\n    out.push_back(item);\n    Rc::new(out)\n}\n\n".to_string(),
-        ),
-        "pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A\nwhere\n    F: Fn(A, T) -> A,\n{\n    let mut acc = init;\n    for item in xs.iter() {\n        acc = f(acc, item.clone());\n    }\n    acc\n}\n\n".to_string(),
-    )
-}
-
 pub fn rt_unicode_ops() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn code_point(c: String) -> i64 {\n".to_string(), "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n".to_string()), "}\n\n".to_string()), "pub fn from_code_point(cp: i64) -> String {\n".to_string()), "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_start(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_start).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_continue(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_continue).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_emoji_ident(cp: i64) -> bool {\n".to_string()), "    use unicode_properties::emoji::UnicodeEmoji;\n".to_string()), "    use unicode_properties::emoji::EmojiStatus;\n".to_string()), "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n".to_string()), "}\n\n".to_string())
+}
+
+pub fn rt_freemonoid_host_ops() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra\n".to_string(), "// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.\n".to_string()), "pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {\n".to_string()), "    Rc::new(Vec::new())\n".to_string()), "}\n\n".to_string()), "pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n".to_string()), "    let mut out = xs.as_ref().clone();\n".to_string()), "    out.push_back(item);\n".to_string()), "    Rc::new(out)\n".to_string()), "}\n\n".to_string()), "pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A\n".to_string()), "where\n".to_string()), "    F: Fn(A, T) -> A,\n".to_string()), "{\n".to_string()), "    let mut acc = init;\n".to_string()), "    for item in xs.iter() {\n".to_string()), "        acc = f(acc, item.clone());\n".to_string()), "    }\n".to_string()), "    acc\n".to_string()), "}\n\n".to_string())
 }
 
 pub fn rt_rc_container_ops() -> String {
@@ -123,22 +111,25 @@ pub fn rust_runtime_source() -> String {
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                rt_header(),
-                                                rt_text_lookup_work_counter(),
+                                                v1_rt::concat(
+                                                    rt_header(),
+                                                    rt_text_lookup_work_counter(),
+                                                ),
+                                                rt_resolution_silent_pick_telemetry(),
                                             ),
-                                            rt_resolution_silent_pick_telemetry(),
+                                            rt_concat_trait(),
                                         ),
-                                        rt_concat_trait(),
+                                        rt_string_ops(),
                                     ),
-                                    rt_string_ops(),
+                                    rt_collection_ops(),
                                 ),
-                                rt_collection_ops(),
+                                rt_rc_container_ops(),
                             ),
-                            rt_rc_container_ops(),
+                            rt_scanner_ops(),
                         ),
-                        rt_scanner_ops(),
+                        rt_unicode_ops(),
                     ),
-                    v1_rt::concat(rt_unicode_ops(), rt_freemonoid_host_ops()),
+                    rt_freemonoid_host_ops(),
                 ),
                 rt_hash_ops(),
             ),
