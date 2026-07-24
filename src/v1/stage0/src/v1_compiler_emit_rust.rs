@@ -20,7 +20,7 @@ use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{is_container_type, is_kernel_type};
+pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
@@ -4766,6 +4766,92 @@ pub fn record_lit_variant_payload_struct_surfaces(
     }
 }
 
+pub fn record_lit_field_type_hints(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, String>> {
+    n.children.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
+            let fname = field_init_node_name_at(f.clone(), source_indices.clone());
+            let fval = field_init_node_value(f.clone());
+            match fval.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved {
+                    node: type_node, ..
+                }) => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    fname.clone(),
+                    authored_name_at(source_indices.clone(), type_node.clone()),
+                ),
+                _ => acc.clone(),
+            }
+        },
+    )
+}
+
+pub fn record_lit_resolved_ctor_import_names(
+    type_name: String,
+    n: Rc<Node>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let from_template = match container_template_algebra(type_name.clone()) {
+            Some(algebra) => {
+                if ((algebra.clone() != "".to_string()) && (algebra.clone() != type_name.clone())) {
+                    Rc::new(vec![algebra.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            None => Rc::new(vec![]),
+        };
+        let from_fields = if (type_name.clone() != "".to_string()) {
+            {
+                let lit_field_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for f in n.children.clone().iter().cloned() {
+                        __result.push(field_init_node_name_at(f.clone(), source_indices.clone()));
+                    }
+                    __result
+                });
+                let field_type_hints =
+                    record_lit_field_type_hints(n.clone(), source_indices.clone());
+                match find_struct_name_by_fields(
+                    lit_field_names.clone(),
+                    field_type_hints.clone(),
+                    type_summaries.clone(),
+                ) {
+                    Some(sn) => {
+                        if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone())) {
+                            Rc::new(vec![sn.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                    None => match find_unique_struct_name_by_fields(
+                        lit_field_names.clone(),
+                        type_summaries.clone(),
+                    ) {
+                        Some(sn) => {
+                            if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone()))
+                            {
+                                Rc::new(vec![sn.clone()])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        None => Rc::new(vec![]),
+                    },
+                }
+            }
+        } else {
+            Rc::new(vec![])
+        };
+        unique_strings(v1_rt::concat(from_template.clone(), from_fields.clone()))
+    }
+}
+
 pub fn record_lit_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4804,6 +4890,22 @@ pub fn record_lit_ref_names(
                     }
                 }
             };
+            let ctor_names = Rc::new({
+                let mut __result = Vec::new();
+                for t in tn_list.clone().iter().cloned() {
+                    __result.extend(
+                        (*record_lit_resolved_ctor_import_names(
+                            t.clone(),
+                            n.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
             let pe_list = match pe.clone() {
                 Some(p) => {
                     if (p.clone() != "".to_string()) {
@@ -4821,7 +4923,10 @@ pub fn record_lit_ref_names(
                 variant_to_enum.clone(),
             );
             unique_strings(v1_rt::concat(
-                v1_rt::concat(tn_list.clone(), pe_list.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(tn_list.clone(), ctor_names.clone()),
+                    pe_list.clone(),
+                ),
                 payload_structs.clone(),
             ))
         }
@@ -4831,91 +4936,95 @@ pub fn record_lit_ref_names(
 
 pub fn collect_items_field_import_surface_names(
     items: Rc<Vec<Rc<Node>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    unique_strings(Rc::new({
-        let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for type_name in collect_item_emit_surface_names(
-                        item.clone(),
-                        source_indices.clone(),
-                        variant_to_enum.clone(),
-                        type_summaries.clone(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
-                        __result.extend(
-                            (*{
-                                let summary_lookup =
-                                    match v1_rt::map_get(&type_summaries, type_name.clone()) {
-                                        Some(summary) => Some(summary.clone()),
-                                        None => match v1_rt::map_get(
-                                            &variant_to_enum,
-                                            type_name.clone(),
-                                        ) {
-                                            Some(enum_name) => {
-                                                if (enum_name.clone() == "".to_string()) {
-                                                    None
-                                                } else {
-                                                    v1_rt::map_get(
+    {
+        let type_summaries = emit_info.type_summaries.clone();
+        let variant_to_enum = emit_info.variant_to_enum.clone();
+        unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for type_name in collect_item_emit_surface_names(
+                            item.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*{
+                                    let summary_lookup =
+                                        match v1_rt::map_get(&type_summaries, type_name.clone()) {
+                                            Some(summary) => Some(summary.clone()),
+                                            None => match v1_rt::map_get(
+                                                &variant_to_enum,
+                                                type_name.clone(),
+                                            ) {
+                                                Some(enum_name) => {
+                                                    if (enum_name.clone() == "".to_string()) {
+                                                        None
+                                                    } else {
+                                                        v1_rt::map_get(
+                                                            &type_summaries,
+                                                            variant_summary_key(
+                                                                enum_name.clone(),
+                                                                type_name.clone(),
+                                                            ),
+                                                        )
+                                                    }
+                                                }
+                                                None => None,
+                                            },
+                                        };
+                                    match summary_lookup.clone() {
+                                        Some(summary) => Rc::new({
+                                            let mut __result = Vec::new();
+                                            for field_type in summary
+                                                .field_import_surface_names
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                            {
+                                                if ((field_type.clone() != "".to_string())
+                                                    && match v1_rt::map_get(
                                                         &type_summaries,
-                                                        variant_summary_key(
-                                                            enum_name.clone(),
-                                                            type_name.clone(),
-                                                        ),
-                                                    )
+                                                        field_type.clone(),
+                                                    ) {
+                                                        Some(ft) => {
+                                                            match (*ft.repr.clone()).clone() {
+                                                                TypeRepr::StructRepr => true,
+                                                                _ => false,
+                                                            }
+                                                        }
+                                                        None => false,
+                                                    })
+                                                {
+                                                    __result.push(field_type);
                                                 }
                                             }
-                                            None => None,
-                                        },
-                                    };
-                                match summary_lookup.clone() {
-                                    Some(summary) => Rc::new({
-                                        let mut __result = Vec::new();
-                                        for field_type in summary
-                                            .field_import_surface_names
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                        {
-                                            if ((field_type.clone() != "".to_string())
-                                                && match v1_rt::map_get(
-                                                    &type_summaries,
-                                                    field_type.clone(),
-                                                ) {
-                                                    Some(ft) => match (*ft.repr.clone()).clone() {
-                                                        TypeRepr::StructRepr => true,
-                                                        _ => false,
-                                                    },
-                                                    None => false,
-                                                })
-                                            {
-                                                __result.push(field_type);
-                                            }
-                                        }
-                                        __result
-                                    }),
-                                    None => Rc::new(vec![]),
-                                }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    }))
+                                            __result
+                                        }),
+                                        None => Rc::new(vec![]),
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }))
+    }
 }
 
 pub fn collect_value_ref_names(
@@ -5106,11 +5215,150 @@ pub fn emit_scrutinee_type_name(
     emit_inferred_type_leaf_name(scrutinee.clone(), source_indices.clone())
 }
 
+pub fn collect_pattern_rc_prelude_parent_enums(
+    pattern: Rc<MatchPattern>,
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern {
+            name: n,
+            parent_enum,
+            ..
+        } => {
+            let bare_n = qualified_last_segment(n.clone());
+            match pattern_parent_enum(
+                bare_n.clone(),
+                parent_enum.clone(),
+                scrut_type.clone(),
+                type_summaries.clone(),
+            ) {
+                Some(parent) => {
+                    if (parent.clone() != "".to_string()) {
+                        Rc::new(vec![parent.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                None => Rc::new(vec![]),
+            }
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn collect_rc_pattern_prelude_parent_enums(
+    pattern: Rc<MatchPattern>,
+    rc_analysis: Rc<RcPatternAnalysis>,
+    scrut_type: String,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::VariantPattern {
+                name: n,
+                parent_enum,
+                field_bindings: fbs,
+                ..
+            } => {
+                let bare_n = qualified_last_segment(n.clone());
+                if (is_optional_variant_name(bare_n.clone())
+                    && is_optional_parent(parent_enum.clone()))
+                {
+                    if ((fbs.clone().len() as i64) == 1) {
+                        match fbs.clone().first().cloned() {
+                            Some(fb) => {
+                                let inner_analysis = analyze_rc_pattern(
+                                    field_binding_pattern(fb.clone()),
+                                    "".to_string(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    source_indices.clone(),
+                                );
+                                collect_rc_pattern_prelude_parent_enums(
+                                    field_binding_pattern(fb.clone()),
+                                    inner_analysis.clone(),
+                                    "".to_string(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    emit_info.clone(),
+                                )
+                            }
+                            None => Rc::new(vec![]),
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    }
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for fb in fbs.clone().iter().cloned() {
+                            __result.extend(
+                                (*{
+                                    let fb_name =
+                                        field_binding_name_at(fb.clone(), source_indices.clone());
+                                    if (fb_name.clone() == "0".to_string()) {
+                                        {
+                                            let payload_scrut = positional_payload_scrut_type(
+                                                pattern_parent_enum(
+                                                    bare_n.clone(),
+                                                    parent_enum.clone(),
+                                                    scrut_type.clone(),
+                                                    emit_info.type_summaries.clone(),
+                                                ),
+                                                bare_n.clone(),
+                                                fb.clone(),
+                                                emit_info.clone(),
+                                                source_indices.clone(),
+                                            );
+                                            let inner_analysis = analyze_rc_pattern(
+                                                field_binding_pattern(fb.clone()),
+                                                payload_scrut.clone(),
+                                                shared_types.clone(),
+                                                emit_info.clone(),
+                                                source_indices.clone(),
+                                            );
+                                            collect_rc_pattern_prelude_parent_enums(
+                                                field_binding_pattern(fb.clone()),
+                                                inner_analysis.clone(),
+                                                payload_scrut.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                                emit_info.clone(),
+                                            )
+                                        }
+                                    } else {
+                                        if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone())
+                                        {
+                                            collect_pattern_rc_prelude_parent_enums(
+                                                field_binding_pattern(fb.clone()),
+                                                "".to_string(),
+                                                emit_info.type_summaries.clone(),
+                                            )
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    })
+                }
+            }
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
 pub fn collect_match_pattern_parent_enums(
     expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<String>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -5125,19 +5373,39 @@ pub fn collect_match_pattern_parent_enums(
                 let mut __result = Vec::new();
                 for arm in match_arm_nodes(expr.clone()).iter().cloned() {
                     __result.extend(
-                        (*match arm_resolved_parent_enum(
-                            arm.clone(),
-                            scrut_type.clone(),
-                            type_summaries.clone(),
-                        ) {
-                            Some(parent) => {
-                                if (parent.clone() != "".to_string()) {
-                                    Rc::new(vec![parent.clone()])
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            }
-                            None => Rc::new(vec![]),
+                        (*{
+                            let arm_pat = arm_pattern(arm.clone());
+                            let rc_analysis = analyze_rc_pattern(
+                                arm_pat.clone(),
+                                scrut_type.clone(),
+                                emit_info.shared_types.clone(),
+                                emit_info.clone(),
+                                source_indices.clone(),
+                            );
+                            v1_rt::concat(
+                                match arm_resolved_parent_enum(
+                                    arm.clone(),
+                                    scrut_type.clone(),
+                                    emit_info.type_summaries.clone(),
+                                ) {
+                                    Some(parent) => {
+                                        if (parent.clone() != "".to_string()) {
+                                            Rc::new(vec![parent.clone()])
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
+                                    }
+                                    None => Rc::new(vec![]),
+                                },
+                                collect_rc_pattern_prelude_parent_enums(
+                                    arm_pat.clone(),
+                                    rc_analysis.clone(),
+                                    scrut_type.clone(),
+                                    emit_info.shared_types.clone(),
+                                    source_indices.clone(),
+                                    emit_info.clone(),
+                                ),
+                            )
                         })
                         .iter()
                         .cloned(),
@@ -5241,10 +5509,11 @@ pub fn collect_record_lit_field_struct_surfaces(
 pub fn collect_value_emit_type_surface_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let variant_to_enum = emit_info.variant_to_enum.clone();
+        let type_summaries = emit_info.type_summaries.clone();
         let self_names = match (*n.expr_data.clone()).clone() {
             ExprData::ExprRecordLit { parent_enum: _, .. } => record_lit_ref_names(
                 n.clone(),
@@ -5255,8 +5524,7 @@ pub fn collect_value_emit_type_surface_names(
             ExprData::ExprMatch => collect_match_pattern_parent_enums(
                 n.clone(),
                 source_indices.clone(),
-                variant_to_enum.clone(),
-                type_summaries.clone(),
+                emit_info.clone(),
             ),
             _ => {
                 let from_inferred = emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
@@ -5308,8 +5576,7 @@ pub fn collect_value_emit_type_surface_names(
                             (*collect_value_emit_type_surface_names(
                                 field_init_node_value(c.clone()),
                                 source_indices.clone(),
-                                variant_to_enum.clone(),
-                                type_summaries.clone(),
+                                emit_info.clone(),
                             ))
                             .iter()
                             .cloned(),
@@ -5327,8 +5594,7 @@ pub fn collect_value_emit_type_surface_names(
                                 (*collect_value_emit_type_surface_names(
                                     c.clone(),
                                     source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    type_summaries.clone(),
+                                    emit_info.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
@@ -5343,8 +5609,7 @@ pub fn collect_value_emit_type_surface_names(
                                 (*collect_value_emit_type_surface_names(
                                     c.clone(),
                                     source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    type_summaries.clone(),
+                                    emit_info.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
@@ -5361,8 +5626,7 @@ pub fn collect_value_emit_type_surface_names(
                                 (*collect_value_emit_type_surface_names(
                                     c.clone(),
                                     source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    type_summaries.clone(),
+                                    emit_info.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
@@ -5377,8 +5641,7 @@ pub fn collect_value_emit_type_surface_names(
                                 (*collect_value_emit_type_surface_names(
                                     c.clone(),
                                     source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    type_summaries.clone(),
+                                    emit_info.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
@@ -5394,8 +5657,7 @@ pub fn collect_value_emit_type_surface_names(
                 Some(b) => collect_value_emit_type_surface_names(
                     b.clone(),
                     source_indices.clone(),
-                    variant_to_enum.clone(),
-                    type_summaries.clone(),
+                    emit_info.clone(),
                 ),
                 None => Rc::new(vec![]),
             },
@@ -5404,8 +5666,7 @@ pub fn collect_value_emit_type_surface_names(
                     Some(t) => collect_value_emit_type_surface_names(
                         t.clone(),
                         source_indices.clone(),
-                        variant_to_enum.clone(),
-                        type_summaries.clone(),
+                        emit_info.clone(),
                     ),
                     None => Rc::new(vec![]),
                 },
@@ -5427,8 +5688,7 @@ pub fn collect_value_emit_type_surface_names(
 pub fn collect_item_emit_surface_names(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<String>> {
     {
         let from_signature = collect_item_type_surface_names(item.clone(), source_indices.clone());
@@ -5436,8 +5696,7 @@ pub fn collect_item_emit_surface_names(
             Some(b) => collect_value_emit_type_surface_names(
                 b.clone(),
                 source_indices.clone(),
-                variant_to_enum.clone(),
-                type_summaries.clone(),
+                emit_info.clone(),
             ),
             None => Rc::new(vec![]),
         };
@@ -5624,8 +5883,7 @@ pub fn reference_derived_use_lines(
                     (*collect_item_emit_surface_names(
                         item.clone(),
                         source_indices.clone(),
-                        emit_info.variant_to_enum.clone(),
-                        emit_info.type_summaries.clone(),
+                        emit_info.clone(),
                     ))
                     .iter()
                     .cloned(),
@@ -5635,8 +5893,7 @@ pub fn reference_derived_use_lines(
         }));
         let field_surface_names = collect_items_field_import_surface_names(
             items.clone(),
-            emit_info.type_summaries.clone(),
-            emit_info.variant_to_enum.clone(),
+            emit_info.clone(),
             source_indices.clone(),
         );
         let variant_payload_structs = expand_variant_payload_struct_imports(
@@ -21172,6 +21429,52 @@ pub fn is_optional_struct_field(
     }
 }
 
+pub fn rust_struct_field_lookup_candidates(
+    struct_name: String,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<String>> {
+    {
+        let from_template = match container_template_algebra(struct_name.clone()) {
+            Some(algebra) => {
+                if ((algebra.clone() != "".to_string()) && (algebra.clone() != struct_name.clone()))
+                {
+                    Rc::new(vec![algebra.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            None => Rc::new(vec![]),
+        };
+        let from_resolve = match lookup_type_by_name(scope.type_env.clone(), struct_name.clone()) {
+            Some(type_node) => {
+                let resolved = resolve_node(
+                    type_node.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                )
+                .resolved
+                .clone();
+                let resolved_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    resolved.clone(),
+                );
+                if ((resolved_name.clone() != "".to_string())
+                    && (resolved_name.clone() != struct_name.clone()))
+                {
+                    Rc::new(vec![resolved_name.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            None => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(
+            Rc::new(vec![struct_name.clone()]),
+            v1_rt::concat(from_template.clone(), from_resolve.clone()),
+        ))
+    }
+}
+
 pub fn rust_struct_field_type_node(
     scope: Rc<InferScope>,
     struct_name: String,
@@ -21195,9 +21498,25 @@ pub fn rust_record_field_needs_fn_rc(
     struct_name: String,
     field_name: String,
 ) -> bool {
-    match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
-        Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
-        None => false,
+    {
+        let mut __found = false;
+        for candidate in rust_struct_field_lookup_candidates(struct_name.clone(), scope.clone())
+            .iter()
+            .cloned()
+        {
+            if match rust_struct_field_type_node(
+                scope.clone(),
+                candidate.clone(),
+                field_name.clone(),
+            ) {
+                Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
+                None => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
     }
 }
 
