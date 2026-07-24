@@ -79,6 +79,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-23",
+    work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_string_grounded_type_alias_decl_line", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "emit_representation_mismatch brick clears and probe transport lands in .dag (#5828)" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },
@@ -118,6 +124,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "ci-floor-time-45-72-band-attribution",
     work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-floor-child-spawn-attribution",
+    work: DeclarationRef { module_path: "tools.host_prelude", decl_name: "run_gunbc_claims_ready", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when the child-spawn class is dissolved — run_gunbc_claims_ready pools ClaimRuns into one process or runs them against the executor's warm process_shared_index (the ci_floor_resolve_receipt_note 'resolve once, share by reference' terminal); this receipt's counterfactuals become that PR's before/after" },
   },
 ]
 
