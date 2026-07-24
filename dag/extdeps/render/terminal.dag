@@ -2,7 +2,7 @@ module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.render.ansi { ansi_code }
-import std.render { Frame, Line, RenderCapability, Span, Viewport, cursor_action_under }
+import std.render { RenderFrame, Line, RenderCapability, Span, Viewport, cursor_action_under }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols { Tier }
 import std.unicode { string_display_width }
@@ -66,7 +66,7 @@ fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line? {
   }
 }
 
-fn constrain_frame(frame: std.render.Frame, viewport: Viewport, tier: Tier) -> std.render.Frame? {
+fn constrain_frame(frame: std.render.RenderFrame, viewport: Viewport, tier: Tier) -> std.render.RenderFrame? {
   let result = fold(frame.lines,
     init: Present { value: [] },
     f: (acc, line) => match acc {
@@ -79,14 +79,14 @@ fn constrain_frame(frame: std.render.Frame, viewport: Viewport, tier: Tier) -> s
     }
   )
   match result {
-    Present { value: lines } => Present { value: Frame { lines: lines, cursor_action: frame.cursor_action } }
+    Present { value: lines } => Present { value: RenderFrame { lines: lines, cursor_action: frame.cursor_action } }
     Absent => none
   }
 }
 
-fn project_frame(frame: std.render.Frame, viewport: Viewport, cap: RenderCapability) -> std.render.Frame? {
+fn project_frame(frame: std.render.RenderFrame, viewport: Viewport, cap: RenderCapability) -> std.render.RenderFrame? {
   match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
-    Present { value: f } => Present { value: Frame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
+    Present { value: f } => Present { value: RenderFrame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
     Absent => none
   }
 }
@@ -122,7 +122,7 @@ fn serialize_line(line: Line, cap: RenderCapability) -> String {
   concat(pad, body)
 }
 
-fn serialize_frame(frame: std.render.Frame, cap: RenderCapability) -> String {
+fn serialize_frame(frame: std.render.RenderFrame, cap: RenderCapability) -> String {
   let rendered = map(frame.lines, line => serialize_line(line: line, cap: cap))
   join(rendered, "\n")
 }

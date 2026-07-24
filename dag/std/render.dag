@@ -26,7 +26,7 @@ type Line {
 
 type CursorAction = Overwrite | Append | Clear
 
-type Frame {
+type RenderFrame {
   lines: List<Line>
   cursor_action: CursorAction
 }
@@ -38,8 +38,8 @@ type RenderCapability {
 }
 
 type Block
-  = Leaf { frame: Frame }
-  | Group { title: String, frame: Frame }
+  = Leaf { frame: RenderFrame }
+  | Group { title: String, frame: RenderFrame }
 
 type Document {
   blocks: List<Block>

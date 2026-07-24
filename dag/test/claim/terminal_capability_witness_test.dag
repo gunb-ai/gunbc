@@ -21,7 +21,7 @@ data no_color_tty: TerminalEnvironment = TerminalEnvironment {
 
 data demo_viewport: Viewport = Viewport { width: 80, height: 24, unit: Chars }
 
-data dynamic_frame: std.render.Frame = std.render.Frame { lines: [], cursor_action: Overwrite }
+data dynamic_frame: std.render.RenderFrame = std.render.RenderFrame { lines: [], cursor_action: Overwrite }
 
 fn w_interactive_is_addressable_unicode_color() -> Bool {
   let cap = detect_capability(env: interactive_tty)
