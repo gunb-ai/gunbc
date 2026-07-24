@@ -12,7 +12,8 @@ import std.trait_derive_shape {
   ReprDeriveElemKernelInt,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_derive_shape_has_trait,
-  record_derive_traits,
+  record_derive_traits_heap,
+  record_derive_traits_copy,
   nullary_coproduct_derive_traits,
   payload_coproduct_derive_traits,
   trait_derive_attr_from_traits
@@ -58,7 +59,11 @@ fn v1_emit_struct_derives(
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
     }
   } else {
-    trait_derive_attr_from_traits(record_derive_traits(set_contains(shared_types, name)))
+    if set_contains(shared_types, name) {
+      trait_derive_attr_from_traits(record_derive_traits_heap())
+    } else {
+      trait_derive_attr_from_traits(record_derive_traits_copy())
+    }
   }
 }
 

@@ -82,6 +82,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_serialization.rs",
     "std_syntax.rs",
     "std_termination.rs",
+    "std_trait_derive_shape.rs",
     "std_types.rs",
     "v1_compiler_artifact.rs",
     "v1_compiler_coercion.rs",

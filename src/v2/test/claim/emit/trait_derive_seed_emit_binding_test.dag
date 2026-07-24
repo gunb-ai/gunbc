@@ -6,7 +6,8 @@ import std.trait_derive_shape {
   ReprDeriveSerialize,
   ReprDeriveElemNullaryEnumCopy,
   nullary_coproduct_derive_traits,
-  record_derive_traits,
+  record_derive_traits_heap,
+  record_derive_traits_copy,
   trait_derive_attr_from_traits,
   repr_grounding_derive_completeness_predicate
 }
@@ -16,14 +17,15 @@ data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.tra
 
 test fn nullary_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
-    required: nullary_coproduct_derive_traits(),
-    shape: ReprDeriveElemNullaryEnumCopy
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemNullaryEnumCopy
   )
 }
 
 test fn record_heap_attr_contains_serde() -> Bool {
-  let attr = trait_derive_attr_from_traits(traits: record_derive_traits(heap_allocated: true))
-  attr != "" && attr != trait_derive_attr_from_traits(traits: record_derive_traits(heap_allocated: false))
+  let heap_attr = trait_derive_attr_from_traits(record_derive_traits_heap())
+  let copy_attr = trait_derive_attr_from_traits(record_derive_traits_copy())
+  heap_attr != "" && heap_attr != copy_attr
 }
 
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {

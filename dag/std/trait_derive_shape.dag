@@ -105,19 +105,11 @@ fn trait_derive_list_contains(traits: List<ReprGroundingDeriveTrait>, derive_tra
   traits |> any(t => t == derive_trait)
 }
 
-fn trait_derive_list_push_unique(traits: List<ReprGroundingDeriveTrait>, derive_trait: ReprGroundingDeriveTrait) -> List<ReprGroundingDeriveTrait> {
-  if trait_derive_list_contains(traits: traits, derive_trait: derive_trait) {
-    traits
-  } else {
-    Cons { head: derive_trait, tail: traits }
-  }
-}
-
 fn repr_grounding_derive_completeness_predicate(
   required: List<ReprGroundingDeriveTrait>,
   shape: ReprGroundingDeriveElemShape
 ) -> Bool {
-  required |> all(dt => repr_grounding_derive_shape_has_trait(shape: shape, derive_trait: dt))
+  required |> all(dt => repr_grounding_derive_shape_has_trait(shape, dt))
 }
 
 fn record_derive_traits_heap() -> List<ReprGroundingDeriveTrait> {
@@ -146,13 +138,6 @@ fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
         }
       }
     }
-  }
-}
-
-fn record_derive_traits(heap_allocated: Bool) -> List<ReprGroundingDeriveTrait> {
-  match heap_allocated {
-    true => record_derive_traits_heap()
-    false => record_derive_traits_copy()
   }
 }
 
