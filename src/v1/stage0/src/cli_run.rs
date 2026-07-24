@@ -6431,8 +6431,14 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
             }
         };
         let rc_max = counts.last().copied().unwrap_or(0);
-        let modules_at_full = counts.iter().filter(|&&c| c == entries && entries > 0).count();
-        let modules_at_max = counts.iter().filter(|&&c| c == rc_max && rc_max > 0).count();
+        let modules_at_full = counts
+            .iter()
+            .filter(|&&c| c == entries && entries > 0)
+            .count();
+        let modules_at_max = counts
+            .iter()
+            .filter(|&&c| c == rc_max && rc_max > 0)
+            .count();
         // Pre-drain resolved-graph rows (batch-1 compile-clean gate's whole-tree
         // subject, prelude plan/producer subjects): no scheduled entry can ever
         // re-demand them from the memo — the gate subject digests a DIFFERENT
@@ -6453,7 +6459,11 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
              modules_at_full={modules_at_full} modules_at_rc_max={modules_at_max} \
              evict_enabled={evict_enabled} predrain_memo_dropped={predrain_memo_dropped} \
              resolve_store_rows={}",
-            if entries == 0 { 0 } else { closure_len_sum / entries },
+            if entries == 0 {
+                0
+            } else {
+                closure_len_sum / entries
+            },
             pct(50),
             pct(90),
             process_resolve_store_len(),
@@ -6496,7 +6506,8 @@ fn process_resolve_store_evict_entry(entry_file: &str) -> usize {
     PROCESS_RESOLVE_STORE.with(|s| {
         let mut store = s.borrow_mut();
         let before = store.len();
-        store.retain(|(_, entry), _| entry != entry_file && !same_canonical_file(entry, entry_file));
+        store
+            .retain(|(_, entry), _| entry != entry_file && !same_canonical_file(entry, entry_file));
         before - store.len()
     })
 }
@@ -6521,13 +6532,21 @@ fn index_schedule_entry_completed(index: &MultiEntryIndex, entry: &str) -> Resul
     // TypedModule env web even after its typed_module_cache entry is removed).
     // GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES=1 clears the per-entry closure source
     // vectors. Both are recompute-on-miss caches, so verdicts are unaffected.
-    if std::env::var("GUNBC_EXPERIMENT_DROP_RESOLVED_MEMO").ok().as_deref() == Some("1") {
+    if std::env::var("GUNBC_EXPERIMENT_DROP_RESOLVED_MEMO")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
         let n = probe_clear_resolved_graph_memo(index);
         if n > 0 && floor_verbose() {
             eprintln!("[floor-drain] experiment: dropped resolved_graph_memo entries={n} at entry boundary");
         }
     }
-    if std::env::var("GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES").ok().as_deref() == Some("1") {
+    if std::env::var("GUNBC_EXPERIMENT_DROP_ENTRY_SOURCES")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
         let _ = probe_clear_entry_closure_sources(index);
     }
     let (batch, evict_enabled) = {

@@ -34,11 +34,11 @@
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, current_rss_vmrss_bytes, index_retention_snapshot,
-    make_eval_context, peak_rss_vhwm_bytes, probe_clear_entry_closure_sources,
-    probe_clear_resolved_graph_memo, probe_entry_import_closure, resolve_entry_with_index,
-    run_discovery_corpus_with_options, witness_exclusion_substrings, DiscoveryCorpusOptions,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode,
+    build_multi_entry_index, current_rss_vmrss_bytes, index_retention_snapshot, make_eval_context,
+    peak_rss_vhwm_bytes, probe_clear_entry_closure_sources, probe_clear_resolved_graph_memo,
+    probe_entry_import_closure, resolve_entry_with_index, run_discovery_corpus_with_options,
+    witness_exclusion_substrings, DiscoveryCorpusOptions, DiscoveryWidthPolicy,
+    NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -137,21 +137,24 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if real_drain {
         // The REAL width=1 drain over the scan dirs: run_discovery_corpus_with_options
-        // (Serial ≡ the CI inline-drain regime for retention: drain-level arming, one
-        // private process-shared index, per-entry completion driving schedule + graph
-        // eviction, [floor-drain] receipts streaming). Witnesses actually execute
+        // on the Adaptive branch with a width-1 governor — the EXACT CI inline-drain
+        // regime (drain-level arming, one private process-shared index, per-entry
+        // completion driving schedule + graph eviction, streamed per-group
+        // [floor-drain] receipts + final receipt). Witnesses actually execute
         // (hermetic), so this is the end-to-end arm for the retention A/B — pair a
         // GUNBC_SCHEDULE_RETENTION_EVICT=0 run (retain-all pole) against a default
         // run and diff the RSS curves + verdicts.
         eprintln!(
-            "[probe] real_drain roots={source_roots:?} scan_dirs={scan_dirs:?} (Serial, selection Off, hermetic)"
+            "[probe] real_drain roots={source_roots:?} scan_dirs={scan_dirs:?} (Adaptive width=1, selection Off, hermetic)"
         );
+        let governor =
+            std::sync::Arc::new(v1_compiler::memory_governor::MemoryGovernor::from_environment(1));
         let summary = run_discovery_corpus_with_options(
             &source_roots,
             &scan_dirs,
             &[],
             ExecutionMode::Hermetic,
-            DiscoveryWidthPolicy::Serial,
+            DiscoveryWidthPolicy::Adaptive(governor),
             DiscoveryCorpusOptions {
                 node_frontier_selection: NodeFrontierSelectionMode::Off,
                 explicit_roster_only: false,
@@ -251,7 +254,15 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
                 format!("ok modules={modules}")
             }
-            Err(e) => format!("ERR {}", e.lines().next().unwrap_or("").chars().take(120).collect::<String>()),
+            Err(e) => format!(
+                "ERR {}",
+                e.lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .take(120)
+                    .collect::<String>()
+            ),
         };
         drop(resolved);
         if drop_resolved_memo {
