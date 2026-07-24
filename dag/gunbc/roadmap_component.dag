@@ -18,8 +18,24 @@ import gunbc.roadmap_belt_actuate {
 }
 import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
-  ts_ident, ts_lit_str, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
-  ts_const, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+  ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
+  ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+}
+import gunbc.design.sound {
+  SoundSpec, engage_detent_click,
+  sound_spec_frequency_wire, sound_spec_decay_seconds_wire,
+  sound_spec_peak_gain_wire, sound_spec_timbre_wire,
+  sound_mute_storage_key,
+}
+import extdeps.web_audio {
+  web_audio_context_interface,
+  web_audio_create_oscillator_method, web_audio_create_gain_method,
+  web_audio_connect_method, web_audio_destination_property,
+  web_audio_current_time_property, web_audio_frequency_property,
+  web_audio_gain_property, web_audio_type_property, web_audio_value_property,
+  web_audio_set_value_at_time_method, web_audio_exponential_ramp_method,
+  web_audio_start_method, web_audio_stop_method,
+  web_audio_gain_epsilon_micros, micros_decimal_wire,
 }
 
 data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
@@ -99,9 +115,197 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
+data dispatch_session_chip_note: String = "On acceptance the button stops being a button and becomes the session's chip — the morph the exemplar's checkpoint 2 asks for. The label is the prefix plus the belt's own status word, so `session · spawned` and `session · already_live` are both PROJECTIONS of what the belt answered rather than a phrase the page decided to display: every response true, including this one. It renders only on the ok branch, so a refusal never claims a session exists.
+
+The prefix stays inside the reserved width the button already derives from the longest wire label, so the morph cannot reflow the row it sits in — and this is the SESSION chip, type-distinct from the node's status chip at the head of the row. Those are two different state spaces (what the roadmap thinks of the work, versus what the belt is doing right now) and overloading one carrier with both is the conflation the normalized plan corrected."
+
+data dispatch_session_chip_prefix: String = "session · "
+
 data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
+
+data sound_toggle_class: String = "sound-toggle"
+
+data sound_toggle_note: String = "The mute control, and its whole design is one operator sentence: an instrument can be muted, not argued with. So it is a single persisted boolean with no volume axis, no per-sound settings, and no prompt — the mechanism has one voice and you either hear it or you do not. Default is SOUNDING, because a sound feature shipped off by default is a sound feature nobody discovers, and the sounds here are 5 ms operation ticks rather than notifications.
+
+Both labels are rendered from one authority so the toggle can never disagree with the state it reports, and the reserved width is DERIVED from the longer of them (the same discipline the dispatch button's width uses) so flipping the label cannot reflow the header. Persistence is localStorage rather than a cookie or a server round-trip: the preference is about this browser's speakers, so it belongs to the browser, and a mute that needed the belt to be up would be a mute that failed when the dashboard was most annoying.
+
+The toggle deliberately ticks when it is switched ON and stays silent when switched OFF, which needs no branch — the tick already checks the mute state, so calling it after the flip produces confirmation on unmute and silence on mute. That is the instrument answering with its own voice, which is the only honest way for a sound control to acknowledge itself."
+
+data sound_toggle_label_on: String = "sound · on"
+data sound_toggle_label_off: String = "sound · off"
+
+fn sound_toggle_labels() -> List<String> {
+  [sound_toggle_label_on, sound_toggle_label_off]
+}
+
+fn sound_toggle_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: sound_toggle_labels())))
+}
+
+data sound_muted_storage_value: String = "1"
+data sound_sounding_storage_value: String = "0"
+
+data js_sound_muted_fn: String = "gunbcSoundMuted"
+data js_audio_context_var: String = "gunbcAudioContext"
+data js_tick_fn: String = "gunbcTick"
+
+fn js_local_storage_get(key: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "localStorage"), property: "getItem"),
+    args: [ts_lit_str(value: key)],
+  )
+}
+
+fn js_sound_muted_predicate() -> TsStmt {
+  ts_const(
+    name: js_sound_muted_fn,
+    value: ts_arrow(
+      params: [],
+      body: ts_expr_stmt(expr: ts_binop(
+        left: js_local_storage_get(key: sound_mute_storage_key),
+        op: "===",
+        right: ts_lit_str(value: sound_muted_storage_value),
+      )),
+    ),
+  )
+}
+
+fn js_actx_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: js_audio_context_var), property: name)
+}
+
+fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
+  let decay_s = sound_spec_decay_seconds_wire(s: s)
+  ts_block(stmts: [
+    ts_if(
+      cond: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+      then: ts_block(stmts: [ts_return(expr: none)]),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: js_audio_context_var)),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: js_audio_context_var),
+          op: "=",
+          right: ts_new(callee: ts_ident(name: web_audio_context_interface), args: []),
+        )),
+      ]),
+      else_stmt: none,
+    ),
+    ts_const(name: "t0", value: js_actx_member(name: web_audio_current_time_property)),
+    ts_const(name: "osc", value: ts_call(callee: js_actx_member(name: web_audio_create_oscillator_method), args: [])),
+    ts_const(name: "amp", value: ts_call(callee: js_actx_member(name: web_audio_create_gain_method), args: [])),
+    ts_const(name: "t1", value: ts_binop(left: ts_ident(name: "t0"), op: "+", right: ts_lit_num(text: decay_s))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "osc"), property: web_audio_type_property),
+      op: "=",
+      right: ts_lit_str(value: sound_spec_timbre_wire(s: s)),
+    )),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "osc"), property: web_audio_frequency_property),
+        property: web_audio_value_property,
+      ),
+      op: "=",
+      right: ts_lit_num(text: sound_spec_frequency_wire(s: s)),
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
+        property: web_audio_set_value_at_time_method,
+      ),
+      args: [ts_lit_num(text: sound_spec_peak_gain_wire(s: s)), ts_ident(name: "t0")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
+        property: web_audio_exponential_ramp_method,
+      ),
+      args: [ts_lit_num(text: micros_decimal_wire(micros: web_audio_gain_epsilon_micros)), ts_ident(name: "t1")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_connect_method),
+      args: [ts_ident(name: "amp")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "amp"), property: web_audio_connect_method),
+      args: [js_actx_member(name: web_audio_destination_property)],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_start_method),
+      args: [ts_ident(name: "t0")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_stop_method),
+      args: [ts_ident(name: "t1")],
+    )),
+  ])
+}
+
+data sound_preamble_note: String = "Three statements, in this order for reasons that are not stylistic. The mute predicate comes first because the tick calls it. The AudioContext is a LET initialised to null and constructed lazily inside the tick, not at load: a context created outside a user gesture starts suspended under every browser's autoplay policy, and constructing one per tick would leak a hardware resource per click. Because the first tick always runs inside a pointerdown, the context is born already running and there is no resume dance anywhere in this program."
+
+fn sound_preamble_statements() -> List<TsStmt> {
+  [
+    js_sound_muted_predicate(),
+    ts_let(name: js_audio_context_var, value: ts_ident(name: "null")),
+    ts_const(
+      name: js_tick_fn,
+      value: ts_arrow(
+        params: [],
+        body: js_oscillator_tick_body(s: engage_detent_click),
+      ),
+    ),
+  ]
+}
+
+data sound_toggle_program_note: String = "The toggle paints itself from the same predicate the tick reads, then repaints after each flip, so the label is a projection of the stored state rather than a second copy of it — a toggle whose label and behaviour can disagree is worse than no toggle. paint() runs once at bind time because the stored preference outlives the page: on load the label must already say what this browser will actually do."
+
+fn sound_toggle_bind_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", sound_toggle_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
+          op: "=",
+          right: ts_cond(
+            test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+            consequent: ts_lit_str(value: sound_toggle_label_off),
+            alternate: ts_lit_str(value: sound_toggle_label_on),
+          ),
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+              args: [
+                ts_lit_str(value: sound_mute_storage_key),
+                ts_cond(
+                  test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+                  consequent: ts_lit_str(value: sound_sounding_storage_value),
+                  alternate: ts_lit_str(value: sound_muted_storage_value),
+                ),
+              ],
+            )),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: [])),
+          ]))],
+        )),
+      ]))],
+    )),
+  ]
+}
 
 data dispatch_state_class_note: String = "The single authority for a state's CSS modifier class, consumed by the client script (which flips classes on the live button), the stylesheet (which paints each class through the state's role material), and the P4 gallery (which renders each state statically) — three consumers, one class vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier); the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label distinction living in the text, not the color."
 
@@ -174,7 +378,15 @@ fn dispatch_response_handler_body() -> TsStmt {
     ts_expr_stmt(expr: ts_binop(
       left: js_b_member(name: "textContent"),
       op: "=",
-      right: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status")),
+      right: ts_cond(
+        test: ts_ident(name: "ok"),
+        consequent: ts_binop(
+          left: ts_lit_str(value: dispatch_session_chip_prefix),
+          op: "+",
+          right: js_j_status(),
+        ),
+        alternate: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status")),
+      ),
     )),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_ok)),
@@ -252,27 +464,48 @@ fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
   ])
 }
 
+data pointerdown_tick_isolation_note: String = "The tick rides its OWN pointerdown listener rather than living inside the click handler, and the separation is load-bearing in two independent ways.
+
+MECHANICALLY it is when the sound belongs. Acknowledgment is owed to the press, not the release — the video-game rule the whole register follows — and pointerdown is the event that fires as the control starts travelling, in the same frame the CSS :active depression begins. Putting the tick in the click handler would fire it on RELEASE, so the sound and the visible travel would disagree about when the mechanism engaged.
+
+SAFETY-WISE it means a sound failure cannot break dispatch. Two listeners on one element are independent: if WebAudio is unavailable or throws in some browser, the exception is contained in the tick listener and the click listener still POSTs. Had the tick been a statement inside the click handler, a throw would have aborted the dispatch before the fetch — trading a working button for a decorative noise, which is exactly the wrong direction. This is also why no capability probe or try/catch appears here: the isolation makes the failure harmless, so there is nothing to degrade gracefully around and no silent fallback to write."
+
+fn dispatch_bind_statements(selector: String, url_expr: TsExpr) -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: selector)],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [
+            ts_lit_str(value: "pointerdown"),
+            ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: []))),
+          ],
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body(url_expr: url_expr))],
+        )),
+      ]))],
+    )),
+  ]
+}
+
 fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
     header_lines: header,
-    statements: [
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_call(
-            callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-            args: [ts_lit_str(value: selector)],
-          ),
-          property: "forEach",
-        ),
-        args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(
-            callee: js_b_member(name: "addEventListener"),
-            args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body(url_expr: url_expr))],
-          )),
-        ]))],
-      )),
-    ],
+    statements: concat(
+      sound_preamble_statements(),
+      concat(
+        dispatch_bind_statements(selector: selector, url_expr: url_expr),
+        sound_toggle_bind_statements())),
   }
 }
 
@@ -284,6 +517,8 @@ fn dispatch_client_program() -> TsProgram {
       "gunbc roadmap dispatch button — emitted from gunbc.roadmap_component.dispatch_client_program",
       "POSTs to the dispatch route and reads belt B's status contract (ok set derived from",
       "belt_dispatch_ok_status_labels); served as an external asset, referenced by <script src>",
+      "Operation sound: a 5ms detent tick on pointerdown, synthesized through WebAudio from",
+      "gunbc.design.sound rows — no audio files, and a persisted mute the instrument obeys",
     ],
   )
 }

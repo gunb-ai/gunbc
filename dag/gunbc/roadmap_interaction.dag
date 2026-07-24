@@ -2,18 +2,27 @@ module gunbc.roadmap_interaction
 
 import std.types { Int, String, Bool }
 import gunbc.design.material {
-  TimingToken, respond_fast,
-  MotionTrigger, OnActive,
-  BuildRule, ResponseRule, SelfResponse,
+  TimingToken, respond_fast, reveal_deliberate, settle_spring,
+  MotionTrigger, OnHover, OnActive, OnStateClass,
+  BuildRule, StaticRule, ResponseRule, SelfResponse,
   CssDecl, decl,
+  rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
 }
 import gunbc.design.interaction {
-  InteractionVerb, Approach, Dispatch,
-  Response, Brighten, Receipt,
+  InteractionVerb, Approach, Dispatch, Await, Accept,
+  Response, Brighten, Receipt, Lift, Depress, Settle,
   BehaviorRow, InteractiveElement,
-  ElementId, DispatchBtnElement, element_id_key, element_id_eq,
+  ElementId, DispatchBtnElement, SoundToggleElement, element_id_key, element_id_eq,
   verb_key, response_key,
   coverage_gaps, coverage_complete, CoverageGap,
+  Detent, DetentReach, AtRest, ByTrigger, DetentTravel, NoTravel, Travel,
+  DetentEdge, DetentEdgeDefect, DetentEdgeFault, EndpointUndeclared, PositionsCoincide,
+  detent_named, detent_transform_wire, detent_edge_defects, detent_edges_all_beat,
+  house_pointer_detents,
+}
+import gunbc.design.scale { travel_lift, travel_press, scale_var }
+import gunbc.roadmap_component {
+  dispatch_class_requested, dispatch_class_ok, sound_toggle_class,
 }
 import gunbc.site.moodboard {
   RealizedBehavior, RealizedRules, UnrealizedBehavior,
@@ -22,13 +31,74 @@ import gunbc.site.moodboard {
 
 data roadmap_interaction_note: String = "The roadmap dashboard's interaction rows (slice 2 of roadmap-onto-register, manager-signed): the dispatch button declares Approach and Dispatch, and its stylesheet responses are DERIVED from these rows through roadmap_realize_behavior — the register law (no dead hovers; responses derived) applied to the second site. Approach realizes as the border brighten over the shared approach_triggers (hover + focus-visible, one authority with the site pages); Dispatch realizes as the OnActive press receipt — background flips to the border material for the pressed frame, the CSS-layer receipt; the belt-side dispatch receipt is the served effect (belt_dispatch_node, serving layer) and never this module's concern. The realize fold mirrors moodboard's shape (RealizedRules | UnrealizedBehavior, unrealized countable); the Phase-A lift unifies the two folds behind a realize-parametric L2 carrier — declared convergence, not a silent fork. Known residue, named: the roadmap's a:hover underline is a hand StaticRule with no declared element (links are unmodeled site-wide today); it joins the element roster when the site models link elements, and the stray-response census belongs to the lift."
 
+data roadmap_physical_behavior_note: String = "The dispatch button's full mechanical story, as rows. Before this it had two: the edge brightens on approach, the background flips on press — both responses of APPEARANCE, which is exactly the critique the analog root principle answers, because a control that only changes colour is a diagram that lights up rather than an object that moves. The four added rows are the travel.
+
+Read as one mechanism at successive positions: Approach lifts it 1 px toward the hand while the edge brightens (two rows, one verb — genuinely two answers to one event). Dispatch is the engagement, and it fires on pointer-DOWN through OnActive rather than on release, because acknowledgment belongs to the press; the control travels down and compresses. Await holds it compressed while the request is in flight, deeper than the press, because a request in flight IS the control still actuated — and because a spring needs travel to return over. Accept releases it into unity on the settle curve, which overshoots and comes back: the detent catching.
+
+Await and Accept realize as StateRule rather than ResponseRule for a structural reason, not a stylistic one: their trigger is a server answer arriving long after the pointer is gone, and CSS has no pseudo-class for that. So they key on the SAME class names the client program flips (dispatch_class_requested / dispatch_class_ok), which is what keeps the CSS and the JS on one authority instead of two hand-matched string sets.
+
+The sound toggle joins the roster because it is a control, and the register's coverage law does not exempt small ones — an unresponsive mute button would be precisely the dead hover the law exists to forbid. It gets travel and brightening and no sound of its own: a mute control that clicked when you muted it would be arguing with you."
+
 data roadmap_elements: List<InteractiveElement> = [
-  InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch] },
+  InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch, Await, Accept] },
+  InteractiveElement { element: SoundToggleElement, verbs: [Approach, Dispatch] },
 ]
 
+data roadmap_timing_assignment_note: String = "Which clock each verb runs on, reusing the existing scale rather than minting near-misses (operator, 2026-07-24). APPROACH runs on reveal_deliberate (160 ms): an approach is a reveal — the control coming toward the hand — and the earlier 90 ms on the brighten row was the press clock borrowed for a gesture that is not a press. DISPATCH runs on respond_fast (90 ms), the press-acknowledge clock, because engagement must land under the finger and anything slower reads as lag. AWAIT also runs on respond_fast: the control latching down when the request leaves is an engagement, not a reveal. ACCEPT runs on settle_spring, which is restore_gentle's 240 ms carrying the overshoot curve — the only mint, and only on the easing axis."
+
 data roadmap_behaviors: List<BehaviorRow> = [
-  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Brighten, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Lift, timing: reveal_deliberate },
   BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Receipt, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Depress, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Await, response: Depress, timing: respond_fast },
+  BehaviorRow { element: DispatchBtnElement, verb: Accept, response: Settle, timing: settle_spring },
+  BehaviorRow { element: SoundToggleElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  BehaviorRow { element: SoundToggleElement, verb: Approach, response: Lift, timing: reveal_deliberate },
+  BehaviorRow { element: SoundToggleElement, verb: Dispatch, response: Depress, timing: respond_fast },
+]
+
+data roadmap_detent_note: String = "The dispatch button's detent table — the mechanical spec the CSS is DERIVED from, pinned as data because a transition that connects two equal transforms is inert (gunbc.design.interaction.detent_table_note).
+
+The positions read as one latching mechanism. REST sits at unity with no travel. HOVER rises 1 px toward the hand at unity scale — a reveal, not a compression. PRESSED is the finger's own travel: 1 px down and 3% in. REQUESTED is the control LATCHED, and it sits DEEPER than the finger left it (4% in, no vertical travel) which is the one choice here worth defending. A momentary switch would return to rest when released; this control does not, because the request is still in flight and the honest analog is a latching push-button that holds its engaged position until the mechanism releases it. The depth is also what buys the settle its travel: this curve's peak excursion is about a tenth of the delta, so the doc's illustrative 0.985 would have produced a spring under a tenth of a pixel on a chip-sized control — a beat that has to be believed rather than seen. ACCEPTED returns to unity, so the visible event is a 4% growth carrying a small overshoot, and the terminal position is the resting one exactly as the contract says terminals are 1.0.
+
+ACCEPTED and REST share a transform deliberately: a settled control IS at rest, and the accepted→rest edge is not one that needs to beat. Which edges DO need to beat is declared separately in roadmap_detent_edges, so the sharing is a stated fact rather than an accident the distinctness check has to be weakened to tolerate."
+
+data detent_rest: String = "rest"
+data detent_hover: String = "hover"
+data detent_pressed: String = "pressed"
+data detent_requested: String = "requested"
+data detent_accepted: String = "accepted"
+
+data roadmap_dispatch_detents: List<Detent> = concat(
+  house_pointer_detents(rest_state: detent_rest, hover_state: detent_hover, pressed_state: detent_pressed),
+  [
+    Detent {
+      state: detent_requested,
+      reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_requested } },
+      travel: NoTravel,
+      scale_per_mille: hold_scale_per_mille,
+    },
+    Detent {
+      state: detent_accepted,
+      reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_ok } },
+      travel: NoTravel,
+      scale_per_mille: rest_scale_per_mille,
+    },
+  ])
+
+data roadmap_sound_toggle_detents: List<Detent> = house_pointer_detents(
+  rest_state: detent_rest,
+  hover_state: detent_hover,
+  pressed_state: detent_pressed,
+)
+
+data roadmap_detent_edges: List<DetentEdge> = [
+  DetentEdge { from_state: detent_rest, to_state: detent_hover },
+  DetentEdge { from_state: detent_hover, to_state: detent_pressed },
+  DetentEdge { from_state: detent_rest, to_state: detent_pressed },
+  DetentEdge { from_state: detent_pressed, to_state: detent_requested },
+  DetentEdge { from_state: detent_requested, to_state: detent_accepted },
 ]
 
 fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
@@ -58,16 +128,117 @@ fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
   ]
 }
 
+data detent_realization_note: String = "Every transform rule is READ from the detent table, never restated beside it. That is the whole reason the table exists as data: a position written once in a table and again in a rule builder is the same fact in two places, and the copy that drifts is always the one nobody is looking at. So a position response (Lift, Depress, Settle) resolves its state in the table and emits whatever the table says; if the state is missing the realization yields NO rules, which surfaces through the existing unrealized-behaviour census as a counted row rather than as a silently absent transition.
+
+AtRest emits a StaticRule because the resting transform is the property's base value — it must be DECLARED for a transition to have somewhere to return to, and it carries no timing because arriving at rest is governed by the edge that leaves the other state."
+
+fn detent_rules(class_name: String, detents: List<Detent>, state: String, timing: TimingToken) -> List<BuildRule> {
+  match detent_named(detents: detents, state: state) {
+    Absent => []
+    Present { value: d } => {
+      let transform = decl(prop: Transform, value: detent_transform_wire(d: d))
+      match d.reach {
+        AtRest => [ StaticRule { selector: ClassSelector { name: class_name }, decls: [transform] } ]
+        ByTrigger { trigger } => [
+          ResponseRule {
+            subject: ClassSelector { name: class_name },
+            shape: SelfResponse,
+            trigger: trigger,
+            transition_props: "transform",
+            timing: timing,
+            base_decls: [],
+            response_decls: [transform],
+          },
+        ]
+      }
+    }
+  }
+}
+
+fn control_lift_rules(class_name: String, detents: List<Detent>, timing: TimingToken) -> List<BuildRule> {
+  concat(
+    detent_rules(class_name: class_name, detents: detents, state: detent_rest, timing: timing),
+    detent_rules(class_name: class_name, detents: detents, state: detent_hover, timing: timing))
+}
+
+fn control_depress_rules(class_name: String, detents: List<Detent>, timing: TimingToken) -> List<BuildRule> {
+  detent_rules(class_name: class_name, detents: detents, state: detent_pressed, timing: timing)
+}
+
+fn dispatch_btn_hold_rules(timing: TimingToken) -> List<BuildRule> {
+  detent_rules(
+    class_name: "dispatch-btn",
+    detents: roadmap_dispatch_detents,
+    state: detent_requested,
+    timing: timing)
+}
+
+fn dispatch_btn_settle_rules(timing: TimingToken) -> List<BuildRule> {
+  detent_rules(
+    class_name: "dispatch-btn",
+    detents: roadmap_dispatch_detents,
+    state: detent_accepted,
+    timing: timing)
+}
+
 fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
+  let v = verb_key(v: row.verb)
   if element_id_eq(a: e, b: DispatchBtnElement) && r == "brighten" {
     RealizedRules { rules: dispatch_btn_brighten_rules(timing: row.timing) }
   } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "receipt" {
     RealizedRules { rules: dispatch_btn_receipt_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "lift" {
+    RealizedRules {
+      rules: control_lift_rules(
+        class_name: "dispatch-btn",
+        detents: roadmap_dispatch_detents,
+        timing: row.timing)
+    }
+  } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "depress" && v == "dispatch" {
+    RealizedRules {
+      rules: control_depress_rules(
+        class_name: "dispatch-btn",
+        detents: roadmap_dispatch_detents,
+        timing: row.timing)
+    }
+  } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "depress" && v == "await" {
+    RealizedRules { rules: dispatch_btn_hold_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "settle" {
+    RealizedRules { rules: dispatch_btn_settle_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: SoundToggleElement) && r == "brighten" {
+    RealizedRules { rules: sound_toggle_brighten_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: SoundToggleElement) && r == "lift" {
+    RealizedRules {
+      rules: control_lift_rules(
+        class_name: sound_toggle_class,
+        detents: roadmap_sound_toggle_detents,
+        timing: row.timing)
+    }
+  } else if element_id_eq(a: e, b: SoundToggleElement) && r == "depress" {
+    RealizedRules {
+      rules: control_depress_rules(
+        class_name: sound_toggle_class,
+        detents: roadmap_sound_toggle_detents,
+        timing: row.timing)
+    }
   } else {
-    UnrealizedBehavior { element: element_id_key(id: e), verb: verb_key(v: row.verb), response: r }
+    UnrealizedBehavior { element: element_id_key(id: e), verb: v, response: r }
   }
+}
+
+fn sound_toggle_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ClassSelector { name: sound_toggle_class },
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "border-color",
+      timing: timing,
+      base_decls: [],
+      response_decls: [ decl(prop: BorderColor, value: "var(--focus)") ],
+    })
 }
 
 fn roadmap_unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
@@ -83,4 +254,8 @@ fn roadmap_behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
     RealizedRules { rules } => concat(acc, rules)
     UnrealizedBehavior { element: _, verb: _, response: _ } => acc
   })
+}
+
+fn roadmap_dispatch_detent_defects() -> List<DetentEdgeDefect> {
+  detent_edge_defects(detents: roadmap_dispatch_detents, edges: roadmap_detent_edges)
 }

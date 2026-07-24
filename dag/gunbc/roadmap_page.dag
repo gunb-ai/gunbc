@@ -19,7 +19,7 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, sound_toggle_class }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -150,8 +150,21 @@ fn three_gate_progress_markup() -> MarkupNode {
           spec => tg_gate_progress_row(spec: spec))))
 }
 
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
+
+fn sound_toggle_control() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: sound_toggle_class },
+      MarkupAttr { name: "type", value: "button" },
+    ],
+    children: [],
+  }
+}
+
 fn roadmap_header(title: String) -> MarkupNode {
-  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]) ])
+  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control() ])
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {

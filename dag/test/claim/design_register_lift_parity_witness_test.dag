@@ -11,12 +11,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data lift_parity_note: String = "Phase-A emission-identical witness (design-register-library.md sect 5): pins content digests of site + roadmap CSS/HTML emissions after the gunbc.design.* lift. Pre-lift golden = post-lift output (lift-not-fork); drift reds. site_register_keystone and roadmap_register_keystone remain the behavioral receipts; this witness is the digest receipt."
 
-data moodboard_css_lift_parity_digest: String = "5f2596b1693465d7"
-data moodboard_html_lift_parity_digest: String = "9252e67e6cf24375"
+data transition_carrier_repin_note: String = "Re-pinned for the transition-carrier restructure (the tactile exemplar's PR-A). A transition used to be emitted INSIDE a response's base block; it is now accumulated per carrier selector and emitted once, because the shorthand cannot express one property at several weights and a naive union of property names silently drops the durations of all but the last. That moves bytes on every surface with response rules, including the site's — so the site digests are re-pinned, and the re-pin is justified BY EXECUTION rather than by assertion.
+
+The proof, run 2026-07-24: old and new moodboard CSS were both emitted and compared as declaration SETS per selector rather than as text. All 68 selectors map to identical declaration sets; the 138-byte difference is entirely block placement (transitions moved out of base blocks into their own), and since CSS merges blocks sharing a selector, identical per-selector declaration sets means identical computed styles. The site's appearance and behaviour are unchanged.
+
+Two digests deliberately did NOT move, which is itself evidence the change is scoped as described: accent_study_html declares no response rules, so it has no transition carriers and its bytes are untouched; moodboard_digest covers the thesis/theme rows rather than the stylesheet. A change that had leaked past the transition machinery would have moved those too."
+
+data moodboard_css_lift_parity_digest: String = "deaf2b36826760c2"
+data moodboard_html_lift_parity_digest: String = "5e765800656fee4d"
 data accent_study_html_lift_parity_digest: String = "90e876af9e5173db"
 data roadmap_css_digest_repin_note: String = "Re-pinned across the UI-model migration and the #7104 (SupersededLine) merge. P2 (token migration, px/font -> gunbc.design.scale var tokens) was proven visually-neutral by execution: resolving every var(--scale-token) reproduced the pre-P2 CSS byte-for-byte. P3 (presentation mapping) then INTENTIONALLY adds styling: the dispatch button's reserved min-width (derived from the longest wire label, in ch) and the ok/refusal/requested chip material rules (each painting the P0 state's role). D5 (typed CSS grain) is a pure re-grounding — property names and selector subjects become typed, bytes unchanged. The #7104 merge folds in the .status-superseded / .node-superseded / .superseded-by rules, RE-GROUNDED here onto the same typed+tokenized grain (their raw 11px/6px/font-family literals routed through the scale tokens so the untokened-length census stays green), which shifts the bytes off main's hardcoded emission — hence this digest re-pin. The behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) and the untokened-length census remain the substance; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "947686b5dbaab2b0"
+data roadmap_css_repin_tactile_note: String = "The roadmap's own bytes move for a second, intentional reason beyond the carrier restructure: the dashboard gained physical motion. Hover lift, press depression, the latched requested position, the settle spring, the sound toggle's rules and the reduced-motion collapse over all of them are new emission. The behavioural receipts are roadmap_tactile_keystone_holds (which walls the mechanics with planted REDs) and roadmap_register_keystone_holds; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "96cd70efe3302129"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {
