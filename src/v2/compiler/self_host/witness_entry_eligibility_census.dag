@@ -38,7 +38,7 @@ data witness_entry_eligibility_census_carrier_path_dissolve_on: String = "cli_ru
 
 data witness_entry_eligibility_census_entry_count: Int = 882
 
-data witness_entry_eligibility_census_stamp: String = "2026-07-23T20:57Z"
+data witness_entry_eligibility_census_stamp: String = "2026-07-24T02:05Z"
 
 fn witness_entry_subject(entry_module: String) -> DeclarationRef {
   DeclarationRef {
