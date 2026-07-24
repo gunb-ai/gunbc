@@ -1,0 +1,18 @@
+module test.claim._brand_probe
+
+import std.types { Bool, String }
+import extdeps.shell
+
+fn probe_bare_string_into_transport_script() -> Bool {
+  let r = shell.Exec.Run(script: "echo hand-assembled-string")
+  r.success
+}
+
+fn probe_concat_into_transport_script() -> Bool {
+  let r = shell.Exec.Run(script: concat("echo ", "joined"))
+  r.success
+}
+
+test fn _brand_probe_holds() -> Bool {
+  true
+}
