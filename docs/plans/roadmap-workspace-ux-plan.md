@@ -112,12 +112,43 @@ an overshoot easing, and everything AFTER the click. The story:
 token — total, censused like coverage_gaps; a state pair without a row is a wall
 violation); steady states are still, transitions animate (still-until-touched preserved —
 the keyframes wall is NOT breached); every rendered stage is a projection of belt/session
-fact (every response true). **Build order:** (a) `settle_spring` + transform-response
-vocabulary in the register; (b) the state-machine rows + CSS realization on today's states
-(rest/pressed/requested/ok/refused — landable now); (c) the P2a-mini sessions read + client
-poll for stages 5–6 + the re-dispatch fix. Acceptance: dispatch a real node on srv1 and
-watch the full arc; a planted refusal shows the refusal choreography; the state-machine
-totality witness reds on any un-tokenized edge.
+fact (every response true).
+
+### END-TO-END CONTRACT (operator, 2026-07-24: "very clear — no design that is never
+consumed/finished." Scope = the dispatch button + the workflow representation of ONE line
+item. Everything else in Pillar 3 is PARKED until this ships.)
+
+**The consumption rule, binding:** no register vocabulary lands ahead of its consumer —
+`settle_spring`, the transform responses, and the lifecycle rows land IN THE SAME PR as the
+button CSS that uses them and the witness that walls them. A register row with zero
+consumers at merge is a defect, not a foundation.
+
+**FINISHED means these six checkpoints, each observable by a person clicking, in order:**
+
+1. Hovering the button visibly lifts/brightens it; pressing visibly depresses it —
+   before release. (register vocabulary + CSS, no belt work)
+2. Clicking a real node on the live srv1 dashboard: the button settles-with-overshoot on
+   accept and becomes `session · spawned`. (same PR as 1)
+3. The row then shows the live stage — `working`, `quiet Nm`, `done`/`red` — updating
+   without a page reload, each stage change animated, each steady state still.
+   (P2a-mini: one GET route projecting the belt's existing observe read-back + client poll)
+4. A planted refusal shows blocked-travel + the typed reason inline. (same PR as 3)
+5. After done/stop, clicking dispatches AGAIN, full arc — the re-dispatch one-shot bug is
+   dead. (rides 3)
+6. The state-machine totality witness reds when an edge without a timing row is planted,
+   and the live-page walkthrough (1–5) is recorded as the PR's acceptance receipt.
+
+**The single-line-item workflow representation (checkpoint 3's face):** the row IS the
+workflow: `status-chip · lead · [session chip: stage · elapsed] · dispatch/stop`. One
+line, at-rest still, stages as discrete detent positions — a car's gear indicator, not a
+progress bar. The expanded brief (details) gains the session's stage history as plain
+lines (`spawned 14:02 · working 14:02 · done 14:31`) — projections of belt facts only.
+
+**Explicitly parked until the exemplar ships:** P3c (other surfaces), sound, section
+collapse (P1b), any second control's rows. Two PRs total: PR-A = checkpoints 1–2
+(register vocabulary + button theater, no belt dependency); PR-B = checkpoints 3–6
+(sessions read + poll + re-dispatch fix). If PR-B stalls, PR-A alone must still be a
+strict visible improvement — that is the anti-shelf-ware test.
 
 ## Sequencing
 
