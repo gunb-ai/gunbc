@@ -9348,8 +9348,9 @@ mod witness_execution_leg_derivation_tests {
     /// entry argument would still produce plausible receipt lines, and reds here instead.
     #[test]
     fn leg_labels_derive_per_class_from_the_dag_authority() {
+        // No `set_current_dir` here: it mutates process-global cwd and would race sibling
+        // tests in the same binary. Absolute roots make the chdir unnecessary.
         let ws = process_workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dag").to_string_lossy().into_owned(),
