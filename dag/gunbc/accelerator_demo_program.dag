@@ -1,5 +1,12 @@
 module gunbc.accelerator_demo_program
 
+import extdeps.languages.simd.kernel {
+  elemwise_mul_wire_op_code,
+  elemwise_add_wire_op_code,
+  elemwise_relu_wire_op_code,
+  relu_mul_add_wire_op_codes,
+}
+
 
 type ElementwiseArrayOp
   = ElemwiseMul
@@ -54,21 +61,11 @@ fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
   }
 }
 
-data elemwise_mul_op_code: Int = 1
-data elemwise_add_op_code: Int = 2
-data elemwise_relu_op_code: Int = 3
-
-data relu_mul_add_wire_op_codes: List<Int> = [
-  elemwise_mul_op_code,
-  elemwise_add_op_code,
-  elemwise_relu_op_code,
-]
-
 fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
   match op {
-    ElemwiseMul => elemwise_mul_op_code
-    ElemwiseAdd => elemwise_add_op_code
-    ElemwiseRelu => elemwise_relu_op_code
+    ElemwiseMul => elemwise_mul_wire_op_code
+    ElemwiseAdd => elemwise_add_wire_op_code
+    ElemwiseRelu => elemwise_relu_wire_op_code
   }
 }
 

@@ -102,7 +102,7 @@ fn execute_accelerator_program(
 }
 
 fn witness_single_source_program_fixture_authority() -> Bool {
-  witness_pure_program_structurally_recognized()
+  gunbc.accelerator_demo_recognizer.witness_pure_program_structurally_recognized()
     && witness_integer_differential_bit_exact_on_fixture()
 }
 
@@ -173,7 +173,7 @@ fn witness_float_oracle_empty_on_noncanonical_ops_shape() -> Bool {
 fn witness_program_and_simd_wire_op_codes_single_authority() -> Bool {
   int_list_eq(
     left: gunbc.accelerator_demo_program.program_op_codes(program: relu_mul_add_pure_program),
-    right: relu_mul_add_wire_op_codes
+    right: extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes
   )
 }
 

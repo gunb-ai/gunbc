@@ -1,5 +1,7 @@
 module test.claim.long.reference_closure_equivalence
 
+import v2.lens.module_graph { no_paths }
+
 
 data expected_conformance_closure: FreeMonoid<String> = [
   "dag/test/claim/module_graph/conformance_imports_only.dag",

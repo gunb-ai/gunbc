@@ -21,18 +21,9 @@ import extdeps.astronomy.stellar_classification { stellar_color_perception_quote
 import gunbc.site.constellation { constellation_svg, layer_stars, layer_import_edges }
 import gunbc.site.moodboard { figure_rules }
 import gunbc.design.principles { register_thesis }
+import gunbc.site.markup_dsl { txt, el, el_class }
 
 data accent_study_note: String = "Preview-only study page (ninth pass): the accent decision rendered, not debated. Each candidate panel scopes the SAME four figure role vars to one stellar class's materials — the constellation inside is identical fact rows, so the panels differ only in the starlight temperature. The day-atlas exhibit shows the day identity is accent-independent (always ink on paper). The verdigris exhibit shows green entering as patina material on the edges — the only place physics lets green in. Not a committed artifact; the signed class's rows land in tokens.night_theme and this study dissolves."
-
-fn txt(s: String) -> MarkupNode { TextNode { text: s } }
-
-fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [], children: children }
-}
-
-fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
-}
 
 fn figure_vars_style(figure: Material) -> String {
   join([
