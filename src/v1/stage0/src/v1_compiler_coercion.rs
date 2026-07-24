@@ -344,6 +344,32 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
+pub fn unique_inhabitants_for_template_tests(
+    inhs: Rc<Vec<Rc<InhabitantDecl>>>,
+) -> Rc<Vec<Rc<InhabitantDecl>>> {
+    inhs.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
+            if {
+                let mut __found = false;
+                for prev in acc.clone().iter().cloned() {
+                    if ((prev.template.clone() == inh.template.clone())
+                        && (prev.arity.clone() == inh.arity.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                acc.clone()
+            } else {
+                v1_rt::concat(acc.clone(), Rc::new(vec![inh.clone()]))
+            }
+        },
+    )
+}
+
 pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let targets = Rc::new(vec![
@@ -356,7 +382,8 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
             for t in targets.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let inhs = target_inhabitants(t.clone());
+                        let inhs =
+                            unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
                         let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
                         let str_target = coerce_primitive_type(t.clone(), "String".to_string());
                         Rc::new({

@@ -970,10 +970,6 @@ mod compiler_tests {
             "BTreeSet<i64>"
         );
         assert_eq!(
-            apply_inhabitant_template1("BTreeSet<{0}>".into(), "i64".into()),
-            "BTreeSet<i64>"
-        );
-        assert_eq!(
             apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()),
             "HashMap<String, i64>"
         );
@@ -986,20 +982,12 @@ mod compiler_tests {
             "set[int]"
         );
         assert_eq!(
-            apply_inhabitant_template1("set[{0}]".into(), "int".into()),
-            "set[int]"
-        );
-        assert_eq!(
             apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()),
             "dict[str, int]"
         );
         assert_eq!(
             apply_inhabitant_template1("[]{0}".into(), "int64".into()),
             "[]int64"
-        );
-        assert_eq!(
-            apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()),
-            "map[int64]struct{}"
         );
         assert_eq!(
             apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()),
