@@ -85,6 +85,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-24",
+    work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_diagnostics_carrier_applied", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "emit_representation_mismatch brick's 4 named sub-walls (DIAGNOSTICS carrier, trait-derive-completeness, WITNESS<T> propagation, RC_WRAP/OWNERSHIP #6776 coverage gap) each land or the doc migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },

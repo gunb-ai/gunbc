@@ -14,8 +14,16 @@ fn require_dns_label(raw: String) -> DnsLabel {
   }
 }
 
-fn witness_hostname_script_is_modeled_constant() -> Bool {
-  host_identity_short_hostname_script == "hostname -s 2>/dev/null || hostname"
+fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
+  hostname_short_read_operation_argv_matches_authority()
+    && join(hostname_short_read_operation_argv(), " ") == "hostname -s"
+}
+
+fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
+  match resolve_host_effect_cell(target: srv1_os_target(), effect: HostIdentityShortHostnameRead) {
+    HostnameReadOnHost { node: _ } => true
+    _ => false
+  }
 }
 
 fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
@@ -316,7 +324,8 @@ fn witness_invalid_desired_hostname_unwritable() -> Bool {
 }
 
 test fn host_identity_observation_holds() -> Bool {
-  witness_hostname_script_is_modeled_constant()
+  witness_hostname_read_argv_is_typed_not_concat()
+    && witness_hostname_read_resolves_typed_cell_not_shell_script()
     && witness_fixture_observation_types_srv1_observed_hostname()
     && witness_fixture_observation_types_srv2_observed_hostname()
     && witness_empty_stdout_is_absent()
