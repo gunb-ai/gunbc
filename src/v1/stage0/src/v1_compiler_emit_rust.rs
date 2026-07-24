@@ -4851,30 +4851,58 @@ pub fn collect_items_field_import_surface_names(
                     .cloned()
                     {
                         __result.extend(
-                            (*match v1_rt::map_get(&type_summaries, type_name.clone()) {
-                                Some(summary) => Rc::new({
-                                    let mut __result = Vec::new();
-                                    for field_type in
-                                        summary.field_import_surface_names.clone().iter().cloned()
-                                    {
-                                        if ((field_type.clone() != "".to_string())
-                                            && match v1_rt::map_get(
-                                                &type_summaries,
-                                                field_type.clone(),
-                                            ) {
-                                                Some(ft) => match (*ft.repr.clone()).clone() {
-                                                    TypeRepr::StructRepr => true,
-                                                    _ => false,
-                                                },
-                                                None => false,
-                                            })
+                            (*{
+                                let summary_lookup =
+                                    match v1_rt::map_get(&type_summaries, type_name.clone()) {
+                                        Some(summary) => Some(summary.clone()),
+                                        None => match v1_rt::map_get(
+                                            &variant_to_enum,
+                                            type_name.clone(),
+                                        ) {
+                                            Some(enum_name) => {
+                                                if (enum_name.clone() == "".to_string()) {
+                                                    None
+                                                } else {
+                                                    v1_rt::map_get(
+                                                        &type_summaries,
+                                                        variant_summary_key(
+                                                            enum_name.clone(),
+                                                            type_name.clone(),
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                            None => None,
+                                        },
+                                    };
+                                match summary_lookup.clone() {
+                                    Some(summary) => Rc::new({
+                                        let mut __result = Vec::new();
+                                        for field_type in summary
+                                            .field_import_surface_names
+                                            .clone()
+                                            .iter()
+                                            .cloned()
                                         {
-                                            __result.push(field_type);
+                                            if ((field_type.clone() != "".to_string())
+                                                && match v1_rt::map_get(
+                                                    &type_summaries,
+                                                    field_type.clone(),
+                                                ) {
+                                                    Some(ft) => match (*ft.repr.clone()).clone() {
+                                                        TypeRepr::StructRepr => true,
+                                                        _ => false,
+                                                    },
+                                                    None => false,
+                                                })
+                                            {
+                                                __result.push(field_type);
+                                            }
                                         }
-                                    }
-                                    __result
-                                }),
-                                None => Rc::new(vec![]),
+                                        __result
+                                    }),
+                                    None => Rc::new(vec![]),
+                                }
                             })
                             .iter()
                             .cloned(),
@@ -5506,6 +5534,59 @@ pub fn reference_derived_use_lines_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn expand_variant_payload_struct_imports(
+    names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in names.clone().iter().cloned() {
+            __result.extend(
+                (*match v1_rt::map_get(&variant_to_enum, n.clone()) {
+                    Some(enum_name) => {
+                        if (enum_name.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            match v1_rt::map_get(
+                                &type_summaries,
+                                variant_summary_key(enum_name.clone(), n.clone()),
+                            ) {
+                                Some(summary) => Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ft in
+                                        Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                                            .iter()
+                                            .cloned()
+                                    {
+                                        if ((ft.clone() != "".to_string())
+                                            && match v1_rt::map_get(&type_summaries, ft.clone()) {
+                                                Some(fts) => match (*fts.repr.clone()).clone() {
+                                                    TypeRepr::StructRepr => true,
+                                                    _ => false,
+                                                },
+                                                None => false,
+                                            })
+                                        {
+                                            __result.push(ft);
+                                        }
+                                    }
+                                    __result
+                                }),
+                                None => Rc::new(vec![]),
+                            }
+                        }
+                    }
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -5558,12 +5639,20 @@ pub fn reference_derived_use_lines(
             emit_info.variant_to_enum.clone(),
             source_indices.clone(),
         );
+        let variant_payload_structs = expand_variant_payload_struct_imports(
+            type_surface_names.clone(),
+            emit_info.type_summaries.clone(),
+            emit_info.variant_to_enum.clone(),
+        );
         let candidates = unique_strings(v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                type_surface_names.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                    type_surface_names.clone(),
+                ),
+                field_surface_names.clone(),
             ),
-            field_surface_names.clone(),
+            variant_payload_structs.clone(),
         ));
         let local_decl_names = Rc::new({
             let mut __result = Vec::new();
