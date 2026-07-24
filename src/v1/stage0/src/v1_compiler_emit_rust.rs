@@ -739,6 +739,42 @@ pub fn rust_scalar_checkpoint_render_base(
     }
 }
 
+pub fn rust_strip_illegal_primitive_type_args(rendered: String) -> String {
+    if (v1_rt::substring(&rendered, 0, 4) == "i64<".to_string()) {
+        "i64".to_string()
+    } else {
+        if (v1_rt::substring(&rendered, 0, 4) == "f64<".to_string()) {
+            "f64".to_string()
+        } else {
+            if (v1_rt::substring(&rendered, 0, 5) == "bool<".to_string()) {
+                "bool".to_string()
+            } else {
+                if (v1_rt::substring(&rendered, 0, 3) == "u8<".to_string()) {
+                    "u8".to_string()
+                } else {
+                    if (v1_rt::substring(&rendered, 0, 4) == "u16<".to_string()) {
+                        "u16".to_string()
+                    } else {
+                        if (v1_rt::substring(&rendered, 0, 4) == "u32<".to_string()) {
+                            "u32".to_string()
+                        } else {
+                            if (v1_rt::substring(&rendered, 0, 4) == "u64<".to_string()) {
+                                "u64".to_string()
+                            } else {
+                                if (v1_rt::substring(&rendered, 0, 4) == "i32<".to_string()) {
+                                    "i32".to_string()
+                                } else {
+                                    rendered.clone()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> Option<String> {
     if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
         Some("Vec".to_string())
@@ -1129,7 +1165,7 @@ pub fn render_rust_applied_type_arg(
                         "_".to_string()
                     }
                 }
-                _ => render_rust_decl_type(
+                _ => rust_strip_illegal_primitive_type_args(render_rust_decl_type(
                     n.clone(),
                     generic_param_names.clone(),
                     shared_types.clone(),
@@ -1137,7 +1173,7 @@ pub fn render_rust_applied_type_arg(
                     source_indices.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
-                ),
+                )),
             }
         }
     }
@@ -1451,14 +1487,16 @@ pub fn render_rust_decl_type(
                                                     ) {
                                                         "()".to_string()
                                                     } else {
-                                                        render_rust_decl_type(
-                                                            arg.clone(),
-                                                            generic_param_names.clone(),
-                                                            shared_types.clone(),
-                                                            corpus_repr.clone(),
-                                                            source_indices.clone(),
-                                                            variant_to_enum.clone(),
-                                                            env.clone(),
+                                                        rust_strip_illegal_primitive_type_args(
+                                                            render_rust_decl_type(
+                                                                arg.clone(),
+                                                                generic_param_names.clone(),
+                                                                shared_types.clone(),
+                                                                corpus_repr.clone(),
+                                                                source_indices.clone(),
+                                                                variant_to_enum.clone(),
+                                                                env.clone(),
+                                                            ),
                                                         )
                                                     }
                                                 });
@@ -1937,8 +1975,13 @@ pub fn render_rust_alias_rhs_type(
                 {
                     {
                         let leaf = qualified_last_segment(name.clone());
-                        let numeric_host_alias =
-                            rust_seed_host_numeric_alias(leaf.clone(), corpus_repr.clone());
+                        let numeric_host_alias = match rust_scalar_checkpoint_render_base(
+                            leaf.clone(),
+                            corpus_repr.clone(),
+                        ) {
+                            Some(scalar) => Some(scalar.clone()),
+                            None => rust_seed_host_numeric_alias(leaf.clone(), corpus_repr.clone()),
+                        };
                         if (numeric_host_alias.clone() != None) {
                             return match numeric_host_alias.clone() {
                                 Some(host) => host.clone(),
@@ -2117,24 +2160,117 @@ pub fn type_var_in_fn_generic_scope(id: String, generic_param_names: Rc<Vec<Stri
     }
 }
 
+pub fn value_ref_qualified_leaf(name: String) -> String {
+    if v1_rt::string_contains(&name, ".".to_string()) {
+        qualified_last_segment(name.clone())
+    } else {
+        name.clone()
+    }
+}
+
+pub fn rust_is_uppercase_letter(c: String) -> bool {
+    ((((((((((((((((((((((((((c.clone() == "A".to_string())
+        || (c.clone() == "B".to_string()))
+        || (c.clone() == "C".to_string()))
+        || (c.clone() == "D".to_string()))
+        || (c.clone() == "E".to_string()))
+        || (c.clone() == "F".to_string()))
+        || (c.clone() == "G".to_string()))
+        || (c.clone() == "H".to_string()))
+        || (c.clone() == "I".to_string()))
+        || (c.clone() == "J".to_string()))
+        || (c.clone() == "K".to_string()))
+        || (c.clone() == "L".to_string()))
+        || (c.clone() == "M".to_string()))
+        || (c.clone() == "N".to_string()))
+        || (c.clone() == "O".to_string()))
+        || (c.clone() == "P".to_string()))
+        || (c.clone() == "Q".to_string()))
+        || (c.clone() == "R".to_string()))
+        || (c.clone() == "S".to_string()))
+        || (c.clone() == "T".to_string()))
+        || (c.clone() == "U".to_string()))
+        || (c.clone() == "V".to_string()))
+        || (c.clone() == "W".to_string()))
+        || (c.clone() == "X".to_string()))
+        || (c.clone() == "Y".to_string()))
+        || (c.clone() == "Z".to_string()))
+}
+
+pub fn rust_read_rendered_type_ident(type_str: String, start: i64) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (start.clone() >= v1_rt::string_length(&type_str)) {
+            "".to_string()
+        } else {
+            {
+                let c = v1_rt::char_at(&type_str, start.clone());
+                if (((((((c.clone() == ">".to_string()) || (c.clone() == ",".to_string()))
+                    || (c.clone() == "<".to_string()))
+                    || (c.clone() == " ".to_string()))
+                    || (c.clone() == "&".to_string()))
+                    || (c.clone() == "(".to_string()))
+                    || (c.clone() == ")".to_string()))
+                {
+                    "".to_string()
+                } else {
+                    v1_rt::concat(
+                        c.clone(),
+                        rust_read_rendered_type_ident(type_str.clone(), (start.clone() + 1)),
+                    )
+                }
+            }
+        }
+    })
+}
+
 pub fn rust_fold_rendered_type_has_spurious_generic_atom(
-    type_str: String,
     atom: String,
     generic_param_names: Rc<Vec<String>>,
 ) -> bool {
-    if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
+    if (atom.clone() == "".to_string()) {
         false
     } else {
         if type_var_in_fn_generic_scope(atom.clone(), generic_param_names.clone()) {
             false
         } else {
-            v1_rt::string_contains(
-                &type_str,
-                v1_rt::concat(
-                    v1_rt::concat("<".to_string(), atom.clone()),
-                    ">".to_string(),
-                ),
-            )
+            true
+        }
+    }
+}
+
+pub fn rust_fold_rendered_type_has_spurious_from_pos(
+    mut type_str: String,
+    mut search_from: i64,
+    mut generic_param_names: Rc<Vec<String>>,
+) -> bool {
+    loop {
+        if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
+            break false;
+        } else {
+            match string_index_of_from(type_str.clone(), "<".to_string(), search_from.clone()) {
+                Some(lt_pos) => {
+                    let atom =
+                        rust_read_rendered_type_ident(type_str.clone(), (lt_pos.clone() + 1));
+                    if ((((atom.clone().len() as i64) == 1)
+                        && rust_is_uppercase_letter(atom.clone()))
+                        && rust_fold_rendered_type_has_spurious_generic_atom(
+                            atom.clone(),
+                            generic_param_names.clone(),
+                        ))
+                    {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = (lt_pos.clone() + 1);
+                            search_from = __tco_0;
+                            continue;
+                        }
+                    }
+                }
+                None => {
+                    break false;
+                }
+            }
         }
     }
 }
@@ -2143,39 +2279,7 @@ pub fn rust_fold_rendered_type_has_any_spurious_generic(
     type_str: String,
     generic_param_names: Rc<Vec<String>>,
 ) -> bool {
-    (((((((rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "T".to_string(),
-        generic_param_names.clone(),
-    ) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "C".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "A".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "B".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "E".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "K".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "V".to_string(),
-        generic_param_names.clone(),
-    )) || rust_fold_rendered_type_has_spurious_generic_atom(
-        type_str.clone(),
-        "R".to_string(),
-        generic_param_names.clone(),
-    ))
+    rust_fold_rendered_type_has_spurious_from_pos(type_str.clone(), 0, generic_param_names.clone())
 }
 
 pub fn type_leaf_is_unbound_in_closure_scope(
@@ -15959,6 +16063,26 @@ pub fn clone_iterator_suffix() -> String {
     sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
 }
 
+pub fn freemonoid_empty_from_variant_parent(leaf_name: String, enum_name: String) -> bool {
+    ((leaf_name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
+}
+
+pub fn freemonoid_empty_from_emit_info(leaf_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+    ((leaf_name.clone() == "Empty".to_string())
+        && match v1_rt::map_get(&emit_info.variant_to_enum.clone(), "Empty".to_string()) {
+            Some(p) => (p.clone() == "FreeMonoid".to_string()),
+            None => false,
+        })
+}
+
+pub fn emit_freemonoid_empty_rc_value() -> String {
+    "Rc::new(vec![])".to_string()
+}
+
+pub fn emit_freemonoid_empty_variant_body() -> String {
+    "vec![]".to_string()
+}
+
 pub fn effective_variant_parent(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -15967,11 +16091,7 @@ pub fn effective_variant_parent(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
-        let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-            qualified_last_segment(name.clone())
-        } else {
-            name.clone()
-        };
+        let leaf_name = value_ref_qualified_leaf(name.clone());
         let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
             Some(p) => {
                 if (p.clone() != "".to_string()) {
@@ -16011,7 +16131,7 @@ pub fn variant_ref_self_wraps(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
+    (freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone())
         || v1_rt::set_contains(&shared_types, enum_name.clone()))
 }
 
@@ -16031,7 +16151,7 @@ pub fn emit_value_ref_ident(
 ) -> String {
     if v1_rt::string_contains(&name, ".".to_string()) {
         {
-            let leaf = qualified_last_segment(name.clone());
+            let leaf = value_ref_qualified_leaf(name.clone());
             match v1_rt::map_get(&registry, leaf.clone()) {
                 Some(info) => v1_rt::concat(
                     v1_rt::concat(
@@ -16044,16 +16164,8 @@ pub fn emit_value_ref_ident(
                     emit_import_name(leaf.clone(), registry.clone()),
                 ),
                 None => {
-                    if ((leaf.clone() == "Empty".to_string())
-                        && match v1_rt::map_get(
-                            &emit_info.variant_to_enum.clone(),
-                            "Empty".to_string(),
-                        ) {
-                            Some(p) => (p.clone() == "FreeMonoid".to_string()),
-                            None => false,
-                        })
-                    {
-                        "Rc::new(vec![])".to_string()
+                    if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
+                        emit_freemonoid_empty_rc_value()
                     } else {
                         emit_ident(leaf.clone(), RenderTarget::Rust)
                     }
@@ -16075,11 +16187,7 @@ pub fn emit_var_ref(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-            qualified_last_segment(name.clone())
-        } else {
-            name.clone()
-        };
+        let leaf_name = value_ref_qualified_leaf(name.clone());
         let variant_parent = effective_variant_parent(
             name.clone(),
             binding_kind.clone(),
@@ -16104,10 +16212,11 @@ pub fn emit_var_ref(
                     let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                     let ref_str = match variant_parent.clone() {
                         Some(enum_name) => {
-                            let body = if ((leaf_name.clone() == "Empty".to_string())
-                                && (enum_name.clone() == "FreeMonoid".to_string()))
-                            {
-                                "vec![]".to_string()
+                            let body = if freemonoid_empty_from_variant_parent(
+                                leaf_name.clone(),
+                                enum_name.clone(),
+                            ) {
+                                emit_freemonoid_empty_variant_body()
                             } else {
                                 if (is_optional_variant_name(leaf_name.clone())
                                     && is_optional_like_parent_name(enum_name.clone()))
@@ -16218,11 +16327,7 @@ pub fn emit_typed_expr_base(
                 ..
             } => {
                 let n = expr_var_name_at(texpr.clone(), si.clone());
-                let leaf_name = if v1_rt::string_contains(&n, ".".to_string()) {
-                    qualified_last_segment(n.clone())
-                } else {
-                    n.clone()
-                };
+                let leaf_name = value_ref_qualified_leaf(n.clone());
                 let variant_parent = effective_variant_parent(
                     n.clone(),
                     binding_kind.clone(),
@@ -16243,10 +16348,11 @@ pub fn emit_typed_expr_base(
                     } else {
                         match variant_parent.clone() {
                             Some(enum_name) => {
-                                if ((leaf_name.clone() == "Empty".to_string())
-                                    && (enum_name.clone() == "FreeMonoid".to_string()))
-                                {
-                                    "Rc::new(vec![])".to_string()
+                                if freemonoid_empty_from_variant_parent(
+                                    leaf_name.clone(),
+                                    enum_name.clone(),
+                                ) {
+                                    emit_freemonoid_empty_rc_value()
                                 } else {
                                     {
                                         let qualified = if (is_optional_variant_name(leaf_name.clone())
