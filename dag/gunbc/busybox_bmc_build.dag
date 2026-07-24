@@ -4,7 +4,16 @@ import std.types { NonEmptyStr, String, List }
 import std.process { ProcessExit }
 import std.resources { Network }
 import extdeps.uri { Uri, uri_wire }
-import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.exec.command {
+  ArgvCommand,
+  LocalExec,
+  curl_download_command,
+  mkdir_p_command,
+  tar_extract_command,
+  make_command,
+  sed_in_place_command,
+  cp_command,
+}
 import extdeps.tools.busybox { busybox_source_1_36_1_url }
 import gunbc.command_runner { run_shell_commands }
 
@@ -43,14 +52,14 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   let cflags = bb_make_var(key: "EXTRA_CFLAGS", value: plan.extra_cflags as String)
   let config = bb_config_path(plan: plan)
   [
-    ArgvCommand { argv: ["curl", "-sL", "-o", plan.source_tarball as String, uri_wire(uri: plan.source_url)] },
-    ArgvCommand { argv: ["mkdir", "-p", bd] },
-    ArgvCommand { argv: ["tar", "xf", plan.source_tarball as String, "-C", bd, "--strip-components=1"] },
-    ArgvCommand { argv: ["make", "-C", bd, arch, cross, "defconfig"] },
-    ArgvCommand { argv: ["sed", "-i", "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", config] },
-    ArgvCommand { argv: ["sed", "-i", "s/CONFIG_TC=y/# CONFIG_TC is not set/", config] },
-    ArgvCommand { argv: ["make", "-C", bd, arch, cross, cflags] },
-    ArgvCommand { argv: ["cp", join([bd, "/busybox"], ""), plan.output_path as String] },
+    curl_download_command(url: uri_wire(uri: plan.source_url), destination: plan.source_tarball as String),
+    mkdir_p_command(directory: bd),
+    tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1),
+    make_command(directory: bd, arguments: [arch, cross, "defconfig"]),
+    sed_in_place_command(expression: "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", path: config),
+    sed_in_place_command(expression: "s/CONFIG_TC=y/# CONFIG_TC is not set/", path: config),
+    make_command(directory: bd, arguments: [arch, cross, cflags]),
+    cp_command(source: join([bd, "/busybox"], ""), destination: plan.output_path as String),
   ]
 }
 

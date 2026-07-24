@@ -25,6 +25,7 @@ import gunbc.ci_gate {
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.repo_identity { gunbc_default_branch_name }
 
 type MergeStrategy
   = SquashMerge
@@ -53,7 +54,7 @@ type AdmissionPolicy
   | KeyedReceipt
 
 data gunbc_repo_standard: RepoStandard = RepoStandard {
-  default_branch: "main",
+  default_branch: gunbc_default_branch_name,
   allowed_strategies: [SquashMerge],
   require_up_to_date: false,
   merge_queue_required: false,
