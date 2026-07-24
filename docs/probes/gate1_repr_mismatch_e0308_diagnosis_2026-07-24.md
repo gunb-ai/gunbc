@@ -270,4 +270,18 @@ bar-brick with ~20%-of-E0308 worth of its own domain still open. Sub-wall #4 sho
 staffed as "extend #6776's caller to cover Instantiation-kind boundaries" — same owner/
 context as the original landing, not a fresh design.
 
-No emitter code changed; this is a read trace only, per the bound.
+No emitter code changed as part of this diagnosis; this section is a read trace only, per
+the bound stated at the top of this doc.
+
+#### Addendum (same PR, sub-wall #1) — Diagnostics carrier grounding landed
+
+The DIAGNOSTICS bucket this doc's Method section measures (`Diagnostics`'s `.dag`-level
+`None`/`Some` variants colliding with Rust's `Option` prelude via the seed's glob-import
+codegen) is grounded in this same PR: `src/v1/05_emit_rust.dag` now renders `Diagnostics`
+as native `Option<Rc<NonEmptyDiagnostics>>` (all 5 `render_rust_*` type entry points, the
+`emit_type_def_from_connective` alias-declaration arm, the `shared_types` exclusion in
+`maybe_mark_shared_type`, and every `Present`/`Absent`/`Some`/`None` variant-mapping site,
+via generalizing the existing `is_optional_variant_name`/`is_optional_parent` predicates
+rather than forking Diagnostics-specific ones). This is separate work from the read-only
+trace above (which concerns `wrap_decision_predicate`/OWNERSHIP, not DIAGNOSTICS) landed
+in the same PR for sequencing convenience; it does not change any conclusion in this doc.
