@@ -5048,6 +5048,93 @@ pub fn collect_match_pattern_parent_enums(
     }
 }
 
+pub fn variant_record_lit_summary_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => {
+            let variant_name = match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                Some(v) => v.clone(),
+                None => authored_name_at(source_indices.clone(), n.clone()),
+            };
+            let enum_name = match pe.clone() {
+                Some(e) => e.clone(),
+                None => match v1_rt::map_get(&variant_to_enum, variant_name.clone()) {
+                    Some(p) => p.clone(),
+                    None => "".to_string(),
+                },
+            };
+            if ((enum_name.clone() != "".to_string()) && (variant_name.clone() != "".to_string())) {
+                variant_summary_key(enum_name.clone(), variant_name.clone())
+            } else {
+                "".to_string()
+            }
+        }
+        _ => "".to_string(),
+    }
+}
+
+pub fn collect_record_lit_field_struct_surfaces(
+    parent: Rc<Node>,
+    field_init: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
+    {
+        let field_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        if (field_name.clone() == "".to_string()) {
+            Rc::new(vec![])
+        } else {
+            {
+                let field_value = field_init_node_value(field_init.clone());
+                match (*field_value.expr_data.clone()).clone() {
+                    ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                        let summary_key = variant_record_lit_summary_key(
+                            parent.clone(),
+                            source_indices.clone(),
+                            variant_to_enum.clone(),
+                        );
+                        if (summary_key.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            match v1_rt::map_get(&type_summaries, summary_key.clone()) {
+                                Some(summary) => match v1_rt::map_get(
+                                    &summary.field_type_map.clone(),
+                                    field_name.clone(),
+                                ) {
+                                    Some(ft) => {
+                                        if ((ft.clone() != "".to_string())
+                                            && match v1_rt::map_get(&type_summaries, ft.clone()) {
+                                                Some(fts) => match (*fts.repr.clone()).clone() {
+                                                    TypeRepr::StructRepr => true,
+                                                    _ => false,
+                                                },
+                                                None => false,
+                                            })
+                                        {
+                                            Rc::new(vec![ft.clone()])
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
+                                    }
+                                    None => Rc::new(vec![]),
+                                },
+                                None => Rc::new(vec![]),
+                            }
+                        }
+                    }
+                    _ => Rc::new(vec![]),
+                }
+            }
+        }
+    }
+}
+
 pub fn collect_value_emit_type_surface_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5089,30 +5176,31 @@ pub fn collect_value_emit_type_surface_names(
                 ))
             }
         };
-        let child_names = v1_rt::concat(
-            v1_rt::concat(
+        let child_names = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_record_lit_field_struct_surfaces(
+                                n.clone(),
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                                variant_to_enum.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result.extend(
                             (*collect_value_emit_type_surface_names(
-                                c.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.params.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_value_emit_type_surface_names(
-                                c.clone(),
+                                field_init_node_value(c.clone()),
                                 source_indices.clone(),
                                 variant_to_enum.clone(),
                                 type_summaries.clone(),
@@ -5124,41 +5212,77 @@ pub fn collect_value_emit_type_surface_names(
                     __result
                 }),
             ),
-            v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.uses.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_value_emit_type_surface_names(
-                                c.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.properties.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_value_emit_type_surface_names(
-                                c.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
+            _ => v1_rt::concat(
+                v1_rt::concat(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_emit_type_surface_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    type_summaries.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.params.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_emit_type_surface_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    type_summaries.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                ),
+                v1_rt::concat(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.uses.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_emit_type_surface_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    type_summaries.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.properties.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_emit_type_surface_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    type_summaries.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                ),
             ),
-        );
+        };
         let opt_names = v1_rt::concat(
             match n.body.clone() {
                 Some(b) => collect_value_emit_type_surface_names(

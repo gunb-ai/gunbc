@@ -2174,6 +2174,58 @@ fn collect_match_pattern_parent_enums(expr: Node, source_indices: Map<String, Ne
   }
 }
 
+fn variant_record_lit_summary_key(n: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>) -> String {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: pe } =>
+      let variant_name = match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: v } => v
+        Absent => authored_name_at(source_indices: source_indices, node: n)
+      }
+      let enum_name = match pe {
+        Present { value: e } => e
+        Absent =>
+          match map_get(variant_to_enum, variant_name) {
+            Present { value: p } => p
+            Absent => ""
+          }
+      }
+      if enum_name != "" && variant_name != "" {
+        variant_summary_key(enum_name: enum_name, variant_name: variant_name)
+      } else { "" }
+    _ => ""
+  }
+}
+
+fn collect_record_lit_field_struct_surfaces(parent: Node, field_init: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
+  let field_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
+  if field_name == "" { [] } else {
+    let field_value = field_init_node_value(n: field_init)
+    match field_value.expr_data {
+      ExprRecordLit { parent_enum: _ } =>
+        let summary_key = variant_record_lit_summary_key(n: parent, source_indices: source_indices, variant_to_enum: variant_to_enum)
+        if summary_key == "" { [] } else {
+          match map_get(type_summaries, summary_key) {
+            Present { value: summary } =>
+              match map_get(summary.field_type_map, field_name) {
+                Present { value: ft } =>
+                  if ft != "" && match map_get(type_summaries, ft) {
+                    Present { value: fts } =>
+                      match fts.repr {
+                        StructRepr => true
+                        _ => false
+                      }
+                    Absent => false
+                  } { [ft] } else { [] }
+                Absent => []
+              }
+            Absent => []
+          }
+        }
+      _ => []
+    }
+  }
+}
+
 fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
   let self_names = match n.expr_data {
     ExprRecordLit { parent_enum: _ } => record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries)
@@ -2188,16 +2240,24 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
       }
       unique_strings(items: concat(from_inferred_list, from_variant))
   }
-  let child_names = concat(
-    concat(
-      n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
-      n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
-    ),
-    concat(
-      n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
-      n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
-    )
-  )
+  let child_names = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      concat(
+        n.children |> flat_map(c => collect_record_lit_field_struct_surfaces(parent: n, field_init: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
+        n.children |> flat_map(c => collect_value_emit_type_surface_names(n: field_init_node_value(n: c), source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
+      )
+    _ =>
+      concat(
+        concat(
+          n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
+          n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
+        ),
+        concat(
+          n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)),
+          n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries))
+        )
+      )
+  }
   let opt_names = concat(
     match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)  Absent => [] },
     concat(
