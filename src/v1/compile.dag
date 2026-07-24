@@ -1,23 +1,22 @@
 module v1.compiler.compile
 
+import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
-  CompileResult, TextFile, SourceSpan, authored_name_at,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
-  Connective, NoConnective, Arrow, Cardinality,
-  resource_use_name_at, resource_use_resource,
+  CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
+  is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
+  diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
+  NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
-  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
-  module_imports, module_items, import_is_all, import_specific_names_at,
-  FieldAccessStyle, FieldValueShape, FieldSummary,
-  InferredNode, Resolved, CompilerError, TypeVariable,
-  VarBindingKind, CallSemantics,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern,
-  arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
-  LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
-  NewlineIndex, build_newline_index,
-  field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
-  InternTable, empty_intern_table, pre_intern_tokens
+  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
+  field_node_from_key, field_node_span, module_imports, module_items, import_is_all,
+  import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
+  Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
+  PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
+  ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
+  arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
+  UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
+  field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
+  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens
 }
 
 import v1.compiler.tokenize { tokenize }

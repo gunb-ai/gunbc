@@ -23,6 +23,8 @@ It is the CLASS behind a concrete break: any tool writing a .dag under target/ c
 
 So the manifest now lands in a per-run mktemp directory that is scanned and then removed, and no gate scans bare target/ any more. The emitted FILENAME is unchanged deliberately: the host-side stub-supersession table keys on the manifest BASENAME (cli_run.rs MANIFEST_STUB_OVERLAYS), so relocating the file cannot silently break stub supersession. Same shape as compiler_closure_ingest_transport, which already did this correctly."
 
+data ingest_pool_separation_note: String = "POOLING DECISION (CI floor endgame D1, 2026-07-23 — the in-row statement the attribution doc section 9.2 asks for): this gate's claim children stay ONE POOLED CHILD PER OVERLAY ROOT-SET (4 children), deliberately NOT one child for the whole gate. The per-run mktemp manifest directory above is a GENUINE constraint, not un-finished pooling: each leg's claim_batch child indexes a different composed source-root set (dag + src/v2 + that leg's fresh mktemp overlay), and a MultiEntryIndex is root-set-keyed, so distinct root-sets are structurally distinct processes. Collapsing the legs would mean one shared overlay dir for all manifests — re-opening the module-path collision class the mktemp isolation exists to close (ingest_manifest_class_note). Measured 414s across the 4 children on run 30009199696; the residue dissolves on the W3 cross-process content-keyed store, never on merging the overlay roots."
+
 data ingest_manifest_name: String = "/v2-source-root-ingest-manifest.dag"
 data ingest_manifest_template: String = "/target/source-root-ingest-XXXXXX"
 data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest_test.dag"

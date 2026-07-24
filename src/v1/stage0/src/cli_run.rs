@@ -1193,12 +1193,13 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 6] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 7] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
     "QuarantineProbeExpectRed",
     "FalsifierSelfHostWet",
+    "FalsifierRehomedBinWet",
     "NoConsumer",
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
@@ -3846,6 +3847,19 @@ pub fn import_closure_live_paths_with_facts(
     import_closure_from_adjacency(entry_path, &facts.adjacency)
 }
 
+/// Like `import_closure_live_paths_with_facts` but over the WIDER `selection_adjacency`
+/// (import + strict reference edges) — so a module reached cross-entry only through a
+/// bare-reference edge is still refcounted by schedule-derived retention. Over-retaining
+/// (the safe direction: never premature-evict a reference-reached module into a
+/// recompute-on-miss) and equally cheap: a BFS over prebuilt adjacency, no per-entry
+/// source loading, no #6848 both-closure fixpoint.
+pub(crate) fn selection_closure_live_paths_with_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
+    import_closure_from_adjacency(entry_path, &facts.selection_adjacency)
+}
+
 impl ModuleGraphFactsLive {
     /// Repo-relative paths of every declared module in the facts scan — the existence
     /// set for refuse-vs-answer decisions (a module can be absent from `adjacency`
@@ -5392,7 +5406,12 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
+    let build_started = std::time::Instant::now();
     let idx = Rc::new(build_multi_entry_index(&roots));
+    discovery_phase_totals::add(
+        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
+        build_started.elapsed(),
+    );
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
@@ -5521,6 +5540,14 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
+    /// retention keystone). Armed at the start of a private-index (`cross_worker_store
+    /// == None`) discovery run from the schedule's per-entry closures, driven per
+    /// entry-completion in `run_discovery_rows`. `None` when unarmed (Adaptive shared
+    /// store, single-claim paths, tests): retention stays the pre-M2 process-lifetime
+    /// hold, so the mechanism is strictly additive. Authority: modeled policy in
+    /// `dag/gunbc/executor_schedule_retention.dag`, mirrored above.
+    schedule_retention: RefCell<Option<ScheduleRetention>>,
 }
 
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
@@ -5639,6 +5666,7 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
@@ -5990,6 +6018,670 @@ fn note_interface_hash(
     );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule-derived retention (v1-run-stability throughline M2 — the retention
+// keystone). The executor holds the WHOLE batch schedule before it runs a witness,
+// so per-module retention can be EXACT: refcount each module's retained typed state
+// by the number of remaining scheduled entries whose closure reaches it, and drop it
+// the moment that count hits zero. The policy is DERIVED from declared inputs (the
+// schedule × the module-graph closure) — no threshold, no recency heuristic, no GC.
+//
+// Authority is the modeled carrier `dag/gunbc/executor_schedule_retention.dag`; the
+// consts below MIRROR it and `schedule_retention_policy_matches_modeled_authority`
+// (this module's tests) reds on drift — the `extdeps.realization.resolved_graph`
+// `SizeBounded`-cap lockstep pattern applied to a policy instead of a number.
+//
+// Correctness license (why evicting typed state can never yield a wrong verdict):
+// the typed-module cache is CONTENT-keyed, so a later entry that reaches an evicted
+// module simply recomputes it (cache miss → identical result). The interpreter never
+// reads typed envs at eval (#5892: floor GREEN with envs evicted, RED with items
+// evicted). Eviction therefore frees bytes without touching meaning; the only risk
+// it must guard is a SCHEDULE-DERIVATION defect, which it refuses loudly (below).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Single-authority mirror of the modeled policy fact
+/// `gunbc.executor_schedule_retention.schedule_retention_tunable_count`
+/// (`dag/gunbc/executor_schedule_retention.dag`). Zero by construction: the retention
+/// rule is the schedule's remaining demand, full stop. A nonzero here would be a
+/// smuggled heuristic (DESIGN §4/§5) and must move BOTH surfaces and face review.
+/// Kept in lockstep by `schedule_retention_policy_matches_modeled_authority`.
+const SCHEDULE_RETENTION_TUNABLE_COUNT: i64 = 0;
+
+/// Measurement control (RED #1): with `GUNBC_SCHEDULE_RETENTION_EVICT=0` the schedule
+/// still ARMS and COUNTS (refcounts, RetentionUnknown, decrement-underflow refusals)
+/// but drops nothing — reproducing today's pegged peak so the mechanism's effect on
+/// RSS is measurable both directions. This is NOT a §5 escape hatch: it bypasses no
+/// fail-closed refusal (RetentionUnknown still retains-and-counts; a schedule
+/// underflow still refuses) — it only chooses whether the freed-by-schedule bytes are
+/// actually released, the retain-all pole being exactly the pre-M2 behavior.
+fn schedule_retention_evict_enabled() -> bool {
+    !matches!(
+        std::env::var("GUNBC_SCHEDULE_RETENTION_EVICT")
+            .ok()
+            .as_deref(),
+        Some("0") | Some("false") | Some("off")
+    )
+}
+
+/// The cache keys one module holds in the process-shared `MultiEntryIndex`, recorded
+/// as the module reconciles so eviction drops exactly its per-module state — never a
+/// head (the whole-pool parse snapshot and census layers are not per-module state and
+/// are never recorded here, so `schedule_retention_heads_stay_resident` holds by
+/// construction).
+#[derive(Default, Clone)]
+struct ModuleCacheKeys {
+    /// Content keys under which this module's typed result lives in `typed_module_cache`.
+    typed_keys: HashSet<String>,
+    /// Raw `span.file` keys under which this module lives in the parse / normalize-diag
+    /// / ownership-diag / source-hash caches (all keyed by the same raw file path).
+    raw_files: HashSet<String>,
+}
+
+/// One entry-completion's eviction decision — applied to the index caches by the
+/// caller (this struct owns no cache handles, so it stays a pure, unit-testable
+/// bookkeeper; the RED controls exercise it in isolation).
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct ScheduleEvictionBatch {
+    pub typed_keys: Vec<String>,
+    pub raw_files: Vec<String>,
+    /// The module names dropped this step (for the located receipt line).
+    pub module_names: Vec<String>,
+}
+
+/// Schedule-derived per-module retention bookkeeping (pure). Refcount is keyed by
+/// REPO-RELATIVE MODULE PATH — the identity `selection_closure_live_paths_with_facts`
+/// (arming, a cheap prebuilt-adjacency BFS) and `workspace_relative_repo_path`
+/// (reconcile's `decl_file`) both produce. A path-form mismatch between those two —
+/// the only latent hazard — degrades to "retain + count as RetentionUnknown", never
+/// to a wrong verdict (proven aligned on a live index by
+/// `schedule_eviction_end_to_end_on_real_index`).
+pub struct ScheduleRetention {
+    /// module path → remaining scheduled entries whose closure reaches it.
+    refcount: std::collections::HashMap<String, usize>,
+    /// entry path → the closure module paths it reaches (stored at arm time so the
+    /// per-entry decrement uses the SAME paths arming counted).
+    entry_closures: std::collections::HashMap<String, Vec<String>>,
+    /// module path → its recorded cache keys (filled as modules reconcile; a cache
+    /// hit re-records idempotently so a module first cached under an earlier entry
+    /// still carries its keys when its refcount finally reaches zero).
+    cache_keys: std::collections::HashMap<String, ModuleCacheKeys>,
+    /// names already counted as RetentionUnknown (cached but reachability-uncomputable)
+    /// — counted once, retained forever (never evicted).
+    unknown_counted: HashSet<String>,
+    schedule_evictions: u64,
+    retention_unknown: u64,
+    /// Assembled `ResolvedGraph`s dropped from `resolved_graph_memo` on entry completion
+    /// (Fact #4): each strong-`Rc`-pins the very `TypedModule`s per-module eviction drops,
+    /// so without this the module bytes never free ("strong Rc pins from elsewhere").
+    resolved_graph_evictions: u64,
+    /// Measurement pole (RED #1): false ⇒ compute everything, drop nothing.
+    evict_enabled: bool,
+}
+
+impl ScheduleRetention {
+    /// Arm from each DISTINCT scheduled entry's closure module names. `refcount[name]`
+    /// becomes the count of entries whose closure contains `name`. Entries whose
+    /// closure could not be computed are simply absent — their modules become
+    /// `RetentionUnknown` (retained + counted) at reconcile, the fail-closed arm.
+    pub fn armed(per_entry: Vec<(String, Vec<String>)>, evict_enabled: bool) -> Self {
+        let mut refcount: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut entry_closures: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for (entry, names) in per_entry {
+            for name in &names {
+                *refcount.entry(name.clone()).or_insert(0) += 1;
+            }
+            // Last distinct occurrence wins; rows are grouped by entry so an entry
+            // appears once, but be robust to a repeat by keeping the widest closure.
+            entry_closures
+                .entry(entry)
+                .and_modify(|existing| {
+                    if names.len() > existing.len() {
+                        *existing = names.clone();
+                    }
+                })
+                .or_insert(names);
+        }
+        ScheduleRetention {
+            refcount,
+            entry_closures,
+            cache_keys: std::collections::HashMap::new(),
+            unknown_counted: HashSet::new(),
+            schedule_evictions: 0,
+            retention_unknown: 0,
+            resolved_graph_evictions: 0,
+            evict_enabled,
+        }
+    }
+
+    /// Record a module's cache keys as it reconciles (hit or miss; idempotent). A
+    /// module whose name the arming never reached is a provenance gap: count it ONCE
+    /// as `RetentionUnknown` and retain it — never silently drop, never widen to
+    /// retain-everything (that absorbing fallback is the §5 review-reject).
+    pub fn record_module(&mut self, name: &str, typed_key: &str, raw_file: &str) {
+        if !self.refcount.contains_key(name) && self.unknown_counted.insert(name.to_string()) {
+            self.retention_unknown += 1;
+        }
+        let entry = self.cache_keys.entry(name.to_string()).or_default();
+        if !typed_key.is_empty() {
+            entry.typed_keys.insert(typed_key.to_string());
+        }
+        if !raw_file.is_empty() {
+            entry.raw_files.insert(raw_file.to_string());
+        }
+    }
+
+    /// One scheduled entry finished: decrement each of its closure names, collect the
+    /// names that reached zero (no remaining entry can read them) with their recorded
+    /// cache keys for the caller to drop. A decrement of a name already at zero means a
+    /// scheduled entry demands state the refcount said was fully consumed — a
+    /// schedule-derivation defect — and REFUSES, typed and located (never a silent
+    /// wrong verdict against evicted state). `RetentionUnknown` names carry no refcount
+    /// entry, so they are never decremented and never evicted.
+    pub fn entry_completed(&mut self, entry: &str) -> Result<ScheduleEvictionBatch, String> {
+        let names = match self.entry_closures.get(entry) {
+            Some(names) => names.clone(),
+            None => return Ok(ScheduleEvictionBatch::default()),
+        };
+        self.decrement_closure(entry, &names)
+    }
+
+    /// Test injection for RED #3: run the decrement over an EXPLICIT closure, so a
+    /// synthetic corruption (an entry reaching a module the arming under-counted) can
+    /// exercise the underflow refusal — a state the consistent stored-closure path
+    /// cannot reach in production (refcount is derived from the same closures it
+    /// decrements), which is the whole point: the wall is unreachable by construction
+    /// and refuses if a future refactor ever breaches it.
+    #[cfg(test)]
+    pub fn force_entry_completed_for_test(
+        &mut self,
+        entry: &str,
+        names: &[String],
+    ) -> Result<ScheduleEvictionBatch, String> {
+        self.decrement_closure(entry, names)
+    }
+
+    fn decrement_closure(
+        &mut self,
+        entry: &str,
+        names: &[String],
+    ) -> Result<ScheduleEvictionBatch, String> {
+        let mut batch = ScheduleEvictionBatch::default();
+        for name in names {
+            let name = name.clone();
+            let Some(rc) = self.refcount.get_mut(&name) else {
+                // Not refcounted (RetentionUnknown or never armed): retained.
+                continue;
+            };
+            if *rc == 0 {
+                return Err(format!(
+                    "SCHEDULE-RETENTION REFUSAL cause=RefcountUnderflow module='{name}' \
+                     entry='{entry}' — a scheduled entry's closure reaches a module whose \
+                     retention refcount was already zero (its state may have been evicted). \
+                     The schedule derivation under-counted this module's demand; refusing \
+                     rather than serving a verdict against missing state (DESIGN §5)."
+                ));
+            }
+            *rc -= 1;
+            if *rc == 0 {
+                // Keep the (name → 0) entry resident rather than removing it: a later
+                // decrement of an under-counted module then hits the `*rc == 0` arm
+                // above and REFUSES, instead of silently reading as "never armed". The
+                // map is bounded by module count, so retaining zeros is free.
+                if self.evict_enabled {
+                    if let Some(keys) = self.cache_keys.remove(&name) {
+                        batch.typed_keys.extend(keys.typed_keys);
+                        batch.raw_files.extend(keys.raw_files);
+                    }
+                    batch.module_names.push(name);
+                    self.schedule_evictions += 1;
+                }
+            }
+        }
+        Ok(batch)
+    }
+
+    pub fn schedule_evictions(&self) -> u64 {
+        self.schedule_evictions
+    }
+    pub fn retention_unknown(&self) -> u64 {
+        self.retention_unknown
+    }
+    pub fn resolved_graph_evictions(&self) -> u64 {
+        self.resolved_graph_evictions
+    }
+    pub fn note_graph_eviction(&mut self) {
+        self.resolved_graph_evictions += 1;
+    }
+    /// Number of distinct modules the arming refcounted — for the unconditional
+    /// ARMED receipt line.
+    pub fn refcount_len(&self) -> usize {
+        self.refcount.len()
+    }
+}
+
+/// Arm schedule-derived retention over a discovery run's WHOLE schedule (`rows` = every
+/// scheduled entry's rows). Called ONCE by the drain caller (Serial: the single run; Adaptive
+/// width=1: before the entry-group loop) so refcounts span the whole batch and a shared module
+/// survives until its last consumer — NOT per `run_discovery_rows` call, which would hand the
+/// Adaptive inline drain a one-entry schedule per group (refcount 1 on the whole closure → the
+/// entries=1 cold-recompute churn). Only the private index path (`cross_worker_store == None`)
+/// arms — the serial + adaptive-width-1 inline drains that share the long-lived process index
+/// whose typed mass this bounds. The Adaptive plural/shared-store worker path keeps its current
+/// behavior (typed results live in the byte store whose scheduled eviction is the PR-β
+/// `SpacePacked` follow-on) — a declared, typed frontier, never a silent widen. A per-entry
+/// closure that cannot be computed is skipped (its modules become counted `RetentionUnknown` at
+/// reconcile), so arming never fails the run.
+fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
+    if index.cross_worker_store.is_some() {
+        return;
+    }
+    let mut per_entry: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for row in rows {
+        if !seen.insert(row.entry.as_str()) {
+            continue;
+        }
+        // CHEAP closure: a BFS over the prebuilt selection adjacency (import + strict
+        // reference edges; no per-entry source loading, no #6848 both-closure fixpoint
+        // walk) — keyed by the repo-relative path the reconcile loop records
+        // (`decl_file`). The prior `collect_both_closure_module_names_for_entry`
+        // front-loaded the source-loading fixpoint for every distinct entry (the
+        // compiler-affected worst case is ~694), a cost the affected-set path otherwise
+        // skips or defers. The wider selection tier over-retains (never premature-evicts
+        // a reference-reached module into a recompute-on-miss); a module reached by no
+        // edge at all surfaces as counted RetentionUnknown at reconcile (retained, §5).
+        let paths = selection_closure_live_paths_with_facts(&row.entry, &index.module_graph_facts);
+        per_entry.push((row.entry.clone(), paths));
+    }
+    let evict_enabled = schedule_retention_evict_enabled();
+    let entries = per_entry.len();
+    if !evict_enabled {
+        // Loud, once per armed run: an accidentally-set env must not silently revert the
+        // M2 memory win in CI. Without this line the receipt's `schedule_evictions=0` is
+        // the only tell, and a zero reads as "nothing to evict" rather than "eviction off".
+        eprintln!(
+            "[floor-drain] SCHEDULE-RETENTION EVICTION DISABLED \
+             (GUNBC_SCHEDULE_RETENTION_EVICT=0): arming + counting only, dropping NOTHING — \
+             the retain-all measurement pole (pre-M2 process-lifetime retention). \
+             schedule_evictions will be 0 BY CONSTRUCTION; unset the env to restore eviction."
+        );
+    }
+    let sr = ScheduleRetention::armed(per_entry, evict_enabled);
+    // Unconditional ARMED receipt: proves schedule-derived retention is LIVE on this run,
+    // so a later `schedule_evictions=0` reads as "shared closure held resident" rather
+    // than "never armed" (the private-index serial regime is the only one that arms).
+    eprintln!(
+        "[floor-drain] schedule-retention ARMED: entries={entries} \
+         modules_refcounted={} evict_enabled={evict_enabled}",
+        sr.refcount_len()
+    );
+    *index.schedule_retention.borrow_mut() = Some(sr);
+}
+
+/// Record a reconciled module's cache keys with the armed schedule retention (no-op
+/// when unarmed). Called from the reconcile loop where the authored name, content
+/// key, and raw file are all in hand.
+fn index_record_schedule_module(
+    index: &MultiEntryIndex,
+    name: &str,
+    typed_key: &str,
+    raw_file: &str,
+) {
+    if let Some(sr) = index.schedule_retention.borrow_mut().as_mut() {
+        sr.record_module(name, typed_key, raw_file);
+    }
+}
+
+/// Drive one entry-completion: decrement the entry's closure refcounts, drop the
+/// per-module state that reached zero from every per-module cache (typed, parse,
+/// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
+/// `ResolvedGraph` from `resolved_graph_memo` (keyed by `subject`) — the graph strong-
+/// `Rc`-pins the same modules, so without it the per-module eviction frees no bytes
+/// (Fact #4 / the brief's "strong Rc pins from elsewhere"). Heads are never touched. A
+/// schedule underflow propagates as a typed, located refusal. Emits an unconditional
+/// per-entry progress line so a timed-out walk still shows eviction working (the early-
+/// receipt discipline — the walk-end receipt never lands on a step-cap death).
+fn index_schedule_entry_completed(
+    index: &MultiEntryIndex,
+    entry: &str,
+    subject: Option<&str>,
+) -> Result<(), String> {
+    let batch = {
+        let mut slot = index.schedule_retention.borrow_mut();
+        match slot.as_mut() {
+            Some(sr) => sr.entry_completed(entry)?,
+            None => return Ok(()),
+        }
+    };
+    if !batch.typed_keys.is_empty() {
+        let mut cache = index.typed_module_cache.borrow_mut();
+        for key in &batch.typed_keys {
+            cache.remove(key);
+        }
+    }
+    if !batch.raw_files.is_empty() {
+        let mut parse = index.parse_cache.borrow_mut();
+        let mut norm = index.normalize_diag_cache.borrow_mut();
+        let mut own = index.ownership_diag_cache.borrow_mut();
+        let mut src = index.source_hash_by_file.borrow_mut();
+        for file in &batch.raw_files {
+            parse.remove(file);
+            norm.remove(file);
+            own.remove(file);
+            src.remove(file);
+        }
+    }
+    // Drop the completed entry's assembled graph. The entry's own `InterpContext` still
+    // holds it until the next resolve, so this only removes the memo's pin; a rare later
+    // entry with the identical closure re-resolves (a memo miss, cost only).
+    let graph_evicted = match subject {
+        Some(subj) => index
+            .resolved_graph_memo
+            .borrow_mut()
+            .remove(subj)
+            .is_some(),
+        None => false,
+    };
+    let (sched_evictions, retention_unknown, graph_evictions) = {
+        let mut slot = index.schedule_retention.borrow_mut();
+        match slot.as_mut() {
+            Some(sr) => {
+                if graph_evicted {
+                    sr.note_graph_eviction();
+                }
+                (
+                    sr.schedule_evictions(),
+                    sr.retention_unknown(),
+                    sr.resolved_graph_evictions(),
+                )
+            }
+            None => (0, 0, 0),
+        }
+    };
+    // Unconditional (not floor_verbose-gated) so the receipt survives a step-cap timeout.
+    eprintln!(
+        "[floor-drain] schedule-retention: entry='{entry}' evicted_modules={} evicted_graph={} \
+         schedule_evictions={sched_evictions} graph_evictions={graph_evictions} \
+         retention_unknown={retention_unknown} typed_cache={} resolved_graphs={}",
+        batch.module_names.len(),
+        graph_evicted as u8,
+        index.typed_module_cache.borrow().len(),
+        index.resolved_graph_memo.borrow().len(),
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod schedule_retention_red_controls {
+    use super::{ScheduleRetention, SCHEDULE_RETENTION_TUNABLE_COUNT};
+
+    /// Locate the modeled retention-policy carrier by walking up from the crate
+    /// manifest dir until `dag/gunbc/executor_schedule_retention.dag` appears — the
+    /// same workspace-anchoring the resolved-graph cap lockstep test uses.
+    fn read_modeled_policy() -> String {
+        let mut dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        loop {
+            let candidate = dir.join("dag/gunbc/executor_schedule_retention.dag");
+            if candidate.exists() {
+                return std::fs::read_to_string(&candidate)
+                    .expect("read executor_schedule_retention.dag");
+            }
+            if !dir.pop() {
+                panic!(
+                    "could not locate dag/gunbc/executor_schedule_retention.dag from manifest dir"
+                );
+            }
+        }
+    }
+
+    fn modeled_int(dag: &str, name: &str) -> i64 {
+        let line = dag
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("data {name}:")))
+            .unwrap_or_else(|| panic!("modeled `data {name}` not found"));
+        line.split('=')
+            .nth(1)
+            .and_then(|rhs| rhs.trim().parse::<i64>().ok())
+            .unwrap_or_else(|| panic!("modeled `{name}` is not a bare Int"))
+    }
+
+    fn modeled_bool(dag: &str, name: &str) -> bool {
+        let line = dag
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("data {name}:")))
+            .unwrap_or_else(|| panic!("modeled `data {name}` not found"));
+        line.split('=')
+            .nth(1)
+            .map(|rhs| rhs.trim() == "true")
+            .unwrap()
+    }
+
+    /// LOCKSTEP: the Rust realization mirrors the modeled policy authority. Reds if the
+    /// modeled `.dag` and the Rust drift — the `resolved_graph` `SizeBounded`-cap
+    /// lockstep pattern applied to the policy (its "no tunables" fact and fail-closed
+    /// shape).
+    #[test]
+    fn schedule_retention_policy_matches_modeled_authority() {
+        let dag = read_modeled_policy();
+        assert_eq!(
+            modeled_int(&dag, "schedule_retention_tunable_count"),
+            SCHEDULE_RETENTION_TUNABLE_COUNT,
+            "Rust SCHEDULE_RETENTION_TUNABLE_COUNT drifted from the modeled policy — a \
+             nonzero tunable count is a smuggled heuristic (DESIGN §4/§5); move BOTH and \
+             face review"
+        );
+        // The fail-closed policy shape the mechanism realizes (asserted true in the model).
+        for flag in [
+            "schedule_retention_grain_is_per_module",
+            "schedule_retention_heads_stay_resident",
+            "schedule_retention_retain_on_unknown",
+            "schedule_retention_underflow_refuses",
+        ] {
+            assert!(modeled_bool(&dag, flag), "modeled {flag} must be true");
+        }
+    }
+
+    /// GREEN: eviction fires exactly at refcount zero. A shared module survives until
+    /// its LAST scheduled entry; an entry-unique module drops the moment its entry
+    /// completes. Heads are never recorded here, so they are never evicted.
+    #[test]
+    fn schedule_eviction_drops_at_refcount_zero() {
+        // entry a: {shared, a_only}; entry b: {shared, b_only}
+        let mut sr = ScheduleRetention::armed(
+            vec![
+                ("a".to_string(), vec!["shared".into(), "a_only".into()]),
+                ("b".to_string(), vec!["shared".into(), "b_only".into()]),
+            ],
+            true,
+        );
+        sr.record_module("shared", "tk_shared", "f_shared");
+        sr.record_module("a_only", "tk_a", "f_a");
+        sr.record_module("b_only", "tk_b", "f_b");
+
+        // Finishing a drops a_only (rc 1→0); shared stays (rc 2→1).
+        let batch_a = sr.entry_completed("a").expect("no underflow");
+        assert_eq!(batch_a.module_names, vec!["a_only".to_string()]);
+        assert_eq!(batch_a.typed_keys, vec!["tk_a".to_string()]);
+        assert_eq!(sr.schedule_evictions(), 1);
+
+        // Finishing b drops shared (rc 1→0) and b_only.
+        let batch_b = sr.entry_completed("b").expect("no underflow");
+        let mut got: Vec<String> = batch_b.module_names.clone();
+        got.sort();
+        assert_eq!(got, vec!["b_only".to_string(), "shared".to_string()]);
+        assert_eq!(sr.schedule_evictions(), 3);
+        assert_eq!(sr.retention_unknown(), 0);
+    }
+
+    /// RED #1 (eviction-disabled control): with `evict_enabled=false` the schedule
+    /// still arms, records, counts, and REFUSES underflow — but drops nothing, so peak
+    /// retention is the pre-M2 process-lifetime hold. This is the control run that
+    /// reproduces today's peak to prove the mechanism moves RSS.
+    #[test]
+    fn schedule_eviction_disabled_retains_everything_but_still_counts() {
+        let mut sr = ScheduleRetention::armed(
+            vec![("a".to_string(), vec!["m".into()])],
+            false, // eviction disabled (measurement pole)
+        );
+        sr.record_module("m", "tk", "f");
+        sr.record_module("orphan", "tk_o", "f_o"); // not in any closure → RetentionUnknown
+        let batch = sr.entry_completed("a").expect("no underflow");
+        assert!(batch.module_names.is_empty(), "disabled pole drops nothing");
+        assert_eq!(sr.schedule_evictions(), 0);
+        assert_eq!(
+            sr.retention_unknown(),
+            1,
+            "counting still on with eviction off"
+        );
+    }
+
+    /// RED #3 (reachability corruption → typed refusal): a schedule whose arming
+    /// under-counted a module's demand (a later entry reaches state the refcount said
+    /// was fully consumed) REFUSES, typed and located — never a silent wrong verdict
+    /// against evicted state.
+    #[test]
+    fn schedule_underflow_refuses_typed() {
+        // `m` is armed for ONE entry but reached by TWO — a corrupted (too-low) count.
+        let mut sr = ScheduleRetention::armed(
+            vec![
+                ("a".to_string(), vec!["m".into()]),
+                ("b".to_string(), vec![]), // b's closure was mis-derived to omit m
+            ],
+            true,
+        );
+        // Hand b the closure it REALLY reaches (includes m) to simulate the corruption.
+        // (In production the two come from one arming source; this forces the underflow.)
+        sr.entry_completed("a").expect("first consume ok"); // m: 1→0, evicted
+        let err = sr
+            .force_entry_completed_for_test("b", &["m".to_string()])
+            .expect_err("underflow must refuse");
+        assert!(
+            err.contains("RefcountUnderflow") && err.contains("module='m'"),
+            "refusal must be typed and located, got: {err}"
+        );
+    }
+
+    /// RED #4 (RetentionUnknown counted): a module cached but reached by no scheduled
+    /// entry's closure (a provenance gap) shows up as a nonzero, per-module count —
+    /// retained, visible, prioritizable — never absorbed into a silent retain-all.
+    #[test]
+    fn retention_unknown_is_counted_per_module_once() {
+        let mut sr = ScheduleRetention::armed(vec![("a".to_string(), vec!["known".into()])], true);
+        sr.record_module("known", "tk", "f");
+        sr.record_module("gap", "tk_g", "f_g");
+        sr.record_module("gap", "tk_g2", "f_g2"); // re-record same gap: counted once
+        assert_eq!(sr.retention_unknown(), 1);
+        // The gap is never decremented/evicted: finishing `a` leaves it retained.
+        let batch = sr.entry_completed("a").expect("no underflow");
+        assert!(!batch.module_names.contains(&"gap".to_string()));
+    }
+
+    /// END-TO-END WIRING (real index, real closure computation, real cache eviction):
+    /// two entries sharing one library module. Arm from the schedule, resolve both
+    /// entries (populating the process-shared caches through the actual reconcile
+    /// path that records each module), then drive per-entry completion. The
+    /// shared module survives entry A's completion (still reachable by B) and drops
+    /// only when B completes — proving the mechanism frees real per-module state on a
+    /// live `MultiEntryIndex`, not just in the pure bookkeeper above.
+    #[test]
+    fn schedule_eviction_end_to_end_on_real_index() {
+        // Probe corpus must live UNDER the workspace root — path normalization
+        // refuses anything outside it. `target/` is gitignored, so it stays clean.
+        let dir = super::workspace_root()
+            .join("target")
+            .join(format!("sched_ret_probe_{}_e2e", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir probe corpus");
+        std::fs::write(
+            dir.join("shared_lib.dag"),
+            "module sched_ret_probe.shared_lib\n\ndata shared_val: Int = 7\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("entry_a.dag"),
+            "module sched_ret_probe.entry_a\n\nimport sched_ret_probe.shared_lib { shared_val }\n\ndata a_val: Int = shared_val\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("entry_b.dag"),
+            "module sched_ret_probe.entry_b\n\nimport sched_ret_probe.shared_lib { shared_val }\n\ndata b_val: Int = shared_val\n",
+        )
+        .unwrap();
+
+        let root = dir.to_string_lossy().to_string();
+        let entry_a = dir.join("entry_a.dag").to_string_lossy().to_string();
+        let entry_b = dir.join("entry_b.dag").to_string_lossy().to_string();
+        let index = super::build_multi_entry_index(&[root.clone()]);
+
+        let rows = vec![
+            super::DiscoveryRow {
+                label: "a".into(),
+                entry: entry_a.clone(),
+                function: "a_probe".into(),
+                reads_live_tree: false,
+            },
+            super::DiscoveryRow {
+                label: "b".into(),
+                entry: entry_b.clone(),
+                function: "b_probe".into(),
+                reads_live_tree: false,
+            },
+        ];
+        super::index_arm_schedule_retention(&index, &rows);
+        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a");
+        super::resolve_entry_with_index(&index, &entry_b).expect("resolve b");
+
+        // Both closures reconciled → all three modules cached, and each entry's
+        // assembled ResolvedGraph is memoized (the strong-Rc pin Fact #4 drops).
+        let full = super::typed_module_cache_len_for_test(&index);
+        assert_eq!(full, 3, "entry_a + entry_b + shared_lib cached");
+        let subj_a = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_a).unwrap(),
+        );
+        let subj_b = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_b).unwrap(),
+        );
+        let graphs_full = super::index_retention_snapshot(&index).resolved_graph_memo_entries;
+        assert!(
+            graphs_full >= 2,
+            "each entry's ResolvedGraph memoized (got {graphs_full})"
+        );
+
+        // Completing A drops entry_a's unique module AND its ResolvedGraph pin (Fact #4).
+        super::index_schedule_entry_completed(&index, &entry_a, Some(&subj_a)).expect("complete a");
+        assert_eq!(
+            super::typed_module_cache_len_for_test(&index),
+            2,
+            "entry_a evicted; shared_lib + entry_b remain"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).resolved_graph_memo_entries,
+            graphs_full - 1,
+            "entry_a's ResolvedGraph dropped"
+        );
+
+        // Completing B drops entry_b AND the now-unreachable shared_lib (+ B's graph).
+        super::index_schedule_entry_completed(&index, &entry_b, Some(&subj_b)).expect("complete b");
+        assert_eq!(
+            super::typed_module_cache_len_for_test(&index),
+            0,
+            "shared_lib survived until its last entry, then dropped"
+        );
+
+        let snap = super::index_retention_snapshot(&index);
+        assert_eq!(snap.schedule_evictions, 3);
+        assert_eq!(snap.retention_unknown, 0);
+        assert_eq!(
+            snap.resolved_graph_memo_entries, 0,
+            "both entries' ResolvedGraphs evicted — the pin is released"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// Interim width=1 floor-drain retention (v1-run-stability throughline, parent
 /// governor lane): instrument accumulation + host-budget entry cap on the private
 /// `typed_module_cache` only. Whole-row eviction here is a counted safety backstop,
@@ -6004,6 +6696,12 @@ pub struct IndexRetentionSnapshot {
     pub ownership_diag_cache_entries: usize,
     pub intern_table_entries: usize,
     pub typed_cache_evictions: u64,
+    /// Schedule-derived per-module evictions (v1-run-stability M2): modules dropped
+    /// because no remaining scheduled entry's closure reached them.
+    pub schedule_evictions: u64,
+    /// Counted `RetentionUnknown` rows: modules cached but reachability-uncomputable,
+    /// retained (correctness-fail-closed) — visible and prioritizable, never absorbed.
+    pub retention_unknown: u64,
     pub peak_rss_bytes: Option<u64>,
 }
 
@@ -6092,6 +6790,18 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
         ownership_diag_cache_entries: index.ownership_diag_cache.borrow().len(),
         intern_table_entries: index.intern_table.borrow().index.len(),
         typed_cache_evictions: index.typed_cache_evictions.get(),
+        schedule_evictions: index
+            .schedule_retention
+            .borrow()
+            .as_ref()
+            .map(|s| s.schedule_evictions())
+            .unwrap_or(0),
+        retention_unknown: index
+            .schedule_retention
+            .borrow()
+            .as_ref()
+            .map(|s| s.retention_unknown())
+            .unwrap_or(0),
         peak_rss_bytes: peak_rss_vhwm_bytes(),
     }
 }
@@ -6124,6 +6834,8 @@ fn retention_snapshot_peak(
             .max(b.ownership_diag_cache_entries),
         intern_table_entries: a.intern_table_entries.max(b.intern_table_entries),
         typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
+        schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
+        retention_unknown: a.retention_unknown.max(b.retention_unknown),
         peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
             (Some(x), Some(y)) => Some(x.max(y)),
             (Some(x), None) => Some(x),
@@ -6166,12 +6878,15 @@ fn emit_floor_drain_receipt(
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
-         intern_table_peak={} evictions={} peak_rss={} cap_entries={}",
+         intern_table_peak={} evictions={} schedule_evictions={} retention_unknown={} \
+         peak_rss={} cap_entries={}",
         peaks.typed_module_cache_entries,
         peaks.parse_cache_entries,
         peaks.resolved_graph_memo_entries,
         peaks.intern_table_entries,
         peaks.typed_cache_evictions,
+        peaks.schedule_evictions,
+        peaks.retention_unknown,
         peaks
             .peak_rss_bytes
             .map(|b| b.to_string())
@@ -7535,6 +8250,18 @@ fn reconcile_with_typed_cache(
                 };
                 let cached = index_get_typed(index, &typed_key)?;
                 let was_cache_hit = cached.is_some();
+                // Record this module's cache keys with the armed schedule retention
+                // (idempotent; hit or miss) so its state can be dropped exactly when no
+                // remaining scheduled entry reaches it. Keyed by `decl_file` — the same
+                // repo-relative path form the arming refcount uses (import_closure_live_
+                // paths_with_facts). `span.file` is the raw key the parse / normalize-diag
+                // / ownership-diag / source-hash caches use.
+                index_record_schedule_module(
+                    index,
+                    &decl_file,
+                    &typed_key,
+                    &resolved.module.span.file,
+                );
                 let parent_diags = if was_cache_hit {
                     Rc::new(im::Vector::new())
                 } else {
@@ -8831,6 +9558,74 @@ pub fn run_claim_measured(
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
+}
+
+/// Single-binary claim execution (v1-run-stability M2 companion, Deliverable 2): run a
+/// batch of claims IN-PROCESS rather than spawning a `claim_batch` child (the
+/// `tools.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
+/// each closure resolves exactly once — the pooled property claim_batch's
+/// one-child-per-call already had — and every claim keeps `run_claim_measured`'s
+/// per-witness discipline (subject key, eval deadline, the operator 5 s fast-lane
+/// law). The declared `execution_mode` threads through unchanged: an in-process claim
+/// keeps EXACTLY its declared effect envelope — it never silently widens into the
+/// caller's environment (envelope honesty).
+///
+/// This is the vehicle the `run_gunbc_claims_pooled_note` reserved ("the child dies
+/// and frees"): folding claims into the long-lived executor is safe ONLY because
+/// schedule-derived eviction (this module) now bounds the retention the child used to
+/// reclaim by dying. Returns `true` iff every claim passed — the same conjunction
+/// claim_batch computes — with a per-claim PASS/FAIL line so the in-process verdict is
+/// as legible as the child's. Proven verdict-identical to the spawn path by
+/// `claim_in_process_matches_spawn_verdict` (RED control #2).
+pub fn run_claims_in_process(
+    source_roots: &[String],
+    claims: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> bool {
+    // Group by entry, preserving first-appearance order (stable PASS/FAIL log).
+    let mut order: Vec<String> = Vec::new();
+    let mut by_entry: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for (entry, function) in claims {
+        if !by_entry.contains_key(entry) {
+            order.push(entry.clone());
+            by_entry.insert(entry.clone(), Vec::new());
+        }
+        by_entry
+            .get_mut(entry)
+            .expect("entry inserted above")
+            .push(function.clone());
+    }
+    let mut all_passed = true;
+    for entry in &order {
+        let functions = &by_entry[entry];
+        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+            Ok(pair) => pair,
+            Err(msg) => {
+                println!("FAIL <resolve {entry}> ({msg})");
+                all_passed = false;
+                continue;
+            }
+        };
+        let ctx = make_eval_context(&graph, source_indices, execution_mode);
+        // Subject identity for the per-witness discipline: entry-derived (this path's
+        // own subjects; the discovery corpus's content-subject drives a cross-run memo
+        // this in-process transport does not share).
+        let closure_subject = format!("in-process-claim:{entry}");
+        for function in functions {
+            let (outcome, _receipt) = run_claim_measured(&ctx, &closure_subject, function);
+            // Frame exit: the eval memo must not retain values across claims sharing
+            // this ctx (byte-unbounded, the 20GiB-class kills — same as the gate path).
+            v1_interpreter::eval_call_memo_frame_exit(&ctx);
+            if outcome == ClaimOutcome::Pass {
+                println!("PASS {function}");
+            } else {
+                println!("FAIL {function} ({outcome:?})");
+                all_passed = false;
+            }
+        }
+    }
+    all_passed
 }
 
 /// Completion-side budget enforcement: the cooperative deadline polls every 4096
@@ -10888,17 +11683,27 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 4] = [
+    let heads: [(&str, &str); 5] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
+        ("RehomedBinWetRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
         while let Some(rel) = content[search_from..].find(head) {
             let occ = search_from + rel;
             search_from = occ + head.len();
+            // Word-boundary guard: `bin_wet(` must not match inside a longer identifier
+            // (`witness_exclusion_row_is_rehomed_bin_wet(row: …)` — the class that panicked
+            // run 30033250697). A head preceded by an identifier char is a different name.
+            if occ > 0 {
+                let prev = content.as_bytes()[occ - 1];
+                if prev.is_ascii_alphanumeric() || prev == b'_' {
+                    continue;
+                }
+            }
             let after = &content[search_from..];
             let window = &after[..after.len().min(WINDOW)];
             let trimmed = window.trim_start();
@@ -11024,7 +11829,8 @@ fn refuse_unexecuted_deferred_witnesses(
         "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
          witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
          admission invariant); each excluded row must be on falsifier_self_host_wet, \
-         bin_witness_wet, known_red_probe, offline, or fixture explicit roster: {}",
+         bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, offline, or fixture \
+         explicit roster: {}",
         orphans.len(),
         lines.join("; ")
     ))
@@ -13749,7 +14555,72 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
     );
 }
 
+/// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
+/// instrumentation): process-wide accumulators for the pump's named phases, drained into
+/// the floor resolve receipt as TYPED ROWS (take_discovery_phase_totals_receipt_rows), so
+/// the 643–1024s discovery wall decomposes in a receipt rather than a log read. The
+/// per-entry resolve and eval serial sums already ride the receipt via ClaimResult
+/// (discovery_corpus_resolve_ms / discovery_corpus_eval_ms); these keys cover the phases
+/// that were previously unattributed. Atomics because worker shards may pump concurrently;
+/// totals are serial-sum semantics like the existing corpus counters.
+mod discovery_phase_totals {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub static PUMP_WALL_MS: AtomicU64 = AtomicU64::new(0);
+    pub static ROSTER_WALK_MS: AtomicU64 = AtomicU64::new(0);
+    pub static DIFF_OBSERVE_MS: AtomicU64 = AtomicU64::new(0);
+    pub static FRONTIER_ATTRIBUTION_MS: AtomicU64 = AtomicU64::new(0);
+    pub static SHARED_INDEX_BUILD_MS: AtomicU64 = AtomicU64::new(0);
+    pub static PRERESOLVE_CALIBRATION_MS: AtomicU64 = AtomicU64::new(0);
+    pub static RUNNER_RESOLVE_MS: AtomicU64 = AtomicU64::new(0);
+
+    pub fn add(counter: &AtomicU64, elapsed: std::time::Duration) {
+        counter.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
+    }
+}
+
+/// Drain the discovery phase totals as receipt rows (one `key=value` line each, trailing
+/// newline included; empty totals still emit rows so the receipt schema is stable).
+pub fn take_discovery_phase_totals_receipt_rows() -> String {
+    use discovery_phase_totals as t;
+    use std::sync::atomic::Ordering;
+    format!(
+        "discovery_pump_wall_ms={}\ndiscovery_roster_walk_ms={}\ndiscovery_diff_observe_ms={}\ndiscovery_frontier_attribution_ms={}\ndiscovery_shared_index_build_ms={}\ndiscovery_preresolve_calibration_ms={}\ndiscovery_runner_resolve_ms={}\n",
+        t::PUMP_WALL_MS.swap(0, Ordering::Relaxed),
+        t::ROSTER_WALK_MS.swap(0, Ordering::Relaxed),
+        t::DIFF_OBSERVE_MS.swap(0, Ordering::Relaxed),
+        t::FRONTIER_ATTRIBUTION_MS.swap(0, Ordering::Relaxed),
+        t::SHARED_INDEX_BUILD_MS.swap(0, Ordering::Relaxed),
+        t::PRERESOLVE_CALIBRATION_MS.swap(0, Ordering::Relaxed),
+        t::RUNNER_RESOLVE_MS.swap(0, Ordering::Relaxed),
+    )
+}
+
 pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    width_policy: DiscoveryWidthPolicy,
+    options: DiscoveryCorpusOptions,
+) -> Result<DiscoverySummary, String> {
+    let pump_started = std::time::Instant::now();
+    let out = run_discovery_corpus_with_options_inner(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        width_policy,
+        options,
+    );
+    discovery_phase_totals::add(
+        &discovery_phase_totals::PUMP_WALL_MS,
+        pump_started.elapsed(),
+    );
+    out
+}
+
+fn run_discovery_corpus_with_options_inner(
     source_roots: &[String],
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
@@ -13761,12 +14632,15 @@ pub fn run_discovery_corpus_with_options(
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_witness_roster(
+            let t = std::time::Instant::now();
+            let walked = discover_floor_witness_roster(
                 source_roots,
                 scan_dirs,
                 &options.exclude_substrings,
                 &options.discovery_scope_dirs,
-            )?
+            );
+            discovery_phase_totals::add(&discovery_phase_totals::ROSTER_WALK_MS, t.elapsed());
+            walked?
         };
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
@@ -13809,6 +14683,7 @@ pub fn run_discovery_corpus_with_options(
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
     // silent run-everything fallback. To run without selection, declare the flag false.
+    let diff_observe_started = std::time::Instant::now();
     let diff_text = if selection_enabled {
         floor_git_diff_range().map_err(|msg| {
             format!(
@@ -13851,6 +14726,10 @@ pub fn run_discovery_corpus_with_options(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
+    discovery_phase_totals::add(
+        &discovery_phase_totals::DIFF_OBSERVE_MS,
+        diff_observe_started.elapsed(),
+    );
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
@@ -13868,6 +14747,7 @@ pub fn run_discovery_corpus_with_options(
     // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
     // import-closure-unaffected entries while folding their module-graph closure into
     // the post-resolve union so this pre-resolve count stays paired with calibration.
+    let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
             &[FLOOR_RUNNER_ENTRY]
@@ -13882,10 +14762,15 @@ pub fn run_discovery_corpus_with_options(
         );
         n
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
+        preresolve_calibration_started.elapsed(),
+    );
     // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
+    let frontier_attribution_started = std::time::Instant::now();
     let (skip_enabled, diff_edits) = if selection_enabled {
         match floor_diff_edits_from_line_ranges(
             &index,
@@ -13906,6 +14791,11 @@ pub fn run_discovery_corpus_with_options(
     } else {
         (false, FloorDiffEdits::default())
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::FRONTIER_ATTRIBUTION_MS,
+        frontier_attribution_started.elapsed(),
+    );
+    let runner_resolve_started = std::time::Instant::now();
     let floor_runner_ctx = if selection_enabled {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
@@ -13925,6 +14815,10 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
+    discovery_phase_totals::add(
+        &discovery_phase_totals::RUNNER_RESOLVE_MS,
+        runner_resolve_started.elapsed(),
+    );
     let skip_precompute = if skip_enabled {
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
@@ -13985,6 +14879,9 @@ pub fn run_discovery_corpus_with_options(
     let floor_stream = floor_stream_enabled();
     return match width_policy {
         DiscoveryWidthPolicy::Serial => {
+            // Arm retention over the WHOLE serial schedule (all rows) before the single drain
+            // call — a shared module stays resident until its last scheduled entry consumes it.
+            index_arm_schedule_retention(&index, &rows);
             let summary = run_discovery_rows(
                 &rows,
                 &index,
@@ -14087,6 +14984,14 @@ pub fn run_discovery_corpus_with_options(
                 let total_groups = groups.len();
                 let mut drain_prev = index_retention_snapshot(&index);
                 let mut drain_peaks = drain_prev;
+                // Arm retention over the WHOLE batch schedule (every group's rows) ONCE, before
+                // the inline drain — NOT per group. The drain reuses the one process-shared index
+                // across all entry-groups, so a shared compiler-core module reached by many
+                // entries keeps a refcount > 1 and stays resident until its LAST consumer's entry
+                // completes; only an entry's genuinely-unique tail evicts when that entry finishes.
+                // Per-group arming instead gave each entry a one-entry schedule (refcount 1 on the
+                // whole closure), evicting and cold-recomputing the shared core once per entry.
+                index_arm_schedule_retention(&index, &rows);
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
@@ -14614,6 +15519,19 @@ fn run_discovery_rows(
     }
     // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
     let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
+    // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
+    // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
+    // shared module's refcount spans every entry that reaches it and it stays resident until
+    // its genuinely-last consumer. Arming here (per `run_discovery_rows` call) would hand the
+    // Adaptive inline drain a ONE-ENTRY schedule per group — refcount 1 on every module,
+    // evicted the instant its entry finished — collapsing "keep shared state until last use"
+    // into "cold-recompute the shared closure once per entry" (the entries=1 churn that held
+    // batch-3 wall over budget while RSS was already bounded). Rows are sorted by entry, so an
+    // entry's rows are contiguous and, once passed, the entry can never be read again; the
+    // per-entry completion below decrements against the caller-armed refcount (a no-op when
+    // unarmed — the plural/shared-store worker path).
+    // The entry whose per-module state becomes unreachable once `row.entry` moves on.
+    let mut schedule_prev_entry: Option<String> = None;
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -14642,6 +15560,20 @@ fn run_discovery_rows(
         );
     }
     for row in rows {
+        // Schedule-derived eviction: when the entry advances, the previous entry's
+        // rows are all behind us (rows are sorted by entry), so its per-module state
+        // can never be read again — drop everything no remaining entry's closure
+        // reaches. A schedule underflow refuses here (typed, located).
+        if schedule_prev_entry.as_deref() != Some(row.entry.as_str()) {
+            if let Some(prev) = schedule_prev_entry.take() {
+                // `current_closure_subject` still holds the PREVIOUS entry's subject here
+                // (it is reassigned only in the resolve block below), so it keys the
+                // previous entry's ResolvedGraph for eviction; None when that entry was
+                // skip-before-resolved (no graph to drop).
+                index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
+            }
+            schedule_prev_entry = Some(row.entry.clone());
+        }
         // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
         // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
         if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
@@ -14894,6 +15826,10 @@ fn run_discovery_rows(
     // Per-shard input-size receipt: distinct modules in THIS shard's union closure, counted from the
     // graphs resolved above rather than from the thread's typecheck-miss counter (see the field doc
     // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
+    // The final entry's rows are done — its state is now unreachable too.
+    if let Some(prev) = schedule_prev_entry.take() {
+        index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
+    }
     summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
 }
@@ -25839,6 +26775,43 @@ mod module_path_index_tests {
                 .collect::<Vec<_>>(),
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
+        );
+    }
+
+    #[test]
+    fn head_scan_ignores_longer_identifiers_containing_a_head() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {\n\
+               true\n\
+             }\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.is_empty(),
+            "a head substring inside a longer identifier must not scan as a roster row; got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn rehomed_bin_wet_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type RehomedBinWetRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [\n\
+               RehomedBinWetRow {\n\
+                 entry: \"dag/test/claim/x_test.dag\",\n\
+                 function: \"x_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
+            "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 

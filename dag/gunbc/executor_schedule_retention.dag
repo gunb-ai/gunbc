@@ -1,0 +1,21 @@
+module gunbc.executor_schedule_retention
+
+data schedule_retention_policy_note: String = "The v1 claim executor holds the WHOLE batch schedule before it runs a witness, so per-module retention is EXACT, not heuristic: each module's retained typed state (typed-module result, normalize/ownership diagnostic memos, parse-body entry in the process-shared MultiEntryIndex) is refcounted by the number of remaining scheduled entries whose closure reaches it, and dropped the moment that count hits zero. Derived from declared inputs (the schedule x the module-graph closure); no threshold, no recency heuristic, no GC. DESIGN grounding: S2 (drop dead weight is the master move), S4 (a heuristic is never necessary in a closed system - the schedule exists, so retention is computed not guessed), S5 (fail-closed). Authority: this carrier; the Rust realization in cli_run.rs mirrors each fact below and schedule_retention_policy_matches_modeled_authority reds on drift - the extdeps.realization.resolved_graph SizeBounded-cap lockstep pattern applied to a policy. Dissolution trigger: the cross-entry typed-module-memo ladder SpacePacked eviction (PR-beta), the same trigger floor_drain_retention_test.dag's Never/ScopeExit note carries."
+
+data schedule_retention_tunable_count: Int = 0
+
+data schedule_retention_tunable_count_note: String = "Zero by construction: the retention rule is the schedule's remaining demand, full stop - no threshold, no recency, no confidence dial. Mirrored by SCHEDULE_RETENTION_TUNABLE_COUNT in cli_run.rs; a nonzero here (a smuggled heuristic - S5's confidence-threshold tell) must move BOTH surfaces and face review."
+
+data schedule_retention_grain_is_per_module: Bool = true
+
+data schedule_retention_heads_stay_resident: Bool = true
+
+data schedule_retention_heads_note: String = "Heads (the whole-pool parse snapshot and the bare/qualified census layers) are NOT per-module state and are never evicted - the #6848 bare-name census requires the whole-pool heads resident for the run's lifetime (heads-only parse #6956/#6972 precedent). Held by construction: only per-module cache keys are recorded for eviction."
+
+data schedule_retention_retain_on_unknown: Bool = true
+
+data schedule_retention_retain_on_unknown_note: String = "When reachability CANNOT be computed for a cached module (a provenance gap), the safe arm is RETAIN - correctness-fail-closed but memory-fail-open - so it is a typed, per-module, COUNTED RetentionUnknown row, never a silent retain-everything (that absorbing fallback is a T-as-ignorance widen whose frequency the corpus would never see, S5)."
+
+data schedule_retention_underflow_refuses: Bool = true
+
+data schedule_retention_underflow_note: String = "A decrement past zero (a scheduled entry demands state the refcount said was fully consumed) is a schedule-derivation defect and REFUSES, typed and located - the mechanism never serves a wrong verdict against evicted state. Content-key recompute-on-miss is the correctness license; the refusal is the loudness that keeps a derivation bug from hiding."

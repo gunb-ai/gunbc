@@ -18,9 +18,9 @@ import v1.std.core {
   make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
+  LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   ExprErrorKind, ParseRecoveryError,
-  BinOp, Add, Sub, Mul, Div, Mod,
+  Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
@@ -51,6 +51,7 @@ import v1.std.core {
 }
 
 import std.syntax {
+  Add, BinOp, LitStr, LiteralValue,
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,

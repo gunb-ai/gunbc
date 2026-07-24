@@ -1,8 +1,8 @@
 module gunbc.host_effect_plan
 
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
+import std.algebra { FreeMonoid }
 import v2.std.algebra {
-  FreeMonoid,
   freemonoid_empty,
   list_head, list_tail,
   HeadFound, HeadAbsent,

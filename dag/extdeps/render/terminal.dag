@@ -2,7 +2,8 @@ module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.render.ansi { ansi_code }
-import std.render { Frame, Line, RenderCapability, Span, Viewport, cursor_action_under, repeat_string }
+import std.render { Frame, Line, RenderCapability, Span, Viewport, cursor_action_under }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols { Tier }
 import std.unicode { string_display_width }
 import std.width { truncate_text }
