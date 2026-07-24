@@ -227,7 +227,7 @@ fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
 fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
   match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
 }
-fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bool {
+fn is_host_freemonoid_vec_alias(name: String) -> Bool {
   name == "FreeMonoid"
 }
 
@@ -235,8 +235,8 @@ fn is_host_optional_carrier_alias(name: String) -> Bool {
   name == "Optional"
 }
 
-fn is_grounded_coproduct_native_alias(name: String, corpus_repr: RustCorpusRepr) -> Bool {
-  is_host_freemonoid_vec_alias(name: name, corpus_repr: corpus_repr)
+fn is_grounded_coproduct_native_alias(name: String) -> Bool {
+  is_host_freemonoid_vec_alias(name: name)
     || is_host_optional_carrier_alias(name: name)
 }
 
@@ -2300,7 +2300,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
-      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item), corpus_repr: emit_info.corpus_repr))
+      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -3278,7 +3278,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       parent_main_lines |> filter(l => l != "")
     }
     let variant_lines = parent_list |> map(parent =>
-      if is_grounded_coproduct_native_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
+      if is_grounded_coproduct_native_alias(name: parent) { "" } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -3312,7 +3312,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
-        && !is_grounded_coproduct_native_alias(name: en, corpus_repr: emit_info.corpus_repr))
+        && !is_grounded_coproduct_native_alias(name: en))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
     let all_lines = concat(
       main_lines |> filter(l => l != ""),
@@ -4109,7 +4109,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   } else if is_host_optional_carrier_alias(name: item_text) {
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Option<", elem_csv, ">;")
-  } else if is_host_freemonoid_vec_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
+  } else if is_host_freemonoid_vec_alias(name: item_text) {
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {

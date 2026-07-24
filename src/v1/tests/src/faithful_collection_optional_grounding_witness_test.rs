@@ -12,7 +12,7 @@ use v1_compiler::v1_compiler_infer_emit_info::RustCorpusRepr;
 #[test]
 fn faithful_freemonoid_vec_alias_eligible_in_faithful_repr() {
     assert!(
-        is_host_freemonoid_vec_alias("FreeMonoid".to_string(), RustCorpusRepr::FaithfulFreeMonoid),
+        is_host_freemonoid_vec_alias("FreeMonoid".to_string()),
         "FreeMonoid must ground to Vec in FaithfulFreeMonoid corpus repr"
     );
 }
