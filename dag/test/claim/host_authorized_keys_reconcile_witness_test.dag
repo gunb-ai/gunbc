@@ -57,7 +57,7 @@ test fn srv3_and_srv4_disagree_on_convergence() -> Bool {
 }
 
 fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
-  Present { value: Owned }
+  authorized_key_ownership(k: operator_macbook_ssh_key)
 }
 
 test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
