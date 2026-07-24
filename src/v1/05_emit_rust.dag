@@ -1,55 +1,37 @@
 module v1.compiler.emit_rust
 
+import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  import_is_all, import_specific_names_at, module_imports, module_items,
-  param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment,
-  expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
-  LiteralValue,
-  ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
-  ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
-  ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
-  ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
-  ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node,
-  FieldSummary,
+  import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
+  param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
+  qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
+  field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprError,
+  ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet,
+  ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
+  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
-  ServiceMethodSemantics,
-  MatchPattern, field_binding_pattern,
-  TextFile, ErrorNode, make_error_node, InternalError, UnlistedImportUse, SourceSpan,
-  resource_use_resource,
-  BinOp, AlgebraFieldKind,
-  UnaryOpKind, StringPart, Text, Interpolation,
-  transport_base_url,
-  transport_has_auth, transport_auth_token, transport_auth_header_name,
-  transport_headers, transport_env,
-  transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format,
-  transport_auth_basic, transport_tls_posture,
-  service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint,
-  expr_has_self_call, expr_has_non_tail_self_call,
-  field_access_base, foreach_variable_at,
-  expr_method_name_at, let_binding_name_at,
-  record_lit_type_name_at,
-  arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name_at, field_init_node_value,
-  find_property,
-  make_arg_node, make_named_expr_node,
-  let_value, let_body, lambda_body, lambda_param_names_at,
-  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
-  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
-  index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right,
-  make_span, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
-  Cardinality, Required, CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport,
-  empty_intern_table
+  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
+  MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, MethodSemantics,
+  PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
+  field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
+  UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
+  transport_auth_header_name, transport_headers, transport_env, transport_method,
+  transport_path_template, transport_query, transport_request_body, transport_stdin,
+  transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth,
+  service_config_auth_input, service_config_auth_source, service_config_endpoint,
+  expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at,
+  expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value,
+  arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value,
+  find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body,
+  lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
+  index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
+  binop_left, binop_right, make_span, with_required_cardinality, Connective, Conj, Disj,
+  NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
+  is_file_transport, empty_intern_table
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
@@ -116,27 +98,21 @@ import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
-  BlockEmitState, TcoFrame, TcoReassignInput, InterpPart,
-  rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
-  emit_string_literal, emit_simple_expr, escape_rust_interp_text,
-  module_emit_scope,
-  scope_after_expr,
-  lookup_item,
-  has_nested_records_node, emit_data_value_json,
-  is_null_coalesce,
-  has_service_items,
-  typed_named_arg_matches, order_typed_call_args,
-  is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core, is_tco_identity_passthrough,
-  service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
-  extract_modifier_names,
-  seed_bindings,
-  emit_typed_if_shared, emit_typed_let_shared,
-  wrap_shared_type
+  BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type,
+  emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding,
+  emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
+  emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
+  module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
+  emit_data_value_json, is_null_coalesce, has_service_items, typed_named_arg_matches,
+  order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
+  tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
+  effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
+  service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
+  emit_typed_let_shared
 }
+import v1.compiler.languages { wrap_shared_type }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
@@ -250,6 +226,10 @@ fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bo
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+}
+
+fn rust_string_grounded_type_alias_decl_line() -> String {
+  concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
 }
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
@@ -2071,6 +2051,49 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
   concat(from_ann, concat(from_params, from_inferred))
 }
 
+fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>) -> List<String> {
+  let self_names = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } => record_lit_ref_names(n: n, source_indices: source_indices)
+    _ =>
+      let nm = authored_name_at(source_indices: source_indices, node: n)
+      match map_get(variant_to_enum, nm) {
+        Present { value: parent } => if parent != "" { [parent] } else { [] }
+        Absent => []
+      }
+  }
+  let child_names = concat(
+    concat(
+      n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum)),
+      n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum))
+    ),
+    concat(
+      n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum)),
+      n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, variant_to_enum: variant_to_enum))
+    )
+  )
+  let opt_names = concat(
+    match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum)  Absent => [] },
+    concat(
+      match n.transport { Present { value: t } => collect_value_emit_type_surface_names(n: t, source_indices: source_indices, variant_to_enum: variant_to_enum)  Absent => [] },
+      match n.type_annotation { Present { value: t } => collect_type_node_import_surface_names(n: t, source_indices: source_indices)  Absent => [] }
+    )
+  )
+  unique_strings(items: concat(self_names, concat(child_names, opt_names)))
+}
+
+fn collect_item_emit_surface_names(item: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>) -> List<String> {
+  let from_signature = collect_item_type_surface_names(item: item, source_indices: source_indices)
+  let from_body = match item.body {
+    Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, variant_to_enum: variant_to_enum)
+    Absent => []
+  }
+  unique_strings(items: concat(from_signature, from_body))
+}
+
+fn provider_proven_exports_symbol(name: String, provider_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  name_in_transitive_export_surface(name: name, module_name: provider_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+}
+
 fn imported_names_in_use_line(line: String) -> List<String> {
   if contains(line, "use ") == false {
     []
@@ -2084,12 +2107,12 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_type_node_import_surface_names (04_emit_info.dag single authority) over each item's type_annotation, param types, and inferred Resolved return/signature — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
-    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_type_surface_names(item: item, source_indices: source_indices)))
+    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum)))
     let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
@@ -2103,7 +2126,9 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
       } else {
         match map_get(registry, name) {
           Present { value: info } =>
-            if info.module_name != this_module_name { [name] } else { [] }
+            if info.module_name != this_module_name
+              && provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+            { [name] } else { [] }
           Absent => []
         }
       }
@@ -2127,8 +2152,10 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
       let fallback = names |> flat_map(nm =>
         if (emitted_here |> any(e => e == nm)) || is_known_variant(type_summaries: emit_info.type_summaries, name: nm) {
           []
-        } else {
+        } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
           [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+        } else {
+          []
         }
       )
       concat(block_lines, fallback)
@@ -3828,8 +3855,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+    if item_text == "String" {
+      rust_string_grounded_type_alias_decl_line()
     } else if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
       rust_opaque_kernel_alias_type_decl(name: item_text)
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {

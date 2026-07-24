@@ -5,6 +5,8 @@ pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffi
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 use crate::std_syntax::BinOp::NullCoalesce;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -72,7 +74,6 @@ use crate::v1_std_core::FieldAccessStyle::{
     EnumAccessor, OptionalUnwrap, StoredField, TupleFirst, TupleSecond,
 };
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
-use crate::v1_std_core::LiteralValue::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,

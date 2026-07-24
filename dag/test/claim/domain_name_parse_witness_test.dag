@@ -54,7 +54,7 @@ test fn domain_name_parse_rejects_edge_hyphen() -> Bool {
 }
 
 test fn domain_name_parse_rejects_label_too_long() -> Bool {
-  let long_label = std.render.repeat_string(s: "a", n: 64)
+  let long_label = repeat_string(s: "a", n: 64)
   match parse_host_name(raw: long_label) {
     Err { value: LabelTooLong } => true
     Ok { value: _ } => false
