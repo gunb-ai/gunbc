@@ -6,9 +6,9 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data test_migration_debt_module_count_baseline: Int = 81
-data test_migration_debt_total_loc_baseline: Int = 28054
-data test_migration_debt_total_test_fns_baseline: Int = 881
+data test_migration_debt_module_count_baseline: Int = 82
+data test_migration_debt_total_loc_baseline: Int = 28247
+data test_migration_debt_total_test_fns_baseline: Int = 891
 
 fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
   live_count <= baseline

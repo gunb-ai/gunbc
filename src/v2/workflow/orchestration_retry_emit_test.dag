@@ -62,35 +62,16 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
     ),
     concat(
       concat(
-        concat(
-          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
-          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
-        ),
-        concat(
-          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
-          concat(command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
-        )
+        concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
+        "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
       ),
       concat(
+        concat("    CARGO_BUILD_JOBS=1 ", concat(command, "\n")),
         concat(
-          concat(
-            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
-            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
-          ),
-          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
-        ),
-        concat(
-          concat("      else\n", "        exit 1\n"),
-          concat("      fi\n", "    fi\n")
+          concat("  else\n", "    exit 1\n"),
+          concat("  fi\n", concat("fi\n", "rm -f \"$BUILD_LOG\"\n"))
         )
       )
-    ),
-    concat(
-      concat(
-        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
-        concat("    exit 1\n", "  fi\n")
-      ),
-      concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
     )
   )
 }

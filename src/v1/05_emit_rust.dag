@@ -135,6 +135,9 @@ fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, corpus_
 
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+  }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } =>
       if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
@@ -153,6 +156,9 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+  }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -221,8 +227,33 @@ fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
 fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
   match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
 }
-fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bool {
-  corpus_repr_is_host(corpus_repr: corpus_repr) && name == "FreeMonoid"
+fn is_host_freemonoid_vec_alias(name: String) -> Bool {
+  name == "FreeMonoid"
+}
+
+fn is_host_optional_carrier_alias(name: String) -> Bool {
+  name == "Optional"
+}
+
+fn is_grounded_coproduct_native_alias(name: String) -> Bool {
+  is_host_freemonoid_vec_alias(name: name)
+    || is_host_optional_carrier_alias(name: name)
+}
+
+fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) == "Optional" && n.children |> count > 0
+}
+
+fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  match n.children |> first {
+    Present { value: elem } =>
+      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    Absent => "()"
+  }
+}
+
+fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
@@ -358,7 +389,7 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
 }
 
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if (name == "List" || name == "FreeMonoid") && corpus_repr_is_host(corpus_repr: corpus_repr) {
+  if name == "List" || name == "FreeMonoid" {
     Present { value: "Vec" }
   } else {
     none
@@ -519,6 +550,9 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   let base_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 {
 
@@ -562,6 +596,9 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
   let applied_overlay = match applied_prop {
     Present { value: applied } =>
@@ -668,6 +705,9 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -1984,20 +2024,55 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
   )
 }
 
+fn emit_inferred_type_leaf_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let is_optional = rt.return_cardinality == CardOptional
+      if is_optional {
+        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
+      } else { authored_name_at(source_indices: source_indices, node: rt) }
+    _ => ""
+  }
+}
+
 fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   match n.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       let tn_list = match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
         Present { value: t } => if t != "" { [t] } else { [] }
-        Absent => []
+        Absent =>
+          let inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
+          if inferred != "" { [inferred] } else { [] }
       }
       let pe_list = match pe {
         Present { value: p } => if p != "" { [p] } else { [] }
         Absent => []
       }
-      concat(tn_list, pe_list)
+      unique_strings(items: concat(tn_list, pe_list))
     _ => []
   }
+}
+
+fn collect_items_field_import_surface_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  unique_strings(items: items |> flat_map(item =>
+    collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
+      |> flat_map(type_name =>
+        match map_get(type_summaries, type_name) {
+          Present { value: summary } =>
+            summary.field_import_surface_names |> filter(field_type =>
+              field_type != "" && match map_get(type_summaries, field_type) {
+                Present { value: ft } =>
+                  match ft.repr {
+                    StructRepr => true
+                    _ => false
+                  }
+                Absent => false
+              }
+            )
+          Absent => []
+        }
+      )
+  ))
 }
 
 fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
@@ -2052,14 +2127,7 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
 }
 
 fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match scrutinee.inferred {
-    Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
-      if is_optional {
-        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
-      } else { authored_name_at(source_indices: source_indices, node: rt) }
-    _ => ""
-  }
+  emit_inferred_type_leaf_name(n: scrutinee, source_indices: source_indices)
 }
 
 fn collect_match_pattern_parent_enums(expr: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
@@ -2084,11 +2152,14 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
     ExprRecordLit { parent_enum: _ } => record_lit_ref_names(n: n, source_indices: source_indices)
     ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
     _ =>
+      let from_inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
+      let from_inferred_list = if from_inferred != "" { [from_inferred] } else { [] }
       let nm = authored_name_at(source_indices: source_indices, node: n)
-      match map_get(variant_to_enum, nm) {
+      let from_variant = match map_get(variant_to_enum, nm) {
         Present { value: parent } => if parent != "" { [parent] } else { [] }
         Absent => []
       }
+      unique_strings(items: concat(from_inferred_list, from_variant))
   }
   let child_names = concat(
     concat(
@@ -2142,7 +2213,8 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
     let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, type_summaries: emit_info.type_summaries)))
-    let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
+    let field_surface_names = collect_items_field_import_surface_names(items: items, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, source_indices: source_indices)
+    let candidates = unique_strings(items: concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
@@ -2289,7 +2361,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
-      && !is_host_freemonoid_vec_alias(name: authored_name(env: scope.type_env, node: item), corpus_repr: emit_info.corpus_repr))
+      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -3267,7 +3339,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       parent_main_lines |> filter(l => l != "")
     }
     let variant_lines = parent_list |> map(parent =>
-      if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
+      if is_grounded_coproduct_native_alias(name: parent) { "" } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -3301,7 +3373,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
-        && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
+        && !is_grounded_coproduct_native_alias(name: en))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
     let all_lines = concat(
       main_lines |> filter(l => l != ""),
@@ -4095,7 +4167,10 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   if is_product {
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  } else if is_host_freemonoid_vec_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
+  } else if is_host_optional_carrier_alias(name: item_text) {
+    let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
+    concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Option<", elem_csv, ">;")
+  } else if is_host_freemonoid_vec_alias(name: item_text) {
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {
@@ -5495,7 +5570,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 }
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
-  (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
+  (name == "Empty" && enum_name == "FreeMonoid") || set_contains(shared_types, enum_name)
 }
 
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
@@ -5524,7 +5599,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let sharing = language_spec(target: Rust).sharing
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
-        let body = if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+        let body = if name == "Empty" && enum_name == "FreeMonoid" {
           "vec![]"
         } else if is_optional_variant_name(name: name) && enum_name == "Optional" {
           if name == "Present" { "Some" } else { "None" }
@@ -5581,7 +5656,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
       else {
         match variant_parent {
           Present { value: enum_name } =>
-            if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+            if n == "Empty" && enum_name == "FreeMonoid" {
               "Rc::new(vec![])"
             } else {
             let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
@@ -7087,7 +7162,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
     emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else { "" }
   if native_fm != "" { return native_fm }
@@ -7543,7 +7618,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             bare_parent_enum
           }
       }
-      let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
+      let host_freemonoid_cons = tn == "Cons"
         && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
       if host_freemonoid_cons {
         let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
@@ -7896,7 +7971,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
-      let native_tco_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else { "" }
       if native_tco_fm != "" { native_tco_fm } else {
