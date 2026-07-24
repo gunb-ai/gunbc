@@ -44,10 +44,10 @@ fn build_cache_systemd_user_unit_body() -> String {
   ], "\n")
 }
 
-data build_cache_path_authority_note: String = "CI and ctrl-build sessions consume the cache as bare `sccache` on PATH (RUSTC_WRAPPER=sccache), so provisioning the modeled binary is not sufficient — the PATH-visible sccache must BE the modeled one. A second sccache earlier in PATH (a distro package, a stale copy) is exactly the two-authority state this lane exists to remove, and it is invisible to a read-back that probes the absolute path. This guard REFUSES on the mismatch (typed, located, exit 1) instead of greening on the binary we happen to have provisioned."
+data build_cache_path_authority_note: String = "The PATH-shadow JUDGEMENT lives in the model — gunbc.host_build_cache_provision.DaemonPathShadowed / RefusalPathShadowed and the verdict fold that refuses it. This module only OBSERVES: it resolves what bare `sccache` points at and reports the mismatch. Deliberately NOT a separate guard builder: the shell→dag census keys this file as an A5 `decompose` row (host_effect_realize.ProvisionBuildCache), so a new *_body here would grow a tracked debt row the census says to shrink; the observation folds into the two bodies that already exist. dissolve-on: the same trigger as this module — when ProvisionBuildCache realizes as typed host-effect argv, the resolve becomes a typed op and the comparison a typed predicate over captured values (the deploy-preflight `whoami` precedent: Not{StrEq}, never a minted StrNeq)."
 
-fn build_cache_path_authority_guard_body() -> String {
-  join([
+fn build_cache_path_authority_lines() -> List<String> {
+  [
     "resolved=\"\"",
     "if command -v sccache >/dev/null 2>&1; then",
     "  resolved=\"$(command -v sccache)\"",
@@ -60,12 +60,11 @@ fn build_cache_path_authority_guard_body() -> String {
     ], ""),
     "  exit 1",
     "fi",
-    "",
-  ], "\n")
+  ]
 }
 
 fn build_cache_observe_stats_body() -> String {
-  join([
+  join(append(build_cache_path_authority_lines(), items: [
     "stats_out=\"\"",
     "stats_rc=0",
     join(["if [ -x '", sccache_installed_binary_path, "' ]; then"], ""),
@@ -80,7 +79,7 @@ fn build_cache_observe_stats_body() -> String {
     "  exit 0",
     "fi",
     "",
-  ], "\n")
+  ]), "\n")
 }
 
 fn build_cache_fragment_word(fragment: String) -> String {
