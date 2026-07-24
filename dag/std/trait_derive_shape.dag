@@ -2,7 +2,7 @@ module std.trait_derive_shape
 
 import std.algebra { Cons, Empty }
 
-data trait_derive_shape_note: String = "Single authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Consumed by v2.compiler.trait_derive_completeness (v2 Node elem-shape classifier) and v1.compiler.trait_derive_emit (v1 seed emitter derive selection). Dissolve-on: table migrates to derived rows when emit arms are total."
+data trait_derive_shape_note: String = "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit."
 
 type ReprGroundingDeriveTrait
   = ReprDeriveClone
@@ -101,10 +101,6 @@ fn repr_grounding_derive_shape_has_trait(
   }
 }
 
-fn trait_derive_list_contains(traits: List<ReprGroundingDeriveTrait>, derive_trait: ReprGroundingDeriveTrait) -> Bool {
-  traits |> any(t => t == derive_trait)
-}
-
 fn repr_grounding_derive_completeness_predicate(
   required: List<ReprGroundingDeriveTrait>,
   shape: ReprGroundingDeriveElemShape
@@ -177,38 +173,4 @@ fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
       }
     }
   }
-}
-
-fn trait_rust_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
-  match derive_trait {
-    ReprDeriveClone => "Clone"
-    ReprDeriveCopy => "Copy"
-    ReprDerivePartialEq => "PartialEq"
-    ReprDeriveEq => "Eq"
-    ReprDerivePartialOrd => "PartialOrd"
-    ReprDeriveOrd => "Ord"
-    ReprDeriveSerialize => "serde::Serialize"
-    ReprDeriveDeserialize => "serde::Deserialize"
-    ReprDeriveAdd => "std::ops::Add"
-    ReprDeriveSub => "std::ops::Sub"
-    ReprDeriveMul => "std::ops::Mul"
-    ReprDeriveDiv => "std::ops::Div"
-    ReprDeriveRem => "std::ops::Rem"
-    ReprDeriveNeg => "std::ops::Neg"
-  }
-}
-
-fn trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
-  concat(
-    "#[derive(Debug",
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveClone) { ", Clone" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveCopy) { ", Copy" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDerivePartialEq) { ", PartialEq" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveEq) { ", Eq" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDerivePartialOrd) { ", PartialOrd" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveOrd) { ", Ord" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveSerialize) { ", serde::Serialize" } else { "" },
-    if trait_derive_list_contains(traits: traits, derive_trait: ReprDeriveDeserialize) { ", serde::Deserialize" } else { "" },
-    ")]"
-  )
 }

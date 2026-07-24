@@ -1,6 +1,23 @@
 module extdeps.languages.rust.emit
 
 import std.emit_model { SimpleMethodSpec }
+import std.trait_derive_shape {
+  ReprGroundingDeriveTrait,
+  ReprDeriveClone,
+  ReprDeriveCopy,
+  ReprDerivePartialEq,
+  ReprDeriveEq,
+  ReprDerivePartialOrd,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
+  ReprDeriveDeserialize,
+  ReprDeriveAdd,
+  ReprDeriveSub,
+  ReprDeriveMul,
+  ReprDeriveDiv,
+  ReprDeriveRem,
+  ReprDeriveNeg
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -68,6 +85,44 @@ data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq,
 data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 
 data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
+
+fn rust_repr_trait_derive_list_contains(traits: List<ReprGroundingDeriveTrait>, derive_trait: ReprGroundingDeriveTrait) -> Bool {
+  traits |> any(t => t == derive_trait)
+}
+
+fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+  match derive_trait {
+    ReprDeriveClone => "Clone"
+    ReprDeriveCopy => "Copy"
+    ReprDerivePartialEq => "PartialEq"
+    ReprDeriveEq => "Eq"
+    ReprDerivePartialOrd => "PartialOrd"
+    ReprDeriveOrd => "Ord"
+    ReprDeriveSerialize => "serde::Serialize"
+    ReprDeriveDeserialize => "serde::Deserialize"
+    ReprDeriveAdd => "std::ops::Add"
+    ReprDeriveSub => "std::ops::Sub"
+    ReprDeriveMul => "std::ops::Mul"
+    ReprDeriveDiv => "std::ops::Div"
+    ReprDeriveRem => "std::ops::Rem"
+    ReprDeriveNeg => "std::ops::Neg"
+  }
+}
+
+fn rust_trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
+  concat(
+    "#[derive(Debug",
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveClone) { ", Clone" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveCopy) { ", Copy" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDerivePartialEq) { ", PartialEq" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveEq) { ", Eq" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDerivePartialOrd) { ", PartialOrd" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveOrd) { ", Ord" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveSerialize) { ", serde::Serialize" } else { "" },
+    if rust_repr_trait_derive_list_contains(traits, ReprDeriveDeserialize) { ", serde::Deserialize" } else { "" },
+    ")]"
+  )
+}
 
 data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
 

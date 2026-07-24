@@ -20,8 +20,7 @@ import std.trait_derive_shape {
   repr_grounding_derive_shape_has_trait,
   repr_grounding_derive_completeness_predicate,
   nullary_coproduct_derive_traits,
-  payload_coproduct_derive_traits,
-  trait_derive_attr_from_traits
+  payload_coproduct_derive_traits
 }
 import v2.std.algebra { Cons, Empty, fold_list }
 import v2.std.collection { List }
