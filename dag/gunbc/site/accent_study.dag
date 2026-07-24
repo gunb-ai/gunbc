@@ -2,11 +2,16 @@ module gunbc.site.accent_study
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.site.tokens {
+import gunbc.design.theme {
   Theme, night_theme, day_theme, theme_var_decls,
+  CanvasRole, role_decl,
+}
+import gunbc.design.material {
   Material, paint, paint_alpha,
-  serialize_rules, BuildRule, StaticRule, decl, role_decl, CssDecl,
-  TextRole, TextDimRole, SurfaceRole, CanvasRole,
+  serialize_rules, BuildRule, StaticRule, decl, CssDecl,
+}
+import gunbc.site.tokens {
+  TextRole, TextDimRole, SurfaceRole,
 }
 import gunbc.site.starlight {
   StarlightRender, study_candidates, verdigris_patina,

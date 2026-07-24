@@ -1,7 +1,8 @@
 module tools.floor_effect_gate_witness
 
+import gunbc.ci_gate { EmitHostGate }
 import gunbc.ci_spec {
-  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
+  CheapClaimPoolGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   RegenVerifyGate
 }
