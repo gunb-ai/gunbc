@@ -1605,6 +1605,71 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
     true
 }
 
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
+}
+
+/// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
+/// gate/claim carrying its warm eval wall, resolve time, and combined warm cost — the PLACEMENT
+/// ROSTER's measurement basis. A gate rides PrTier only if its measured warm cost is within the
+/// 5s fast-lane budget (else fail-closed to Gauntlet — v2.workflow.ci_placement). Denominated PER
+/// GATE (placement is per-gate), reusing the ClaimResult timings the floor already records
+/// (operator ruling 2026-07-24: instrument the existing floor, do not add a throwaway probe
+/// workflow). For a single-claim gate `wall_nanos` IS the eval wall (== thread-CPU on its one
+/// thread); the discovery row carries the per-witness rate (serial-sum eval over the witness
+/// count — the parallel batch wall is the batch-wall receipt's, not a per-witness figure). The
+/// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
+/// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
+/// failure here is the same disk fault that fails them); never a verdict term.
+fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+    let mut body =
+        String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            if result.corpus_witnesses > 0 {
+                let eval_ms = result.corpus_eval_nanos / 1_000_000;
+                let resolve_ms = result.corpus_resolve_nanos / 1_000_000;
+                let warm_ms = (result.corpus_eval_nanos + result.corpus_resolve_nanos) / 1_000_000;
+                let per_witness_us =
+                    result.corpus_eval_nanos / (result.corpus_witnesses as u128) / 1_000;
+                body.push_str(&format!(
+                    "discovery\t{n}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\t{}\t{per_witness_us}\n",
+                    result.corpus_witnesses
+                ));
+            } else {
+                let eval_ms = result.wall_nanos / 1_000_000;
+                let resolve_ms = result.resolve_nanos / 1_000_000;
+                let warm_ms = (result.wall_nanos + result.resolve_nanos) / 1_000_000;
+                body.push_str(&format!(
+                    "{}\t{n}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\t0\t0\n",
+                    result.function
+                ));
+            }
+        }
+    }
+    // Mirror the TSV into the log (prefixed, grep-collectable) so the placement probe can lift
+    // it from get_job_logs on a fleet run without an artifact-upload step — the file stays for
+    // future .dag consumers (Piece 1 roster fill).
+    for line in body.lines() {
+        eprintln!("[gate-warm-cost] {line}");
+    }
+    let path = base.join("floor-gate-warm-cost-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write gate warm-cost receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor gate warm-cost: {} batch(es) (TSV receipt: {})",
+        batch_records.len(),
+        path.display()
+    );
+    true
+}
+
 fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -2057,6 +2122,7 @@ fn run_walk(
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
+    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -2065,6 +2131,7 @@ fn run_walk(
         any_failed: any_failed
             || !resolve_receipt_ok
             || !batch_wall_receipt_ok
+            || !gate_warm_cost_receipt_ok
             || !materialization_receipt_ok,
         batches_run,
     }
