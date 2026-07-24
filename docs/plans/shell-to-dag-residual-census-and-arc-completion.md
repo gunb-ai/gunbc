@@ -355,8 +355,16 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 | bucket | sites | trigger to un-defer |
 | --- | --- | --- |
 | C5 access probes | `host_effect_deploy_access_probe_script` | C5 #6946 merges |
-| srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* |
+| srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* — **see the srv3-retirement roadmap item below (audit-confirmed dead, 2026-07-24)** |
 | nbd backgrounding | `host_effect_nbd_proxy_serve` `RawLine` (`&`/trap/`$!`) | typed systemd transient-unit effect + `Filesystem.Read` token + typed argv (dissolution trigger already in-file; operator ruled no trap/&/$! vocab) |
+
+#### Roadmap item — srv3 install/reconcile subgraph retirement (operator-authorized in principle 2026-07-24; gated on load-bearing coproduct surgery)
+
+**Finding (liveness audit, snappy-moth-330 @ the §5.E wall):** the srv3 install/reconcile cluster is **dead** — `srv3_os_install_reconcile_apply` is reached from *no* `gunbc` subcommand, CLI, or CI path (verified: zero hits in `dag/tools/`, `src/v1/`, `cli_run.rs`); `fleet_converge_cli`'s only reference is a `Srv3InstallDiagnosticObserve => fallback` match arm; srv3 is already installed and the srv* cluster is wound down. The three concrete carriers: `dag/gunbc/srv3_host_effect_script.dag` (whole file), `dag/gunbc/srv3_install_diagnostic_checklist.dag` (whole file), and the `Srv3InstallDiagnosticObserve` realization arm in `host_effect_realize.dag`, plus the `srv3_os_install_reconcile_{,_dry_run,_record_approval,_apply}.dag` scaffold subgraph.
+
+**Why it is NOT an "easy" delete (the gate):** the effects these produce scripts for — `Srv3InstallReconcileObserve`, `DurableApprovalGrantRecord`, `Srv3SolConsoleCapture`, `Srv3InstallDiagnosticObserve` — are **`HostEffect` coproduct variants**. Removing them ripples through *every* total `match` on `HostEffect` (`host_effect.dag`, `host_effect_realize`, `live_deploy/host_effect_script`, `fleet_converge_cli`, `ci_deploy_access_observe`) and the srv3 witness tests. `host_effect.dag` is a **DESIGN-named load-bearing file** (escalate-first). So this is a coordinated coproduct-surgery pass, not a quick `rm`, and it is kept out of the §5.E wall PR deliberately (a different concern; the wall's `retained_*` wraps correctly *count* these dead arms in the interim).
+
+**Acceptance (its own scoped PR):** the srv3 install/reconcile subgraph + its now-orphaned `HostEffect` variants deleted together; every total `match` updated; the `retained_srvn` wraps on those arms removed with them; srv3 witness tests deleted or repointed; green by execution; and the `retained_srvn_takeover_ref` dissolve-count for the srv3 arms drops to zero. Operator authorized the deletion in principle (2026-07-24) but asked it be tracked here and land apart from the wall.
 
 ### 5.E — THE ENABLER THAT MUST COME FIRST (close the string sink, or every row above can be faked)
 
