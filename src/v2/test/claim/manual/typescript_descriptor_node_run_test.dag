@@ -1,13 +1,15 @@
 module v2.test.manual.typescript_descriptor_node_run
 
+import v2.compiler.eval {
+  Inputs,
+  inputs_for_emit_host,
+}
 import v2.compiler.emit_host {
   emit_host_exit_not_ok_diagnostic,
-  inputs_for_emit_host,
   run_emit_host,
   runtime_value_parse,
   runtime_value_signed_i32_le_as_int
 }
-import v2.compiler.eval { Inputs }
 import v2.extdeps.languages.typescript { ts_target_model }
 import v2.std.diagnostic {
   Accepted,

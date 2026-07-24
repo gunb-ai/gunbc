@@ -1,10 +1,10 @@
 module v2.test.claim.wrap_decision_gate_smoke
 
 import v2.compiler.wrap_decision { wrap_decision_gate }
+import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
   TargetModel,
   OwnershipAtFunctionReturn,
-  VoidLexRules,
   WrapGateInapplicable,
   target_carrier_diagnostics_node,
   target_model_emit_transforms_empty
