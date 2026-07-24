@@ -26,7 +26,7 @@ data roadmap_css_repin_tactile_note: String = "The roadmap's own bytes move for 
 
 data roadmap_css_repin_remodel_w1_note: String = "Re-pinned 2026-07-24 (remodel W1c/W1d/W1g): the roadmap bytes move intentionally — the band var family (band_root_css: instrument fills under the same :root/[data-theme]/media grammar the theme vars use), the dispatch state rules re-painted from role borders to band fill/ink vars, the dispatch-loud rule, and the theme-toggle control's rule. Behavioral receipts: roadmap_register_keystone (census + both-ways archetype demand, BoundaryRole demand dissolved with its stylesheet consumer), dispatch_presentation_keystone (band-paint blocks + caption-projection width), roadmap_tactile_keystone (mechanics unchanged). This digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "aac90892bddd256d"
+data roadmap_css_lift_parity_digest: String = "28c060ce83337f96"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

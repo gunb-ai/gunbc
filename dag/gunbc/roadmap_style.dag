@@ -36,11 +36,22 @@ data island_venom_note: String = "The workspace's danger completion (operator-di
 
 data island_venom: Swatch = Swatch { name: "venom", color: Srgb8 { r: 138, g: 47, b: 35 } }
 
+data in_family_ink_note: String = "The ink rule, generalized from loam (operator ruling 2026-07-24, after the first band cut shipped loam on every light fill and the operator read mint's warm-brown ink as venom-family): a fill's ink is the fill's OWN hue at ink depth, so ink never borrows another band's temperature — mint carries a deep green, butter a dark olive, aqua a deep teal, venom keeps ivory (a dark fill takes the light ink). Each is a Derived member anchored on its fill, and the palette witnesses hold every ink >= AA on its own fill by the WCAG kernel."
+
+data island_mint_ink: Swatch = Swatch { name: "mint-ink", color: Srgb8 { r: 26, g: 74, b: 43 } }
+data island_butter_ink: Swatch = Swatch { name: "butter-ink", color: Srgb8 { r: 74, g: 60, b: 10 } }
+data island_aqua_ink: Swatch = Swatch { name: "aqua-ink", color: Srgb8 { r: 14, g: 62, b: 66 } }
+
 data island_pastel_for_workspace: SwatchSetForUse = SwatchSetForUse {
   name: "island-pastel-for-workspace",
   base: island_pastel,
-  completions: [swatch_filed(sw: island_venom)],
-  use_note: "roadmap workspace bands need a danger hue (fail/loud fills); venom completes the base at this layer",
+  completions: [
+    swatch_filed(sw: island_venom),
+    swatch_derived(sw: island_mint_ink, anchor_name: "mint", note: "mint hue at ink depth (in_family_ink_note)"),
+    swatch_derived(sw: island_butter_ink, anchor_name: "butter", note: "butter hue at ink depth (in_family_ink_note)"),
+    swatch_derived(sw: island_aqua_ink, anchor_name: "aqua", note: "aqua hue at ink depth (in_family_ink_note)"),
+  ],
+  use_note: "roadmap workspace bands need a danger hue (fail/loud fills) and in-family inks for the light fills; the completions live at this layer",
 }
 
 data band_paint_note: String = "The instrument's band materials (remodel W1c/W1g, operator rulings 2026-07-24). Two laws meet here. FIRST, the instrument-area amendment: the glare envelope is a per-area L×C region, and a tactile instrument is louder than prose chrome BY LAW — island-pastel fills that the quiet envelope refuses for body chrome are lawful on the control, because a big satisfying button is supposed to out-speak body text (the operator's GitHub-merge-button archetype: the band is carried by the FILL). SECOND, per-theme routing: a band color is a (theme × band) -> swatch assignment emitted under the SAME :root / [data-theme] / prefers-color-scheme selector grammar theme_root_css uses, so the day/night toggle and the swatch auditioner both retune it without structural change. Today both themes assign the same island swatches — the declared retune point is band_paints_for_theme, one row per theme when the operator's eyes ask for it. Mapping: invite (the rest-state 'safe to act' fill) = mint on loam ink · in-progress = butter on loam · ok (the session chip) = aqua on loam · fail and loud = venom on ivory (ink pairings graded by the WCAG kernel in the palette witnesses: loam carries AA on mint/aqua/butter, ivory carries AAA on venom)."
@@ -53,9 +64,9 @@ type BandPaint {
 
 fn workspace_band_paints() -> List<BandPaint> {
   [
-    BandPaint { key: "invite", fill: island_mint, ink: island_loam },
-    BandPaint { key: "in-progress", fill: island_butter, ink: island_loam },
-    BandPaint { key: "ok", fill: island_aqua, ink: island_loam },
+    BandPaint { key: "invite", fill: island_mint, ink: island_mint_ink },
+    BandPaint { key: "in-progress", fill: island_butter, ink: island_butter_ink },
+    BandPaint { key: "ok", fill: island_aqua, ink: island_aqua_ink },
     BandPaint { key: "fail", fill: island_venom, ink: island_ivory },
     BandPaint { key: "loud", fill: island_venom, ink: island_ivory },
   ]

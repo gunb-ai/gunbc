@@ -101,6 +101,8 @@ data roadmap_detent_edges: List<DetentEdge> = [
   DetentEdge { from_state: detent_requested, to_state: detent_accepted },
 ]
 
+data dispatch_brighten_neutral_note: String = "Approach emphasis on the FILLED instrument is band-neutral (operator ruling 2026-07-24): the earlier target was var(--focus) — brass — and brass is hue-ambiguous next to the band fills (on mint it reads venom-adjacent brown, on venom it reads mint-adjacent yellow-green), so hover appeared to INVERT the state colors. The theme's ink (var(--text)) is the one color that reads as pure emphasis on every fill under both themes, so approach = ink ring + the existing lift, and never a hue that could be mistaken for a band. Brass remains the focus material elsewhere (the review mark); this retarget is the instrument's own row."
+
 fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
@@ -110,7 +112,7 @@ fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
       transition_props: "border-color",
       timing: timing,
       base_decls: [],
-      response_decls: [ decl(prop: BorderColor, value: "var(--focus)") ],
+      response_decls: [ decl(prop: BorderColor, value: "var(--text)") ],
     })
 }
 

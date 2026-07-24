@@ -13,7 +13,6 @@ import gunbc.design.theme {
   day_theme, night_theme,
 }
 import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
-import gunbc.design.material { reveal_deliberate }
 import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
   belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
@@ -430,12 +429,16 @@ fn dispatch_fetch_url_expr() -> TsExpr {
   )
 }
 
-data dispatch_choreography_note: String = "The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar over the data layer). The DATA layer applies the wire answer the moment it arrives — b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the requested phase for at least the reveal_deliberate dwell (the duration referenced from the register row, never a hand 160) and then applies the terminal render: setTimeout(apply, max(0, t0 + dwell - now)), so a 1 ms echo appears as a deliberate act and a 30 s belt answer appears the moment it lands. Presentation never fabricates a state that did not occur — apply renders exactly the answer stored on the data layer, later, never a different one. The terminal caption is the BAND's phrase (dispatch_caption_note); the wire label and located fields live in the title channel; the loud band additionally marks dispatch_class_loud so the stylesheet and any detail affordance can key on it."
+data dispatch_choreography_note: String = "The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar over the data layer). The DATA layer applies the wire answer the moment it arrives — b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the requested phase for at least the read dwell (dispatch_requested_read_dwell_ms — a reading duration with its own authority row, never a borrowed transition clock) and then applies the terminal render: setTimeout(apply, max(0, t0 + dwell - now)), so a 1 ms echo appears as a deliberate act and a 30 s belt answer appears the moment it lands. Presentation never fabricates a state that did not occur — apply renders exactly the answer stored on the data layer, later, never a different one. The terminal caption is the BAND's phrase (dispatch_caption_note); the wire label and located fields live in the title channel; the loud band additionally marks dispatch_class_loud so the stylesheet and any detail affordance can key on it."
+
+data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. 500 ms is the operator's call — quick, but long enough that the transient state is information rather than a flicker."
+
+data dispatch_requested_read_dwell_ms: Int = 500
 
 data js_dwell_const: String = "gunbcDwellMs"
 
 fn dispatch_preamble_statements() -> List<TsStmt> {
-  [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(reveal_deliberate.duration_ms)))]
+  [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms)))]
 }
 
 fn dwell_remaining_expr() -> TsExpr {

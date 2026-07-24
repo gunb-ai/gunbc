@@ -22,6 +22,12 @@ The operator's review list reduced to four roots; several complaints are one def
 - **Layer-alignment law (the centerpiece): transitions are sugar over the data layer.** The operation NEVER waits on presentation — if the wire answers in 1 ms and the transition is 160 ms, the data layer applies immediately and the presentation *appears* to take 160 ms (the Discord-mute shape: instant op, 100–200 ms fade). Presentation is a derived choreography: each presented phase holds ≥ its transition duration; phases play in order; presentation never fabricates a state that did not occur. Dispatch request-phase dwell: `reveal_deliberate` (160 ms). The choreography is modeled as data (phases, edges, duration-token references) and the client state machine is EMITTED from it — never a hand-coded promise dance.
 - **Overshoot call stays deferred** until the new geometry lands — the same spring reads differently on a real instrument than on a thin strip.
 
+Second review round (2026-07-24, after W1d/W1g landed):
+- **Read dwell is 500 ms and its own authority row** (`dispatch_requested_read_dwell_ms`): 160 ms — borrowed from the hover reveal token — was unreadable. A reading duration is a different concept from a transition clock; it never retunes a shared TimingToken.
+- **In-family ink rule (loam generalized):** a fill's ink is the fill's OWN hue at ink depth — mint carries deep green, butter dark olive, aqua deep teal, venom keeps ivory. Loam-on-mint read as venom-family warm brown; ink must never borrow another band's temperature. Inks land as Derived completions anchored on their fills, each held ≥ AA on its fill by the kernel.
+- **Approach emphasis is band-neutral:** the brass focus material inverted perceptually against the fills (brown-ish on mint, yellow-green on venom). The instrument's approach ring is the theme ink (`var(--text)`) + the existing lift; brass stays the focus material elsewhere.
+- Operator: island colors themselves not loved (auditioner W1f is the answer, not priority); layout clunk acknowledged → W1c geometry is the next slice.
+
 ## Workstreams
 
 ### W0 — census of half-born migrations (typed, counted)

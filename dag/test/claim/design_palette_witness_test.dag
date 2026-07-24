@@ -18,7 +18,10 @@ import gunbc.design.palette {
   set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
   SwatchSetForUse, swatch_filed, swatches_for_use, swatch_set_for_use_admissible,
 }
-import gunbc.roadmap_style { island_venom, island_pastel_for_workspace }
+import gunbc.roadmap_style {
+  island_venom, island_pastel_for_workspace,
+  island_mint_ink, island_butter_ink, island_aqua_ink,
+}
 import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
 import std.measure { uint8_channel_inclusive_max }
 import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
@@ -206,9 +209,15 @@ fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
 
 fn witness_workspace_for_use_completion_admissible() -> Bool {
   swatch_set_for_use_admissible(u: island_pastel_for_workspace)
-    && swatches_for_use(u: island_pastel_for_workspace).length() == 7
+    && swatches_for_use(u: island_pastel_for_workspace).length() == 10
     && swatches_of(s: island_pastel).length() == 6
     && swatch_paint(sw: island_venom) == "#8a2f23"
+}
+
+fn witness_in_family_inks_carry_their_fills() -> Bool {
+  grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint).grade) >= 2
+    && grade_rank(g: grade_pairing(figure: island_butter_ink, ground: island_butter).grade) >= 2
+    && grade_rank(g: grade_pairing(figure: island_aqua_ink, ground: island_aqua).grade) >= 2
 }
 
 fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
@@ -246,5 +255,6 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_uint8_channel_inclusive_max_value_present()
     && witness_workspace_for_use_completion_admissible()
     && witness_venom_carries_ivory_text_and_refuses_loam()
+    && witness_in_family_inks_carry_their_fills()
     && witness_for_use_refuses_empty_and_duplicate()
 }
