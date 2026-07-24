@@ -57,3 +57,9 @@ data retained_foreign_note: String = "Default dissolve-on for foreign-executor /
 fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
   retained_transport(body: body, reason: reason, dissolves_to: retained_foreign_emit_ref)
 }
+
+data retained_runtime_note: String = "Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity, srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the ShellOnHost edge. Returns TransportScript for the direct shell.Exec.Run position; the ShellOnHost cell path uses retained_srvn (RetainedShellScript) instead."
+
+fn retained_runtime(body: String, reason: NonEmptyStr) -> TransportScript {
+  retained_transport(body: body, reason: reason, dissolves_to: retained_srvn_takeover_ref)
+}
