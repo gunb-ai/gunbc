@@ -5945,19 +5945,20 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
+      let leaf_name = if string_contains(s: n, pattern: ".") { qualified_last_segment(name: n) } else { n }
       let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
-      if (n == "none" || n == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
-      else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
+      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
+      else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
       else {
         match variant_parent {
           Present { value: enum_name } =>
-            if n == "Empty" && enum_name == "FreeMonoid" {
+            if leaf_name == "Empty" && enum_name == "FreeMonoid" {
               "Rc::new(vec![])"
             } else {
-            let qualified = if is_optional_variant_name(name: n) && is_optional_like_parent_name(name: enum_name) {
-              if is_some_like_variant_name(name: n) { "Some" } else { "None" }
+            let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
+              if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
             } else {
-              concat(enum_name, "::", n)
+              concat(enum_name, "::", leaf_name)
             }
             if set_contains(shared_types, enum_name) {
               concat("Rc::new(", qualified, ")")
