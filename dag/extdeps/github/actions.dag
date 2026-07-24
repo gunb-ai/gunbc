@@ -33,6 +33,22 @@ data github_actions_runtime: GitHubActionsRuntime = {
   oidc_request_token_env: "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
 }
 
+data github_ci_event_surface_note: String = "GITHUB_EVENT_NAME and GITHUB_BASE_REF are default environment variables GitHub Actions sets on every job (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read 2026-07-24). GITHUB_EVENT_NAME carries the wire name of the triggering event (the runtime projection of WorkflowTrigger: push / pull_request / workflow_dispatch / schedule / merge_group). GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on pull_request / pull_request_target events, empty for every other event. extdeps owns these names (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c))."
+
+data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
+
+data github_base_ref_env: NonEmptyStr = "GITHUB_BASE_REF"
+
+data github_event_name_push: String = "push"
+
+data github_event_name_pull_request: String = "pull_request"
+
+data github_event_name_workflow_dispatch: String = "workflow_dispatch"
+
+data github_event_name_merge_group: String = "merge_group"
+
+data github_event_name_schedule: String = "schedule"
+
 type Workflow {
   name: String
   on: List<WorkflowTrigger>
