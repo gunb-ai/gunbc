@@ -1,0 +1,46 @@
+module test.claim.network_reach
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data network_reach_witness_note: String = "Green-by-execution proof for extdeps.network.reach — the network-reach model independent of shell transport. The load-bearing §5 control is fabric_tunnel_refuses_realization: FabricTunnel is the intended long-term reach that does NOT work yet, so its realizability MUST be ReachRefused{FabricTunnelNotOperational}; a model that let it fall through as realizable would red this. DirectLan and a non-empty ProxyJump are realizable; an empty-chain ProxyJump refuses by construction (a jump with no hops is a modeling error, not a direct reach). reach_target extracts the ultimate target across all three arms. Together these prove the interim srv3-via-srv2 ProxyJump is a realizable, cited config while the fabric it stands in for stays honestly refused."
+
+fn srv2() -> NetworkHost {
+  host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188))
+}
+
+fn srv3() -> NetworkHost {
+  host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221))
+}
+
+test fn direct_lan_is_realizable() -> Bool {
+  reach_is_realizable(reach: direct_lan(host: srv2()))
+}
+
+test fn proxy_jump_via_srv2_to_srv3_is_realizable() -> Bool {
+  reach_is_realizable(reach: proxy_jump(jumps: [srv2()], target: srv3()))
+}
+
+test fn fabric_tunnel_refuses_realization() -> Bool {
+  match reach_realizability(reach: fabric_tunnel(target: srv3())) {
+    ReachRealizable => false
+    ReachRefused { cause: FabricTunnelNotOperational } => true
+    ReachRefused { cause: ProxyJumpChainEmpty } => false
+  }
+}
+
+test fn empty_proxy_jump_chain_refuses_by_construction() -> Bool {
+  match reach_realizability(reach: proxy_jump(jumps: [], target: srv3())) {
+    ReachRealizable => false
+    ReachRefused { cause: ProxyJumpChainEmpty } => true
+    ReachRefused { cause: FabricTunnelNotOperational } => false
+  }
+}
+
+test fn reach_target_extracts_ultimate_target_across_arms() -> Bool {
+  let via = proxy_jump(jumps: [srv2()], target: srv3())
+  let direct = direct_lan(host: srv3())
+  let fabric = fabric_tunnel(target: srv3())
+  render_network_host(host: reach_target(reach: via)) == render_network_host(host: reach_target(reach: direct))
+    && render_network_host(host: reach_target(reach: fabric)) == render_network_host(host: reach_target(reach: direct))
+}
