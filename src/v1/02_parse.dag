@@ -4573,7 +4573,7 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
       ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: final_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
     }
     _ =>
-      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: none), span: span) } }
   }
 }
 

@@ -13979,6 +13979,21 @@ pub fn collect_lambda_idents(
     }
 }
 
+pub fn interp_body_error_message(err: Option<Rc<ErrorNode>>) -> String {
+    {
+        let inner = match err.clone() {
+            Some(e) => match (*e.diagnostic.clone()).clone() {
+                CompilerDiagnostic::ParseError { message: m, .. } => {
+                    v1_rt::concat(m.clone(), " — ".to_string())
+                }
+                _ => "".to_string(),
+            },
+            None => "".to_string(),
+        };
+        v1_rt::concat("in string interpolation: ".to_string(), v1_rt::concat(inner.clone(), "a '{' followed by an identifier begins interpolation inside a string literal; for a literal brace write \\{ (shell strings: \"$\\{VAR:-default}\")".to_string()))
+    }
+}
+
 pub fn parse_string_interp(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = token_stream_first(tokens.clone());
@@ -14029,7 +14044,15 @@ pub fn parse_interp_parts(
     loop {
         let r = parse_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
-            return r;
+            return Rc::new(ExprResult {
+                expr: r.expr.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: Some(parse_error(
+                    interp_body_error_message(r.err.clone()),
+                    span.clone(),
+                )),
+            });
         }
         let new_parts = v1_rt::rc_list_push(
             parts.clone(),
@@ -14123,7 +14146,7 @@ pub fn parse_interp_parts(
                     ),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: Some(parse_error(interp_body_error_message(None), span.clone())),
                 });
             }
         }
