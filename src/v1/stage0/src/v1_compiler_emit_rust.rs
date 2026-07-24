@@ -16368,14 +16368,15 @@ pub fn emit_typed_expr_base(
                                     emit_freemonoid_empty_rc_value()
                                 } else {
                                     {
-                                        let qualified = if (is_optional_variant_name(leaf_name.clone())
-                                            && is_optional_like_parent_name(enum_name.clone()))
-                                        {
-                                            if is_some_like_variant_name(leaf_name.clone()) {
-                                                "Some".to_string()
-                                            } else {
-                                                "None".to_string()
-                                            }
+                                        let qualified =
+                                            if (is_optional_variant_name(leaf_name.clone())
+                                                && is_optional_like_parent_name(enum_name.clone()))
+                                            {
+                                                if is_some_like_variant_name(leaf_name.clone()) {
+                                                    "Some".to_string()
+                                                } else {
+                                                    "None".to_string()
+                                                }
                                             } else {
                                                 v1_rt::concat(
                                                     v1_rt::concat(

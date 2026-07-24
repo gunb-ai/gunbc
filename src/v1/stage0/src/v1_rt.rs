@@ -711,6 +711,29 @@ pub fn is_emoji_ident(cp: i64) -> bool {
         .unwrap_or(false)
 }
 
+// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra
+// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.
+pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {
+    Rc::new(Vec::new())
+}
+
+pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
+    let mut out = xs.as_ref().clone();
+    out.push_back(item);
+    Rc::new(out)
+}
+
+pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A
+where
+    F: Fn(A, T) -> A,
+{
+    let mut acc = init;
+    for item in xs.iter() {
+        acc = f(acc, item.clone());
+    }
+    acc
+}
+
 const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV1A64_PRIME: u64 = 0x100000001b3;
 
