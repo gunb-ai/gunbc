@@ -8503,42 +8503,66 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
     }
 }
 
-/// Floor receipt leg labels are derived at run time by evaluating the `.dag`
-/// classification authority (`census_execution_leg_label`). The label is a pure function
-/// of the entry path, so there is no census carrier to read and none to keep in sync —
-/// materializing it into a committed TSV was a second representation of the same rule
-/// (§2/§3), and the rule stays the `.dag`'s alone.
+/// The floor receipt's leg label, read from the memo primed by
+/// `prime_witness_execution_legs`. The label is a pure function of the entry path, derived
+/// from the `.dag` classification authority — there is no census carrier to read and none
+/// to keep in sync (§2/§3).
 ///
-/// Fail-closed (§5): an authority that will not resolve or evaluate stops the line with a
-/// located refusal. It never falls back to a fabricated label.
+/// Fail-closed (§5): an unprimed entry refuses. It does not quietly derive on the spot,
+/// because doing so off the floor's own index costs a second whole-corpus index — measured
+/// at ~6GB of extra demand, which pushed the floor into swap and inflated batch 3 by 44%.
+/// A miss is a wiring bug in the caller, and it says so rather than paying that silently.
 pub fn witness_execution_leg_label(entry: &str) -> String {
     let rel = repo_relative_dag_path(entry);
-    if let Some(hit) = witness_execution_leg_cached(&rel) {
-        return hit;
+    match witness_execution_leg_cached(&rel) {
+        Some(hit) => hit,
+        None => panic!(
+            "witness execution leg: entry {rel:?} was not primed (refuse — call \
+             prime_witness_execution_legs with the floor's index before running rows)"
+        ),
     }
-    let leg = derive_witness_execution_leg(&rel);
-    witness_execution_leg_cache_put(&rel, &leg);
-    leg
 }
 
-/// Derive every distinct entry's leg once, on the caller's thread, before witnesses fan out.
+/// Derive every distinct entry's leg once, against the index the caller already built.
 ///
-/// Cost shape (§6 — measured, not assumed): the label itself is ~5us, but building the
-/// interpreter context for the classification authority is seconds, because it resolves
-/// against the corpus-wide shared index — and that index and the context are both
-/// thread-local. Priming here, on the thread whose index the floor has already built, keeps
-/// the process to a single context build; without it every worker thread that missed the
-/// cache would pay for its own. The cache is process-wide so the fan-out reads it directly.
-pub(crate) fn prime_witness_execution_legs<'a>(entries: impl IntoIterator<Item = &'a str>) {
+/// Cost shape (§6 — measured, not assumed): the label itself is ~5us, but the classification
+/// authority's evaluation context is expensive to stand up, and resolving it through
+/// `resolve_entry_graph_shared` keys a *separate* corpus-wide index from the floor's own.
+/// That second index is not a duplicate lookup, it is a duplicate corpus: it cost ~6GB, took
+/// the floor from 10GB to 17GB of swap, and added 426s (+44%) to batch 3 against main.
+/// Resolving through the caller's `index` reuses the corpus already resident.
+pub(crate) fn prime_witness_execution_legs<'a>(
+    index: &MultiEntryIndex,
+    entries: impl IntoIterator<Item = &'a str>,
+) {
     let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for entry in entries {
-        distinct.insert(repo_relative_dag_path(entry));
-    }
-    for rel in distinct {
+        let rel = repo_relative_dag_path(entry);
         if witness_execution_leg_cached(&rel).is_none() {
-            let leg = derive_witness_execution_leg(&rel);
-            witness_execution_leg_cache_put(&rel, &leg);
+            distinct.insert(rel);
         }
+    }
+    if distinct.is_empty() {
+        return;
+    }
+    let (graph, indices) =
+        resolve_entry_with_index(index, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "witness execution leg: resolve census authority \
+                     {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY}: {e} (refuse)"
+                )
+            });
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    for rel in distinct {
+        let leg = match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
+            Ok(leg) if !leg.trim().is_empty() => leg,
+            Ok(_) => panic!(
+                "witness execution leg: census_execution_leg_label({rel:?}) returned an empty label (refuse)"
+            ),
+            Err(e) => panic!("witness execution leg: {e} (refuse)"),
+        };
+        witness_execution_leg_cache_put(&rel, &leg);
     }
 }
 
@@ -8568,59 +8592,8 @@ fn witness_execution_leg_cache_put(rel: &str, leg: &str) {
     }
 }
 
-fn derive_witness_execution_leg(rel: &str) -> String {
-    let ctx = witness_entry_eligibility_census_ctx().unwrap_or_else(|e| {
-        panic!(
-            "witness execution leg: {e} (refuse — {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY} \
-             is the classification authority)"
-        )
-    });
-    match eval_census_string_fn(&ctx, "census_execution_leg_label", rel) {
-        Ok(leg) if !leg.trim().is_empty() => leg,
-        Ok(_) => panic!(
-            "witness execution leg: census_execution_leg_label({rel:?}) returned an empty label (refuse)"
-        ),
-        Err(e) => panic!("witness execution leg: {e} (refuse)"),
-    }
-}
-
 const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
     "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
-
-thread_local! {
-    /// Per-thread evaluation context for the census classification authority. The
-    /// underlying resolve is already memoized process-wide by `resolve_entry_graph_shared`;
-    /// this only avoids rebuilding the interpreter context once per witness row.
-    static WITNESS_ENTRY_ELIGIBILITY_CENSUS_CTX:
-        RefCell<Option<Rc<v1_interpreter::InterpContext>>> = RefCell::new(None);
-}
-
-fn witness_entry_eligibility_census_ctx() -> Result<Rc<v1_interpreter::InterpContext>, String> {
-    if let Some(ctx) = WITNESS_ENTRY_ELIGIBILITY_CENSUS_CTX.with(|slot| slot.borrow().clone()) {
-        return Ok(ctx);
-    }
-    // Anchor on the workspace root rather than the process cwd: the label is derived on
-    // every floor witness row, and a caller that happens to run from a subdirectory must
-    // get the same answer, not a resolve failure.
-    let root = process_workspace_root();
-    let roots: Vec<String> = witness_layer_roots()
-        .iter()
-        .map(|r| root.join(r).to_string_lossy().into_owned())
-        .collect();
-    let entry = root
-        .join(WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-        .to_string_lossy()
-        .into_owned();
-    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
-        .map_err(|e| format!("resolve census authority: {e}"))?;
-    let ctx = Rc::new(make_eval_context(
-        &graph,
-        indices,
-        v1_interpreter::ExecutionMode::Hermetic,
-    ));
-    WITNESS_ENTRY_ELIGIBILITY_CENSUS_CTX.with(|slot| *slot.borrow_mut() = Some(ctx.clone()));
-    Ok(ctx)
-}
 
 fn eval_census_string_fn(
     ctx: &v1_interpreter::InterpContext,
@@ -13980,7 +13953,7 @@ fn run_discovery_corpus_with_options_inner(
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs(rows.iter().map(|row| row.entry.as_str()));
+    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
 
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
@@ -14599,7 +14572,7 @@ fn run_discovery_rows(
         roster_closure_nodes: 0,
     };
     // One context build for the whole roster, on this thread, while its shared index is warm.
-    prime_witness_execution_legs(rows.iter().map(|row| row.entry.as_str()));
+    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
 
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
