@@ -193,7 +193,7 @@ type ArtifactPayload
   = Inline { body: String }
   | BlobRef { uri: Uri, size_bytes: Int }
 
-type Artifact {
+type RunArtifact {
   artifact_id: NonEmptyStr
   run_key: NonEmptyStr
   artifact_type: ArtifactType

@@ -11,8 +11,8 @@ fn plain_span(text: String) -> Span {
   Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
-fn one_line_frame(text: String) -> std.render.Frame {
-  std.render.Frame {
+fn one_line_frame(text: String) -> std.render.RenderFrame {
+  std.render.RenderFrame {
     lines: [Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
     cursor_action: Append
   }

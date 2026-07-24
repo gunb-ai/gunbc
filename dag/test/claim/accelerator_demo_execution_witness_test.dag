@@ -15,13 +15,6 @@ fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   }
 }
 
-fn witness_pure_program_structurally_recognized() -> Bool {
-  match gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program) {
-    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
-    Refused { reason: _ } => false
-  }
-}
-
 test fn accelerator_demo_execution_lane_witnesses() -> Bool {
   gunbc.accelerator_demo_realize.witness_single_source_program_fixture_authority()
     && gunbc.accelerator_demo_realize.witness_integer_differential_bit_exact_on_fixture()
@@ -46,7 +39,7 @@ test fn accelerator_demo_execution_lane_witnesses() -> Bool {
     && gunbc.accelerator_demo_render.witness_triptych_render_contains_three_panels()
     && gunbc.accelerator_demo_render.witness_triptych_effectful_render_shows_refusal_panel()
     && witness_projected_integer_outcome_is_recognized_lossless()
-    && witness_pure_program_structurally_recognized()
+    && gunbc.accelerator_demo_recognizer.witness_pure_program_structurally_recognized()
     && gunbc.accelerator_demo_program.witness_relu_mul_add_program_op_codes_are_authority()
     && extdeps.languages.simd.kernel.witness_relu_mul_add_wire_op_codes_are_locked_triplet()
     && gunbc.accelerator_demo_realize.witness_program_and_simd_wire_op_codes_single_authority()
