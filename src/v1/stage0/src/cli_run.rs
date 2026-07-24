@@ -2029,9 +2029,10 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
 pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
     let roots = default_source_roots();
-    let (graph, indices) =
-        resolve_entry_graph_shared(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
-            .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
+        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     match v1_interpreter::run_in_context_with_args(
         &ctx,
