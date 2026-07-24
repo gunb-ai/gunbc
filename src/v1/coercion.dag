@@ -177,7 +177,7 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 fn inhabitant_test_names() -> List<String> {
-  canonical_container_names()
+  concat(canonical_container_names(), ["PointwisePower"])
 }
 
 fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
