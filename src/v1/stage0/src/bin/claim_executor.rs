@@ -1268,6 +1268,59 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
+/// Render a floor phase-completion line through the single-authority observation
+/// renderer (`gunbc.observation_ci_render`, via the seed boundary
+/// `gunbc.observation_seed_render`) instead of a raw `[t+…]` byte string in the seed
+/// — the format lives in `.dag`, this only transports primitives across the boundary,
+/// exactly as `cli_run::install_output_policy` calls `output_policy.resolve_channel_policy`.
+/// The seed occurrence "a floor phase concluded in `elapsed_ms`" is modelled as a
+/// `Concluded` event on a `PhaseSegment` subject and projected by
+/// `ci_event_line ∘ ci_render_line`. Resolve is memoized in the process resolve store,
+/// so the render module is resolved once and every later mark is a cache hit + a cheap
+/// eval. Returns `None` only if the renderer cannot be resolved/evaluated; the caller
+/// degrades loudly and never reproduces the old marker (§5: a failure arm refuses, it
+/// does not widen). The entry is located under whichever source root holds it as an
+/// absolute path, so resolution does not depend on the process CWD (production runs
+/// from the repo root; `cargo test` runs from the crate dir).
+fn render_phase_concluded_line(
+    source_roots: &[String],
+    phase: &str,
+    elapsed_ms: u64,
+    overhead_ms: u64,
+    emoji: bool,
+) -> Option<String> {
+    let entry = source_roots
+        .iter()
+        .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+        .find(|p| p.exists())?
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let out = run_in_context_with_args(
+        &ctx,
+        "phase_concluded_line",
+        &[
+            (Some("phase".to_string()), Value::Str(phase.to_string())),
+            (
+                Some("elapsed_ms".to_string()),
+                Value::Int(elapsed_ms as i64),
+            ),
+            (
+                Some("overhead_ms".to_string()),
+                Value::Int(overhead_ms as i64),
+            ),
+            (Some("emoji".to_string()), Value::Bool(emoji)),
+        ],
+        false,
+    )
+    .ok()?;
+    match out {
+        Value::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
 fn peak_rss_bytes() -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
@@ -2441,16 +2494,45 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
-    // Coarse wall-clock phase marks: the pre-walk phases (hygiene walk, policy
-    // install, plan resolve, plan eval, width eval) are interpreter-heavy and used
-    // to be SILENT — a 30-minute prelude looked identical to a hang. Every phase
-    // now stamps a line so the floor log itemizes its own time.
+    // Coarse phase marks for the pre-walk prelude (hygiene walk, policy install,
+    // plan resolve/eval, governor arm) — interpreter-heavy phases that used to be
+    // SILENT, so a 30-minute prelude looked identical to a hang. These now render
+    // through the single-authority observation renderer (`gunbc.observation_ci_render`,
+    // via the `gunbc.observation_seed_render` boundary) as `✅ <phase> done in <human
+    // duration>` instead of a raw `[t+…]` byte string the seed would fork the format
+    // into. Each mark carries its OWN wall (delta since the last mark), not a running
+    // `t+`, so the log itemizes which prelude phase is slow — the step toward the
+    // per-phase receipt keys the ci_spec prelude-coverage-hole follow-up calls for.
     let floor_started = Instant::now();
+    let phase_last = std::cell::Cell::new(floor_started);
+    // Emoji glyphs under GitHub Actions, Unicode on a plain terminal (the same medium
+    // split `install_group_syntax` makes for `::group::` markers).
+    let phase_glyph_emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    // Placement basis only (see `gunbc.observation_seed_render`): the clamp overhead
+    // `gunbc.ci_spec` budgets for non-per-unit floor time, so a prelude phase completing
+    // within it reads Ambient. Coarse + placement-only — `ci_render_line` reads only the
+    // glyph and text — and dissolves when the stream driver reads the basis from ci_spec.
+    const PHASE_BASIS_OVERHEAD_MS: u64 = 300_000;
+    let phase_mark_roots = source_roots.clone();
     let phase_mark = |label: &str| {
-        eprintln!(
-            "claim_executor: [t+{:.1}s] {label}",
-            floor_started.elapsed().as_secs_f64()
-        );
+        let now = Instant::now();
+        let delta_ms = now.saturating_duration_since(phase_last.get()).as_millis() as u64;
+        phase_last.set(now);
+        match render_phase_concluded_line(
+            &phase_mark_roots,
+            label,
+            delta_ms,
+            PHASE_BASIS_OVERHEAD_MS,
+            phase_glyph_emoji,
+        ) {
+            Some(line) => eprintln!("{line}"),
+            // §5: refuse to fabricate the pretty format when the renderer is unreachable,
+            // and never reproduce the deleted `[t+…]` marker — name the degradation loudly.
+            None => eprintln!(
+                "claim_executor: phase {label} (+{:.1}s) [observation renderer unavailable]",
+                (delta_ms as f64) / 1000.0
+            ),
+        }
     };
 
     // Install the host-effect trace policy from the .dag authority FIRST — before the
@@ -2466,7 +2548,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
     v1_compiler::cli_run::install_group_syntax(&source_roots);
-    phase_mark("output policy + group syntax installed");
+    phase_mark("output-policy + group-syntax install");
 
     // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
     // only (or are absent entirely on an empty roster), and the explicit-only path
@@ -2485,7 +2567,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("naming-hygiene walk complete");
+    phase_mark("naming-hygiene walk");
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
@@ -2501,7 +2583,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
-    phase_mark("plan entry resolved");
+    phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
     let batches = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
@@ -2588,7 +2670,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
     drop(plan_ctx);
-    phase_mark("plan evaluated");
+    phase_mark("plan eval");
 
     eprintln!(
         "claim_executor: [{}] executor plan = {} batch(es) from {}::{}",
@@ -2618,7 +2700,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("memory governor armed; starting batch walk");
+    phase_mark("memory-governor arm");
     spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
@@ -2891,6 +2973,38 @@ mod tests {
             FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS,
             "claim_executor seed const must match ci_floor_plan materialized roster \
              (dissolve-on: v2 emit of stage0 host constants)"
+        );
+    }
+
+    // The seed→.dag render boundary by execution: `render_phase_concluded_line`
+    // resolves `gunbc.observation_seed_render` and projects a floor phase mark through
+    // the single-authority renderer, so the seed speaks the observation vocabulary
+    // rather than a raw `[t+…]` byte string. Discriminating RED: a helper that fell
+    // back to the raw marker, dropped the phase, or forked the duration format fails
+    // one of the three asserts below (human units, completed glyph, no old marker).
+    #[test]
+    fn phase_mark_renders_through_the_observation_render_authority() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // Emoji tier (the CI target): 48s concludes as `✅ naming-hygiene walk done in
+        // 48 seconds`. overhead_ms is the placement basis only (the 300s clamp overhead).
+        let line =
+            render_phase_concluded_line(&roots, "naming-hygiene walk", 48_000, 300_000, true)
+                .expect("observation_seed_render must resolve and render a phase line");
+        assert!(
+            line.contains("naming-hygiene walk") && line.contains("done in 48 seconds"),
+            "phase line must name the phase in human units: {line:?}"
+        );
+        assert!(
+            line.starts_with('✅'),
+            "a Done outcome concludes with the completed glyph at the Emoji tier: {line:?}"
+        );
+        assert!(
+            !line.contains("[t+"),
+            "the projection must not carry the deleted raw phase marker: {line:?}"
         );
     }
 

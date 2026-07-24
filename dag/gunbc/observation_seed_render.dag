@@ -1,0 +1,51 @@
+module gunbc.observation_seed_render
+
+import std.types { String, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.symbols { Tier, Emoji, Unicode }
+import std.measure { millisecond }
+import std.disposition { Disposition, Terminal }
+import std.observation {
+  ObservationSubject,
+  PhaseSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  Concluded,
+  Done,
+  AttentionBasis,
+}
+import gunbc.observation_ci_render { ci_event_line, ci_render_line }
+
+data observation_seed_render_note: String = "The seed to .dag render boundary. The v1 seed (claim_executor and its siblings) emits progress lines, but the FORMAT is a single authority in gunbc.observation_ci_render — a raw eprintln in the seed forks that format the way a hand-rolled duration string forks std.measure. This module is the boundary the seed calls across, exactly as cli_run.install_output_policy calls output_policy.resolve_channel_policy: primitive arguments in, a rendered line out, no format logic on the seed side. It constructs the ObservationEvent the seed's occurrence corresponds to (a phase concluding is a Concluded event on a PhaseSegment subject) and projects it through the existing renderer, so the seed cannot drift from the model. It holds no telemetry source and computes no facts of its own; every field it fills came in as an argument the seed already had (observation law 5)."
+
+data observation_seed_render_basis_note: String = "The attention basis governs PLACEMENT (ambient collapses, an anomaly surfaces), not the rendered string — ci_render_line reads only the glyph and text. It is supplied here, not omitted, so a future placement consumer reads a real level rather than a fabricated one, and it is grounded in the clamp overhead the floor already models (the non-per-unit floor time gunbc.ci_spec budgets as gunbc_ci_floor_batch_clamp_params overhead_seconds) rather than a threshold invented in a formatting helper: a prelude phase completing inside the whole overhead budget is routine, so it reads Ambient. The seed passes that overhead in as overhead_ms — this module does not reach for it, keeping the module a pure projection."
+
+fn seed_tier(emoji: Bool) -> Tier {
+  if emoji { Emoji } else { Unicode }
+}
+
+fn seed_phase_basis(overhead_ms: Nat) -> AttentionBasis {
+  AttentionBasis { average: millisecond(count: overhead_ms), maximum: millisecond(count: overhead_ms) }
+}
+
+fn seed_phase_subject(phase: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject { segments: [ PhaseSegment { name: phase } ] }
+}
+
+fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_phase_subject(phase: phase),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at a phase boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data observation_seed_render_disposition: Disposition = Terminal {
+  reason: "The seed to .dag render boundary is Terminal, not a scaffold: a boundary the seed calls across to keep the format single-authority is the mechanism, not an interim stand-in. What dissolves is each raw eprintln the seed replaces with a call here — counted by gunbc.observation_emit_census — and, further out, the seed itself as v2 realizes the witnesses natively; neither changes what this module models, which is that a seed occurrence is an observation event projected by the one renderer."
+}
