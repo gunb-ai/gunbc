@@ -237,6 +237,32 @@ one PR.** Structure:
   (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
   is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
   concentration is deliberate and operator-chosen.
+  **Two stage collapses (operator-blessed 2026-07-24 — "too many stages" review):** (a) the
+  **regen job folds into the floor as a spec row** — it is already scoped by the same closure
+  authority, and the job boundary costs ~1 min of setup/transfer even when it skips; as a row
+  its skip decision is free, its cold control is a gauntlet row on main, and the serial chain
+  drops to **build → ci → deploy**. (b) the resolve + materialization **receipt gates fold
+  into merge admission** — three instant steps become one. The floor's 7 waves are emergent
+  (the scheduler derives them from the roster's edges), so the PrTier roster yields the
+  3-wave PR shape automatically: fast gates → compile → selected witnesses; waves 4–7 leave
+  the PR path with their gates.
+
+### Envelope: best and worst expected cases (end state)
+
+- **Leaf PR (typical):** build 2.4m warm + fast gates ~2m + small closure compile ~1m + a
+  handful of witnesses + admission ≈ **6–8 min**, every minute attributed to the diff in the
+  preamble.
+- **Worst expected case — a diff touching the entire repo** (hub file, compiler `.rs`, mass
+  plumbing): selection honestly widens to everything, so the PR pays the whole wall once:
+  build 2.4m (warm) + fast gates ~2m + whole-tree compile ~3.5m + full corpus witnesses
+  22–27m (the measured 1344–1629s fleet envelope) + regen row ~5.3m + admission ~0.5m ≈
+  **~35–41 min wall**, clamp ceiling ≈ 44 min on the witness batch, hard backstop the 55-min
+  step cap. This is the honest asymmetry the redesign buys: cost tracks the diff's true blast
+  radius — a whole-repo diff needs the whole wall, a leaf diff never pays it. Tail risks
+  outside the envelope, named: a cold toolchain build (~33m, sccache miss) and a
+  memory-pathology host (the clamp reds it in minutes rather than letting it crawl). The
+  worst case shrinks only via the store-econ/native-flip lane and the W3 pool-build residue —
+  the redesign bounds it, those lanes shrink it.
 
 ### The before/after expectation sheet (X filled by the probe; every row falsification-bounded)
 
