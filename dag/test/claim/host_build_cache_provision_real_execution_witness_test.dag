@@ -5,7 +5,10 @@ import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.host_build_cache_provision_script { build_cache_read_back_body }
+import gunbc.host_build_cache_provision_script {
+  build_cache_read_back_body,
+  build_cache_path_authority_guard_body,
+}
 import gunbc.host_effect_realize {
   provision_build_cache_reconcile_shell_observed,
   ShellExecObserved,
@@ -15,38 +18,92 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witness for ProvisionBuildCache read-back fail-closed: runs build_cache_read_back_body under set -euo pipefail with a PATH-prepended fake sccache that always exits 1, then asserts provision_build_cache_reconcile_shell_observed returns NotConverged (not Converged/ExitSuccess). Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. RED control: a regressing script that implicit-exit-0 on failed read-back would reconcile Converged and fail this witness."
+data real_execution_home_doc: String = "Wet execution witnesses for ProvisionBuildCache fail-closed behaviour: each runs a real bash body against a real fake-sccache on disk. (1) read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess. (2) path authority — a DIFFERENT, perfectly HEALTHY sccache earlier on PATH must REFUSE, because the binary CI actually invokes as RUSTC_WRAPPER=sccache is then not the one provisioning verified; this is the two-authority state the 2026-07-24 de-fork removed and no read-back of the absolute path can see it. (3) the discriminating control for (2): with no sccache on PATH at all the same guard must PASS, so the guard is proven to fire on mismatch rather than being a blanket refusal. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response."
 
-test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let fake_sccache_path = concat(dir.path as String, "/sccache")
-  let wrote = Filesystem.Write(path: fake_sccache_path, content: "#!/bin/sh\nexit 1\n")
-  let chmod = shell.Exec.Run(script: transport_script_from_body(body: concat("chmod +x ", fake_sccache_path)))
-  let body = concat(
+fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
+  let path = concat(dir_path, "/sccache")
+  let wrote = Filesystem.Write(
+    path: path,
+    content: concat("#!/bin/sh\nexit ", concat(exit_code, "\n")),
+  )
+  let chmod = shell.Exec.Run(
+    script: transport_script_from_body(body: concat("chmod +x ", path)),
+  )
+  wrote.success && chmod.success
+}
+
+fn run_body_with_path_prefix(dir_path: String, body: String) -> ShellExecObserved {
+  let full = concat(
     "set -euo pipefail\n",
     concat(
-      concat("export PATH=\"", dir.path as String),
-      concat(":$PATH\"\n", build_cache_read_back_body()),
+      concat("export PATH=\"", dir_path),
+      concat(":$PATH\"\n", body),
     ),
   )
-  let script = shell_exec_via_bash(body: body)
-  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
-  let observed = ShellExecObserved {
+  let result = shell.Exec.Run(
+    script: transport_script_from_body(body: shell_exec_via_bash(body: full)),
+  )
+  ShellExecObserved {
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
   }
+}
+
+test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fake_sccache_path = concat(dir.path as String, "/sccache")
+  let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "1")
+  let observed = run_body_with_path_prefix(
+    dir_path: dir.path as String,
+    body: build_cache_read_back_body(binary: fake_sccache_path),
+  )
   let reconciled = provision_build_cache_reconcile_shell_observed(observed: observed)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success
-    && wrote.success
-    && chmod.success
-    && !result.success
+    && seeded
+    && !observed.success
+    && string_contains(s: observed.stdout, pattern: "read_back=FAILED")
     && cleaned.success
     && match reconciled {
       NotConverged { reason: why, applied: _ } =>
         string_contains(s: why, pattern: "fail-closed")
+          && string_contains(s: why, pattern: "ProvisionBuildCache")
       Converged { evidence: _, applied: _ } => false
     }
+}
+
+test fn provision_path_authority_refuses_healthy_shadowing_sccache() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "0")
+  let observed = run_body_with_path_prefix(
+    dir_path: dir.path as String,
+    body: build_cache_path_authority_guard_body(),
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && seeded
+    && !observed.success
+    && string_contains(s: observed.stdout, pattern: "path_authority=SHADOWED")
+    && cleaned.success
+}
+
+test fn provision_path_authority_passes_when_no_sccache_on_path() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let body = concat(
+    "set -euo pipefail\n",
+    concat(
+      concat("export PATH=\"", dir.path as String),
+      concat("\"\n", build_cache_path_authority_guard_body()),
+    ),
+  )
+  let result = shell.Exec.Run(
+    script: transport_script_from_body(body: shell_exec_via_bash(body: body)),
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && result.success
+    && !string_contains(s: result.stdout, pattern: "path_authority=SHADOWED")
+    && cleaned.success
 }
