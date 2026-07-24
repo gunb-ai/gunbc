@@ -1,0 +1,50 @@
+module v2.compiler.trait_derive_completeness
+
+import v2.std.compilers.target_model {
+  ReprDeriveAdd,
+  ReprDeriveClone,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
+  ReprGroundingDeriveTrait,
+  RequiredTraitWitness,
+  repr_grounding_derive_completeness_predicate,
+  repr_grounding_derive_traits_for_collection_witness
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+
+type TraitDeriveCompletenessGate
+  = TraitDeriveCompletenessSatisfied
+  | TraitDeriveCompletenessIncomplete
+
+fn trait_derive_completeness_gate(
+  required: List<ReprGroundingDeriveTrait>,
+  elem: Node
+) -> TraitDeriveCompletenessGate {
+  if repr_grounding_derive_completeness_predicate(required: required, elem: elem) {
+    TraitDeriveCompletenessSatisfied
+  } else {
+    TraitDeriveCompletenessIncomplete
+  }
+}
+
+fn trait_derive_completeness_gate_for_collection_witness(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> TraitDeriveCompletenessGate {
+  trait_derive_completeness_gate(
+    required: repr_grounding_derive_traits_for_collection_witness(witness: witness),
+    elem: elem
+  )
+}
+
+fn trait_derive_completeness_gate_is_satisfied(
+  required: List<ReprGroundingDeriveTrait>,
+  elem: Node
+) -> Bool {
+  match trait_derive_completeness_gate(required: required, elem: elem) {
+    TraitDeriveCompletenessSatisfied => true
+    TraitDeriveCompletenessIncomplete => false
+  }
+}

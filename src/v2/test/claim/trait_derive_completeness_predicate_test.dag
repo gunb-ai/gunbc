@@ -1,0 +1,157 @@
+module v2.test.claim.trait_derive_completeness_predicate
+
+import v2.compiler.trait_derive_completeness {
+  trait_derive_completeness_gate_is_satisfied
+}
+import v2.std.compilers.target_model {
+  ReprDeriveAdd,
+  ReprDeriveClone,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
+  ReprDeriveElemKernelInt,
+  ReprDeriveElemKernelString,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemUnknown,
+  TargetCollectionWitnessOrd,
+  int_kernel_type_node,
+  repr_grounding_derive_completeness_predicate,
+  repr_grounding_derive_elem_shape,
+  repr_grounding_derive_surface_binding_for_coproduct,
+  repr_grounding_derive_surface_binding_for_record,
+  repr_grounding_derive_trait_satisfied,
+  repr_grounding_derive_traits_for_collection_witness,
+  symbol_kernel_type_node
+}
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data trait_derive_completeness_predicate_note: String = "Derisk witnesses for E0308 sub-wall 2: repr_grounding_derive_completeness_predicate is the single authority for whether a grounded element carries the Clone/arith/serde (+ Ord/Eq) derives its collection repr or declaration surface requires. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
+
+fn tdc_nullary_enum_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tdc_payload_enum_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: ^tdc_payload_field } },
+                children: [],
+                occurrence_id: SyntheticOccurrence
+              }
+            }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tdc_unknown_atom_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^tdc_unknown_carrier } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
+  repr_grounding_derive_trait_satisfied(trait: ReprDeriveClone, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
+    && !repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: symbol_kernel_type_node())
+}
+
+test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
+  repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: int_kernel_type_node())
+    && repr_grounding_derive_completeness_predicate(
+      required: Cons {
+        head: ReprDeriveAdd,
+        tail: Cons { head: ReprDeriveClone, tail: Cons { head: ReprDeriveSerialize, tail: Empty } }
+      },
+      elem: int_kernel_type_node()
+    )
+}
+
+test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
+  !repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node())
+    && repr_grounding_derive_elem_shape(elem: tdc_unknown_atom_node()) == ReprDeriveElemUnknown
+    && !trait_derive_completeness_gate_is_satisfied(
+      required: repr_grounding_derive_traits_for_collection_witness(
+        witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+      ),
+      elem: tdc_unknown_atom_node()
+    )
+}
+
+test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
+  repr_grounding_derive_elem_shape(elem: tdc_nullary_enum_node()) == ReprDeriveElemNullaryEnumCopy
+    && repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node())
+      == ^rust_decl_derive_enum_copy_binding
+    && repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node())
+      == ^rust_decl_derive_enum_binding
+}
+
+test fn tdc_symbol_kernel_string_shape() -> Bool {
+  repr_grounding_derive_elem_shape(elem: symbol_kernel_type_node()) == ReprDeriveElemKernelString
+}
+
+test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
+  repr_grounding_derive_surface_binding_for_record(heap_allocated: true)
+    == ^rust_decl_derive_struct_binding
+    && repr_grounding_derive_surface_binding_for_record(heap_allocated: false)
+      == ^rust_decl_derive_struct_copy_binding
+}
+
+test fn tdc_trait_derive_completeness_predicate_witness_holds() -> Bool {
+  tdc_string_kernel_satisfies_clone_ord_serde_not_add()
+    && tdc_int_kernel_satisfies_arith_and_ord()
+    && tdc_unknown_atom_refuses_ord_completeness()
+    && tdc_nullary_enum_copy_shape_and_binding()
+    && tdc_symbol_kernel_string_shape()
+    && tdc_record_surface_binding_heap_vs_copy()
+}

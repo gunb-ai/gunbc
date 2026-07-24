@@ -152,6 +152,7 @@ import v2.std.compilers.target_model {
   ValueCharUnicodeScalar,
   ValueSymbolToOwnedString,
   char_kernel_type_node,
+  repr_grounding_derive_surface_binding_for_coproduct,
   symbol_kernel_type_node,
   target_atom_realization_catalog_node,
   TargetFunctionSignatureRealization,
@@ -2194,15 +2195,7 @@ fn rust_decl_struct_derive_binding() -> Symbol {
 }
 
 fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Symbol {
-  match coproduct.kind {
-    TypeNode { connective: Disj } =>
-      if rust_coproduct_all_variants_nullary(edges: coproduct.children) {
-        ^rust_decl_derive_enum_copy_binding
-      } else {
-        ^rust_decl_derive_enum_binding
-      }
-    _ => ^rust_decl_derive_enum_binding
-  }
+  repr_grounding_derive_surface_binding_for_coproduct(coproduct: coproduct)
 }
 
 fn rust_decl_derive_binding_spellings() -> Map<Symbol, String> {
