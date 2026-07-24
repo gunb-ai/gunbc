@@ -1,0 +1,174 @@
+module test.claim.observation_tty_render_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
+import std.measure { millisecond, byte_size, basis_point }
+import std.render { CursorAction, Overwrite, Append, RenderCapability }
+import std.observation {
+  ObservationSubject,
+  RunSegment,
+  BatchSegment,
+  EntrySegment,
+  ModuleSegment,
+  PhaseSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  Concluded,
+  Done,
+  Refused,
+  Failed,
+  AttentionBasis,
+  Ambient,
+  Notable,
+  Anomaly,
+  BlockedOn,
+  MemoryBudget,
+  RemainingBounded,
+  RemainingUnknown,
+}
+import gunbc.observation_tty_render {
+  PreambleFields,
+  tty_preamble_line,
+  tty_cursor_action,
+  tty_group_line,
+  tty_blocked_line,
+  tty_final_line,
+  tty_event_emission,
+  tty_render_emission,
+  TtyEmission,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "P2 acceptance (docs/plans/progress-observation-design.md section 3b): the TTY renderer is a SIBLING of the CI renderer over the same std.observation carriers, differing only where the medium differs. The witnesses prove the sibling property by execution — the same event drives both surfaces and moves together — plus the TTY-specific facts: a required preamble, in-place repaint derived from attention, inline BlockedOn with named remaining, and a deterministic reward animal on Final. The three upgrades over the reference (durations, Refused vs Failed, recursive escalation) are inherited from the shared carriers, not re-earned."
+
+fn tty_cap() -> RenderCapability {
+  RenderCapability { color: true, tier: Emoji, cursor_addressable: true }
+}
+
+fn pipe_cap() -> RenderCapability {
+  RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
+}
+
+fn tty_entry_subject() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "30044816605" as NonEmptyStr },
+      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as NonEmptyStr },
+      ModuleSegment { module_path: "v2.compiler.normalized_tree" as NonEmptyStr },
+      PhaseSegment { name: "typecheck" as NonEmptyStr }
+    ]
+  }
+}
+
+fn tty_basis() -> AttentionBasis {
+  AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+}
+
+fn w_preamble_names_what_why_and_how_much() -> Bool {
+  let line = tty_preamble_line(fields: PreambleFields {
+    run_id: "30044816605" as NonEmptyStr,
+    trigger: "pull_request" as NonEmptyStr,
+    diff_summary: "3 files touched" as NonEmptyStr,
+    entry_total: 602
+  })
+  string_contains(s: line.text, pattern: "30044816605") &&
+  string_contains(s: line.text, pattern: "pull_request") &&
+  string_contains(s: line.text, pattern: "3 files touched") &&
+  string_contains(s: line.text, pattern: "602 entries")
+}
+
+fn w_routine_repaints_in_place_but_anomaly_scrolls() -> Bool {
+  tty_cursor_action(attention: Ambient, cap: tty_cap()) == Overwrite &&
+  tty_cursor_action(attention: Notable, cap: tty_cap()) == Append &&
+  tty_cursor_action(attention: Anomaly, cap: tty_cap()) == Append
+}
+
+fn w_non_addressable_terminal_always_appends() -> Bool {
+  tty_cursor_action(attention: Ambient, cap: pipe_cap()) == Append &&
+  tty_cursor_action(attention: Anomaly, cap: pipe_cap()) == Append
+}
+
+fn w_refusal_never_repaints_away() -> Bool {
+  let refusal = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
+    wall: MeasuredValue { value: millisecond(count: 2472000) },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  let emission = tty_event_emission(event: refusal, basis: tty_basis(), cap: tty_cap())
+  emission.line.attention == Anomaly &&
+  emission.cursor == Append
+}
+
+fn w_same_event_drives_both_surfaces() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  let emission = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
+  string_contains(s: tty_render_emission(emission: emission, tier: Emoji), pattern: "in 230ms")
+}
+
+fn w_group_line_names_the_current_entry() -> Bool {
+  let line = tty_group_line(active: tty_entry_subject(), k: 214, n: 602, spinner: Spinner0)
+  string_contains(s: line.text, pattern: "214 of 602") &&
+  string_contains(s: line.text, pattern: "v2.compiler.normalized_tree") &&
+  line.attention == Ambient
+}
+
+fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
+  let bounded = tty_blocked_line(blocked: BlockedOn {
+    resource: MemoryBudget,
+    holders: [tty_entry_subject()],
+    remaining: RemainingBounded { by: millisecond(count: 80000) }
+  })
+  string_contains(s: bounded.text, pattern: "1 holder(s)") &&
+  string_contains(s: bounded.text, pattern: "80 seconds remaining") &&
+  bounded.attention == Anomaly
+}
+
+fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
+  let unknown = tty_blocked_line(blocked: BlockedOn {
+    resource: MemoryBudget,
+    holders: [tty_entry_subject()],
+    remaining: RemainingUnknown { cause: "governor exposes no reclaim bound" as NonEmptyStr }
+  })
+  string_contains(s: unknown.text, pattern: "no estimate (governor exposes no reclaim bound)") &&
+  !string_contains(s: unknown.text, pattern: "remaining")
+}
+
+fn w_reward_animal_is_deterministic_and_degrades_to_a_word() -> Bool {
+  let emoji_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
+  let emoji_again = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
+  let ascii_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Ascii)
+  emoji_clean.text == emoji_again.text &&
+  string_contains(s: emoji_clean.text, pattern: "all clean") &&
+  emoji_clean.attention == Ambient &&
+  !string_contains(s: ascii_clean.text, pattern: "🦦")
+}
+
+fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
+  let line = tty_final_line(shown_failures: 3, run_index: 3, tier: Emoji)
+  string_contains(s: line.text, pattern: "3 problems shown") &&
+  line.attention == Anomaly
+}
+
+test fn observation_tty_render_witnesses() -> Bool {
+  w_preamble_names_what_why_and_how_much() &&
+  w_routine_repaints_in_place_but_anomaly_scrolls() &&
+  w_non_addressable_terminal_always_appends() &&
+  w_refusal_never_repaints_away() &&
+  w_same_event_drives_both_surfaces() &&
+  w_group_line_names_the_current_entry() &&
+  w_blocked_line_carries_holder_and_bounded_remaining() &&
+  w_blocked_line_names_why_remaining_is_unknown() &&
+  w_reward_animal_is_deterministic_and_degrades_to_a_word() &&
+  w_final_with_failures_names_them_and_is_anomaly()
+}
