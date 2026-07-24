@@ -1,0 +1,22 @@
+module test.claim.executor_schedule_retention
+
+import gunbc.executor_schedule_retention {
+  schedule_retention_tunable_count,
+  schedule_retention_grain_is_per_module,
+  schedule_retention_heads_stay_resident,
+  schedule_retention_retain_on_unknown,
+  schedule_retention_underflow_refuses,
+}
+
+data witness_note: String = "In-corpus consumer of the schedule-derived retention policy carrier: asserts the modeled policy facts by execution (green-by-execution). The Rust realization in cli_run.rs mirrors these same facts and a Rust lockstep witness (schedule_retention_policy_matches_modeled_authority) pins the two together, so a policy edit that forgets either side reds."
+
+test fn schedule_retention_exposes_no_tunables() -> Bool {
+  schedule_retention_tunable_count == 0
+}
+
+test fn schedule_retention_policy_is_fail_closed() -> Bool {
+  schedule_retention_grain_is_per_module
+    && schedule_retention_heads_stay_resident
+    && schedule_retention_retain_on_unknown
+    && schedule_retention_underflow_refuses
+}
