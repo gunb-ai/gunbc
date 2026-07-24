@@ -16201,6 +16201,11 @@ pub fn emit_typed_expr_base(
                 ..
             } => {
                 let n = expr_var_name_at(texpr.clone(), si.clone());
+                let leaf_name = if v1_rt::string_contains(&n, ".".to_string()) {
+                    qualified_last_segment(n.clone())
+                } else {
+                    n.clone()
+                };
                 let variant_parent = effective_variant_parent(
                     n.clone(),
                     binding_kind.clone(),
@@ -16208,36 +16213,42 @@ pub fn emit_typed_expr_base(
                     emit_info.clone(),
                     si.clone(),
                 );
-                if (((n.clone() == "none".to_string()) || (n.clone() == "None".to_string()))
+                if (((leaf_name.clone() == "none".to_string())
+                    || (leaf_name.clone() == "None".to_string()))
                     && (variant_parent.clone() == None))
                 {
                     emit_keyword("null".to_string(), RenderTarget::Rust)
                 } else {
-                    if ((n.clone() == "true".to_string()) || (n.clone() == "false".to_string())) {
-                        emit_keyword(n.clone(), RenderTarget::Rust)
+                    if ((leaf_name.clone() == "true".to_string())
+                        || (leaf_name.clone() == "false".to_string()))
+                    {
+                        emit_keyword(leaf_name.clone(), RenderTarget::Rust)
                     } else {
                         match variant_parent.clone() {
                             Some(enum_name) => {
-                                if ((n.clone() == "Empty".to_string())
+                                if ((leaf_name.clone() == "Empty".to_string())
                                     && (enum_name.clone() == "FreeMonoid".to_string()))
                                 {
                                     "Rc::new(vec![])".to_string()
                                 } else {
                                     {
-                                        let qualified = if (is_optional_variant_name(n.clone())
+                                        let qualified = if (is_optional_variant_name(leaf_name.clone())
                                             && is_optional_like_parent_name(enum_name.clone()))
                                         {
-                                            if is_some_like_variant_name(n.clone()) {
+                                            if is_some_like_variant_name(leaf_name.clone()) {
                                                 "Some".to_string()
                                             } else {
                                                 "None".to_string()
                                             }
-                                        } else {
-                                            v1_rt::concat(
-                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                                n.clone(),
-                                            )
-                                        };
+                                            } else {
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        enum_name.clone(),
+                                                        "::".to_string(),
+                                                    ),
+                                                    leaf_name.clone(),
+                                                )
+                                            };
                                         if v1_rt::set_contains(&shared_types, enum_name.clone()) {
                                             v1_rt::concat(
                                                 v1_rt::concat(
