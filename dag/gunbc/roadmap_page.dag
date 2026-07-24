@@ -2,6 +2,7 @@ module gunbc.roadmap_page
 
 import std.types { list_length }
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.site.markup { txt, el, el_class }
 import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
@@ -149,18 +150,8 @@ fn three_gate_progress_markup() -> MarkupNode {
           spec => tg_gate_progress_row(spec: spec))))
 }
 
-fn txt(s: String) -> MarkupNode { TextNode { text: s } }
-
-fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [], children: children }
-}
-
 fn roadmap_header(title: String) -> MarkupNode {
   el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]) ])
-}
-
-fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {

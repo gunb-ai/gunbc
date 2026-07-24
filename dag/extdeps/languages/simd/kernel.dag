@@ -63,16 +63,6 @@ data relu_mul_add_wire_op_codes: List<Int> = [
   elemwise_relu_wire_op_code,
 ]
 
-
-data host_kernel_relu_mul_add_op_codes_scaffold_note: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.simd.kernel",
-    decl_name: "relu_mul_add_wire_op_codes",
-    field: WholeDeclaration
-  }
-}
-
 fn witness_relu_mul_add_wire_op_codes_are_locked_triplet() -> Bool {
   if relu_mul_add_wire_op_codes.length() != 3 {
     false
