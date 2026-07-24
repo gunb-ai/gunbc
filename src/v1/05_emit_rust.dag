@@ -1984,20 +1984,55 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
   )
 }
 
+fn emit_inferred_type_leaf_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let is_optional = rt.return_cardinality == CardOptional
+      if is_optional {
+        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
+      } else { authored_name_at(source_indices: source_indices, node: rt) }
+    _ => ""
+  }
+}
+
 fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   match n.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       let tn_list = match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
         Present { value: t } => if t != "" { [t] } else { [] }
-        Absent => []
+        Absent =>
+          let inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
+          if inferred != "" { [inferred] } else { [] }
       }
       let pe_list = match pe {
         Present { value: p } => if p != "" { [p] } else { [] }
         Absent => []
       }
-      concat(tn_list, pe_list)
+      unique_strings(items: concat(tn_list, pe_list))
     _ => []
   }
+}
+
+fn collect_items_field_import_surface_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  items |> flat_map(item =>
+    collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
+      |> flat_map(type_name =>
+        match map_get(type_summaries, type_name) {
+          Present { value: summary } =>
+            summary.field_import_surface_names |> filter(field_type =>
+              field_type != "" && match map_get(type_summaries, field_type) {
+                Present { value: ft } =>
+                  match ft.repr {
+                    StructRepr => true
+                    _ => false
+                  }
+                Absent => false
+              }
+            )
+          Absent => []
+        }
+      )
+  ) |> unique_strings
 }
 
 fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
@@ -2052,14 +2087,7 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
 }
 
 fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match scrutinee.inferred {
-    Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
-      if is_optional {
-        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
-      } else { authored_name_at(source_indices: source_indices, node: rt) }
-    _ => ""
-  }
+  emit_inferred_type_leaf_name(n: scrutinee, source_indices: source_indices)
 }
 
 fn collect_match_pattern_parent_enums(expr: Node, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
@@ -2084,11 +2112,14 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
     ExprRecordLit { parent_enum: _ } => record_lit_ref_names(n: n, source_indices: source_indices)
     ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, variant_to_enum: variant_to_enum, type_summaries: type_summaries)
     _ =>
+      let from_inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
+      let from_inferred_list = if from_inferred != "" { [from_inferred] } else { [] }
       let nm = authored_name_at(source_indices: source_indices, node: n)
-      match map_get(variant_to_enum, nm) {
+      let from_variant = match map_get(variant_to_enum, nm) {
         Present { value: parent } => if parent != "" { [parent] } else { [] }
         Absent => []
       }
+      unique_strings(items: concat(from_inferred_list, from_variant))
   }
   let child_names = concat(
     concat(
@@ -2142,7 +2173,8 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   {
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
     let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, type_summaries: emit_info.type_summaries)))
-    let candidates = unique_strings(items: concat(concat(unlisted_type_names, value_names), type_surface_names))
+    let field_surface_names = collect_items_field_import_surface_names(items: items, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, source_indices: source_indices)
+    let candidates = unique_strings(items: concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
