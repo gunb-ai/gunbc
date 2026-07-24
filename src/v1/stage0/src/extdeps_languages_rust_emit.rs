@@ -171,22 +171,6 @@ pub fn rust_enum_derives_copy() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_repr_trait_derive_list_contains(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
-    derive_trait: ReprGroundingDeriveTrait,
-) -> bool {
-    {
-        let mut __found = false;
-        for t in traits.clone().iter().cloned() {
-            if (t.clone() == derive_trait.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
     match derive_trait.clone() {
         ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
@@ -209,85 +193,15 @@ pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> Str
 pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "#[derive(Debug".to_string(),
-                                        if rust_repr_trait_derive_list_contains(
-                                            traits.clone(),
-                                            ReprGroundingDeriveTrait::ReprDeriveClone,
-                                        ) {
-                                            ", Clone".to_string()
-                                        } else {
-                                            "".to_string()
-                                        },
-                                    ),
-                                    if rust_repr_trait_derive_list_contains(
-                                        traits.clone(),
-                                        ReprGroundingDeriveTrait::ReprDeriveCopy,
-                                    ) {
-                                        ", Copy".to_string()
-                                    } else {
-                                        "".to_string()
-                                    },
-                                ),
-                                if rust_repr_trait_derive_list_contains(
-                                    traits.clone(),
-                                    ReprGroundingDeriveTrait::ReprDerivePartialEq,
-                                ) {
-                                    ", PartialEq".to_string()
-                                } else {
-                                    "".to_string()
-                                },
-                            ),
-                            if rust_repr_trait_derive_list_contains(
-                                traits.clone(),
-                                ReprGroundingDeriveTrait::ReprDeriveEq,
-                            ) {
-                                ", Eq".to_string()
-                            } else {
-                                "".to_string()
-                            },
-                        ),
-                        if rust_repr_trait_derive_list_contains(
-                            traits.clone(),
-                            ReprGroundingDeriveTrait::ReprDerivePartialOrd,
-                        ) {
-                            ", PartialOrd".to_string()
-                        } else {
-                            "".to_string()
-                        },
-                    ),
-                    if rust_repr_trait_derive_list_contains(
-                        traits.clone(),
-                        ReprGroundingDeriveTrait::ReprDeriveOrd,
-                    ) {
-                        ", Ord".to_string()
-                    } else {
-                        "".to_string()
-                    },
-                ),
-                if rust_repr_trait_derive_list_contains(
-                    traits.clone(),
-                    ReprGroundingDeriveTrait::ReprDeriveSerialize,
-                ) {
-                    ", serde::Serialize".to_string()
-                } else {
-                    "".to_string()
-                },
-            ),
-            if rust_repr_trait_derive_list_contains(
-                traits.clone(),
-                ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-            ) {
-                ", serde::Deserialize".to_string()
-            } else {
-                "".to_string()
-            },
+            "#[derive(Debug, ".to_string(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for t in traits.clone().iter().cloned() {
+                    __result.push(rust_trait_derive_spelling(t.clone()));
+                }
+                __result
+            })
+            .join(&", ".to_string()),
         ),
         ")]".to_string(),
     )
