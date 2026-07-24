@@ -16,7 +16,7 @@ use std::rc::Rc;
 pub fn trait_derive_shape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Single authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Consumed by v2.compiler.trait_derive_completeness (v2 Node elem-shape classifier) and v1.compiler.trait_derive_emit (v1 seed emitter derive selection). Dissolve-on: table migrates to derived rows when emit arms are total.".to_string()
+            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -121,22 +121,6 @@ pub fn repr_grounding_derive_shape_has_trait(
             _ => false,
         },
         ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => false,
-    }
-}
-
-pub fn trait_derive_list_contains(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
-    derive_trait: ReprGroundingDeriveTrait,
-) -> bool {
-    {
-        let mut __found = false;
-        for t in traits.clone().iter().cloned() {
-            if (t.clone() == derive_trait.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
     }
 }
 
@@ -272,112 +256,6 @@ pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
         __cons_v
     })
-}
-
-pub fn trait_rust_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
-    match derive_trait.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveCopy => "Copy".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => "PartialEq".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveEq => "Eq".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "PartialOrd".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveOrd => "Ord".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serde::Serialize".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "serde::Deserialize".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveAdd => "std::ops::Add".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSub => "std::ops::Sub".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveMul => "std::ops::Mul".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDiv => "std::ops::Div".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveRem => "std::ops::Rem".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveNeg => "std::ops::Neg".to_string(),
-    }
-}
-
-pub fn trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "#[derive(Debug".to_string(),
-                                        if trait_derive_list_contains(
-                                            traits.clone(),
-                                            ReprGroundingDeriveTrait::ReprDeriveClone,
-                                        ) {
-                                            ", Clone".to_string()
-                                        } else {
-                                            "".to_string()
-                                        },
-                                    ),
-                                    if trait_derive_list_contains(
-                                        traits.clone(),
-                                        ReprGroundingDeriveTrait::ReprDeriveCopy,
-                                    ) {
-                                        ", Copy".to_string()
-                                    } else {
-                                        "".to_string()
-                                    },
-                                ),
-                                if trait_derive_list_contains(
-                                    traits.clone(),
-                                    ReprGroundingDeriveTrait::ReprDerivePartialEq,
-                                ) {
-                                    ", PartialEq".to_string()
-                                } else {
-                                    "".to_string()
-                                },
-                            ),
-                            if trait_derive_list_contains(
-                                traits.clone(),
-                                ReprGroundingDeriveTrait::ReprDeriveEq,
-                            ) {
-                                ", Eq".to_string()
-                            } else {
-                                "".to_string()
-                            },
-                        ),
-                        if trait_derive_list_contains(
-                            traits.clone(),
-                            ReprGroundingDeriveTrait::ReprDerivePartialOrd,
-                        ) {
-                            ", PartialOrd".to_string()
-                        } else {
-                            "".to_string()
-                        },
-                    ),
-                    if trait_derive_list_contains(
-                        traits.clone(),
-                        ReprGroundingDeriveTrait::ReprDeriveOrd,
-                    ) {
-                        ", Ord".to_string()
-                    } else {
-                        "".to_string()
-                    },
-                ),
-                if trait_derive_list_contains(
-                    traits.clone(),
-                    ReprGroundingDeriveTrait::ReprDeriveSerialize,
-                ) {
-                    ", serde::Serialize".to_string()
-                } else {
-                    "".to_string()
-                },
-            ),
-            if trait_derive_list_contains(
-                traits.clone(),
-                ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-            ) {
-                ", serde::Deserialize".to_string()
-            } else {
-                "".to_string()
-            },
-        ),
-        ")]".to_string(),
-    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

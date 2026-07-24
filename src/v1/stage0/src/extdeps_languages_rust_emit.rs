@@ -5,6 +5,12 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
+use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
+    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDeserialize, ReprDeriveDiv,
+    ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
+    ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -163,6 +169,128 @@ pub fn rust_enum_derives_copy() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_repr_trait_derive_list_contains(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+    derive_trait: ReprGroundingDeriveTrait,
+) -> bool {
+    {
+        let mut __found = false;
+        for t in traits.clone().iter().cloned() {
+            if (t.clone() == derive_trait.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+    match derive_trait.clone() {
+        ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveCopy => "Copy".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialEq => "PartialEq".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveEq => "Eq".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "PartialOrd".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveOrd => "Ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serde::Serialize".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "serde::Deserialize".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveAdd => "std::ops::Add".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSub => "std::ops::Sub".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveMul => "std::ops::Mul".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDiv => "std::ops::Div".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveRem => "std::ops::Rem".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveNeg => "std::ops::Neg".to_string(),
+    }
+}
+
+pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "#[derive(Debug".to_string(),
+                                        if rust_repr_trait_derive_list_contains(
+                                            traits.clone(),
+                                            ReprGroundingDeriveTrait::ReprDeriveClone,
+                                        ) {
+                                            ", Clone".to_string()
+                                        } else {
+                                            "".to_string()
+                                        },
+                                    ),
+                                    if rust_repr_trait_derive_list_contains(
+                                        traits.clone(),
+                                        ReprGroundingDeriveTrait::ReprDeriveCopy,
+                                    ) {
+                                        ", Copy".to_string()
+                                    } else {
+                                        "".to_string()
+                                    },
+                                ),
+                                if rust_repr_trait_derive_list_contains(
+                                    traits.clone(),
+                                    ReprGroundingDeriveTrait::ReprDerivePartialEq,
+                                ) {
+                                    ", PartialEq".to_string()
+                                } else {
+                                    "".to_string()
+                                },
+                            ),
+                            if rust_repr_trait_derive_list_contains(
+                                traits.clone(),
+                                ReprGroundingDeriveTrait::ReprDeriveEq,
+                            ) {
+                                ", Eq".to_string()
+                            } else {
+                                "".to_string()
+                            },
+                        ),
+                        if rust_repr_trait_derive_list_contains(
+                            traits.clone(),
+                            ReprGroundingDeriveTrait::ReprDerivePartialOrd,
+                        ) {
+                            ", PartialOrd".to_string()
+                        } else {
+                            "".to_string()
+                        },
+                    ),
+                    if rust_repr_trait_derive_list_contains(
+                        traits.clone(),
+                        ReprGroundingDeriveTrait::ReprDeriveOrd,
+                    ) {
+                        ", Ord".to_string()
+                    } else {
+                        "".to_string()
+                    },
+                ),
+                if rust_repr_trait_derive_list_contains(
+                    traits.clone(),
+                    ReprGroundingDeriveTrait::ReprDeriveSerialize,
+                ) {
+                    ", serde::Serialize".to_string()
+                } else {
+                    "".to_string()
+                },
+            ),
+            if rust_repr_trait_derive_list_contains(
+                traits.clone(),
+                ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+            ) {
+                ", serde::Deserialize".to_string()
+            } else {
+                "".to_string()
+            },
+        ),
+        ")]".to_string(),
+    )
 }
 
 pub fn rust_serde_tag() -> String {

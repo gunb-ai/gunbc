@@ -291,9 +291,7 @@ import extdeps.languages.rust.emit {
   rust_enum_derives,
   rust_enum_derives_copy,
   rust_struct_derives,
-  rust_struct_derives_copy,
-  rust_trait_derive_attr_from_traits,
-  rust_trait_derive_spelling
+  rust_struct_derives_copy
 }
 
 type RustIntKind
