@@ -1,0 +1,6 @@
+workload	ci_spawned_children	ci_wall_s	srv1_pooled_1proc_s	srv1_speedup	pi3_spawned_est_s	pi3_pooled_measured_s	pi3_speedup	note
+single_child_clean_tree	1	49.8	47.2	1.0x	389	389	1.0x	standalone baseline; srv matches CI; Pi 8.2x srv (cpu-shaped)
+batch1_cheap_gates_12_claims	12	479.6	93.4	5.1x	~4000-4700	4375	~1.0x	srv pooled resolve 25.8s + eval 19.2s; Pi pooled resolve 1166s + eval 1505s
+batch6_real_ingest_3_claims	3	190.5	106.5	1.8x	—	2639	—	srv pooled 1 resolve 37.1s + 3 witnesses 23.4s; Pi pooled 1 resolve 709s + eval 174s
+batch7_reads_real_bytes_2_claims	2	197.9	—	—	—	—	—	119.6s + 78.3s; not separately pooled; same class
+floor_child_spawn_total	26	1379.6	—	—	—	—	—	batches 1+6+7; ~23.0m = 47.5% of the 48.4m floor step; invisible to resolves_total=4
