@@ -45,6 +45,8 @@ data github_event_name_pull_request: String = "pull_request"
 
 data github_event_name_workflow_dispatch: String = "workflow_dispatch"
 
+data github_event_name_merge_group: String = "merge_group"
+
 type Workflow {
   name: String
   on: List<WorkflowTrigger>
