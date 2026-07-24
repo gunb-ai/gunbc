@@ -10,7 +10,7 @@ import gunbc.ci_spec {
   floor_plan_function,
   plan_artifact_plan_function,
   FloorBatchStopPolicy,
-  gunbc_ci_floor_batch_wall_budget_seconds,
+  gunbc_ci_floor_batch_clamp_params,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.ci_gate {
@@ -433,16 +433,24 @@ fn gunbc_ci_fast_lane_eval_budget_ms() -> Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
-fn gunbc_ci_floor_batch_wall_budgets_seconds() -> List<Int> {
-  gunbc_ci_floor_batch_wall_budget_seconds
+fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.overhead_seconds)
 }
 
-fn witness_floor_batch_wall_budgets_cover_schedule() -> Bool {
-  length(xs: gunbc_ci_floor_batch_wall_budgets_seconds()) == length(xs: gunbc_ci_floor_batches())
+fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.per_unit_ms)
 }
 
-fn witness_floor_batch_wall_budgets_all_positive() -> Bool {
-  fold(gunbc_ci_floor_batch_wall_budgets_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
+fn witness_floor_batch_clamp_params_cover_schedule() -> Bool {
+  length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: gunbc_ci_floor_batches())
+}
+
+fn witness_floor_batch_clamp_overhead_all_positive() -> Bool {
+  fold(gunbc_ci_floor_batch_clamp_overhead_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
+}
+
+fn witness_floor_batch_clamp_rate_all_nonneg() -> Bool {
+  fold(gunbc_ci_floor_batch_clamp_per_unit_ms(), init: true, f: fn(ok, b) { ok && (b >= 0) })
 }
 
 data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). The primary refusal is WitnessWallBudgetExceeded on whole-receipt wall time; the secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget."

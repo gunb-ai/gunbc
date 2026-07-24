@@ -48,66 +48,104 @@ fn read_positive_budget_ms(
     }
 }
 
-/// THE COST WALL (CI floor endgame D5 — authority `gunbc.ci_spec.gunbc_ci_floor_batch_wall_budget_seconds`
-/// + `gunbc_ci_floor_batch_wall_budget_note`): per-batch wall budgets for the floor plan, read
-/// fail-closed at arm time from the plan ctx (the fast-lane-budget pattern). Budgets are
-/// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock
-/// term (the ruling split reconciled in the carrier note). `GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`
-/// is the RED-control fault injection: it can only LOWER budgets (min), so it can force the
-/// refusal for a control run but can never open the gate — not an escape hatch by construction.
-fn read_floor_batch_wall_budgets_ms(
+/// THE COST WALL (Piece 3 derived clamp — authority `gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params`
+/// + `gunbc_ci_floor_batch_clamp_note`): the per-batch clamp is `overhead_seconds*1000 +
+/// runtime_unit_count * per_unit_ms`. This reads the two index-aligned param lists fail-closed at
+/// arm time (the fast-lane-budget pattern); the clamp itself is computed at enforcement, because the
+/// affected-set-selected unit count is a runtime datum the schedule does not hold. Clamps are
+/// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock term
+/// (the ruling split reconciled in the carrier note).
+fn read_floor_batch_clamp_params(
     plan_ctx: &InterpContext,
     batch_count: usize,
-) -> Result<Vec<u128>, String> {
-    let items = match run_value(plan_ctx, "gunbc_ci_floor_batch_wall_budgets_seconds") {
+) -> Result<Vec<(u128, u128)>, String> {
+    let overhead_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_overhead_seconds") {
         Ok(Value::List(items)) => items,
         Ok(other) => {
             return Err(format!(
-                "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds must be a List<Int>,                  got {other:?} (fail-closed)"
+                "claim_executor: gunbc_ci_floor_batch_clamp_overhead_seconds must be a List<Int>, got {other:?} (fail-closed)"
             ));
         }
         Err(msg) => {
             return Err(format!(
-                "claim_executor: floor plan schedules batches but                  gunbc_ci_floor_batch_wall_budgets_seconds is unavailable (fail-closed): {msg}"
+                "claim_executor: floor plan schedules batches but gunbc_ci_floor_batch_clamp_overhead_seconds is unavailable (fail-closed): {msg}"
             ));
         }
     };
-    let mut budgets_ms: Vec<u128> = Vec::new();
-    for item in items.iter() {
+    let mut overheads_ms: Vec<u128> = Vec::new();
+    for item in overhead_items.iter() {
         match item {
-            Value::Int(n) if *n > 0 => budgets_ms.push(*n as u128 * 1000),
+            Value::Int(n) if *n > 0 => overheads_ms.push(*n as u128 * 1000),
             other => {
                 return Err(format!(
-                    "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds rows must be                      positive Ints, got {other:?} (fail-closed)"
+                    "claim_executor: gunbc_ci_floor_batch_clamp_overhead_seconds rows must be positive Ints, got {other:?} (fail-closed)"
                 ));
             }
         }
     }
-    if budgets_ms.len() != batch_count {
+    let rate_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_per_unit_ms") {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_floor_batch_clamp_per_unit_ms must be a List<Int>, got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but gunbc_ci_floor_batch_clamp_per_unit_ms is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut rates_ms: Vec<u128> = Vec::new();
+    for item in rate_items.iter() {
+        match item {
+            Value::Int(n) if *n >= 0 => rates_ms.push(*n as u128),
+            other => {
+                return Err(format!(
+                    "claim_executor: gunbc_ci_floor_batch_clamp_per_unit_ms rows must be non-negative Ints, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    if overheads_ms.len() != batch_count || rates_ms.len() != batch_count {
         return Err(format!(
-            "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds has {} row(s) but the              plan schedules {} batch(es) — the budget list must cover the schedule exactly              (fail-closed; update gunbc.ci_spec beside the schedule change)",
-            budgets_ms.len(),
+            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            overheads_ms.len(),
+            rates_ms.len(),
             batch_count
         ));
     }
-    if let Ok(tighten) = std::env::var("GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS") {
-        match tighten.parse::<u128>() {
-            Ok(t) => {
-                for b in budgets_ms.iter_mut() {
-                    *b = (*b).min(t);
-                }
-                eprintln!(
-                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS={t} — budgets tightened                      (RED-control injection; tighten-only, can never widen a budget)"
-                );
-            }
-            Err(_) => {
-                return Err(format!(
-                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS must parse as                      milliseconds, got {tighten:?} (fail-closed)"
-                ));
-            }
-        }
+    Ok(overheads_ms.into_iter().zip(rates_ms).collect())
+}
+
+/// The RED-control fault injection (`GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`): lowers the COMPUTED
+/// per-batch clamp (min) at enforcement, so it can force a FLOOR-BATCH-OVER-BUDGET refusal for a
+/// control run but can never open the gate — tighten-only by construction, never an escape hatch.
+fn read_floor_batch_budget_tighten_ms() -> Result<Option<u128>, String> {
+    match std::env::var("GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS") {
+        Ok(t) => match t.parse::<u128>() {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Err(format!(
+                "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS must parse as milliseconds, got {t:?} (fail-closed)"
+            )),
+        },
+        Err(_) => Ok(None),
     }
-    Ok(budgets_ms)
+}
+
+/// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
+/// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
+fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
+    results
+        .iter()
+        .map(|r| {
+            if r.corpus_witnesses > 0 {
+                r.corpus_witnesses as u128
+            } else {
+                1u128
+            }
+        })
+        .sum()
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
@@ -1495,6 +1533,11 @@ fn sccache_server_cgroup_rel() -> Option<String> {
 struct BatchRecord {
     batch_index: usize,
     wall_nanos: u128,
+    /// The derived clamp computed for this batch (overhead + unit_count*rate, tightened), or None
+    /// for budget-less plans (falsifier/regen). Recorded so the receipt never recomputes it.
+    clamp_ms: Option<u128>,
+    /// The runtime unit count the clamp used (discovery witnesses + gate rows).
+    unit_count: u128,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
 }
@@ -1511,42 +1554,32 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
     write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
-/// Per-batch wall receipt (THE COST WALL, D5): typed rows — one wall/budget/verdict triple
-/// per batch — so the floor's time story is a receipt, not a log archaeology exercise.
-/// `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET refusals the
-/// walk printed; a budget-less run (falsifier/regen plans) records walls with
+/// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
+/// wall/units/clamp/verdict group per batch — so the floor's time story is a receipt, not a log
+/// archaeology exercise. `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET
+/// refusals the walk printed; a clamp-less run (falsifier/regen plans) records walls with
 /// `verdict=Unbudgeted`. Returns false on a write error — the walk fails closed here.
-fn write_batch_wall_receipt(
-    batch_records: &[BatchRecord],
-    batch_wall_budgets_ms: Option<&[u128]>,
-) -> bool {
-    write_batch_wall_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        batch_wall_budgets_ms,
-    )
+fn write_batch_wall_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_batch_wall_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
-fn write_batch_wall_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    batch_wall_budgets_ms: Option<&[u128]>,
-) -> bool {
+fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut body = String::new();
     let mut over_budget = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         let wall_ms = rec.wall_nanos / 1_000_000;
         body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
-        match batch_wall_budgets_ms.and_then(|b| b.get(rec.batch_index)) {
-            Some(budget_ms) => {
-                let verdict = if wall_ms > *budget_ms {
+        match rec.clamp_ms {
+            Some(clamp_ms) => {
+                let verdict = if wall_ms > clamp_ms {
                     over_budget += 1;
                     "OverBudget"
                 } else {
                     "WithinBudget"
                 };
-                body.push_str(&format!("batch_{n}_budget_ms={budget_ms}\n"));
+                body.push_str(&format!("batch_{n}_units={}\n", rec.unit_count));
+                body.push_str(&format!("batch_{n}_clamp_ms={clamp_ms}\n"));
                 body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
             }
             None => {
@@ -1804,7 +1837,8 @@ fn run_walk(
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_wall_budgets_ms: Option<&[u128]>,
+    batch_clamp_params: Option<&[(u128, u128)]>,
+    budget_tighten_ms: Option<u128>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1957,34 +1991,48 @@ fn run_walk(
             any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
-        // THE COST WALL (D5): over-budget is a typed, located refusal — batch id, measured
-        // wall, budget row — that reds the walk. It never widens (no rerun, no scope change,
-        // no cap raise); witness verdicts inside the batch stand as evaluated (the budget is
-        // an admission/scheduling fact, not a verdict term — carrier note has the ruling split).
-        if let Some(budgets) = batch_wall_budgets_ms {
-            if let Some(budget_ms) = budgets.get(bi) {
-                let wall_ms = batch_wall_nanos / 1_000_000;
-                if wall_ms > *budget_ms {
-                    println!(
-                        "{}",
-                        paint(
-                            &format!(
-                                "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} budget_ms={}                                  (budget row: gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds[{}];                                  raising it requires an appended receipt note per                                  gunbc_ci_floor_batch_wall_budget_note — a refusal, never a widen)",
-                                bi + 1,
-                                wall_ms,
-                                budget_ms,
-                                bi
-                            ),
-                            sgr::ERROR
-                        )
-                    );
-                    any_failed = true;
-                }
+        // THE COST WALL (Piece 3 derived clamp): the per-batch clamp is overhead + runtime unit
+        // count * rate, computed HERE where the affected-set-selected count is known (the schedule
+        // holds one opaque discovery runnable; the count is runtime). Over-clamp is a typed, located
+        // refusal that reds the walk; it never widens (no rerun, no scope change, no cap raise).
+        // Witness verdicts inside the batch stand as evaluated (the clamp is an admission/scheduling
+        // fact, not a verdict term — carrier note has the ruling split).
+        let batch_unit_count = batch_runtime_unit_count(&batch_results);
+        let batch_clamp_ms: Option<u128> =
+            batch_clamp_params
+                .and_then(|p| p.get(bi))
+                .map(|&(overhead_ms, rate_ms)| {
+                    let mut clamp = overhead_ms + batch_unit_count * rate_ms;
+                    if let Some(t) = budget_tighten_ms {
+                        clamp = clamp.min(t);
+                    }
+                    clamp
+                });
+        if let Some(clamp_ms) = batch_clamp_ms {
+            let wall_ms = batch_wall_nanos / 1_000_000;
+            if wall_ms > clamp_ms {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            bi + 1,
+                            wall_ms,
+                            clamp_ms,
+                            batch_unit_count,
+                            bi
+                        ),
+                        sgr::ERROR
+                    )
+                );
+                any_failed = true;
             }
         }
         batch_records.push(BatchRecord {
             batch_index: bi,
             wall_nanos: batch_wall_nanos,
+            clamp_ms: batch_clamp_ms,
+            unit_count: batch_unit_count,
             results: batch_results,
         });
         if any_failed {
@@ -2008,7 +2056,7 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
-    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records, batch_wall_budgets_ms);
+    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -2219,6 +2267,7 @@ fn run_perturb_check(
         None,
         FalsifierSelfHostWetBudgets::default(),
         FloorBatchStopPolicy::StopBeforeDependents,
+        None,
         None,
     );
     let _ = fs::remove_dir_all(&tmp);
@@ -2443,12 +2492,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         FalsifierSelfHostWetBudgets::default()
     };
     let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
-    // THE COST WALL (D5): the floor plan's per-batch wall budgets, read fail-closed at arm
-    // time (the fast-lane-budget pattern). Scoped to the full floor plan only: the
-    // plan-artifact shortcut runs a single batch of the same schedule and the falsifier
-    // carries its own receipt budgets, so neither reads this list.
-    let batch_wall_budgets_ms: Option<Vec<u128>> = if plan_function == "gunbc_ci_floor_batches" {
-        match read_floor_batch_wall_budgets_ms(&plan_ctx, batches.len()) {
+    // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
+    // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
+    // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
+    // carries its own receipt budgets, so neither reads these lists.
+    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_batches"
+    {
+        match read_floor_batch_clamp_params(&plan_ctx, batches.len()) {
             Ok(v) => Some(v),
             Err(msg) => {
                 eprintln!("{msg}");
@@ -2457,6 +2507,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     } else {
         None
+    };
+    let budget_tighten_ms: Option<u128> = match read_floor_batch_budget_tighten_ms() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return Err(ExitCode::from(1));
+        }
     };
     drop(plan_ctx);
     phase_mark("plan evaluated");
@@ -2520,7 +2577,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
         batch_stop_policy,
-        batch_wall_budgets_ms.as_deref(),
+        batch_clamp_params.as_deref(),
+        budget_tighten_ms,
     );
     match peak_rss_bytes() {
         Some(bytes) => {
@@ -2605,7 +2663,7 @@ mod tests {
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
         assert!(!write_resolve_receipt_at(&base, &[]));
-        assert!(!write_batch_wall_receipt_at(&base, &[], None));
+        assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }
 
@@ -2617,30 +2675,40 @@ mod tests {
         let base =
             std::env::temp_dir().join(format!("claim-executor-batch-wall-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
-        let records = vec![
+        // Clamped: batch 0 wall 5s > clamp 2s (OverBudget); batch 1 wall 1s < clamp 2s (WithinBudget).
+        let clamped_records = vec![
             BatchRecord {
                 batch_index: 0,
                 wall_nanos: 5_000_000_000, // 5s
+                clamp_ms: Some(2_000),     // 2s
+                unit_count: 3,
                 results: Vec::new(),
             },
             BatchRecord {
                 batch_index: 1,
                 wall_nanos: 1_000_000_000, // 1s
+                clamp_ms: Some(2_000),     // 2s
+                unit_count: 0,
                 results: Vec::new(),
             },
         ];
-        let budgets_ms: Vec<u128> = vec![2_000, 2_000]; // 2s each: batch 1 over, batch 2 within
-        assert!(write_batch_wall_receipt_at(
-            &base,
-            &records,
-            Some(&budgets_ms)
-        ));
+        assert!(write_batch_wall_receipt_at(&base, &clamped_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
         assert!(body.contains("batch_1_wall_ms=5000"));
+        assert!(body.contains("batch_1_units=3"));
+        assert!(body.contains("batch_1_clamp_ms=2000"));
         assert!(body.contains("batch_1_verdict=OverBudget"));
         assert!(body.contains("batch_2_verdict=WithinBudget"));
         assert!(body.contains("over_budget_batches=1"));
-        assert!(write_batch_wall_receipt_at(&base, &records, None));
+        // Clamp-less (falsifier/regen plans): records carry clamp_ms None -> Unbudgeted.
+        let unbudgeted_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 5_000_000_000,
+            clamp_ms: None,
+            unit_count: 0,
+            results: Vec::new(),
+        }];
+        assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
         assert!(body.contains("batch_1_verdict=Unbudgeted"));
         assert!(body.contains("over_budget_batches=0"));
