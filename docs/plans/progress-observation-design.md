@@ -189,9 +189,13 @@ the CI renderer's contract (§3a) and the sequencing:
   Ambient; the long quiet runs live in the gauntlet/falsifier context (whole-corpus, cold) —
   that context is the escalation law's primary home, and the flagship crawl-window replay is
   exactly a gauntlet-profile run, so P1's acceptance is unchanged.
-- **Sequencing + delivery (operator ruling 2026-07-24): ONE atomic PR** — P0 through P3 land
-  together, entirely, after the atomic CI rework PR (both touch the floor's emit sites;
-  churning them twice is the migration class the operator ruled out). P3's census enumerates
+- **Sequencing + delivery (operator ruling 2026-07-24, REAFFIRMED against the P0-carve-out
+  argument): ONE atomic PR** — P0 through P3 land together, entirely, after the atomic CI
+  rework PR. The controlling rationale is **completeness as the merge bar**: the operator
+  merges only finished work — a landed P0 with no renderer is vocabulary nobody can see,
+  exactly the consumed-by-nothing state the consumption rule forbids. The shared-emit-site
+  rationale is secondary (real for P1–P3, not P0) and is not the load-bearing reason; #7168
+  therefore GROWS to P0–P3 rather than merging alone, regardless of its zero file overlap. P3's census enumerates
   the POST-rework emit sites. D4's deletion removes the selection-control step as a subject.
 - **Human-legibility contract (operator, 2026-07-24 — the census bar, not a style note):**
   every run opens with a preamble naming what/why/how-much (run id, trigger, diff size,
