@@ -391,7 +391,13 @@ drops).
 | 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses the threshold + refusal shape; the per-GATE quantity is the probe's to define (§9.1 caveat) |
 | 15 | Batch-3 budget under the honest full-corpus wall — fleet-wide, most PR runs red | §9.8 — interim: one signed raise to ~1680s on main; durable: re-denominated budget (overhead + units × rate[host]) in PR-1 | **OPEN, escalated** — 7 walls (1344–1629s) on 5 branches, all witnesses passing, main 12/12 green: no regression, mis-denominated budget |
 
-## 11. D5 — the DiffBaseline brief (in-tree copy)
+## 11. D5 — the DiffBaseline brief (in-tree copy) — **SUPERSEDED 2026-07-24**
+
+**This section is discharged:** #7146 landed the same purpose on main independently and
+more completely (`gunbc.diff_baseline`, a `CiDiffEvent`-modeled pure resolver that HALTS
+the floor with a typed AFFECTED-SET REFUSAL on an unrecognized event, 11 witnesses). #7162
+correctly dropped its own D5 wholesale in favor of it (§3 anti-fork) and carried only the
+parked miscite fix. Kept below as the design record.
 
 The brief was delivered in-chat 2026-07-24 with no in-tree artifact; the implementer could not
 find it. This section is the authoritative copy — self-contained so PR-1 needs no side-channel.
