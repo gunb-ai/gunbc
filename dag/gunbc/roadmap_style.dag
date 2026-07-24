@@ -476,6 +476,9 @@ fn roadmap_instance_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
+    StaticRule { selector: RawSelector { text: "details.ticket-row > summary" }, decls: [
+      role_decl(prop: Color, r: FigureRole),
+    ] },
     StaticRule { selector: ClassSelector { name: disclosure_mark_class }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),

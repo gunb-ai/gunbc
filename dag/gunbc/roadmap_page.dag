@@ -361,13 +361,24 @@ fn item_body_nodes(rn: RoadmapNode) -> List<MarkupNode> {
   }
 }
 
+fn item_is_ticket(rn: RoadmapNode) -> Bool {
+  match line_ticket(item: rn.line) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
   if line_lead(line: rn.line) == line_title(line: rn.line) {
     []
   } else {
+    let is_ticket = item_is_ticket(rn: rn)
     [ ElementNode {
         tag: "details",
-        attrs: [ MarkupAttr { name: "class", value: "item-detail" } ],
+        attrs: [ MarkupAttr {
+          name: "class",
+          value: if is_ticket { "item-detail ticket-row" } else { "item-detail" },
+        } ],
         children: [
           ElementNode { tag: "summary", attrs: [], children: [
             ElementNode {
@@ -375,7 +386,7 @@ fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
               attrs: [ MarkupAttr { name: "class", value: disclosure_mark_class } ],
               children: [ txt(disclosure_mark_glyph) ],
             },
-            txt("brief"),
+            txt(if is_ticket { "ticket" } else { "brief" }),
           ] },
           el_class("div", "item-body", item_body_nodes(rn: rn)),
         ],

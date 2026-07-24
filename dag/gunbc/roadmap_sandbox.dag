@@ -84,6 +84,19 @@ fn sandbox_rules() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_10)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
+    StaticRule { selector: ClassSelector { name: "auditioner-bar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_3)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "band-chip" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+    ] },
   ]
 }
 
@@ -147,6 +160,19 @@ fn gallery_states() -> List<ComponentState> {
 
 data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band phrases the button text, so two refusal arms wear the same caption — CORRECT for the operator, ambiguous for a specimen sheet. The gallery is the diagnostic surface, so each cell carries the ARM identity as a sublabel under the instance (state.key, which for terminals IS the wire label — the same authority the coverage witness reads), and the live cells mirror it. The caption channel stays operator-vocabulary everywhere; the wire vocabulary survives only in the sublabel and title channels, where diagnosis lives."
 
+data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
+
+fn band_chip(key: String) -> MarkupNode {
+  ElementNode {
+    tag: "span",
+    attrs: [
+      MarkupAttr { name: "class", value: "band-chip" },
+      MarkupAttr { name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") },
+    ],
+    children: [ txt(key) ],
+  }
+}
+
 fn gallery_cell(button: MarkupNode, arm: String) -> MarkupNode {
   el_class("div", "gallery-cell", [ button, el_class("span", "gallery-arm", [ txt(arm) ]) ])
 }
@@ -209,16 +235,16 @@ fn sandbox_page() -> MarkupNode {
       ]),
       el("body", [
         roadmap_header(title: "gunbc — sandbox"),
-        el_class("div", "auditioner-bar", [
-          ElementNode {
-            tag: "button",
-            attrs: [
-              MarkupAttr { name: "class", value: swatch_toggle_class },
-              MarkupAttr { name: "type", value: "button" },
-            ],
-            children: [],
-          },
-        ]),
+        el_class("div", "auditioner-bar", concat(
+          [ ElementNode {
+              tag: "button",
+              attrs: [
+                MarkupAttr { name: "class", value: swatch_toggle_class },
+                MarkupAttr { name: "type", value: "button" },
+              ],
+              children: [],
+            } ],
+          map(workspace_band_paints(), p => band_chip(key: p.key)))),
         el_class("main", "sandbox", [
           roles_section(),
           scales_section(),
