@@ -6,14 +6,15 @@ import extdeps.git { GitRemoteRefParts, git_remote_ref }
 import extdeps.github.actions {
   github_event_name_pull_request,
   github_event_name_push,
-  github_event_name_workflow_dispatch
+  github_event_name_workflow_dispatch,
+  github_event_name_merge_group
 }
 
-data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Three arms, no fourth default: MergeTarget (the PR's actual base, derived from the CI event's GITHUB_BASE_REF), PushParent (today's policy — the repo's default merge target, for push / workflow_dispatch / the local-or-bootstrap window with no CI event), OperatorOverride (the typed GUNBC_CI_DIFF_BASE arm, used by the falsifier's HEAD~20 cold control and manual runs). resolve_diff_baseline is PURE over the observed event facts (CiDiffEvent) so its arms are RED-testable without live git; the effectful env read lives in the caller (v2.workflow.floor_diff_observe.floor_observe_ci_diff_event)."
+data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Three arms, no fourth default: MergeTarget (the PR's actual base, derived from the CI event's GITHUB_BASE_REF), PushParent (today's policy — the repo's default merge target, for push / workflow_dispatch / merge_group / the local-or-bootstrap window with no CI event; a merge_group queue run has no base ref and its tree diffs against the default branch, exactly the pre-de-fork behavior), OperatorOverride (the typed GUNBC_CI_DIFF_BASE arm, used by the falsifier's HEAD~20 cold control and manual runs). resolve_diff_baseline is PURE over the observed event facts (CiDiffEvent) so its arms are RED-testable without live git; the effectful env read lives in the caller (v2.workflow.floor_diff_observe.floor_observe_ci_diff_event)."
 
-data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail to the affected-set runner's DiffObservationFailClosed, whose every witness row is a per-row-counted Refused that RUNS the witness — i.e. widen-to-whole-tree, loud and counted, the floor's already-declared fail-closed arm (DESIGN §5: a failure arm refuses, never silently widens to a wrong constant). merge_group (queue ref, no base — ci_merge_group_trigger_note already declares 'falls through to the full floor') and any future/unknown event name land here. This is the exact defect being deleted (a silent origin/main constant standing where the true base was unknown), now typed."
+data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail into the executor's diff observation (cli_run.rs floor_git_diff_range), which HALTS the floor with a typed AFFECTED-SET REFUSAL (cause=DiffObservationRefusal): 'refuses every enrolled row rather than widening to a full-corpus run' (operator ruling 2026-07-05). The ignorance state is a loud, located, HARD STOP — NOT a run-everything widen (an earlier draft of this note misdescribed it as widen-to-whole-tree; the executor refuses, it does not widen — DESIGN §5, the exact absorbing-fallback shape being avoided). Only a genuinely-unrecognized event name lands here: the four workflow triggers (push / pull_request / workflow_dispatch / merge_group) all map to a base arm, so a future-added trigger halts loudly until it is modeled, rather than silently defaulting to origin/main — the exact defect being deleted, now typed."
 
-data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and its correct baseline is the repo's default merge target (PushParent), which is exactly today's behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is grouped with push / workflow_dispatch because all three mean 'observe against the default branch'. The catch-all (a RECOGNIZED CI context carrying an event we have no arm for — ⊤-as-ignorance, genuinely not-knowing the base) is the final else → BaselineRefused. Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps 'no CI event' (a known state) apart from 'CI event we cannot map' (real ignorance)."
+data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and its correct baseline is the repo's default merge target (PushParent), which is exactly today's behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is grouped with push / workflow_dispatch / merge_group because all four mean 'observe against the default branch'. The catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main). Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps 'no CI event' (a known state, PushParent) apart from 'CI event we cannot map' (real ignorance, halt)."
 
 type DiffBaseline
   = MergeTarget { ref: GitRef }
@@ -65,11 +66,12 @@ fn resolve_diff_baseline_by_event(
     resolve_merge_target(base_ref: base_ref, default_remote_name: default_remote_name)
   } else if event_name == github_event_name_push
     || event_name == github_event_name_workflow_dispatch
+    || event_name == github_event_name_merge_group
     || event_name == "" {
     BaselineSelected { baseline: PushParent { ref: push_parent_ref } }
   } else {
     BaselineRefused {
-      reason: concat(concat("unrecognized CI event '", event_name), "' for diff-baseline selection — widening to whole-tree")
+      reason: concat(concat("unrecognized CI event '", event_name), "' for diff-baseline selection — halting the floor (AFFECTED-SET REFUSAL)")
     }
   }
 }
