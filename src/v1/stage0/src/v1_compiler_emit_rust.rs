@@ -4655,9 +4655,67 @@ pub fn emit_inferred_type_leaf_name(
     }
 }
 
+pub fn anonymous_record_lit_surface_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> String {
+    {
+        let lit_field_names = Rc::new({
+            let mut __result = Vec::new();
+            for f in n.children.clone().iter().cloned() {
+                __result.push(field_init_node_name_at(f.clone(), source_indices.clone()));
+            }
+            __result
+        });
+        let field_type_hints = n.children.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
+                let fname = field_init_node_name_at(f.clone(), source_indices.clone());
+                let fval = field_init_node_value(f.clone());
+                match fval.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved {
+                        node: type_node, ..
+                    }) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        fname.clone(),
+                        authored_name_at(source_indices.clone(), type_node.clone()),
+                    ),
+                    _ => acc.clone(),
+                }
+            },
+        );
+        match find_struct_name_by_fields(
+            lit_field_names.clone(),
+            field_type_hints.clone(),
+            type_summaries.clone(),
+        ) {
+            Some(sn) => sn.clone(),
+            None => match find_unique_struct_name_by_fields(
+                lit_field_names.clone(),
+                type_summaries.clone(),
+            ) {
+                Some(sn) => sn.clone(),
+                None => {
+                    let rt = resolved_type(n.clone());
+                    let rt_name = authored_name_at(source_indices.clone(), rt.clone());
+                    if ((rt.ident_span.clone() != None)
+                        && v1_rt::map_contains_key(&type_summaries, rt_name.clone()))
+                    {
+                        rt_name.clone()
+                    } else {
+                        "".to_string()
+                    }
+                }
+            },
+        }
+    }
+}
+
 pub fn record_lit_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<Vec<String>> {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
@@ -4676,7 +4734,18 @@ pub fn record_lit_ref_names(
                     if (inferred.clone() != "".to_string()) {
                         Rc::new(vec![inferred.clone()])
                     } else {
-                        Rc::new(vec![])
+                        {
+                            let anon = anonymous_record_lit_surface_name(
+                                n.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            );
+                            if (anon.clone() != "".to_string()) {
+                                Rc::new(vec![anon.clone()])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
                     }
                 }
             };
@@ -4760,6 +4829,7 @@ pub fn collect_items_field_import_surface_names(
 pub fn collect_value_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_name = match (*n.expr_data.clone()).clone() {
@@ -4785,7 +4855,7 @@ pub fn collect_value_ref_names(
                 }
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                record_lit_ref_names(n.clone(), source_indices.clone())
+                record_lit_ref_names(n.clone(), source_indices.clone(), type_summaries.clone())
             }
             _ => Rc::new(vec![]),
         };
@@ -4795,9 +4865,13 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
-                                .iter()
-                                .cloned(),
+                            (*collect_value_ref_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
                         );
                     }
                     __result
@@ -4806,9 +4880,13 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.params.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
-                                .iter()
-                                .cloned(),
+                            (*collect_value_ref_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
                         );
                     }
                     __result
@@ -4819,9 +4897,13 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.uses.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
-                                .iter()
-                                .cloned(),
+                            (*collect_value_ref_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
                         );
                     }
                     __result
@@ -4830,9 +4912,13 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.properties.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(c.clone(), source_indices.clone()))
-                                .iter()
-                                .cloned(),
+                            (*collect_value_ref_names(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
                         );
                     }
                     __result
@@ -4841,16 +4927,28 @@ pub fn collect_value_ref_names(
         );
         let opt_fields = v1_rt::concat(
             match n.body.clone() {
-                Some(b) => collect_value_ref_names(b.clone(), source_indices.clone()),
+                Some(b) => collect_value_ref_names(
+                    b.clone(),
+                    source_indices.clone(),
+                    type_summaries.clone(),
+                ),
                 None => Rc::new(vec![]),
             },
             v1_rt::concat(
                 match n.transport.clone() {
-                    Some(t) => collect_value_ref_names(t.clone(), source_indices.clone()),
+                    Some(t) => collect_value_ref_names(
+                        t.clone(),
+                        source_indices.clone(),
+                        type_summaries.clone(),
+                    ),
                     None => Rc::new(vec![]),
                 },
                 match n.type_annotation.clone() {
-                    Some(t) => collect_value_ref_names(t.clone(), source_indices.clone()),
+                    Some(t) => collect_value_ref_names(
+                        t.clone(),
+                        source_indices.clone(),
+                        type_summaries.clone(),
+                    ),
                     None => Rc::new(vec![]),
                 },
             ),
@@ -4959,7 +5057,7 @@ pub fn collect_value_emit_type_surface_names(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_names = match (*n.expr_data.clone()).clone() {
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                record_lit_ref_names(n.clone(), source_indices.clone())
+                record_lit_ref_names(n.clone(), source_indices.clone(), type_summaries.clone())
             }
             ExprData::ExprMatch => collect_match_pattern_parent_enums(
                 n.clone(),
@@ -5224,9 +5322,13 @@ pub fn reference_derived_use_lines(
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_value_ref_names(item.clone(), source_indices.clone()))
-                        .iter()
-                        .cloned(),
+                    (*collect_value_ref_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.type_summaries.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
