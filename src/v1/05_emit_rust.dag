@@ -5913,7 +5913,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_value_ref_ident(name: name, registry: registry)
+              let ident = emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -5925,7 +5925,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_value_ref_ident(name: name, registry: registry)
+            let ident = emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -5967,9 +5967,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Present { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(to_snake(name: n), "()") }
-                else { emit_value_ref_ident(name: n, registry: registry) }
+                else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry)
+                emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
             }
         }
       }
@@ -6633,7 +6633,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
-    else { emit_value_ref_ident(name: func, registry: registry) }
+    else { emit_value_ref_ident(name: func, registry: registry, emit_info: emit_info) }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)

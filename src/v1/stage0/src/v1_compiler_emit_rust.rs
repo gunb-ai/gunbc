@@ -15981,7 +15981,11 @@ pub fn value_ref_ident_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
+pub fn emit_value_ref_ident(
+    name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
     if v1_rt::string_contains(&name, ".".to_string()) {
         {
             let leaf = qualified_last_segment(name.clone());
@@ -15997,7 +16001,14 @@ pub fn emit_value_ref_ident(name: String, registry: Rc<HashMap<String, Rc<ItemIn
                     emit_import_name(leaf.clone(), registry.clone()),
                 ),
                 None => {
-                    if leaf.clone() == "Empty".to_string() {
+                    let freemonoid_empty = match v1_rt::map_get(
+                        &emit_info.variant_to_enum.clone(),
+                        "Empty".to_string(),
+                    ) {
+                        Some(p) => p.clone() == "FreeMonoid".to_string(),
+                        None => false,
+                    };
+                    if leaf.clone() == "Empty".to_string() && freemonoid_empty {
                         "Rc::new(vec![])".to_string()
                     } else {
                         emit_ident(leaf.clone(), RenderTarget::Rust)
@@ -16095,8 +16106,11 @@ pub fn emit_var_ref(
                                                 Some(VarBindingKind::FunctionValueBinding) => true,
                                                 _ => false,
                                             };
-                                        let ident =
-                                            emit_value_ref_ident(name.clone(), registry.clone());
+                                        let ident = emit_value_ref_ident(
+                                            name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        );
                                         let ident_str = if is_function_value.clone() {
                                             ident.clone()
                                         } else {
@@ -16117,7 +16131,11 @@ pub fn emit_var_ref(
                                 }
                             }
                             None => {
-                                let ident = emit_value_ref_ident(name.clone(), registry.clone());
+                                let ident = emit_value_ref_ident(
+                                    name.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                );
                                 let ident_str = if moves_by_value.clone() {
                                     ident.clone()
                                 } else {
@@ -16213,10 +16231,18 @@ pub fn emit_typed_expr_base(
                                     if is_data.clone() {
                                         v1_rt::concat(to_snake(n.clone()), "()".to_string())
                                     } else {
-                                        emit_value_ref_ident(n.clone(), registry.clone())
+                                        emit_value_ref_ident(
+                                            n.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        )
                                     }
                                 }
-                                None => emit_value_ref_ident(n.clone(), registry.clone()),
+                                None => emit_value_ref_ident(
+                                    n.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                ),
                             },
                         }
                     }
@@ -18238,7 +18264,7 @@ pub fn emit_typed_call(
                 emit_ident(runtime_name.clone(), RenderTarget::Rust),
             )
         } else {
-            emit_value_ref_ident(func.clone(), registry.clone())
+            emit_value_ref_ident(func.clone(), registry.clone(), emit_info.clone())
         };
         let func_name = if callee_self_capture.clone() {
             v1_rt::concat(func_ident.clone(), ".clone()".to_string())
