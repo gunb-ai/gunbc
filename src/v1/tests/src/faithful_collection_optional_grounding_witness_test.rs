@@ -68,6 +68,26 @@ fn optional_coproduct_emits_native_option_alias() {
 }
 
 #[test]
+fn diagnostics_coproduct_emits_native_option_alias() {
+    let source = "module diagsig.fixture\n\ntype NonEmptyDiagnostics {\n  head: Int\n}\n\ntype Diagnostics\n  = None\n  | Some { diagnostics: NonEmptyDiagnostics }\n";
+    let emitted = compile_dag_target(source, RenderTarget::Rust)
+        .files
+        .iter()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        emitted.contains("type Diagnostics = Option<NonEmptyDiagnostics>")
+            || emitted.contains("type Diagnostics = Option<Rc<NonEmptyDiagnostics>>"),
+        "Diagnostics coproduct must emit native Option alias, got:\n{emitted}"
+    );
+    assert!(
+        !emitted.contains("enum Diagnostics"),
+        "grounded Diagnostics must not emit coproduct enum (got:\n{emitted})"
+    );
+}
+
+#[test]
 fn freemonoid_coproduct_emits_vec_alias() {
     let source = "module fmc.fixture\n\ntype FreeMonoid<T>\n  = Empty\n  | Snoc { prev: FreeMonoid<T>, item: T }\n";
     let emitted = compile_dag_target(source, RenderTarget::Rust)
