@@ -2836,6 +2836,9 @@ fn floor_compile_clean_emit_ok_via_index(
         sources,
         ResolveTypecheckGate::Strict,
         "floor-compile-clean-gate",
+        // Ephemeral: the whole-tree aggregate graph must NOT join the process share tier
+        // (D0.1) — it would pin every TypedModule in the tree for the process lifetime.
+        ResolvedGraphMemoShare::Ephemeral,
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
@@ -3845,19 +3848,6 @@ pub fn import_closure_live_paths_with_facts(
     facts: &ModuleGraphFactsLive,
 ) -> Vec<String> {
     import_closure_from_adjacency(entry_path, &facts.adjacency)
-}
-
-/// Like `import_closure_live_paths_with_facts` but over the WIDER `selection_adjacency`
-/// (import + strict reference edges) — so a module reached cross-entry only through a
-/// bare-reference edge is still refcounted by schedule-derived retention. Over-retaining
-/// (the safe direction: never premature-evict a reference-reached module into a
-/// recompute-on-miss) and equally cheap: a BFS over prebuilt adjacency, no per-entry
-/// source loading, no #6848 both-closure fixpoint.
-pub(crate) fn selection_closure_live_paths_with_facts(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-) -> Vec<String> {
-    import_closure_from_adjacency(entry_path, &facts.selection_adjacency)
 }
 
 impl ModuleGraphFactsLive {
@@ -5622,6 +5612,30 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
     index.entry_closure_sources.borrow().len()
 }
 
+/// Drop every assembled per-closure graph from the in-process share memo, leaving the
+/// per-module typed cache warm. Reproduces the production state after the compile-clean
+/// gate warms the shared index Ephemerally (D0.1): modules cached, no per-entry graph
+/// pin — so the next per-entry resolve misses the memo and takes reconcile's ALL-HITS
+/// probe, the path D0.2's schedule-key registration lives on.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
+    index.resolved_graph_memo.borrow_mut().clear();
+}
+
+/// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
+/// bypassing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT` env — so the D0.4
+/// retain-all (`evict_enabled=false`) baseline can be exercised on a real index without
+/// racing that env against concurrently-running tests.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn install_schedule_retention_for_test(
+    index: &MultiEntryIndex,
+    per_entry: Vec<(String, Vec<String>)>,
+    evict_enabled: bool,
+) {
+    *index.schedule_retention.borrow_mut() =
+        Some(ScheduleRetention::armed(per_entry, evict_enabled));
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.both_closure_edges.borrow().is_some()
@@ -6251,6 +6265,14 @@ impl ScheduleRetention {
     pub fn resolved_graph_evictions(&self) -> u64 {
         self.resolved_graph_evictions
     }
+    /// The eviction switch this retention was armed with (false =
+    /// `GUNBC_SCHEDULE_RETENTION_EVICT=0`, the retain-all measurement pole). Consumers
+    /// outside the bookkeeper — the index's resolved-graph pin drop — gate on it so the
+    /// pole retains resolved graphs too, not just the per-module caches (D0.4: the pre-M2
+    /// baseline was invalid because it kept dropping graphs unconditionally).
+    pub fn evict_enabled(&self) -> bool {
+        self.evict_enabled
+    }
     pub fn note_graph_eviction(&mut self) {
         self.resolved_graph_evictions += 1;
     }
@@ -6283,16 +6305,33 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
         if !seen.insert(row.entry.as_str()) {
             continue;
         }
-        // CHEAP closure: a BFS over the prebuilt selection adjacency (import + strict
-        // reference edges; no per-entry source loading, no #6848 both-closure fixpoint
-        // walk) — keyed by the repo-relative path the reconcile loop records
-        // (`decl_file`). The prior `collect_both_closure_module_names_for_entry`
-        // front-loaded the source-loading fixpoint for every distinct entry (the
-        // compiler-affected worst case is ~694), a cost the affected-set path otherwise
-        // skips or defers. The wider selection tier over-retains (never premature-evicts
-        // a reference-reached module into a recompute-on-miss); a module reached by no
-        // edge at all surfaces as counted RetentionUnknown at reconcile (retained, §5).
-        let paths = selection_closure_live_paths_with_facts(&row.entry, &index.module_graph_facts);
+        // Arm from the LOADER's EXACT closure — `load_sources_for_entry_with_pool`, the
+        // same function the discovery reconcile path runs (`resolve_entry_with_parse_cache`).
+        // This is the ONE closure authority the arming and the loader now share (D0.3 /
+        // the #6985 Class-B root, third appearance): the prior CHEAP
+        // `selection_closure_live_paths_with_facts` walked only `selection_adjacency`
+        // (import edges + strict reference edges for import-LESS files), so it OMITTED
+        // modules the loader reaches via qualified-projection references emitted by
+        // import-BEARING files. Such a module, being present in some OTHER entry's global
+        // refcount, was counted neither `RetentionUnknown` nor re-evicted after it was
+        // re-cached on load — an invisible resident leak. Consuming the loader's own output
+        // makes the armed closure ⊇ the reconciled set BY CONSTRUCTION, not by two closures
+        // happening to agree (the doc's "name the one closure authority, don't add a third
+        // adjacency"). Cost is neutral, not the front-load the old comment feared: the pool
+        // loader MEMOIZES into `entry_closure_sources`, so this pre-load is exactly what
+        // discovery would compute and is reused on the entry's resolve, never doubled. Keyed
+        // by `workspace_relative_repo_path(&sf.path)` — the identical form the reconcile
+        // record site derives from `resolved.module.span.file` (`decl_file`), so refcount
+        // keys and record keys still coincide. A closure that cannot be loaded is skipped:
+        // its modules become counted `RetentionUnknown` at reconcile (retained — §5
+        // fail-closed), so arming still never fails the run.
+        let paths = match load_sources_for_entry_with_pool(index, &row.entry) {
+            Ok(sources) => sources
+                .iter()
+                .map(|sf| workspace_relative_repo_path(&sf.path))
+                .collect::<Vec<String>>(),
+            Err(_) => continue,
+        };
         per_entry.push((row.entry.clone(), paths));
     }
     let evict_enabled = schedule_retention_evict_enabled();
@@ -6348,10 +6387,10 @@ fn index_schedule_entry_completed(
     entry: &str,
     subject: Option<&str>,
 ) -> Result<(), String> {
-    let batch = {
+    let (batch, evict_enabled) = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
-            Some(sr) => sr.entry_completed(entry)?,
+            Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
             None => return Ok(()),
         }
     };
@@ -6376,13 +6415,17 @@ fn index_schedule_entry_completed(
     // Drop the completed entry's assembled graph. The entry's own `InterpContext` still
     // holds it until the next resolve, so this only removes the memo's pin; a rare later
     // entry with the identical closure re-resolves (a memo miss, cost only).
+    // Gate the resolved-graph pin drop on the SAME eviction switch as the per-module drops
+    // above: with GUNBC_SCHEDULE_RETENTION_EVICT=0 the retain-all measurement pole must
+    // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
+    // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) => index
+        Some(subj) if evict_enabled => index
             .resolved_graph_memo
             .borrow_mut()
             .remove(subj)
             .is_some(),
-        None => false,
+        _ => false,
     };
     let (sched_evictions, retention_unknown, graph_evictions) = {
         let mut slot = index.schedule_retention.borrow_mut();
@@ -6579,9 +6622,9 @@ mod schedule_retention_red_controls {
     }
 
     /// END-TO-END WIRING (real index, real closure computation, real cache eviction):
-    /// two entries sharing one library module. Arm from the schedule, resolve both
-    /// entries (populating the process-shared caches through the actual reconcile
-    /// path that records each module), then drive per-entry completion. The
+    /// two entries sharing one library module. PREWARM the caches, arm from the schedule
+    /// AFTER prewarming, then re-resolve both entries through reconcile's all-hits probe
+    /// (the D0.2 registration path), then drive per-entry completion. The
     /// shared module survives entry A's completion (still reachable by B) and drops
     /// only when B completes — proving the mechanism frees real per-module state on a
     /// live `MultiEntryIndex`, not just in the pure bookkeeper above.
@@ -6629,9 +6672,24 @@ mod schedule_retention_red_controls {
                 reads_live_tree: false,
             },
         ];
+        // PREWARM the per-module typed cache WITHOUT arming — the production order:
+        // compile-clean warms the shared index before discovery arms retention. Then clear
+        // the per-entry resolved-graph memo (D0.1 makes compile-clean's warming Ephemeral:
+        // modules cached, no per-entry graph pin) so the arm-time re-resolves MISS the memo
+        // and go through reconcile's ALL-HITS probe — the exact path D0.2 fixed. The
+        // pre-D0.4 order (arm, THEN first resolve) sent every module cold through the slow
+        // recording path and never exercised the probe, so the all-hit no-registration
+        // defect passed green: the §7 order-blindness this control now closes.
+        super::resolve_entry_with_index(&index, &entry_a).expect("prewarm a");
+        super::resolve_entry_with_index(&index, &entry_b).expect("prewarm b");
+        super::clear_resolved_graph_memo_for_test(&index);
+
+        // Arm AFTER prewarming, then re-resolve: per-module cache warm + graph memo cold ⇒
+        // reconcile takes `try_reconcile_all_cache_hits`, which MUST register each hit's
+        // schedule keys (D0.2) or the completions below evict nothing and this test reds.
         super::index_arm_schedule_retention(&index, &rows);
-        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a");
-        super::resolve_entry_with_index(&index, &entry_b).expect("resolve b");
+        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a (all-hit)");
+        super::resolve_entry_with_index(&index, &entry_b).expect("resolve b (all-hit)");
 
         // Both closures reconciled → all three modules cached, and each entry's
         // assembled ResolvedGraph is memoized (the strong-Rc pin Fact #4 drops).
@@ -6678,6 +6736,80 @@ mod schedule_retention_red_controls {
             "both entries' ResolvedGraphs evicted — the pin is released"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// RED (D0.4 retain-all baseline on a REAL index): with eviction DISABLED the pole
+    /// must retain EVERYTHING a completion would otherwise drop — the per-module caches
+    /// AND the assembled resolved graph. Before the D0.4 production fix the graph pin was
+    /// dropped UNCONDITIONALLY, so the "retain-all" baseline silently understated peak
+    /// retention (an invalid pre-M2 measurement pole). Installs a disabled retention
+    /// directly rather than racing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT`.
+    #[test]
+    fn schedule_eviction_disabled_retains_resolved_graph_on_real_index() {
+        let dir = super::workspace_root()
+            .join("target")
+            .join(format!("sched_ret_probe_{}_retainall", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir probe corpus");
+        std::fs::write(
+            dir.join("shared_lib.dag"),
+            "module sched_ret_ra.shared_lib\n\ndata shared_val: Int = 7\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("entry_a.dag"),
+            "module sched_ret_ra.entry_a\n\nimport sched_ret_ra.shared_lib { shared_val }\n\ndata a_val: Int = shared_val\n",
+        )
+        .unwrap();
+        let root = dir.to_string_lossy().to_string();
+        let entry_a = dir.join("entry_a.dag").to_string_lossy().to_string();
+        let index = super::build_multi_entry_index(&[root]);
+
+        // Prewarm the per-module cache, then clear the graph memo (Ephemeral warming).
+        super::resolve_entry_with_index(&index, &entry_a).expect("prewarm a");
+        super::clear_resolved_graph_memo_for_test(&index);
+
+        // Arm with eviction DISABLED, keyed on the loader's exact closure (D0.3 authority).
+        let paths = super::load_sources_for_entry_with_pool(&index, &entry_a)
+            .unwrap()
+            .iter()
+            .map(|sf| super::workspace_relative_repo_path(&sf.path))
+            .collect::<Vec<String>>();
+        super::install_schedule_retention_for_test(&index, vec![(entry_a.clone(), paths)], false);
+
+        // Re-resolve so the all-hits probe records keys under the disabled retention, then
+        // snapshot the resident state right before completion.
+        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a (all-hit)");
+        let typed_before = super::typed_module_cache_len_for_test(&index);
+        let graphs_before = super::index_retention_snapshot(&index).resolved_graph_memo_entries;
+        assert!(
+            graphs_before >= 1,
+            "entry_a's graph memoized before completion"
+        );
+        let subj_a = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_a).unwrap(),
+        );
+
+        // Complete the entry: the disabled pole must drop NOTHING — not the per-module
+        // caches, not the resolved graph.
+        super::index_schedule_entry_completed(&index, &entry_a, Some(&subj_a)).expect("complete a");
+        assert_eq!(
+            super::typed_module_cache_len_for_test(&index),
+            typed_before,
+            "retain-all pole: per-module cache must be unchanged"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).resolved_graph_memo_entries,
+            graphs_before,
+            "retain-all pole: the resolved GRAPH must be retained too (D0.4) — before the \
+             production fix a completion dropped it unconditionally"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).schedule_evictions,
+            0,
+            "disabled pole counts zero evictions"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
@@ -7197,7 +7329,26 @@ fn resolve_entry_with_parse_cache(
     let load_started = std::time::Instant::now();
     let sources = load_sources_for_entry_with_pool(index, entry_file)?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
-    resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+    resolved_graph_from_sources_with_index(
+        index,
+        sources,
+        typecheck_gate,
+        entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    )
+}
+
+/// Whether an assembled closure graph joins the in-process share tier
+/// (`resolved_graph_memo`). Per-entry discovery resolves `Memoize` so a re-resolve of the
+/// same subject is served by reference (the ReferenceTier). The compile-clean whole-tree
+/// gate resolves `Ephemeral`: its aggregate graph strong-`Rc`-pins every `TypedModule` in
+/// the tree and is never re-hit by discovery's smaller per-entry subjects, so memoizing it
+/// is the 9.2GB-class resident-retention leak D0.1 removes (ci-two-tier §5). The per-module
+/// `typed_module_cache` warming that IS the gate's purpose happens in reconcile regardless.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolvedGraphMemoShare {
+    Memoize,
+    Ephemeral,
 }
 
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
@@ -7224,6 +7375,7 @@ fn resolved_graph_from_sources_with_index(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
+    memo_share: ResolvedGraphMemoShare,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -7245,13 +7397,19 @@ fn resolved_graph_from_sources_with_index(
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
-                eprintln!(
-                    "[resolved-graph-cache] decode subject={subject} (installed into process share)"
-                );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
+                if memo_share == ResolvedGraphMemoShare::Memoize {
+                    eprintln!(
+                        "[resolved-graph-cache] decode subject={subject} (installed into process share)"
+                    );
+                    index
+                        .resolved_graph_memo
+                        .borrow_mut()
+                        .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
+                } else {
+                    eprintln!(
+                        "[resolved-graph-cache] decode subject={subject} (ephemeral gate resolve — not shared)"
+                    );
+                }
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -7427,11 +7585,18 @@ fn resolved_graph_from_sources_with_index(
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    // Install into the in-process share so same-subject re-resolves skip assembly.
-    index
-        .resolved_graph_memo
-        .borrow_mut()
-        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
+    // Install into the in-process share so same-subject re-resolves skip assembly —
+    // UNLESS this is an Ephemeral gate resolve (the compile-clean whole-tree gate): its
+    // aggregate graph strong-Rc-pins every TypedModule in the tree and is never re-hit by
+    // discovery's per-entry subjects, so memoizing it is the 9.2GB-class resident-retention
+    // leak D0.1 removes (ci-two-tier §5). Per-module typed-cache warming already happened
+    // above, in reconcile, and is unaffected.
+    if memo_share == ResolvedGraphMemoShare::Memoize {
+        index
+            .resolved_graph_memo
+            .borrow_mut()
+            .insert(subject.clone(), (typed.clone(), source_indices.clone()));
+    }
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -7754,6 +7919,15 @@ fn try_reconcile_all_cache_hits(
             let Some(tc_result) = index_get_typed(index, &typed_key)? else {
                 return Ok(None);
             };
+            // Record this confirmed hit's cache keys with the armed schedule retention
+            // (idempotent; no-op when unarmed) — the all-hits PROBE must register keys just
+            // like the slow reconcile loop at `reconcile_with_typed_cache`, else a prewarmed
+            // all-hit run (compile-clean warms the index, deliberately making all-hit the
+            // common case) arms retention that references NOTHING: completion then reports
+            // evictions while removing nothing (D0.2 retention-truth fix, ci-two-tier §5).
+            // Same key forms as the slow path — `decl_file` for the schedule refcount, the
+            // raw `span.file` for the parse/normalize/ownership/source-hash caches.
+            index_record_schedule_module(index, &decl_file, &typed_key, &resolved.module.span.file);
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
             results[slot] = Some(tc_result);
             progressed = true;
