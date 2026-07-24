@@ -99,6 +99,10 @@ pub fn kibi_factor() -> Nat {
     1024
 }
 
+pub fn milliseconds_per_second() -> Nat {
+    1000
+}
+
 pub fn seconds_per_minute() -> Nat {
     60
 }

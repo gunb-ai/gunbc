@@ -25,7 +25,7 @@ data standard_symbols: List<SymbolEntry> = [
   { id: NodeRunning,      glyphs: glyphs_for_tiers(emoji: glyph(text: "🔄"), unicode: glyph(text: "◐"),  ascii: glyph(text: "[~]")), color: Active  },
   { id: NodeCompleted,    glyphs: glyphs_for_tiers(emoji: glyph(text: "✅"), unicode: glyph(text: "✓"),  ascii: glyph(text: "[x]")), color: Success },
   { id: NodeFailed,       glyphs: glyphs_for_tiers(emoji: glyph(text: "❌"), unicode: glyph(text: "✗"),  ascii: glyph(text: "[!]")), color: Error   },
-  { id: NodeSkipped,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏩"), unicode: glyph(text: "⊘"),  ascii: glyph(text: "[-]")), color: Dim     },
+  { id: NodeSkipped,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏭️"), unicode: glyph(text: "⊘"),  ascii: glyph(text: "[-]")), color: Dim     },
   { id: NodeIntercepted,  glyphs: glyphs_for_tiers(emoji: glyph(text: "🔍"), unicode: glyph(text: "◆"),  ascii: glyph(text: "[m]")), color: Info    },
 
   { id: EdgeIdle,         glyphs: glyphs_for_tiers(emoji: glyph(text: "┄"),   unicode: glyph(text: "┄"),   ascii: glyph(text: "-")),   color: Dim     },
@@ -55,6 +55,17 @@ data standard_symbols: List<SymbolEntry> = [
   { id: StatusFailure,    glyphs: glyphs_for_tiers(emoji: glyph(text: "❌"), unicode: glyph(text: "✗"),    ascii: glyph(text: "FAIL")), color: Error   },
   { id: StatusWarning,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⚠"), unicode: glyph(text: "⚠"),    ascii: glyph(text: "WARN")), color: Warning },
   { id: StatusInfo,       glyphs: glyphs_for_tiers(emoji: glyph(text: "💡"), unicode: glyph(text: "ℹ"),    ascii: glyph(text: "INFO")), color: Info    },
+
+  { id: StatusRefused,    glyphs: glyphs_for_tiers(emoji: glyph(text: "🚫"), unicode: glyph(text: "⛔"),  ascii: glyph(text: "REFUSED")), color: Error   },
+  { id: StatusBlocked,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⏳"), unicode: glyph(text: "◷"),  ascii: glyph(text: "BLOCKED")), color: Warning },
+  { id: StatusTimedOut,   glyphs: glyphs_for_tiers(emoji: glyph(text: "⌛"), unicode: glyph(text: "⏱"),  ascii: glyph(text: "TIMEOUT")), color: Error   },
+  { id: StatusDwell,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏱"), unicode: glyph(text: "◴"),  ascii: glyph(text: "DWELL")),   color: Warning },
+  { id: StatusFinal,      glyphs: glyphs_for_tiers(emoji: glyph(text: "✦"), unicode: glyph(text: "✦"),  ascii: glyph(text: "DONE")),    color: Success },
+  { id: StatusPulse,      glyphs: glyphs_for_tiers(emoji: glyph(text: "🕐"), unicode: glyph(text: "◷"),  ascii: glyph(text: "STATUS")),  color: Dim     },
+
+  { id: ChangeAdded,      glyphs: glyphs_for_tiers(emoji: glyph(text: "+"), unicode: glyph(text: "+"),   ascii: glyph(text: "+")),       color: Success },
+  { id: ChangeModified,   glyphs: glyphs_for_tiers(emoji: glyph(text: "~"), unicode: glyph(text: "~"),   ascii: glyph(text: "~")),       color: Warning },
+  { id: ChangeRemoved,    glyphs: glyphs_for_tiers(emoji: glyph(text: "-"), unicode: glyph(text: "-"),   ascii: glyph(text: "-")),       color: Error   },
 
   { id: DataList,         glyphs: glyphs_for_tiers(emoji: glyph(text: "☰"),  unicode: glyph(text: "☰"),    ascii: glyph(text: "[L]")),  color: Default },
   { id: DataMap,          glyphs: glyphs_for_tiers(emoji: glyph(text: "⊞"),  unicode: glyph(text: "⊞"),  ascii: glyph(text: "[M]")),  color: Default },
@@ -103,5 +114,43 @@ fn symbol_color(id: SymbolId) -> SemanticColor? {
   match lookup_symbol_entry(id: id) {
     Present { value: entry } => Present { value: entry.color }
     Absent => none
+  }
+}
+
+data reward_animal_note: String = "The reward animal shown on a terminal success lands as ROWS in the one glyph authority, never as a hardcoded function in a renderer — the reference implementation studied for this lane keeps its emoji table mirrored by hand between Go and shell, which is the maintained dual representation we are here to not have. Selection is DETERMINISTIC: the index is derived from the run's own identity, so replaying a captured run reproduces its animal exactly and the event stream stays replayable by construction. A random draw would make the stream unreplayable and would be a non-determinism root of precisely the kind the determinism gate walls."
+
+data reward_animals: List<TierGlyphs> = [
+  glyphs_for_tiers(emoji: glyph(text: "🦦"), unicode: glyph(text: "✦"), ascii: glyph(text: "otter")),
+  glyphs_for_tiers(emoji: glyph(text: "🦊"), unicode: glyph(text: "✦"), ascii: glyph(text: "fox")),
+  glyphs_for_tiers(emoji: glyph(text: "🦉"), unicode: glyph(text: "✦"), ascii: glyph(text: "owl")),
+  glyphs_for_tiers(emoji: glyph(text: "🐢"), unicode: glyph(text: "✦"), ascii: glyph(text: "turtle")),
+  glyphs_for_tiers(emoji: glyph(text: "🦫"), unicode: glyph(text: "✦"), ascii: glyph(text: "beaver")),
+  glyphs_for_tiers(emoji: glyph(text: "🐋"), unicode: glyph(text: "✦"), ascii: glyph(text: "whale"))
+]
+
+type RewardPick {
+  idx: Int
+  found: TierGlyphs?
+}
+
+fn reward_animal_at(index: Int, tier: Tier) -> String? {
+  let n = count(reward_animals)
+  if n == 0 {
+    none
+  } else {
+    let target = index % n
+    let picked = fold(reward_animals,
+      init: RewardPick { idx: 0, found: none },
+      f: (acc, g) =>
+        if acc.idx == target {
+          RewardPick { idx: acc.idx + 1, found: Present { value: g } }
+        } else {
+          RewardPick { idx: acc.idx + 1, found: acc.found }
+        }
+    )
+    match picked.found {
+      Present { value: g } => Present { value: glyph_at(glyphs: g, tier: tier) }
+      Absent => none
+    }
   }
 }
