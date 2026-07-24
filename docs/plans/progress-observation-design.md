@@ -1,0 +1,177 @@
+# Progress & observation — process→outcome discipline, one event model, N renderers
+
+**Status:** DESIGN for review (operator-directed 2026-07-23). Authority migrates to the `.dag`
+carriers when P0 lands (the laws become data rows; this doc is the design record and dissolves
+per its doc-graph bind). **Reference implementation studied by execution:** `gunb-ai/gunb.ai`
+`tools/terminal` (progress.go / box.go / emoji.go) — tests run green, driven live in TTY,
+non-TTY, and failure modes 2026-07-23.
+
+## 1. Thesis and displaced cost
+
+The register thesis applied to process output: **quiet at arm's length; responsive up close;
+every response true.** A progress line is a *projection of a fact the process already has* —
+never a hand-authored string with a hand-chosen level.
+
+Displaced costs already paid (the receipts that price this lane):
+
+- The 2026-07-23 crawl window: ~10 minutes of `[floor-memory]` vitals with **zero activity
+  lines** while single modules typechecked for 607s/506s — the operator watched a quiet log
+  and could not tell what was running (run 30044816605).
+- A wrong triage verdict (the "eviction never armed" misread) made **because the drain receipt
+  only writes at walk end** and the walk timed out — one 55-minute CI cycle burned on an
+  ambiguity a single unconditional arm-line would have closed.
+- Workers hand-rolling the missing discipline ad hoc (#7129's `b295aa6`: unconditional arm
+  line + early per-entry drain emission) — dialect pressure; the standard should land before
+  three private dialects grow.
+- The operator's standing complaint: messy interleaved CI logs, unattributed concurrency,
+  things "going quiet."
+
+## 2. The model (P0 — no rendering work until these carriers exist)
+
+One event vocabulary, emitted by the process, consumed by every renderer:
+
+- **`ObservationEvent`** = `subject` (a **containment path**: run ⊃ batch ⊃ entry ⊃ module ⊃
+  phase — the tree the floor already walks) × `transition` × measured facts (wall, RSS,
+  counts). Events are data: the stream is **replayable by construction**, which is what makes
+  the flagship acceptance (re-render a captured run) trivial.
+- **Transitions:** `Begin | Step { k, n } | Outcome`. Outcomes are a closed sum:
+  `Done { facts } | Refused { diagnostic } | Failed { error, output } | TimedOut | Skipped |
+  Final`. **`Refused` is distinct from `Failed`** — typed refusals are the house's §5 spine
+  and get their own glyph and rendering (the reference implementation conflates these; we must
+  not).
+- **`BlockedOn { resource, holders, remaining }`** — lifted from the reference's
+  `TaskContention`, with one upgrade: in gunbc these facts are **derived from scheduler and
+  governor state, never hand-set** — the governor already knows when the cgroup throttles, so
+  the crawl renders as `⏳ typecheck v2.compiler.normalized_tree — blocked: memory.high
+  reclaim (high_events +90k/min)`.
+- **`AttentionLevel` is derived, never chosen per site:** `Ambient | Notable (threshold
+  crossing) | Anomaly (refusal, divergence, orphaned begin)`. Event-class → presentation is a
+  **total assignment** — censused and walled like unthemed colors.
+- **One glyph/material authority:** status → glyph (`⟳ ✓ ✗ ⛔ ⏳ ⏭` + the reward-animal rows
+  for `Final`) → register color role, as data rows. Terminal ANSI materials are the register's
+  roles realized for one more surface; the reward pattern (random animal on terminal success)
+  lands as rows in this table, not a hardcoded function.
+
+### The five laws (data rows, operator-signed 2026-07-23)
+
+1. **Process → outcome, no orphans.** Every subject at entry grain and above emits a matched
+   `Begin` and exactly one `Outcome`. An orphaned `Begin` is a detectable defect: a watchdog
+   converts quiet-past-budget into a typed line (this also closes the batch-wall hang gap —
+   a batch that never completes currently rides silently to the step cap).
+2. **The heartbeat carries identity, not just vitals.** The per-minute telemetry line gains
+   the current activity: `phase= entry= module= k/n`. No phase may exceed T seconds without a
+   line naming its current subject.
+3. **Attention escalates by dwell time, recursively.** A subject quiet past T surfaces its
+   current child; past 2T the grandchild; recursively to the leaf. Same tree, same events —
+   the collapse rule run in reverse under time pressure. (The reference implements one level
+   of this — `autoExpandThreshold = 30s`, TTY-only; we generalize it and make it first-class
+   in the CI renderer, where the pain actually lives.) T is a data row whose basis is the
+   measured quiet-time distribution, not taste.
+4. **Quiet at arm's length.** Sub-threshold work is silent; per-witness lines collapse to
+   per-entry summaries; a red or refusal expands fully and names itself. The asymmetry is the
+   design (`autoExpandMaxPending`-style bounds so a 200-task group never dumps).
+5. **Every response true.** Every rendered number is a projection of a receipt fact. No vibes
+   strings, no per-site log levels.
+
+## 3. Renderers (P1+) — the contexts, with format contracts
+
+One event stream, N realizations (§2). Each context gets a **format contract** — the
+expectations below are the acceptance spec, not illustrations.
+
+### 3a. CI log (GitHub Actions — the floor's context, built FIRST)
+
+Append-only; no repaint. The reference implementation's biggest gap is here (its non-TTY mode
+has no heartbeat, no escalation, no contention — the quiet-window problem verbatim), so this
+renderer is where every law must be first-class.
+
+```
+::group::batch 3 — discovery (602 entries)
+→ batch 3: discovery begin (602 entries, 2314 witnesses)
+✓ entry effect_reach_test.dag (14 witnesses, 230ms)
+… [collapsed: 213 green entries]
+♥ t=29m phase=discovery entry=214/602 (emit/rust_binop_emit_test.dag) module=34/61 | rss=16.0G swap=32G(sat) high_events=+90k/min
+⏱ entry 214 quiet 120s → typecheck v2.compiler.normalized_tree (34/61)          [T: child surfaced]
+⏱ normalized_tree quiet 240s → blocked: memory.high reclaim (psi 9.0)           [2T: cause surfaced]
+⛔ REFUSED batch 3: FLOOR-BATCH-OVER-BUDGET wall_ms=… budget_ms=… (budget row: …)
+::endgroup::
+✗ batch 3 — discovery: refused (1 refusal, 213/602 entries complete, 41m12s)
+```
+
+Contract: every `Begin` at entry grain+ has a matched outcome line **with duration**; heartbeat
+per minute with identity; dwell escalation *appends* deeper-subject lines at T/2T/4T; anomalies
+always render immediately and are never inside a collapsed group; a final summary table (the
+reference's binary-cache table pattern) plus failed/refused boxes re-rendered at the end so
+they survive log truncation; concurrency is attributed (every line carries its subject path or
+lives inside its subject's `::group::`).
+
+### 3b. Interactive TTY (`gunbc` CLI local runs)
+
+The reference implementation's strengths, kept: preamble box (title + description required —
+no anonymous processes); in-place repaint with spinner; group lines `⟳ › Discovery [214/602]
+(current-entry)`; dwell escalation expands **in place**; `BlockedOn` renders inline with holder
+and remaining time; failed/refused tasks render bordered boxes with captured output at final;
+`Final` renders the reward animal. Upgrades over the reference: durations on outcome lines,
+`Refused` distinct from `Failed`, escalation recursive rather than one-level.
+
+### 3c. Receipt / file (JSONL of the event stream)
+
+The same events as typed rows — the replay source for the flagship acceptance, and the
+convergence point with the existing receipts: D4's discovery phase rows, the floor-drain early
+emission, and `[floor-memory]` become projections of this stream. **Existing receipt file
+formats do not change** (they have consumers); they become derived views, dissolving only by
+their own triggers.
+
+### 3d. Dashboard (belt B) — later consumer, same stream; out of scope here, must not be
+precluded (the event schema is the wire contract).
+
+### 3e. Non-TTY local pipe — the CI contract minus workflow grouping markers.
+
+## 4. Migration and the wall
+
+Census every existing emit site (`[floor-memory]`, `[typecheck-attribution]`, `[gantt]`,
+`claim_executor` prints, shell echoes): each is classified **event-projection** (migrated) or a
+counted frontier row (reason + dissolve-on) — the unthemed-color-census pattern. Once migrated,
+a lens walls new bare prints outside the projection. The two hand-rolled precursors (#7129's
+arm line and early drain emission) are the first migrations, not exceptions.
+
+## 5. Phases, acceptance, REDs
+
+- **P0 — model + laws + glyph authority** as `.dag` carriers. Witnesses: event→presentation
+  totality; laws-as-data lockstep with the Rust emitter; glyph table single-authority
+  (perturbation moves every renderer).
+- **P1 — the CI renderer on the floor** (the pain point). Flagship acceptance: **re-render the
+  captured crawl window** (run 30044816605's log) through the escalation law and produce the
+  §3a trace — named activity where there was silence. REDs: a planted silent-phase (quiet past
+  T with no subject line) reds the responsiveness witness; an orphaned `Begin` reds the
+  watchdog; a `Refused` outcome rendered inside a collapsed group reds.
+- **P2 — the TTY renderer**, sharing every carrier; REDs re-proven per contract.
+- **P3 — census wall**: zero unclassified emit sites or counted frontier; the lens goes live.
+
+Each phase green-by-execution; enrollment through the D5 batch wall (rendering must be
+cost-negligible; the receipt says so, not the author).
+
+## 6. Reference-implementation ledger (what we lift / fix / decline)
+
+**Lift:** containment-tree state with derived group status (their `SetGroupStatus` is a
+deprecated no-op — status is computed, a §5 touch worth keeping); nested sub-DAG progress;
+auto-expand (generalized per Law 3); `TaskContention` (upgraded to derived facts);
+required preamble; failure boxes with captured output; `PrintFinal` returning shown-failures;
+the reward animal; TTY/CI dual rendering; bounded expansion.
+
+**Fix:** no CI heartbeat/escalation/contention (TTY-only features — our floor lives in CI);
+unattributed concurrent interleaving in the line protocol; no durations on outcomes;
+`Failed`/`Refused` conflation; imperative mutation API instead of replayable events;
+the emoji table hand-mirrored between Go and shell (a maintained dual representation — ours is
+one authority projected everywhere).
+
+**Decline:** importing the Go module itself; gunbc's renderers are emitted from the modeled
+protocol. Long-term convergence: the event schema is the shared wire contract, and gunb.ai's
+Go module can become one more renderer of it — cross-repo UX consistency by shared authority,
+not by imitation.
+
+## 7. Non-goals
+
+No external logging framework; no dashboard rebuild; no new telemetry sources in P0–P1 (render
+only what is already computed — the single exception is plumbing subject identity to the
+heartbeat); receipt file formats unchanged; the batch-wall in-flight deadline is its own row
+(Law 1's watchdog complements it, does not replace it).
