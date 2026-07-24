@@ -2050,31 +2050,6 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
 }
 
 fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
-    thread_local! {
-        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
-        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
-    }
-    CACHED.with(|c| {
-        if let Some(v) = c.borrow().clone() {
-            return v;
-        }
-        let v = compile_clean_unlisted_import_use_blocks_from_policy();
-        if let Err(ref e) = v {
-            LOGGED_REFUSAL.with(|logged| {
-                if !logged.get() {
-                    eprintln!(
-                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
-                    );
-                    logged.set(true);
-                }
-            });
-        }
-        *c.borrow_mut() = Some(v.clone());
-        v
-    })
-}
-
-/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
