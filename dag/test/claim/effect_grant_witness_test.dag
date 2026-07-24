@@ -23,7 +23,7 @@ fn frame_named(name: String) -> LadderFrame {
   LadderFrame { name: name, kind: SharedStateFrame }
 }
 
-data test_frame: Frame = frame_named(name: "eval")
+data test_frame: LadderFrame = frame_named(name: "eval")
 
 data workspace_root: NamespacePosition = NamespacePosition {
   tree: FilesystemPathTree,

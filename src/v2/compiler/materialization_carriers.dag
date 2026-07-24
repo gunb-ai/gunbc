@@ -14,7 +14,7 @@ import std.measure { Nano }
 import std.realization_schedule { cost_account_predicted_zero }
 import std.effects { ReadEffect }
 import std.materialization_ladder {
-  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  LadderFrame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
   FrameDemand, DemandNature, PureComputation,
   CacheProvider, CoversAllComputations,
   LadderVerdict,
@@ -51,7 +51,7 @@ fn materialization_allows_memo_store(m: Materialization) -> Bool {
 }
 
 fn v2_compile_process_frame() -> std.materialization_ladder.LadderFrame {
-  std.materialization_ladder.LadderLadderFrame { name: "v2-compile-ingest", kind: SharedStateFrame }
+  std.materialization_ladder.LadderFrame { name: "v2-compile-ingest", kind: SharedStateFrame }
 }
 
 fn v2_compile_process_site() -> List<std.materialization_ladder.LadderFrame> {
@@ -217,11 +217,11 @@ fn parse_table_carrier_grounded_on_catalog() -> Bool {
 }
 
 fn v2_compile_workflow_frame() -> std.materialization_ladder.LadderFrame {
-  std.materialization_ladder.LadderLadderFrame { name: "v2-compile-workflow", kind: IsolatedChildrenFrame }
+  std.materialization_ladder.LadderFrame { name: "v2-compile-workflow", kind: IsolatedChildrenFrame }
 }
 
 fn v2_compile_run_frame(name: String) -> std.materialization_ladder.LadderFrame {
-  std.materialization_ladder.LadderLadderFrame { name: name, kind: SharedStateFrame }
+  std.materialization_ladder.LadderFrame { name: name, kind: SharedStateFrame }
 }
 
 fn parse_table_memo_plural_demands() -> List<FrameDemand> {

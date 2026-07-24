@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, String }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder {
-  Frame, FrameKind,
+  LadderFrame, FrameKind,
   SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
   FrameDemand, DemandNature, IdempotentEffect, FreshEffect,
   CacheProvider, CoversIdentities,

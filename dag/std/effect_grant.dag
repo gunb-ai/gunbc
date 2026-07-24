@@ -81,7 +81,7 @@ type Grant {
 }
 
 type Envelope {
-  frame: Frame
+  frame: LadderFrame
   grants: List<Grant>
 }
 
@@ -102,7 +102,7 @@ fn filesystem_position(path: List<String>) -> NamespacePosition {
 
 type EffectAdmission
   = Admitted { via_root: NamespacePosition }
-  | EffectOutsideGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+  | EffectOutsideGrant { verb: Verb, target: NamespacePosition, frame: LadderFrame }
 
 fn grant_verb(g: Grant) -> Verb {
   g.verb
@@ -118,11 +118,11 @@ fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
 
 type CoveringGrant
   = CoveredBy { grant: Grant }
-  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: LadderFrame }
 
 data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
 
-fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: LadderFrame) -> CoveringGrant {
   if grants.count() == 0 {
     NoCoveringGrant { verb: verb, target: target, frame: frame }
   } else {

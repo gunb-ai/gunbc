@@ -17,7 +17,7 @@ fn build_workspace_grant_envelope(
   workspace_root: NamespacePosition,
   substrate_closure_root: NamespacePosition,
   toolchain_root: NamespacePosition,
-  frame: Frame
+  frame: LadderFrame
 ) -> Envelope {
   Envelope {
     frame: frame,

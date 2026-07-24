@@ -70,7 +70,7 @@ type DeployAuthorizationQuery {
   envelope: Envelope
 }
 
-data deploy_access_frame: Frame = LadderFrame { name: "deploy", kind: SharedStateFrame }
+data deploy_access_frame: LadderFrame = LadderFrame { name: "deploy", kind: SharedStateFrame }
 
 data deploy_access_authorization_query_note: String = "Wave C (shell-intent-emit-realization-design.md): deploy-preflight is an AUTHORIZATION QUERY — the deploy frame requires the current principal to hold Execute grants over privileged command paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user). Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant (never a parallel grant vocabulary). Observation and effect-plan execution live in gunbc.ci_deploy_access_observe at the realization edge; emission lives in gunbc.ci_deploy_access_emit + gunbc.ci_deploy_sudoers."
 
