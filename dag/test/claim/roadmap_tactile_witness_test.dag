@@ -92,7 +92,7 @@ fn witness_register_vocabulary_is_consumed() -> Bool {
 }
 
 fn witness_press_depresses_on_pointer_down() -> Bool {
-  string_contains(s: css(), pattern: ".dispatch-btn:active { background: var(--border) }")
+  string_contains(s: css(), pattern: ".dispatch-btn:active { background: var(--band-invite-pressed) }")
     && string_contains(
       s: css(),
       pattern: join([
