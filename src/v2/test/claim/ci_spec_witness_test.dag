@@ -160,8 +160,8 @@ fn witness_release_build_eagain_cold_retry() -> Bool {
   string_contains(s: script, pattern: "Resource temporarily unavailable|failed to spawn") &&
     string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1") &&
     string_contains(s: script, pattern: "keep sccache") &&
-    string_contains(s: script, pattern: "without RUSTC_WRAPPER") &&
-    string_contains(s: script, pattern: "env -u RUSTC_WRAPPER") &&
+    !string_contains(s: script, pattern: "without RUSTC_WRAPPER") &&
+    !string_contains(s: script, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: script, pattern: "sccache --show-stats")
 }
 
@@ -169,8 +169,8 @@ fn witness_release_build_eagain_tiers_wrap_build_command() -> Bool {
   let script = ci_release_build_script()
   let build_cmd = ci_release_build_line()
   string_contains(s: script, pattern: concat("if ! (", concat(build_cmd, ") 2>&1")))
-    && string_contains(s: script, pattern: concat("CARGO_BUILD_JOBS=1 ", concat(build_cmd, " ) 2>&1")))
-    && string_contains(s: script, pattern: concat("env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build_cmd, " || exit 1")))
+    && string_contains(s: script, pattern: concat("CARGO_BUILD_JOBS=1 ", build_cmd))
+    && !string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
 fn witness_release_build_verifies_nonempty_artifacts() -> Bool {

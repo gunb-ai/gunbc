@@ -1,0 +1,87 @@
+module gunbc.plans.transport_argv_anemia_dissolution
+
+import std.types { String, List }
+import std.markdown { MarkdownBlock }
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn taad_intro() -> List<MarkdownBlock> {
+  [
+    p(text: "Argv anemia: extdeps shell transports hand-spell each tool invocation as a bare argv String array — curl, dash-s, dash-k, and so on — where every flag is an opaque String that ENCODES a grounded concept. This is §2 anemic modeling (a String leaf hiding named parts) and it is the ROOT CAUSE of the redfish fail-open class found live against srv4 (2026-07-23): dash-f / --fail is a hand-typed flag, not a modeled success property, so it was trivially omittable — and was omitted in 11 sites (10 redfish ops + http.Client.PostJsonFromFile), each a §5 fail-open where a 401/403/404/5xx read as success. Construction — model the request, derive the argv — makes that class UNWRITABLE. The --fail-with-body patches already landed are the interim this plan deletes."),
+    quote(blocks: [p(text: "The model is the request; the curl argv is one derived realization of it. A bare flag string is the anemic serialization standing where the modeled axis belonged.")]),
+  ]
+}
+
+fn taad_decode() -> List<MarkdownBlock> {
+  [
+    h2(text: "Decode the flags (§2 decompress -> map -> reduce)"),
+    p(text: "Each opaque flag is a typed axis of an HTTP request:"),
+    ul(items: [
+      li(text: "dash-s / dash-S — suppress the progress meter / still show errors: a verbosity axis."),
+      li(text: "dash-f / --fail / --fail-with-body — FAIL when HTTP status is >= 400. THIS is the success-semantics; its omission IS the fail-open. --fail-with-body also keeps the error body for diagnosis."),
+      li(text: "dash-k — skip TLS certificate verification: a tls-verify=off axis, needed for the fleet's self-signed BMC certs (should be an explicit modeled exception, never a silent default)."),
+      li(text: "dash-u user-colon-pass — HTTP basic auth; --netrc-file F — netrc-file auth; a bearer header — token auth. One auth axis with N modes (and where the operator/WIF token attaches)."),
+      li(text: "dash-X — HTTP method; dash-H — a request header; --data at-file — request body from a file; dash-L — follow redirects (a redirect policy); dash-o F — write body to a file vs stdout."),
+    ]),
+    p(text: "Reduce: these are not curl trivia, they are the axes of the DMTF/RFC-9110 request the operation already means. The argv array is the leaf; the request is the concept."),
+  ]
+}
+
+fn taad_target() -> List<MarkdownBlock> {
+  [
+    h2(text: "The dissolution target already exists (§3 — extend, do not re-coin)"),
+    p(text: "transport rest (config modeled in extdeps.transports.rest) is the DECLARED declarative peer handler — 28 files already use it, and both carrier notes name it as the dissolution target: redfish_http_hardwired_transport_note (dag/extdeps/bmc/http.dag) and http_client_handler_layering_note (dag/extdeps/http/client.dag). N handlers, one modeled shape, dispatch peripheral. So the move is NOT a new CurlOptions vocabulary (that would be a §3 fork); it is: HTTP operations become declarative transport rest rows, and the curl argv is DERIVED by the realization — always emitting the correct success flag because success is modeled."),
+    h3(text: "What transport rest must gain first (the axes the hand-argv carries today)"),
+    ol(items: [
+      li(text: "TLS-verify toggle (insecure for self-signed BMC certs) — today only the curl handler's dash-k carries it."),
+      li(text: "Auth modes: basic (user-colon-pass), netrc-file, bearer-token — grounding token attachment (this is also where the operator/WIF GCP token plugs in, so it converges with the credentialing lane)."),
+      li(text: "Request-body-from-file."),
+      li(text: "MODELED SUCCESS — the §5 keystone. A response that carries the HTTP status with a grounded 2xx success, NOT `success: Bool from exit_success`. Then fail-closed is a construction property and --fail is derived, never a droppable flag. This is what makes the whole fail-open class unwritable."),
+    ]),
+  ]
+}
+
+fn taad_lanes() -> List<MarkdownBlock> {
+  [
+    h2(text: "Two lanes"),
+    h3(text: "Lane A — HTTP transport dissolution (curl argv -> transport rest)"),
+    ol(items: [
+      li(text: "Extend the rest model with the 4 items above (3 axes + modeled success)."),
+      li(text: "Convert the 10 redfish.Http.* ops (dag/extdeps/bmc/http.dag) from hand-argv transport shell to declarative transport rest rows."),
+      li(text: "Convert http.Client's 3 shell-handler ops (Get / PostJsonFromFile / DownloadToFile)."),
+      li(text: "Sweep the remaining HTTP shell-transports. Deliverable: the curl-fail-open class is EXTINCT by construction, and the --fail-with-body interim patches (this branch) are deleted. Priced by the fail-open class it removes, not elegance."),
+    ]),
+    h3(text: "Lane B — general tool-argv modeling (the non-HTTP argv)"),
+    ul(items: [
+      li(text: "The non-HTTP bare argv: the busybox build sequence (mkdir / tar / make / sed / cp — dag/gunbc/busybox_bmc_build.dag) and the broader 262 argv-lines across 37 transport-shell files."),
+      li(text: "Each shell tool becomes a modeled extdeps/tools/* service with typed operations — precedent already exists (sha256sum, jq, xorriso, sed, grep are modeled). The build sequence becomes typed tool ops, not a bare argv list."),
+      li(text: "This is the broader §2 argv anemia and rides the shell -> intent lane (the intent IS the .dag graph; emit vs realization). Model just-in-time per real consumer, never a big-bang sweep."),
+    ]),
+  ]
+}
+
+fn taad_sequence() -> List<MarkdownBlock> {
+  [
+    h2(text: "Sequencing, census, non-goals"),
+    ul(items: [
+      li(text: "Lane A FIRST: it kills a live fail-open class by construction and is bounded (~13 HTTP ops). Lane B is larger and paced by the shell -> intent lane."),
+      li(text: "Census (the backlog): 37 files use transport shell; 262 argv lines total. Lane A = the HTTP subset (redfish 10 + http.client 3 + other HTTP shell-transports); Lane B = the remainder. A lens over argv arrays containing a known tool name is the coverage tracker and the anti-regression guard (a new curl op without modeled success reds)."),
+      li(text: "Non-goal: minting a parallel option vocabulary. Extend transport rest (§3). Non-goal: rewriting every argv at once (Lane B is JIT per consumer)."),
+      li(text: "Convergence: the redfish and http-client transport notes dissolve WITH this plan — Lane A is their shared, already-declared dissolution. The interim --fail-with-body flags are the fenced-out debt Lane A removes."),
+    ]),
+  ]
+}
+
+fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
+  concat(taad_intro(),
+  concat(taad_decode(),
+  concat(taad_target(),
+  concat(taad_lanes(), taad_sequence()))))
+}
+
+data transport_argv_anemia_dissolution_plan: Plan = Plan {
+  slug: "transport-argv-anemia-dissolution",
+  title: "Transport-argv anemia dissolution — model the request, derive the argv (kill the fail-open class by construction)",
+  body: transport_argv_anemia_dissolution_body(),
+  dissolution: HasTrigger { text: "Dissolves when every HTTP operation is a declarative transport rest row (curl argv derived, fail-closed by construction, the interim --fail-with-body patches removed) AND the non-HTTP tool argv is modeled through extdeps/tools/* or emitted via the shell -> intent lane — no bare flag-string survives as load-bearing. redfish_http_hardwired_transport_note and http_client_handler_layering_note dissolve with Lane A (their shared dissolution). Tracked green by a coverage lens over argv arrays: zero unmodeled-success HTTP ops." },
+}

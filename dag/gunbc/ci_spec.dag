@@ -227,27 +227,13 @@ fn ci_retry_escalation_level1() -> EscalationLevel {
   }
 }
 
-fn ci_retry_escalation_level2() -> EscalationLevel {
-  EscalationLevel {
-    detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
-    },
-    env: [
-      EnvUnset { name: "RUSTC_WRAPPER" },
-      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
-    ]
-  }
-}
-
 fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
   Retry {
     body: Pipeline {
       steps: [Do { run: ci_retry_body_run(command: command) }],
       on_failure: FailFast
     },
-    escalations: [ci_retry_escalation_level1(), ci_retry_escalation_level2()],
+    escalations: [ci_retry_escalation_level1()],
     on_exhausted: ci_retry_exhausted_pipeline()
   }
 }
