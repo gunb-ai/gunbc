@@ -192,3 +192,42 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_signed_off_node_doc_has_no_button()
     && witness_superseded_node_marked_no_button()
 }
+
+fn witness_style_child_combinator_unescaped() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: ".node-superseded > .title")
+    && !string_contains(s: h, pattern: "&gt; .title")
+}
+
+fn witness_raw_text_close_guard_refuses() -> Bool {
+  let bad = ElementNode {
+    tag: "style",
+    attrs: [],
+    children: [ TextNode { text: "a \{ color: red } </style><p>escaped</p>" } ],
+  }
+  match try_serialize_html_source(node: bad) {
+    EmitOk { html: _ } => false
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "close sequence")
+  }
+}
+
+fn witness_item_detail_disclosure_present() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: "<details class=\"item-detail\"><summary>brief</summary>")
+    && string_contains(s: h, pattern: "class=\"item-body\"")
+}
+
+fn witness_status_chip_min_width() -> Bool {
+  string_contains(s: authority_page_html(), pattern: "min-width: var(--w-status)")
+}
+
+fn witness_dispatch_button_carries_accent() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: ".dispatch-btn")
+    && string_contains(s: h, pattern: "border-color: var(--figure)")
+}
+
+fn witness_page_containers_centered() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+}

@@ -310,7 +310,7 @@ This punch-list folds into the **`host_language_transport_script` lens going liv
 
 | new op | home file | covers verb | consumers |
 | --- | --- | --- | --- |
-| `extdeps.os.hostname` · `Read` + `Set` | **new** `dag/extdeps/os/hostname.dag` | `hostname -s`, `hostnamectl set-hostname` | `host_identity_observation` (`HostIdentityShortHostnameRead`), `ci_deploy_target_host`, `host_effect_hostname` (`SetHostnameCas`) |
+| `extdeps.os.hostname` · ~~`Read`~~ **LANDED** + `Set` | `dag/extdeps/os/hostname.dag` (created) | ~~`hostname -s`~~ **done**; `hostnamectl set-hostname` remains | **Read done** — `os.Hostname.ReadShort` realized via typed cell `HostnameReadOnHost` + `gunbc.hostname_read` (LocalShell → op, SshShell → typed argv); both read consumers dissolved: `host_identity_observation` (`HostIdentityShortHostnameRead`, the `host_identity_short_hostname_script` concat DELETED) and `ci_deploy_target_host` (runtime-present read; the GHA preflight *block* stays E-emit). **Set** (`host_effect_hostname` `SetHostnameCas`, its own `host_effect_set_hostname_cas_script` concat) still pending — reuses this op file with a `SetHostname` op. |
 | `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (`_enumerate_units_script`), `fleet_show_effective_read` (`fleet_runner_width_count_read_script`) |
 | `extdeps.os.id` · `Read` (uid/gid/user) | **new** `dag/extdeps/os/id.dag` | `id -u`, `id -g`, `id <user>` | `host_effect_realize` (ssh probes), `fleet_posix_accounts` (`probe_command`) |
 | `ssh.Session.ExecArgv` | **add to** `dag/extdeps/diagnostic/ssh.dag` | typed argv over ssh (`ssh host -- argv`) | `host_effect_realize` ssh probes — **IN FLIGHT, C5 #6946** |

@@ -33,6 +33,7 @@ fn jsx_markup_medium() -> MarkupMedium {
     text_escape: EscapeHtml,
     void_tags: html5_void_tags,
     void_rendering: SelfClose,
+    raw_text_tags: [],
   }
 }
 
