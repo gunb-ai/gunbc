@@ -5526,9 +5526,10 @@ pub fn emit_module_full(
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
                     if ((is_type_def_item(item.clone()) && is_coproduct_type(item.clone()))
-                        && !is_grounded_coproduct_native_alias(
-                            authored_name(scope.type_env.clone(), item.clone()),
-                        ))
+                        && !is_grounded_coproduct_native_alias(authored_name(
+                            scope.type_env.clone(),
+                            item.clone(),
+                        )))
                     {
                         __result.push(item);
                     }
@@ -10423,8 +10424,7 @@ pub fn emit_type_def_from_connective(
                         ">;".to_string(),
                     )
                 }
-            } else if is_host_freemonoid_vec_alias(item_text.clone())
-            {
+            } else if is_host_freemonoid_vec_alias(item_text.clone()) {
                 {
                     let elem_csv = Rc::new({
                         let mut __result = Vec::new();
