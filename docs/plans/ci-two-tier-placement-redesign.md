@@ -204,16 +204,33 @@ the 2a native flip (deletes the interpreted-eval class).
 No staged drag-out: **measurements and decisions happen up front; the workflow changes land as
 one PR.** Structure:
 
-- **PR-0 — D0 close-out (routed to the #7129 worker, sequenced first).** The three P1 retention
-  fixes + the whole-schedule arming hoist. Sequenced first for two reasons: retention receipts
-  must be *true* before the redesign PR cites them, and both PRs edit the same `cli_run.rs`
-  retention machinery — parallel landings would conflict textually and semantically.
+- **DELIVERY RESTRUCTURE (operator, 2026-07-24): #7162 grows to hold everything.** The
+  PR-0/PR-1 split is dissolved — #7162 already carries D0 + D3 + D5 (including the parked
+  miscite fix) and absorbs every remaining piece; every "PR-1" reference in this doc now
+  denotes #7162. Consequences, restated honestly:
+  - **Build order inside the PR: Piece 3 (derived clamps) FIRST.** The floor reads `CiSpec`
+    from the PR's own tree, so landing the clamp model in-branch turns the PR's own
+    full-corpus runs green (they currently red on the 1320s wall) — self-greening, and every
+    later piece then develops against a trustworthy CI signal.
+  - **D4's gate restated:** the falsifier cannot green ON MAIN before the PR merges — its fix
+    (D0) is inside the PR. The deletion receipt becomes a **branch falsifier run**: dispatch
+    the falsifier workflow against the PR head (add `workflow_dispatch` to `falsifier.yml` if
+    absent). One green cold run post-D0 serves triple duty: D0's acceptance receipt, D4's
+    deletion receipt, and the probe's cold-side timings.
+  - **D5 completeness:** the hermetic `Env.Get` mock is the named second part of D5's own
+    five-part spec — the `floor_diff_observe` local-verification gap is that missing part,
+    finished in-PR, not a separate harness decision.
+  - The two stage collapses and the clamp constants (§9.8) are in scope per the blessings
+    below; the observation/UX lane stays a SEPARATE PR after this one (its own atomic ruling).
 - **Pre-PR probe (nothing lands).** The D2 measurement pass runs on a branch: a pooled
   warm-cost row for **every** gate (batches 2/4/5 rostered from `gunbc_ci_floor_gates`, not
   guessed), measured on **fleet-class hardware (srv)** — the Pi lesson: a warm win measured
   only on the 125 GB build box is not evidence for the capped runners. (The fleet IS
   reachable: branch CI runs execute on the capped srv slots; a `workflow_dispatch` harness on
-  the probe branch is the instrument — no special access.) Output: (a) the placement roster,
+  the probe branch is the instrument — no special access. Operator confirmation 2026-07-24:
+  "nothing should be external to you" — trigger freely; run probes serially; sample ≥2 hosts,
+  since the 1344–1629s envelope is ±20% host variance and the roster records value + host
+  basis; the cadence falsifier occupies slots at 0/4/8/12/16/20 UTC.) Output: (a) the placement roster,
   (b) the filled expectation sheet below. This is also where "well within 5s" gets its
   empirical check (operator: "we do some testing ourselves to see what is acceptable").
   **Added 2026-07-24 (lens reintroduction rides PR-1):** the probe also runs the v2-door lens
@@ -231,10 +248,9 @@ one PR.** Structure:
   and `lens_contract_complexity` flips AuditOnly → Blocking with a planted-quadratic RED;
   violations the probe's lens audit surfaced are fixed in-PR or landed as a counted typed
   quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
-  skip). **D4 rides PR-1 iff a green falsifier cadence run exists at landing time** (D0 is
-  merging ahead, so the cadence has runway to green); otherwise it stays the fast-follow
-  micro-PR citing the first green run. D1 needs nothing here (landed); D1b stays excluded
-  (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
+  skip). **D4 rides in-PR with the branch-falsifier receipt** (see the delivery restructure
+  above — a main-cadence green is impossible pre-merge by construction). D1 needs nothing
+  here (landed); D1b stays excluded (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
   is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
   concentration is deliberate and operator-chosen.
   **Two stage collapses (operator-blessed 2026-07-24 — "too many stages" review):** (a) the
