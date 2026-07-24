@@ -739,37 +739,37 @@ pub fn rust_scalar_checkpoint_render_base(
     }
 }
 
-pub fn rust_strip_illegal_primitive_type_args(rendered: String) -> String {
-    if (v1_rt::substring(&rendered, 0, 4) == "i64<".to_string()) {
-        "i64".to_string()
+pub fn rust_checkpoint_scalar_phantom_params_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for E0109 (type arguments are not allowed on builtin type i64). A checkpoint scalar (lookup_checkpoint / rust_seed_host_numeric_alias — Int, Nat, i64, etc.) has arity 0 in Rust; DAG phantom params from GroupCompletion<Nat> or Compose<Int, MachineWidth<>> must not surface as i64<T>. Root fix: refuse phantom arg emission at the type-node renderer when the leaf is a checkpoint scalar and children > 0 — not a post-hoc string strip on the rendered output (DESIGN section 5: widening instead of refusing).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_render_checkpoint_scalar_bare(
+    n: Rc<Node>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<BTreeSet<String>>,
+) -> Option<String> {
+    if ((n.children.clone().len() as i64) == 0) {
+        None
     } else {
-        if (v1_rt::substring(&rendered, 0, 4) == "f64<".to_string()) {
-            "f64".to_string()
-        } else {
-            if (v1_rt::substring(&rendered, 0, 5) == "bool<".to_string()) {
-                "bool".to_string()
-            } else {
-                if (v1_rt::substring(&rendered, 0, 3) == "u8<".to_string()) {
-                    "u8".to_string()
-                } else {
-                    if (v1_rt::substring(&rendered, 0, 4) == "u16<".to_string()) {
-                        "u16".to_string()
+        {
+            let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
+            match rust_scalar_checkpoint_render_base(leaf.clone(), corpus_repr.clone()) {
+                Some(scalar) => {
+                    if (v1_rt::set_contains(&shared_types, leaf.clone())
+                        && !rust_type_is_rc_wrapped(scalar.clone()))
+                    {
+                        Some(wrap_shared_type(RenderTarget::Rust, scalar.clone()))
                     } else {
-                        if (v1_rt::substring(&rendered, 0, 4) == "u32<".to_string()) {
-                            "u32".to_string()
-                        } else {
-                            if (v1_rt::substring(&rendered, 0, 4) == "u64<".to_string()) {
-                                "u64".to_string()
-                            } else {
-                                if (v1_rt::substring(&rendered, 0, 4) == "i32<".to_string()) {
-                                    "i32".to_string()
-                                } else {
-                                    rendered.clone()
-                                }
-                            }
-                        }
+                        Some(scalar.clone())
                     }
                 }
+                None => None,
             }
         }
     }
@@ -1165,15 +1165,23 @@ pub fn render_rust_applied_type_arg(
                         "_".to_string()
                     }
                 }
-                _ => rust_strip_illegal_primitive_type_args(render_rust_decl_type(
+                _ => match rust_render_checkpoint_scalar_bare(
                     n.clone(),
-                    generic_param_names.clone(),
-                    shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
-                    variant_to_enum.clone(),
-                    env.clone(),
-                )),
+                    shared_types.clone(),
+                ) {
+                    Some(scalar) => scalar.clone(),
+                    None => render_rust_decl_type(
+                        n.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        corpus_repr.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                        env.clone(),
+                    ),
+                },
             }
         }
     }
@@ -1446,154 +1454,159 @@ pub fn render_rust_decl_type(
                             if ((n.connective.clone() == Connective::NoConnective)
                                 && ((n.children.clone().len() as i64) > 0))
                             {
-                                if (!is_container_type(name.clone())
-                                    && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
-                                {
-                                    render_rust_shared_type_with_optional(
+                                match rust_render_checkpoint_scalar_bare(
+                                    n.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    shared_types.clone(),
+                                ) {
+                                    Some(scalar) => render_rust_shared_type_with_optional(
                                         n.clone(),
-                                        name.clone(),
-                                        name.clone(),
+                                        rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+                                        scalar.clone(),
                                         shared_types.clone(),
-                                    )
-                                } else {
-                                    {
-                                        let base = rust_applied_type_base(
-                                            name.clone(),
-                                            corpus_repr.clone(),
-                                        );
-                                        let peel = is_parametric_opaque_type_by_name(
-                                            env.clone(),
-                                            name.clone(),
-                                        );
-                                        let arg_list = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for arg in n.children.clone().iter().cloned() {
-                                                __result.push(if peel.clone() {
-                                                    render_rust_phantom_opaque_applied_decl_arg(
-                                                        arg.clone(),
-                                                        generic_param_names.clone(),
-                                                        shared_types.clone(),
-                                                        corpus_repr.clone(),
-                                                        source_indices.clone(),
-                                                        variant_to_enum.clone(),
-                                                        env.clone(),
+                                    ),
+                                    None => {
+                                        if (!is_container_type(name.clone())
+                                            && rust_fn_sig_peel_closed_alias(
+                                                env.clone(),
+                                                n.clone(),
+                                            ))
+                                        {
+                                            render_rust_shared_type_with_optional(
+                                                n.clone(),
+                                                name.clone(),
+                                                name.clone(),
+                                                shared_types.clone(),
+                                            )
+                                        } else {
+                                            {
+                                                let base = rust_applied_type_base(
+                                                    name.clone(),
+                                                    corpus_repr.clone(),
+                                                );
+                                                let peel = is_parametric_opaque_type_by_name(
+                                                    env.clone(),
+                                                    name.clone(),
+                                                );
+                                                let arg_list = Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for arg in n.children.clone().iter().cloned() {
+                                                        __result.push(if peel.clone() {
+                                            render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                                        } else {
+                                            if rust_type_arg_renders_as_unit(arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
+                                                "()".to_string()
+                                            } else {
+                                                match rust_render_checkpoint_scalar_bare(arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
+    Some(scalar) => scalar.clone(),
+    None => render_rust_decl_type(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
+}
+                                            }
+                                        });
+                                                    }
+                                                    __result
+                                                });
+                                                let applied_ty = if (name.clone()
+                                                    == tuple_type_name())
+                                                {
+                                                    render_tuple_parts(
+                                                        arg_list.clone(),
+                                                        RenderTarget::Rust,
                                                     )
                                                 } else {
-                                                    if rust_type_arg_renders_as_unit(
-                                                        arg.clone(),
-                                                        generic_param_names.clone(),
-                                                        variant_to_enum.clone(),
+                                                    if node_is_keyed_collection(
+                                                        n.clone(),
                                                         source_indices.clone(),
                                                     ) {
-                                                        "()".to_string()
+                                                        match arg_list.clone().first().cloned() {
+                                                            Some(k) => match arg_list
+                                                                .clone()
+                                                                .get(1 as usize)
+                                                                .cloned()
+                                                            {
+                                                                Some(v) => emit_map_type(
+                                                                    k.clone(),
+                                                                    v.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
+                                                                None => v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        v1_rt::concat(
+                                                                            base.clone(),
+                                                                            "<".to_string(),
+                                                                        ),
+                                                                        arg_list.clone().join(
+                                                                            &", ".to_string(),
+                                                                        ),
+                                                                    ),
+                                                                    ">".to_string(),
+                                                                ),
+                                                            },
+                                                            None => v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        base.clone(),
+                                                                        "<".to_string(),
+                                                                    ),
+                                                                    arg_list
+                                                                        .clone()
+                                                                        .join(&", ".to_string()),
+                                                                ),
+                                                                ">".to_string(),
+                                                            ),
+                                                        }
                                                     } else {
-                                                        rust_strip_illegal_primitive_type_args(
-                                                            render_rust_decl_type(
-                                                                arg.clone(),
-                                                                generic_param_names.clone(),
-                                                                shared_types.clone(),
-                                                                corpus_repr.clone(),
-                                                                source_indices.clone(),
-                                                                variant_to_enum.clone(),
-                                                                env.clone(),
-                                                            ),
-                                                        )
-                                                    }
-                                                });
-                                            }
-                                            __result
-                                        });
-                                        let applied_ty = if (name.clone() == tuple_type_name()) {
-                                            render_tuple_parts(arg_list.clone(), RenderTarget::Rust)
-                                        } else {
-                                            if node_is_keyed_collection(
-                                                n.clone(),
-                                                source_indices.clone(),
-                                            ) {
-                                                match arg_list.clone().first().cloned() {
-                                                    Some(k) => match arg_list
-                                                        .clone()
-                                                        .get(1 as usize)
-                                                        .cloned()
-                                                    {
-                                                        Some(v) => emit_map_type(
-                                                            k.clone(),
-                                                            v.clone(),
-                                                            RenderTarget::Rust,
-                                                        ),
-                                                        None => v1_rt::concat(
+                                                        if (node_is_collection(
+                                                            n.clone(),
+                                                            source_indices.clone(),
+                                                        ) && ((arg_list.clone().len() as i64)
+                                                            == 1))
+                                                        {
+                                                            match arg_list.clone().first().cloned()
+                                                            {
+                                                                Some(inner) => emit_container(
+                                                                    to_snake(name.clone()),
+                                                                    inner.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
+                                                                None => v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        v1_rt::concat(
+                                                                            base.clone(),
+                                                                            "<".to_string(),
+                                                                        ),
+                                                                        arg_list.clone().join(
+                                                                            &", ".to_string(),
+                                                                        ),
+                                                                    ),
+                                                                    ">".to_string(),
+                                                                ),
+                                                            }
+                                                        } else {
                                                             v1_rt::concat(
                                                                 v1_rt::concat(
-                                                                    base.clone(),
-                                                                    "<".to_string(),
+                                                                    v1_rt::concat(
+                                                                        base.clone(),
+                                                                        "<".to_string(),
+                                                                    ),
+                                                                    arg_list
+                                                                        .clone()
+                                                                        .join(&", ".to_string()),
                                                                 ),
-                                                                arg_list
-                                                                    .clone()
-                                                                    .join(&", ".to_string()),
-                                                            ),
-                                                            ">".to_string(),
-                                                        ),
-                                                    },
-                                                    None => v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                base.clone(),
-                                                                "<".to_string(),
-                                                            ),
-                                                            arg_list
-                                                                .clone()
-                                                                .join(&", ".to_string()),
-                                                        ),
-                                                        ">".to_string(),
-                                                    ),
-                                                }
-                                            } else {
-                                                if (node_is_collection(
+                                                                ">".to_string(),
+                                                            )
+                                                        }
+                                                    }
+                                                };
+                                                render_rust_shared_type_with_optional(
                                                     n.clone(),
-                                                    source_indices.clone(),
-                                                ) && ((arg_list.clone().len() as i64) == 1))
-                                                {
-                                                    match arg_list.clone().first().cloned() {
-                                                        Some(inner) => emit_container(
-                                                            to_snake(name.clone()),
-                                                            inner.clone(),
-                                                            RenderTarget::Rust,
-                                                        ),
-                                                        None => v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    base.clone(),
-                                                                    "<".to_string(),
-                                                                ),
-                                                                arg_list
-                                                                    .clone()
-                                                                    .join(&", ".to_string()),
-                                                            ),
-                                                            ">".to_string(),
-                                                        ),
-                                                    }
-                                                } else {
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                base.clone(),
-                                                                "<".to_string(),
-                                                            ),
-                                                            arg_list
-                                                                .clone()
-                                                                .join(&", ".to_string()),
-                                                        ),
-                                                        ">".to_string(),
-                                                    )
-                                                }
+                                                    name.clone(),
+                                                    applied_ty.clone(),
+                                                    shared_types.clone(),
+                                                )
                                             }
-                                        };
-                                        render_rust_shared_type_with_optional(
-                                            n.clone(),
-                                            name.clone(),
-                                            applied_ty.clone(),
-                                            shared_types.clone(),
-                                        )
+                                        }
                                     }
                                 }
                             } else {
