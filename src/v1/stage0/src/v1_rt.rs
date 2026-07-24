@@ -95,7 +95,7 @@ pub struct SilentPickTelemetry {
 }
 
 thread_local! {
-    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(true) };
+    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };
     static RESOLUTION_SILENT_PICK: RefCell<SilentPickTelemetry> = RefCell::new(SilentPickTelemetry::default());
 }
 
