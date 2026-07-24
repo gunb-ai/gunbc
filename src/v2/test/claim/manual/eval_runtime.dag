@@ -271,10 +271,10 @@ fn eval_example_diagnostic(n: Node) -> Diagnostic {
   eval_diagnostic(reason: ^eval_descent_not_derived, node: n)
 }
 
-fn eval_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn eval_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^eval_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^eval_descent_dimension }
   }
 }
 

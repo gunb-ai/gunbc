@@ -34,8 +34,8 @@ import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optiona
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.cardinality {
-  RankingDimension,
-  TerminationProof,
+  v2.std.cardinality.RankingDimension,
+  v2.std.cardinality.TerminationProof,
   termination_proof_witness_for_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
@@ -860,9 +860,9 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
                 resolved: key,
                 algebra: add_arrow_eval_i64_node(),
                 descent: Holds {
-                  value: TerminationProof {
+                  value: v2.std.cardinality.TerminationProof {
                     non_increasing: [],
-                    strict: RankingDimension {
+                    strict: v2.std.cardinality.RankingDimension {
                       measured: ^add_arrow_eval_loop_measure_literal
                     }
                   }
