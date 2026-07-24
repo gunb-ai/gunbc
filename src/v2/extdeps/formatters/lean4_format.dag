@@ -18,16 +18,16 @@ import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
 type Lean4NameValue
 type Lean4SyntaxValue
-type Lean4NatValue = Nat
+type Lean4NatValue = v2.std.nat.Nat
 fn lean4_format_authoritative_locus() -> Locus {
   port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
-fn lean4_nat_succ(n: Nat) -> Nat {
-  Succ { prev: n }
+fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
+  v2.std.nat.Succ { prev: n }
 }
 
-fn lean4_nat_add_ten(n: Nat) -> Nat {
+fn lean4_nat_add_ten(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
   lean4_nat_succ(
     n: lean4_nat_succ(
       n: lean4_nat_succ(
@@ -53,7 +53,7 @@ fn lean4_nat_max_materializable() -> Int {
   4096
 }
 
-fn lean4_nat_catalog_format_width() -> Nat {
+fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
   lean4_nat_add_ten(
     n: lean4_nat_add_ten(
       n: lean4_nat_add_ten(
@@ -64,7 +64,7 @@ fn lean4_nat_catalog_format_width() -> Nat {
                 n: lean4_nat_add_ten(
                   n: lean4_nat_add_ten(
                     n: lean4_nat_add_ten(
-                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: Zero))
+                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: v2.std.nat.Zero))
                     )
                   )
                 )
@@ -77,19 +77,19 @@ fn lean4_nat_catalog_format_width() -> Nat {
   )
 }
 
-fn lean4_nat_catalog_format_indent() -> Nat {
-  lean4_nat_succ(n: lean4_nat_succ(n: Zero))
+fn lean4_nat_catalog_format_indent() -> v2.std.nat.Nat {
+  lean4_nat_succ(n: lean4_nat_succ(n: v2.std.nat.Zero))
 }
 
-fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
+fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   if value == 0 {
-    Zero
+    v2.std.nat.Zero
   } else {
-    Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
+    v2.std.nat.Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
   }
 }
 
-fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat> {
+fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.std.nat.Nat> {
   if value < 0 {
     Rejected {
       diagnostics: diagnostics_singleton(

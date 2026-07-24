@@ -91,7 +91,7 @@ data timeseries_anchor_dt: TimeStep = TimeStep {
 }
 
 data timeseries_anchor_tick0: TimeSeriesSample = TimeSeriesSample {
-  tick: Zero
+  tick: v2.std.nat.Zero
   microvolts: voltage(0)
 }
 

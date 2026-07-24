@@ -32,7 +32,7 @@ fn factorial_dominates_exponential_claim_holds() -> Bool {
     a: FactorialCost { variable: SizeVariable { source: synthesis_fact_x } },
     b: ExponentialCost {
       variable: SizeVariable { source: synthesis_fact_x },
-      base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
+      base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: v2.std.nat.Zero } }
     }
   )
 }

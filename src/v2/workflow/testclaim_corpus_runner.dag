@@ -95,7 +95,7 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
 }
 
 fn verdict_tally_add_deferred_row(t: VerdictTally) -> VerdictTally {
-  VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
+  VerdictTally { pass: t.pass, fail: t.fail, deferred: v2.std.nat.Succ { prev: t.deferred } }
 }
 
 fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
@@ -114,7 +114,7 @@ fn unified_bool_witness_run_tally(t: VerdictTally, run: BoolWitnessRun) -> Verdi
     BoolWitnessRuntimeVerdict { witness: _, result: true } =>
       verdict_tally_add(t: t, v: Pass)
     BoolWitnessRuntimeVerdict { witness: _, result: false } =>
-      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+      VerdictTally { pass: t.pass, fail: v2.std.nat.Succ { prev: t.fail }, deferred: t.deferred }
   }
 }
 
@@ -141,27 +141,27 @@ fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   })
 }
 
-fn corpus_report_pass_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_pass_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).pass
 }
 
-fn corpus_report_fail_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_fail_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).fail
 }
 
-fn corpus_report_deferred_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_deferred_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).deferred
 }
 
-fn corpus_report_total(r: CorpusEvalReport) -> Nat {
+fn corpus_report_total(r: CorpusEvalReport) -> v2.std.nat.Nat {
   verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
-fn list_length_nat<T>(xs: List<T>) -> Nat {
-  fold(xs, init: Zero, f: fn(acc, _) { Succ { prev: acc } })
+fn list_length_nat<T>(xs: List<T>) -> v2.std.nat.Nat {
+  fold(xs, init: v2.std.nat.Zero, f: fn(acc, _) { v2.std.nat.Succ { prev: acc } })
 }
 
-fn nat_eq(a: Nat, b: Nat) -> Bool {
+fn nat_eq(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true
     Less => false

@@ -205,8 +205,8 @@ fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
 fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   match sql_serialize_data_type(
     dt: SqlTypeNumeric {
-      precision: NonZeroNat { prev: Zero },
-      scale: Zero
+      precision: NonZeroNat { prev: v2.std.nat.Zero },
+      scale: v2.std.nat.Zero
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
