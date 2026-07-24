@@ -95,7 +95,7 @@ pub struct SilentPickTelemetry {
 }
 
 thread_local! {
-    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };
+    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(true) };
     static RESOLUTION_SILENT_PICK: RefCell<SilentPickTelemetry> = RefCell::new(SilentPickTelemetry::default());
 }
 
@@ -161,7 +161,7 @@ pub fn resolution_silent_pick_record_global_bare_lcp_tie(
 // parent closure, with typed Ambiguous refusals. Host-side setter only; no .dag
 // surface can flip it (no escape hatch — a flip is an explicit host decision).
 thread_local! {
-    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(false) };
+    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(true) };
 }
 
 pub fn name_resolution_policy_set_namespace_only(enabled: bool) {
