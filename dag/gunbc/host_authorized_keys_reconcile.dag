@@ -1,13 +1,13 @@
 module gunbc.host_authorized_keys_reconcile
 
 import std.types { String, List, Bool, NonEmptyStr }
-import extdeps.access.ssh { SshPublicKey, SshKeyAlgorithm, Ed25519 }
+import extdeps.access.ssh { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
 import gunbc.fleet_ssh_access {
   fleet_authorized_keys,
   operator_macbook_ssh_key,
   fleet_automation_ssh_key,
 }
-import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.ownership { Ownership, Owned }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
@@ -24,9 +24,7 @@ fn authorized_key_identity_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
 }
 
 fn ssh_algorithm_eq(a: SshKeyAlgorithm, b: SshKeyAlgorithm) -> Bool {
-  match a {
-    Ed25519 => match b { Ed25519 => true }
-  }
+  ssh_key_algorithm_token(a: a) as String == ssh_key_algorithm_token(a: b) as String
 }
 
 fn authorized_key_value_eq(a: SshPublicKey, b: SshPublicKey) -> Bool {
@@ -45,7 +43,7 @@ fn authorized_key_ownership(k: SshPublicKey) -> Ownership? {
   if any(fleet_owned_key_materials(), m => m as String == k.material as String) {
     Present { value: Owned }
   } else {
-    Absent
+    none
   }
 }
 
