@@ -14,7 +14,7 @@ import gunbc.host_converge {
   NoMembershipProbe,
 }
 import gunbc.host_converge_slice1 { host_converge_from_policy }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
+import gunbc.host_toolchain_ensure { host_toolchain_direct_access }
 import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
 import gunbc.host_effect {
   HostEffect,
@@ -126,7 +126,7 @@ fn runner_memory_converge_effect(host: HostIdentity) -> HostEffect? {
 func provision_runner_memory_caps(host: HostIdentity) -> ProcessExit
   uses net: Network
 {
-  match host_toolchain_ensure_access(host: host) {
+  match host_toolchain_direct_access(host: host) {
     Present { value: access } =>
       match fleet_compute_host_for_identity(identity: host) {
         Present { value: compute_host } =>
