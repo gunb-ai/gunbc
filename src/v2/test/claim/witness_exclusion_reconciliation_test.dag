@@ -1,8 +1,8 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
+import std.witness_admission { DiscoverySelection }
 import gunbc.ci_layer_roots {
   WitnessExclusionRow,
-  DiscoverySelection,
   BinWitnessWet,
   FalsifierRehomedBinWet,
   NoConsumer,

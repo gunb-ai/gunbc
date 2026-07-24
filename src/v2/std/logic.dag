@@ -1,9 +1,7 @@
 module v2.std.logic
 
+import std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
 import v2.std.algebra {
-  BooleanAlgebra,
-  BoundedLattice,
-  Lattice,
   boolean_algebra_node,
   boolean_algebra_type_node
 }
