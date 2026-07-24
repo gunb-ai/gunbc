@@ -25,6 +25,7 @@ import gunbc.design.interaction {
 import gunbc.site.interaction {
   Enter, Receipt, HashElement,
 }
+import gunbc.roadmap_style { roadmap_rules }
 import gunbc.site.mark {
   mark_nodes, mark_edges, mark_grid_unit, MarkEdge,
   mark_nodes_on_grid, all_forks_rejoin, render_mark,
