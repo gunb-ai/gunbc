@@ -97,6 +97,14 @@ import std.observation {
   observation_event_classes,
   observation_event_class,
   observation_class_is_intrinsic_anomaly,
+  ObservationDensity,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
+  observation_class_density,
+  observation_density_collapsible,
+  observation_density_expands_fully,
+  observation_class_glyph,
   ObservationPresentation,
   observation_presentation,
   DwellThreshold,
@@ -226,6 +234,30 @@ fn w_anomaly_classes_never_collapse() -> Bool {
     } else {
       acc && !p.expands_fully
     }
+  })
+}
+
+fn w_density_is_the_single_display_authority() -> Bool {
+  observation_class_density(c: ClassRefused) == AnomalyExpanded &&
+  observation_class_density(c: ClassFailed) == AnomalyExpanded &&
+  observation_class_density(c: ClassTimedOut) == AnomalyExpanded &&
+  observation_class_density(c: ClassBlocked) == AnomalyExpanded &&
+  observation_class_density(c: ClassDwellEscalation) == AnomalyExpanded &&
+  observation_class_density(c: ClassFinal) == SummaryAlwaysShown &&
+  observation_class_density(c: ClassBegin) == RoutineCollapsible &&
+  observation_class_density(c: ClassStep) == RoutineCollapsible &&
+  observation_class_density(c: ClassDone) == RoutineCollapsible &&
+  observation_class_density(c: ClassSkipped) == RoutineCollapsible
+}
+
+fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
+  fold(observation_event_classes, init: true, f: (acc, c) => {
+    let p = observation_presentation(c: c)
+    let d = observation_class_density(c: c)
+    acc &&
+    p.collapsible == observation_density_collapsible(d: d) &&
+    p.expands_fully == observation_density_expands_fully(d: d) &&
+    observation_class_is_intrinsic_anomaly(c: c) == observation_density_expands_fully(d: d)
   })
 }
 
@@ -490,6 +522,8 @@ test fn observation_model_witnesses() -> Bool {
   w_class_roster_covers_every_constructed_class() &&
   w_refused_is_distinct_from_failed() &&
   w_anomaly_classes_never_collapse() &&
+  w_density_is_the_single_display_authority() &&
+  w_presentation_projects_density_rather_than_restating_it() &&
   w_routine_progress_collapses_but_the_summary_always_shows() &&
   w_refusal_is_anomaly_on_any_basis() &&
   w_attention_grounds_on_supplied_basis() &&

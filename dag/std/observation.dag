@@ -295,33 +295,69 @@ data observation_collapse_axes_note: String = "collapsible and expands_fully are
 
 data observation_presentation_note: String = "Event class to presentation is a TOTAL assignment over the class roster, censused and walled the way the register censuses unthemed colors. The presentation carries only the SymbolId: the glyph text per tier and the register colour role are read from the ONE glyph authority (std.symbols identity, extdeps.render.glyphs rows), never restated here, so perturbing a glyph row moves every renderer and a renderer that hardcodes a glyph is provably not reading the table. collapsible and expands_fully carry law 4: sub-threshold work collapses, an anomaly expands fully and names itself, and the two flags are never both permissive for an intrinsically anomalous class."
 
-fn observation_class_is_intrinsic_anomaly(c: ObservationEventClass) -> Bool {
+type ObservationDensity
+  = RoutineCollapsible
+  | SummaryAlwaysShown
+  | AnomalyExpanded
+
+data observation_density_single_authority_note: String = "The three display states of law 4 live in ONE table. Density is the authority; collapsible, expands_fully and intrinsic-anomaly are all DERIVED from it. The earlier shape carried two hand-written tables — a class-to-anomaly predicate beside a class-to-presentation assignment — with a witness asserting they agreed. That witness was validation standing exactly where construction was available (DESIGN section 5): it conceded the two tables could disagree and merely promised to notice. They cannot disagree now, because there is only one of them, and the review finding that named this duplication is what collapsed it."
+
+fn observation_class_density(c: ObservationEventClass) -> ObservationDensity {
   match c {
-    ClassBegin => false
-    ClassStep => false
-    ClassDone => false
-    ClassRefused => true
-    ClassFailed => true
-    ClassTimedOut => true
-    ClassSkipped => false
-    ClassFinal => false
-    ClassBlocked => true
-    ClassDwellEscalation => true
+    ClassBegin => RoutineCollapsible
+    ClassStep => RoutineCollapsible
+    ClassDone => RoutineCollapsible
+    ClassRefused => AnomalyExpanded
+    ClassFailed => AnomalyExpanded
+    ClassTimedOut => AnomalyExpanded
+    ClassSkipped => RoutineCollapsible
+    ClassFinal => SummaryAlwaysShown
+    ClassBlocked => AnomalyExpanded
+    ClassDwellEscalation => AnomalyExpanded
+  }
+}
+
+fn observation_density_collapsible(d: ObservationDensity) -> Bool {
+  match d {
+    RoutineCollapsible => true
+    SummaryAlwaysShown => false
+    AnomalyExpanded => false
+  }
+}
+
+fn observation_density_expands_fully(d: ObservationDensity) -> Bool {
+  match d {
+    RoutineCollapsible => false
+    SummaryAlwaysShown => false
+    AnomalyExpanded => true
+  }
+}
+
+fn observation_class_is_intrinsic_anomaly(c: ObservationEventClass) -> Bool {
+  observation_density_expands_fully(d: observation_class_density(c: c))
+}
+
+fn observation_class_glyph(c: ObservationEventClass) -> SymbolId {
+  match c {
+    ClassBegin => NodeRunning
+    ClassStep => NodeRunning
+    ClassDone => NodeCompleted
+    ClassRefused => StatusRefused
+    ClassFailed => NodeFailed
+    ClassTimedOut => StatusTimedOut
+    ClassSkipped => NodeSkipped
+    ClassFinal => StatusFinal
+    ClassBlocked => StatusBlocked
+    ClassDwellEscalation => StatusDwell
   }
 }
 
 fn observation_presentation(c: ObservationEventClass) -> ObservationPresentation {
-  match c {
-    ClassBegin => ObservationPresentation { glyph: NodeRunning, collapsible: true, expands_fully: false }
-    ClassStep => ObservationPresentation { glyph: NodeRunning, collapsible: true, expands_fully: false }
-    ClassDone => ObservationPresentation { glyph: NodeCompleted, collapsible: true, expands_fully: false }
-    ClassRefused => ObservationPresentation { glyph: StatusRefused, collapsible: false, expands_fully: true }
-    ClassFailed => ObservationPresentation { glyph: NodeFailed, collapsible: false, expands_fully: true }
-    ClassTimedOut => ObservationPresentation { glyph: StatusTimedOut, collapsible: false, expands_fully: true }
-    ClassSkipped => ObservationPresentation { glyph: NodeSkipped, collapsible: true, expands_fully: false }
-    ClassFinal => ObservationPresentation { glyph: StatusFinal, collapsible: false, expands_fully: false }
-    ClassBlocked => ObservationPresentation { glyph: StatusBlocked, collapsible: false, expands_fully: true }
-    ClassDwellEscalation => ObservationPresentation { glyph: StatusDwell, collapsible: false, expands_fully: true }
+  let density = observation_class_density(c: c)
+  ObservationPresentation {
+    glyph: observation_class_glyph(c: c),
+    collapsible: observation_density_collapsible(d: density),
+    expands_fully: observation_density_expands_fully(d: density)
   }
 }
 
@@ -457,6 +493,8 @@ fn observation_watchdog(subject: ObservationSubject, elapsed: Millisecond, budge
   }
 }
 
+data observation_empty_subject_note: String = "The empty-path arm NAMES the absence rather than inventing a subject, and it does not widen: unattributed is a label for a caller that built a subject with no identity, not a plausible substitute for one. It is not the absorbing fallback the house forbids — nothing is rerun, nothing is scanned wholesale, and the line is as loud as any other. It is nonetheless a CONSTRUCTION GAP, declared rather than left silent: the right shape is a segment list that cannot be empty, which the substrate cannot express today — a record-field where clause over a list is named future work in the where-clause lowering plan, and no list refinement exists in the corpus. Dissolve-on: when that lowering lands, ObservationSubject.segments takes the non-empty refinement, this arm becomes unreachable by construction, and it deletes."
+
 fn observation_subject_render(subject: ObservationSubject) -> NonEmptyStr {
   match join(observation_subject_path(subject: subject), " ") {
     "" => "run=unattributed" as NonEmptyStr
@@ -536,6 +574,18 @@ data observation_laws: List<ObservationLaw> = [
   observation_law_quiet_at_arms_length,
   observation_law_every_response_true
 ]
+
+data observation_outcome_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct readers over ObservationOutcome and ObservationEventClass (observation_outcome_is_anomaly, observation_outcome_class, observation_event_class, observation_class_density and the density projections) — closed by the declared outcome and class variants, not interim scaffolds. Terminal because the sums are closed by construction and the class roster is censused: a new variant cannot be added without the totality witness naming it. Discriminating corpus: dag/test/claim/observation_model_witness_test.dag, which reds when a class loses its presentation, when Refused and Failed collapse onto one glyph, and when the density authority disagrees with what the presentation projects."
+}
+
+data observation_subject_predicate_contract: Disposition = Terminal {
+  reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
+}
+
+data observation_selection_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct readers over SelectionNoOp (observation_no_op_is_actually_a_widen, observation_no_op_attention, observation_no_op_symbol, observation_no_op_explanation) — closed by the declared no-op variants. Terminal, and load-bearing rather than decorative: the widen reader is what keeps a departed path from being rendered as a no-op, which is the distinction the operator's closed-sum ruling exists to preserve."
+}
 
 data observation_renders_nothing_disposition: Disposition = Terminal {
   reason: "P0 carries the model only. Renderers are P1 and later, and the CI renderer's wiring lands after the atomic CI PR because both touch the floor's emit sites and churning them twice is the migration class the operator ruled out. This module therefore holds no line formatting, no glyph text, and no ANSI: it holds the vocabulary those renderers project from."
