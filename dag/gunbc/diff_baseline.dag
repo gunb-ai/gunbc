@@ -43,7 +43,7 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
   match base_ref {
     Present { value: b } =>
       if b == "" {
-        BaselineRefused { reason: "pull_request event but GITHUB_BASE_REF is empty — cannot derive merge target; widening to whole-tree" }
+        BaselineRefused { reason: "pull_request event but GITHUB_BASE_REF is empty — cannot derive merge target; halting the floor (AFFECTED-SET REFUSAL)" }
       } else {
         BaselineSelected {
           baseline: MergeTarget {
@@ -52,7 +52,7 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
         }
       }
     Absent =>
-      BaselineRefused { reason: "pull_request event but GITHUB_BASE_REF is unset — cannot derive merge target; widening to whole-tree" }
+      BaselineRefused { reason: "pull_request event but GITHUB_BASE_REF is unset — cannot derive merge target; halting the floor (AFFECTED-SET REFUSAL)" }
   }
 }
 
