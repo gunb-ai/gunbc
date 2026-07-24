@@ -88,8 +88,18 @@ for grabs"* (operator) — the placement is not sacred.
   the single authority. When the family is grounded, this doc dissolves into the carriers (§6 — the
   mark on the carrier is the authority, not a parallel-ledger doc).
 
+## The inventory (the corpus-wide worklist)
+
+The directive above generalizes past cardinality/termination to the whole corpus. An exhaustive pass
+over **every dag/extdeps + dag/std module** (451 files) prices the grounding-defect class up front:
+203 defects — §3-forks, cited data mis-homed in std, citation gaps, and numeric/string anemia — each
+with a suggested grounding and dissolve-on. See **[extdeps + std grounding inventory](extdeps-std-grounding-inventory.md)**.
+Its headline confirms the directive: grounding defects are everywhere in *both* trees — location did
+not predict them, so the citation + acyclicity discipline (not the folder) is what must reach them.
+
 ## Cross-references
 
+- [extdeps + std grounding inventory](extdeps-std-grounding-inventory.md) — the exhaustive worklist
 - [namespace-only resolution design](namespace-resolution-design.md) — the flip lane
 - [namespace flip · last 28 → 0 + Post-0 roadmap](namespace-flip-last-28-root-a-two-std-defork.md) —
   where the fork was found by execution
