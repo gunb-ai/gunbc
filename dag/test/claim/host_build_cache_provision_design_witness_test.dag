@@ -103,6 +103,57 @@ fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
     && design_witness_authority_gate_accepts_absent_refusal()
 }
 
+fn path_shadow_observation_fixture() -> BuildCacheDaemonObservation {
+  DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
+}
+
+fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: path_shadow_observation_fixture(),
+  ) {
+    ProvisionRefused { cause: RefusalPathShadowed, reason: reason } =>
+      string_contains(s: reason as String, pattern: "/usr/bin/sccache")
+        && string_contains(s: reason as String, pattern: "/usr/local/bin/sccache")
+        && string_contains(s: reason as String, pattern: "Fail-closed")
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
+  match provision_build_cache_absorbing_fallback_widen_sketch(
+    catalog_id: sccache_local_id,
+    observed: path_shadow_observation_fixture(),
+  ) {
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  } && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: path_shadow_observation_fixture(),
+      ),
+      observed: path_shadow_observation_fixture(),
+    )
+    && build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_verdict(
+        catalog_id: sccache_local_id,
+        observed: path_shadow_observation_fixture(),
+      ),
+      observed: path_shadow_observation_fixture(),
+    )
+}
+
+fn design_witness_path_authority_is_not_a_separate_builder() -> Bool {
+  string_contains(
+    s: build_cache_observe_stats_body(),
+    pattern: "path_authority=SHADOWED",
+  ) && string_contains(
+    s: build_cache_read_back_body(binary: sccache_installed_binary_path),
+    pattern: "path_authority=SHADOWED",
+  )
+}
+
 fn design_witness_install_is_cited_not_package_manager() -> Bool {
   build_cache_install_is_cited_not_package_manager()
 }
@@ -179,6 +230,9 @@ fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
 
 test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_read_back_fails_closed_in_shell()
+    && design_witness_path_shadow_refuses_fail_closed()
+    && design_witness_red_control_widen_on_path_shadow_rejected_by_gate()
+    && design_witness_path_authority_is_not_a_separate_builder()
     && design_witness_install_is_cited_not_package_manager()
     && design_witness_unit_execstart_matches_install_path()
     && design_witness_classifier_covers_every_cited_fragment()

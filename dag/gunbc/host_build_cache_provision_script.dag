@@ -14,6 +14,8 @@ import extdeps.cache.sccache {
 
 data host_build_cache_provision_script_dissolution_trigger: String = "🟡 dissolve-on: host_build_cache_provision_script — concat-built systemd/sccache ensure shell; DISSOLVES WHEN bash-emit (#5828) realizes ProvisionBuildCache observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires shell_exec_via_bash transport."
 
+data host_build_cache_provision_script_census_row_note: String = "CENSUS STANDING: docs/plans/shell-to-dag-residual-census-and-arc-completion.md §4.A keys this file as the builder for host_effect_realize.ProvisionBuildCache, action DECOMPOSE, sub-class A5 (srv* cluster, deferred by operator 2026-07-22 — real debt, NOT done; un-defer trigger is the operator). This site is RUNTIME-PRESENT (it realizes through host_effect_apply_gated on LocalShell/SshShell), so per that doc's routing decision its end state is a typed effect-plan with NO bash emitted — the six *_body builders below are the debt, not the design. Standing constraint while the row is deferred: this module may SHRINK but must not GROW. The 2026-07-24 PATH-shadow work is held to that — the judgement went to gunbc.host_build_cache_provision (DaemonPathShadowed / RefusalPathShadowed + verdict fold), and the observation folded into the two bodies that already existed rather than adding a seventh; builder count is unchanged at six. Adding a *_body here is a census regression even when the behaviour it adds is correct."
+
 data host_build_cache_provision_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -134,7 +136,7 @@ fn build_cache_ensure_daemon_body(arch_token: NonEmptyStr, digest: Digest) -> St
 data build_cache_user_service_linger_note: String = "A `systemd --user` manager is torn down when the user's last session ends, so on a headless runner host an enabled user unit stops the moment the provisioning ssh connection closes — the daemon would be observed healthy by the read-back in the same connection and be gone before the first CI job. enable-linger keeps the manager running without a login, which is what makes the user-scope handler viable at all. It does NOT settle open question 1 of the srvN build-cache design (user service vs system service for the shared daemon) — that handler choice is still operator-open; this only makes the handler already selected in tree behave as modeled."
 
 fn build_cache_read_back_body(binary: String) -> String {
-  join([
+  join(append(build_cache_path_authority_lines(), items: [
     join(["if stats_out=\"$('", binary, "' --show-stats 2>&1)\"; then"], ""),
     "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"",
     "  printf '%s\\n' \"$stats_out\"",
@@ -145,18 +147,16 @@ fn build_cache_read_back_body(binary: String) -> String {
     "  exit 1",
     "fi",
     "",
-  ], "\n")
+  ]), "\n")
 }
 
 fn build_cache_provision_script_body(arch_token: NonEmptyStr, digest: Digest) -> String {
   join([
     "set -euo pipefail",
-    build_cache_path_authority_guard_body(),
     build_cache_observe_stats_body(),
     build_cache_classify_failure_body(),
     "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
     build_cache_ensure_daemon_body(arch_token: arch_token, digest: digest),
-    build_cache_path_authority_guard_body(),
     build_cache_read_back_body(binary: sccache_installed_binary_path),
   ], "\n")
 }
