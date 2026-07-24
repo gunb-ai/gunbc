@@ -149,6 +149,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     text_escape: EscapeRaw,
     void_tags: [],
     void_rendering: OmitClose,
+    raw_text_tags: [],
   }
 }
 

@@ -24,6 +24,7 @@ fn md_medium_underscore() -> MarkupMedium {
     text_escape: EscapeRaw,
     void_tags: [],
     void_rendering: OmitClose,
+    raw_text_tags: [],
   }
 }
 
@@ -55,6 +56,7 @@ fn single_quote_medium() -> MarkupMedium {
     text_escape: EscapeHtml,
     void_tags: [],
     void_rendering: OmitClose,
+    raw_text_tags: [],
   }
 }
 
