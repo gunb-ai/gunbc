@@ -138,6 +138,9 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
   }
+  if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
+  }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } =>
       if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
@@ -158,6 +161,9 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+  }
+  if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
@@ -235,13 +241,26 @@ fn is_host_optional_carrier_alias(name: String) -> Bool {
   name == "Optional"
 }
 
+fn is_host_diagnostics_carrier_alias(name: String) -> Bool {
+  name == "Diagnostics"
+}
+
 fn is_grounded_coproduct_native_alias(name: String) -> Bool {
   is_host_freemonoid_vec_alias(name: name)
     || is_host_optional_carrier_alias(name: name)
+    || is_host_diagnostics_carrier_alias(name: name)
 }
 
 fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) == "Optional" && n.children |> count > 0
+}
+
+fn is_host_diagnostics_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) == "Diagnostics"
+}
+
+fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String {
+  concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", shared_types: shared_types), ">")
 }
 
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -553,6 +572,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
+  if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
+  }
   let base_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 {
 
@@ -598,6 +620,9 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
+  if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
   let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
   let applied_overlay = match applied_prop {
@@ -707,6 +732,9 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
+  if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
+    return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -1765,7 +1793,9 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
     StructRepr => true
     EnumRepr { unit_only: unit_only } => unit_only == false
   }
-  if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
+  if is_grounded_coproduct_native_alias(name: summary.name) {
+    acc
+  } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
     set_insert(acc, summary.name)
   } else {
     acc
@@ -4411,6 +4441,8 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   } else if is_host_freemonoid_vec_alias(name: item_text) {
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
+  } else if is_host_diagnostics_carrier_alias(name: item_text) {
+    concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
     let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
@@ -5312,12 +5344,20 @@ fn unique_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name:
 }
 
 fn is_optional_variant_name(name: String) -> Bool {
-  name == "Present" || name == "Absent"
+  name == "Present" || name == "Absent" || name == "Some" || name == "None"
+}
+
+fn is_optional_like_parent_name(name: String) -> Bool {
+  name == "Optional" || name == "Diagnostics"
+}
+
+fn is_some_like_variant_name(name: String) -> Bool {
+  name == "Present" || name == "Some"
 }
 
 fn is_optional_parent(parent_enum: String?) -> Bool {
   match parent_enum {
-    Present { value: parent } => parent == "Optional"
+    Present { value: parent } => is_optional_like_parent_name(name: parent)
     Absent => false
   }
 }
@@ -5374,14 +5414,14 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if bare_name == "Present" { "Some" } else { "None" }
+    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
   } else {
     variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
   }
-  if optional_variant && bare_name == "Present" && field_bindings |> count == 1 {
+  if optional_variant && is_some_like_variant_name(name: bare_name) && field_bindings |> count == 1 {
     match field_bindings |> first {
       Present { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -5509,7 +5549,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
               let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               RcPatternAnalysis {
                 matches_rc_variant: false,
-                matches_option_rc_variant: bare_n == "Present" && inner.matches_rc_variant,
+                matches_option_rc_variant: is_some_like_variant_name(name: bare_n) && inner.matches_rc_variant,
                 needs_rc_pattern: inner.needs_rc_pattern,
                 ref_bound_fields: []
               }
@@ -5561,7 +5601,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
   let scrutinee_is_rc_modeled_optional = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
-      authored_name_at(source_indices: source_indices, node: rt) == "Optional"
+      is_optional_like_parent_name(name: authored_name_at(source_indices: source_indices, node: rt))
         && rt.return_cardinality != CardOptional
         && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info))
     _ => false
@@ -5590,14 +5630,14 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if bare_name == "Present" { "Some" } else { "None" }
+    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
   } else {
     variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
   }
-  if optional_variant && bare_name == "Present" && field_bindings |> count == 1 {
+  if optional_variant && is_some_like_variant_name(name: bare_name) && field_bindings |> count == 1 {
     match field_bindings |> first {
       Present { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -5839,8 +5879,8 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
       Present { value: enum_name } =>
         let body = if name == "Empty" && enum_name == "FreeMonoid" {
           "vec![]"
-        } else if is_optional_variant_name(name: name) && enum_name == "Optional" {
-          if name == "Present" { "Some" } else { "None" }
+        } else if is_optional_variant_name(name: name) && is_optional_like_parent_name(name: enum_name) {
+          if is_some_like_variant_name(name: name) { "Some" } else { "None" }
         } else {
           concat(enum_name, "::", name)
         }
@@ -5897,8 +5937,8 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             if n == "Empty" && enum_name == "FreeMonoid" {
               "Rc::new(vec![])"
             } else {
-            let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
-              if n == "Present" { "Some" } else { "None" }
+            let qualified = if is_optional_variant_name(name: n) && is_optional_like_parent_name(name: enum_name) {
+              if is_some_like_variant_name(name: n) { "Some" } else { "None" }
             } else {
               concat(enum_name, "::", n)
             }
@@ -7584,7 +7624,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
     ExprVar { binding_kind: binding_kind } =>
-      if (n == "Present" || n == "Absent") && variant_parent_from_binding_kind(binding_kind: binding_kind) == Present { value: "Optional" } {
+      if is_optional_variant_name(name: n) && match variant_parent_from_binding_kind(binding_kind: binding_kind) {
+        Present { value: parent } => is_optional_like_parent_name(name: parent)
+        Absent => false
+      } {
         true
       } else if n == "none" || n == "None" {
         true
@@ -7600,7 +7643,11 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     ExprRecordLit { parent_enum: parent } =>
       match tn {
-        Present { value: name } => parent == Present { value: "Optional" } && (name == "Present" || name == "Absent")
+        Present { value: name } =>
+          is_optional_variant_name(name: name) && match parent {
+            Present { value: p } => is_optional_like_parent_name(name: p)
+            Absent => false
+          }
         Absent => false
       }
     ExprFieldAccess { summary: fa_summary } =>
@@ -7892,7 +7939,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
       let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
-        if tn == "Present" { "Some" } else { "None" }
+        if is_some_like_variant_name(name: tn) { "Some" } else { "None" }
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
@@ -7901,7 +7948,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             Absent => ctor_name
           }
         }
-      if optional_variant && tn == "Present" && fields |> count == 1 {
+      if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

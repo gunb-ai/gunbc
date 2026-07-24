@@ -198,6 +198,9 @@ pub fn render_rust_type(
                 emit_info.fn_type_env.clone(),
             );
         }
+        if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+        }
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: tv, .. }) => {
                 if type_var_in_fn_generic_scope(
@@ -266,6 +269,9 @@ pub fn render_rust_type_without_applied_binding(
                 emit_info.variant_to_enum.clone(),
                 emit_info.fn_type_env.clone(),
             );
+        }
+        if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
         if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
@@ -458,8 +464,13 @@ pub fn is_host_optional_carrier_alias(name: String) -> bool {
     (name.clone() == "Optional".to_string())
 }
 
+pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
+    (name.clone() == "Diagnostics".to_string())
+}
+
 pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
-    (is_host_freemonoid_vec_alias(name.clone()) || is_host_optional_carrier_alias(name.clone()))
+    ((is_host_freemonoid_vec_alias(name.clone()) || is_host_optional_carrier_alias(name.clone()))
+        || is_host_diagnostics_carrier_alias(name.clone()))
 }
 
 pub fn is_host_optional_carrier_type(
@@ -468,6 +479,27 @@ pub fn is_host_optional_carrier_type(
 ) -> bool {
     ((authored_name_at(source_indices.clone(), n.clone()) == "Optional".to_string())
         && ((n.children.clone().len() as i64) > 0))
+}
+
+pub fn is_host_diagnostics_carrier_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (authored_name_at(source_indices.clone(), n.clone()) == "Diagnostics".to_string())
+}
+
+pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "Option<".to_string(),
+            render_rust_shared_type_if_needed(
+                "NonEmptyDiagnostics".to_string(),
+                "NonEmptyDiagnostics".to_string(),
+                shared_types.clone(),
+            ),
+        ),
+        ">".to_string(),
+    )
 }
 
 pub fn render_rust_optional_carrier_inner(
@@ -1122,6 +1154,9 @@ pub fn render_rust_applied_type(
                 env.clone(),
             );
         }
+        if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+        }
         let base_name = authored_name_at(source_indices.clone(), n.clone());
         if ((n.children.clone().len() as i64) == 0) {
             match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone()) {
@@ -1255,6 +1290,9 @@ pub fn render_rust_decl_type(
                 variant_to_enum.clone(),
                 env.clone(),
             );
+        }
+        if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
         let applied_prop = find_property(
             n.properties.clone(),
@@ -1603,6 +1641,9 @@ pub fn render_rust_fn_sig_type(
                 variant_to_enum.clone(),
                 env.clone(),
             );
+        }
+        if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
+            return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
         if type_node_has_value_variant_arg(
             n.clone(),
@@ -3976,11 +4017,16 @@ pub fn maybe_mark_shared_type(
                     ..
                 } => (unit_only.clone() == false),
             });
-        if (needs_sharing.clone() && !is_type_constant(summary.clone(), recursive_type_set.clone()))
-        {
-            v1_rt::rc_set_insert(acc.clone(), summary.name.clone())
+        if is_grounded_coproduct_native_alias(summary.name.clone()) {
+            acc
         } else {
-            acc.clone()
+            if (needs_sharing.clone()
+                && !is_type_constant(summary.clone(), recursive_type_set.clone()))
+            {
+                v1_rt::rc_set_insert(acc, summary.name.clone())
+            } else {
+                acc
+            }
         }
     }
 }
@@ -11296,89 +11342,111 @@ pub fn emit_type_def_from_connective(
                         )
                     }
                 } else {
-                    {
-                        let all_unit_variants = {
-                            let mut __all = true;
-                            for child in item.children.clone().iter().cloned() {
-                                if !((child.children.clone().len() as i64) == 0) {
-                                    __all = false;
-                                    break;
-                                }
-                            }
-                            __all
-                        };
-                        let serde_policy = match resolve_local_coproduct_wire_policy(
-                            item_text.clone(),
-                            all_unit_variants.clone(),
-                            module_items.clone(),
-                            imports.clone(),
-                            env.source_indices.clone(),
-                        ) {
-                            Some(local_policy) => local_policy.clone(),
-                            None => {
-                                if all_unit_variants.clone() {
-                                    match wire_contract_item.clone() {
-                                        Some(_) => resolve_wire_serde_policy_for_coproduct(
-                                            wire_contract_item.clone(),
-                                            env.source_indices.clone(),
-                                            data_items.clone(),
+                    if is_host_diagnostics_carrier_alias(item_text.clone()) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                rust_visibility_prefix(),
+                                                "type ".to_string(),
+                                            ),
+                                            item_text.clone(),
                                         ),
-                                        None => rust_tagged_object_policy(),
+                                        type_params.clone(),
+                                    ),
+                                    " = ".to_string(),
+                                ),
+                                render_rust_diagnostics_carrier_applied(shared_types.clone()),
+                            ),
+                            ";".to_string(),
+                        )
+                    } else {
+                        {
+                            let all_unit_variants = {
+                                let mut __all = true;
+                                for child in item.children.clone().iter().cloned() {
+                                    if !((child.children.clone().len() as i64) == 0) {
+                                        __all = false;
+                                        break;
                                     }
-                                } else {
-                                    rust_tagged_object_policy()
                                 }
-                            }
-                        };
-                        let rename_validations = variant_rename_validations_for_policy(
-                            item.children.clone(),
-                            env.clone(),
-                            serde_policy.clone(),
-                        );
-                        let policy_validation = match serde_policy.error_message.clone() {
-                            Some(message) => emit_rust_compile_error_item(message.clone()),
-                            None => "".to_string(),
-                        };
-                        let validations = if (policy_validation.clone() == "".to_string()) {
-                            rename_validations.clone()
-                        } else {
-                            if (rename_validations.clone() == "".to_string()) {
-                                policy_validation.clone()
+                                __all
+                            };
+                            let serde_policy = match resolve_local_coproduct_wire_policy(
+                                item_text.clone(),
+                                all_unit_variants.clone(),
+                                module_items.clone(),
+                                imports.clone(),
+                                env.source_indices.clone(),
+                            ) {
+                                Some(local_policy) => local_policy.clone(),
+                                None => {
+                                    if all_unit_variants.clone() {
+                                        match wire_contract_item.clone() {
+                                            Some(_) => resolve_wire_serde_policy_for_coproduct(
+                                                wire_contract_item.clone(),
+                                                env.source_indices.clone(),
+                                                data_items.clone(),
+                                            ),
+                                            None => rust_tagged_object_policy(),
+                                        }
+                                    } else {
+                                        rust_tagged_object_policy()
+                                    }
+                                }
+                            };
+                            let rename_validations = variant_rename_validations_for_policy(
+                                item.children.clone(),
+                                env.clone(),
+                                serde_policy.clone(),
+                            );
+                            let policy_validation = match serde_policy.error_message.clone() {
+                                Some(message) => emit_rust_compile_error_item(message.clone()),
+                                None => "".to_string(),
+                            };
+                            let validations = if (policy_validation.clone() == "".to_string()) {
+                                rename_validations.clone()
+                            } else {
+                                if (rename_validations.clone() == "".to_string()) {
+                                    policy_validation.clone()
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(policy_validation.clone(), "\n".to_string()),
+                                        rename_validations.clone(),
+                                    )
+                                }
+                            };
+                            let generic_param_names = Rc::new({
+                                let mut __result = Vec::new();
+                                for p in item.params.clone().iter().cloned() {
+                                    __result.push(generic_param_name_at(
+                                        p.clone(),
+                                        env.source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let enum_text = emit_enum_from_children(
+                                item_text.clone(),
+                                type_params.clone(),
+                                generic_param_names.clone(),
+                                item.children.clone(),
+                                recursive_types.clone(),
+                                shared_types.clone(),
+                                env.clone(),
+                                serde_policy.clone(),
+                                emit_info.clone(),
+                            );
+                            if (validations.clone() == "".to_string()) {
+                                enum_text
                             } else {
                                 v1_rt::concat(
-                                    v1_rt::concat(policy_validation.clone(), "\n".to_string()),
-                                    rename_validations.clone(),
+                                    v1_rt::concat(validations.clone(), "\n".to_string()),
+                                    enum_text,
                                 )
                             }
-                        };
-                        let generic_param_names = Rc::new({
-                            let mut __result = Vec::new();
-                            for p in item.params.clone().iter().cloned() {
-                                __result.push(generic_param_name_at(
-                                    p.clone(),
-                                    env.source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let enum_text = emit_enum_from_children(
-                            item_text.clone(),
-                            type_params.clone(),
-                            generic_param_names.clone(),
-                            item.children.clone(),
-                            recursive_types.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                            serde_policy.clone(),
-                            emit_info.clone(),
-                        );
-                        if (validations.clone() == "".to_string()) {
-                            enum_text
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(validations.clone(), "\n".to_string()),
-                                enum_text,
-                            )
                         }
                     }
                 }
@@ -14410,12 +14478,22 @@ pub fn unique_variant_parent(
 }
 
 pub fn is_optional_variant_name(name: String) -> bool {
-    ((name.clone() == "Present".to_string()) || (name.clone() == "Absent".to_string()))
+    ((((name.clone() == "Present".to_string()) || (name.clone() == "Absent".to_string()))
+        || (name.clone() == "Some".to_string()))
+        || (name.clone() == "None".to_string()))
+}
+
+pub fn is_optional_like_parent_name(name: String) -> bool {
+    ((name.clone() == "Optional".to_string()) || (name.clone() == "Diagnostics".to_string()))
+}
+
+pub fn is_some_like_variant_name(name: String) -> bool {
+    ((name.clone() == "Present".to_string()) || (name.clone() == "Some".to_string()))
 }
 
 pub fn is_optional_parent(parent_enum: Option<String>) -> bool {
     match parent_enum.clone() {
-        Some(parent) => (parent.clone() == "Optional".to_string()),
+        Some(parent) => is_optional_like_parent_name(parent.clone()),
         None => false,
     }
 }
@@ -14524,7 +14602,7 @@ pub fn emit_variant_pattern(
         let optional_variant = (is_optional_variant_name(bare_name.clone())
             && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
-            if (bare_name.clone() == "Present".to_string()) {
+            if is_some_like_variant_name(bare_name.clone()) {
                 "Some".to_string()
             } else {
                 "None".to_string()
@@ -14537,7 +14615,7 @@ pub fn emit_variant_pattern(
         } else {
             variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
         };
-        if ((optional_variant.clone() && (bare_name.clone() == "Present".to_string()))
+        if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -14936,9 +15014,11 @@ pub fn analyze_rc_pattern(
                                 );
                                 Rc::new(RcPatternAnalysis {
                                     matches_rc_variant: false,
-                                    matches_option_rc_variant: ((bare_n.clone()
-                                        == "Present".to_string())
-                                        && inner.matches_rc_variant.clone()),
+                                    matches_option_rc_variant: (is_some_like_variant_name(
+                                        bare_n.clone(),
+                                    ) && inner
+                                        .matches_rc_variant
+                                        .clone()),
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
                                     ref_bound_fields: Rc::new(vec![]),
                                 })
@@ -15081,8 +15161,10 @@ pub fn analyze_rc_match(
         let scrutinee_is_rc_modeled_optional = match scrutinee.inferred.clone().as_deref().cloned()
         {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                (((authored_name_at(source_indices.clone(), rt.clone()) == "Optional".to_string())
-                    && (rt.return_cardinality.clone() != Cardinality::CardOptional))
+                ((is_optional_like_parent_name(authored_name_at(
+                    source_indices.clone(),
+                    rt.clone(),
+                )) && (rt.return_cardinality.clone() != Cardinality::CardOptional))
                     && rust_type_is_rc_wrapped(render_rust_type(
                         rt.clone(),
                         shared_types.clone(),
@@ -15161,7 +15243,7 @@ pub fn emit_variant_pattern_rc_aware(
         let optional_variant = (is_optional_variant_name(bare_name.clone())
             && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
-            if (bare_name.clone() == "Present".to_string()) {
+            if is_some_like_variant_name(bare_name.clone()) {
                 "Some".to_string()
             } else {
                 "None".to_string()
@@ -15174,7 +15256,7 @@ pub fn emit_variant_pattern_rc_aware(
         } else {
             variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
         };
-        if ((optional_variant.clone() && (bare_name.clone() == "Present".to_string()))
+        if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -15941,9 +16023,9 @@ pub fn emit_var_ref(
                                 "vec![]".to_string()
                             } else {
                                 if (is_optional_variant_name(name.clone())
-                                    && (enum_name.clone() == "Optional".to_string()))
+                                    && is_optional_like_parent_name(enum_name.clone()))
                                 {
-                                    if (name.clone() == "Present".to_string()) {
+                                    if is_some_like_variant_name(name.clone()) {
                                         "Some".to_string()
                                     } else {
                                         "None".to_string()
@@ -16066,9 +16148,9 @@ pub fn emit_typed_expr_base(
                                 } else {
                                     {
                                         let qualified = if (is_optional_variant_name(n.clone())
-                                            && (enum_name.clone() == "Optional".to_string()))
+                                            && is_optional_like_parent_name(enum_name.clone()))
                                         {
-                                            if (n.clone() == "Present".to_string()) {
+                                            if is_some_like_variant_name(n.clone()) {
                                                 "Some".to_string()
                                             } else {
                                                 "None".to_string()
@@ -21635,9 +21717,11 @@ pub fn is_already_optional(
                 binding_kind: binding_kind,
                 ..
             } => {
-                if (((n.clone() == "Present".to_string()) || (n.clone() == "Absent".to_string()))
-                    && (variant_parent_from_binding_kind(binding_kind.clone()).as_deref()
-                        == Some("Optional".to_string()).as_deref()))
+                if (is_optional_variant_name(n.clone())
+                    && match variant_parent_from_binding_kind(binding_kind.clone()) {
+                        Some(parent) => is_optional_like_parent_name(parent.clone()),
+                        None => false,
+                    })
                 {
                     true
                 } else {
@@ -21664,9 +21748,11 @@ pub fn is_already_optional(
                 ..
             } => match tn.clone() {
                 Some(name) => {
-                    ((parent.clone().as_deref() == Some("Optional".to_string()).as_deref())
-                        && ((name.clone() == "Present".to_string())
-                            || (name.clone() == "Absent".to_string())))
+                    (is_optional_variant_name(name.clone())
+                        && match parent.clone() {
+                            Some(p) => is_optional_like_parent_name(p.clone()),
+                            None => false,
+                        })
                 }
                 None => false,
             },
@@ -22479,7 +22565,7 @@ pub fn emit_typed_record_lit(
                     && (is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone())));
                 let rust_tn = if optional_variant.clone() {
-                    if (tn.clone() == "Present".to_string()) {
+                    if is_some_like_variant_name(tn.clone()) {
                         "Some".to_string()
                     } else {
                         "None".to_string()
@@ -22498,7 +22584,7 @@ pub fn emit_typed_record_lit(
                         None => ctor_name.clone(),
                     }
                 };
-                if ((optional_variant.clone() && (tn.clone() == "Present".to_string()))
+                if ((optional_variant.clone() && is_some_like_variant_name(tn.clone()))
                     && ((fields.clone().len() as i64) == 1))
                 {
                     match fields.clone().first().cloned() {
