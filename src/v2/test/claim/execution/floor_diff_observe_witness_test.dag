@@ -2,6 +2,7 @@ module v2.test.execution.floor_diff_observe_witness
 
 import std.logic { Bool }
 import gunbc.ci_spec { DiffPolicy, DiffMergeBase }
+import gunbc.ci_diff_defaults { OperatorOverride }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
@@ -28,7 +29,7 @@ fn witness_ci_policy_observation_succeeds() -> Bool {
 fn witness_invalid_base_fails_closed() -> Bool {
   match floor_observe_git_diff_unified(
     policy: DiffPolicy {
-      base: "__gunbc_invalid_diff_base__",
+      base: OperatorOverride { ref: "__gunbc_invalid_diff_base__" },
       head: "HEAD",
       mode: DiffMergeBase
     }
@@ -48,7 +49,7 @@ fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
 fn witness_invalid_base_name_status_fails_closed() -> Bool {
   match floor_observe_git_diff_name_status(
     policy: DiffPolicy {
-      base: "__gunbc_invalid_diff_base__",
+      base: OperatorOverride { ref: "__gunbc_invalid_diff_base__" },
       head: "HEAD",
       mode: DiffMergeBase
     }

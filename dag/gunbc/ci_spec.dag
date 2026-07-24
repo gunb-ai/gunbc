@@ -23,7 +23,7 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.ci_diff_defaults { DiffBaseline, ci_default_diff_baseline, diff_baseline_fetch_remote_ref }
 import gunbc.generated_artifact { committed_generated_artifact_paths }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
@@ -34,7 +34,6 @@ import gunbc.merge_admission_produce {
   ci_repo_root_shell,
 }
 import extdeps.git {
-  git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef }
@@ -76,7 +75,7 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
 }
 
 type DiffPolicy {
-  base: String
+  base: DiffBaseline
   head: String
   mode: DiffMode
 }
@@ -131,7 +130,7 @@ data gunbc_ci_spec: CiSpec = {
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
   diff_policy: {
-    base: ci_merge_base_ref,
+    base: ci_default_diff_baseline,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -144,7 +143,7 @@ data gunbc_ci_regen_spec: CiSpec = {
   witness_entries: [],
   discovery_scan_dirs: [],
   diff_policy: {
-    base: ci_merge_base_ref,
+    base: ci_default_diff_baseline,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -194,7 +193,7 @@ fn ci_release_build_line() -> String {
   )
 }
 
-data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.rust_tests_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (DESIGN 5) — and fmt was collateral damage of a DESIGN 3 fusion: tools.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (DESIGN 5: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.cargo_build cargo.Build.Fmt (the same operation tools.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at DESIGN 7 terminal collapse, when no .rs remains to format."
+data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (DESIGN 5) — and fmt was collateral damage of a DESIGN 3 fusion: tools.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (DESIGN 5: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.cargo_build cargo.Build.Fmt (the same operation tools.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at DESIGN 7 terminal collapse, when no .rs remains to format."
 
 fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
@@ -322,15 +321,8 @@ fn join_slash(parts: List<String>) -> String {
 
 data ci_documentation_only_floor_shortcut_retired_note: String = "REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission."
 
-fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
-  match policy.mode {
-    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
-    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
-  }
-}
-
 fn git_fetch_script(policy: DiffPolicy) -> String {
-  let parts = git_remote_ref_parts(ref: policy.base as GitRef)
+  let parts = diff_baseline_fetch_remote_ref(baseline: policy.base)
   git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: true)
 }
 

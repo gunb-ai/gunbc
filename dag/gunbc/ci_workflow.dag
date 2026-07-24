@@ -16,6 +16,7 @@ import gunbc.ci_spec {
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
+import gunbc.ci_diff_defaults { ci_default_branch_name }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
@@ -633,9 +634,9 @@ data ci_workflow: Workflow = {
   name: "ci",
   on: [
     WorkflowDispatch { inputs: [] },
-    Push { branches: ["main"], paths: [] },
+    Push { branches: [ci_default_branch_name], paths: [] },
     PullRequest {
-      branches: ["main"],
+      branches: [ci_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
     },
     MergeGroup

@@ -9,7 +9,7 @@ import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate,
-  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
+  gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
   gunbc_ci_regen_floor_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
@@ -17,7 +17,11 @@ import gunbc.ci_spec {
   ci_documentation_only_floor_shortcut_retired_note,
 }
 import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
-import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.ci_diff_defaults {
+  ci_default_baseline_ref,
+  DiffBaseline, MergeTarget, PushParent, OperatorOverride,
+  merge_target_fetch_ref_shell_expansion
+}
 import gunbc.ci_materialization {
   ci_floor_resolve_receipt_gate_script,
   ci_floor_materialization_receipt_gate_script,
@@ -47,7 +51,7 @@ data spec_alternate_notice: CiSpec = {
   witness_entries: [],
   discovery_scan_dirs: [],
   diff_policy: {
-    base: "upstream/dev",
+    base: OperatorOverride { ref: "upstream/dev" },
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -119,7 +123,7 @@ fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
 
 fn witness_diff_policy_drives_fetch() -> Bool {
   let fetch = git_fetch_script(policy: gunbc_ci_spec.diff_policy)
-  string_contains(s: fetch, pattern: "git fetch --no-tags origin main") &&
+  string_contains(s: fetch, pattern: concat("git fetch --no-tags origin ", merge_target_fetch_ref_shell_expansion)) &&
     (git_fetch_script(policy: spec_alternate_notice.diff_policy) != fetch) &&
     string_contains(
       s: git_fetch_script(policy: spec_alternate_notice.diff_policy),
@@ -207,9 +211,18 @@ fn witness_documentation_only_floor_shortcut_retired() -> Bool {
     string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
 }
 
+fn base_is_merge_target(baseline: DiffBaseline) -> Bool {
+  match baseline {
+    MergeTarget => true
+    PushParent => false
+    OperatorOverride { ref: _ } => false
+  }
+}
+
 fn witness_merge_base_ref_single_authority() -> Bool {
-  merge_admission_merge_base_ref == gunbc_ci_spec.diff_policy.base
-    && merge_admission_merge_base_ref == ci_merge_base_ref
+  (merge_admission_merge_base_ref == (ci_default_baseline_ref as String))
+    && base_is_merge_target(baseline: gunbc_ci_spec.diff_policy.base)
+    && base_is_merge_target(baseline: gunbc_ci_regen_spec.diff_policy.base)
 }
 
 fn witness_documentation_only_gate_skip_prefix_dissolve_on_named() -> Bool {

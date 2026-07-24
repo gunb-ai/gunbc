@@ -1,6 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
+import gunbc.ci_diff_defaults { ci_default_baseline_ref }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -61,7 +62,9 @@ data dispatch_repo: String = "gunbc"
 data dispatch_worktree_root_note: String = "PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy deleted, belt-B lane 2026-07-20)."
 
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
-data dispatch_git_remote_ref: String = "origin/main"
+data dispatch_git_remote_ref_note: String = "Re-grounded onto the gunbc.ci_diff_defaults single authority (D5, §11): dispatch worktrees branch from the mainline ref. Was a forked origin/main literal (§3 nickname); the fact now lives once in ci_default_baseline_ref. Behavior is unchanged — dispatch always bases on the default branch."
+
+data dispatch_git_remote_ref: String = ci_default_baseline_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"

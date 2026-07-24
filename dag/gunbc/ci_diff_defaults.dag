@@ -1,3 +1,82 @@
 module gunbc.ci_diff_defaults
 
-data ci_merge_base_ref: String = "origin/main"
+import std.types { String, GitRef }
+import extdeps.git { GitRemoteRefParts, git_remote_ref_parts }
+
+data ci_default_branch_name: String = "main"
+
+data ci_diff_remote_name: String = "origin"
+
+data ci_default_baseline_ref: GitRef = "origin/main"
+
+data diff_baseline_law_note: String = "DiffBaseline is the single authority for the fact 'which git ref a diff/merge selects against' (ci-two-tier-placement-redesign.md §11, D5, operator 2026-07-24). It dissolves the bare origin/main literal that four sites forked (ci_spec diff_policy, merge_admission_produce, dispatch_git_remote_ref, ci_workflow Push). Three variants separate POLICY from the resolved ref: MergeTarget — the branch a change merges into (a pull_request's GITHUB_BASE_REF, else the default branch); PushParent — a push event's parent ref; OperatorOverride — a declared static ref (regen, dispatch worktrees, tools), never an env toggle (§5 no escape hatches). resolve_diff_baseline is a PURE fold over injected env values, so the stacked-PR fix (base = origin/GITHUB_BASE_REF, not origin/main) is witnessed by execution without reading the host env; the eval-time wrapper (floor_diff_observe.floor_resolved_base) reads the env and calls it, fail-closed — a PushParent baseline with no parent ref REFUSES rather than fabricating a ref, and the floor treats an unresolvable base as UnifiedDiffFail (widen to full corpus), never a silent wrong selection. Grounded on the extdeps.git atoms (GitRef, git_remote_ref_parts, git_diff_range_argv) — no new string vocabulary. MergeTarget with GITHUB_BASE_REF absent resolves to the default branch (origin/main): this is not a §5 absorbing fallback because a pull_request event always sets GITHUB_BASE_REF, so the fallback only fires on push/local where origin/main IS the intended base and the floor runs the full corpus anyway."
+
+type DiffBaseline
+  = MergeTarget
+  | PushParent
+  | OperatorOverride { ref: GitRef }
+
+type DiffBaselineResolution
+  = DiffBaselineResolved { ref: GitRef }
+  | DiffBaselineRefused { cause: String }
+
+data ci_default_diff_baseline: DiffBaseline = MergeTarget
+
+fn merge_target_ref_from_base_ref(github_base_ref: String) -> GitRef {
+  concat(ci_diff_remote_name, "/", github_base_ref) as GitRef
+}
+
+fn resolve_diff_baseline(
+  baseline: DiffBaseline,
+  github_base_ref: String?,
+  push_parent_ref: String?
+) -> DiffBaselineResolution {
+  match baseline {
+    OperatorOverride { ref: r } => DiffBaselineResolved { ref: r }
+    MergeTarget =>
+      match github_base_ref {
+        Present { value: br } =>
+          if br == "" {
+            DiffBaselineResolved { ref: ci_default_baseline_ref }
+          } else {
+            DiffBaselineResolved { ref: merge_target_ref_from_base_ref(github_base_ref: br) }
+          }
+        Absent => DiffBaselineResolved { ref: ci_default_baseline_ref }
+      }
+    PushParent =>
+      match push_parent_ref {
+        Present { value: p } =>
+          if p == "" {
+            DiffBaselineRefused { cause: "PushParent baseline: push parent ref present but empty" }
+          } else {
+            DiffBaselineResolved { ref: p as GitRef }
+          }
+        Absent => DiffBaselineRefused { cause: "PushParent baseline requires a push parent ref; absent (not a push context?)" }
+      }
+  }
+}
+
+fn diff_baseline_resolution_ref_or(resolution: DiffBaselineResolution, fallback: GitRef) -> GitRef {
+  match resolution {
+    DiffBaselineResolved { ref: r } => r
+    DiffBaselineRefused { cause: _ } => fallback
+  }
+}
+
+data merge_target_fetch_ref_shell_note: String = "The MergeTarget fetch renders as git fetch --no-tags origin $GITHUB_BASE_REF — an UNQUOTED bash variable reference (git_shell_join_argv joins argv with spaces, no quoting), so it resolves at ci.yml runtime: a pull_request fetches its actual base branch (a stacked PR fetches origin/<its base>), and a push/local run where GITHUB_BASE_REF is empty falls through to git fetch origin (the remote default). Bare $GITHUB_BASE_REF is used, never the dollar-brace default form, because a dollar-brace in a .dag string triggers string interpolation; the eval-time default-to-main is handled separately by floor_diff_observe.floor_resolved_base / resolve_diff_baseline. This is the shell REALIZATION of MergeTarget's fetch, not new modeled vocabulary — the eval-time diff base is resolved separately by reading the same GITHUB_BASE_REF (§4 one grammar; shell transport is a realization handler)."
+
+data merge_target_fetch_ref_shell_expansion: String = "$GITHUB_BASE_REF"
+
+fn diff_baseline_fetch_remote_ref(baseline: DiffBaseline) -> GitRemoteRefParts {
+  match baseline {
+    MergeTarget => GitRemoteRefParts {
+      remote: ci_diff_remote_name,
+      ref_name: merge_target_fetch_ref_shell_expansion
+    }
+    OperatorOverride { ref: r } => git_remote_ref_parts(ref: r)
+    PushParent => GitRemoteRefParts {
+      remote: ci_diff_remote_name,
+      ref_name: ci_default_branch_name
+    }
+  }
+}
