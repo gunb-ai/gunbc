@@ -7546,8 +7546,6 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
 }
 
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
-  // Runtime-bridged methods (lookup, map_get, …) must stay on v1_rt:: even when a modeled
-  // type (e.g. PartialFunction) also declares an Arrow field with the same name.
   if map_contains_key(rt_functions(), method_name) {
     false
   } else {

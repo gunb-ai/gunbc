@@ -21525,17 +21525,21 @@ pub fn rust_receiver_has_callable_method_field(
     method_name: String,
     scope: Rc<InferScope>,
 ) -> bool {
-    {
-        let receiver_type = resolved_type(receiver.clone());
-        let receiver_type_name = authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            receiver_type.clone(),
-        );
-        rust_record_field_needs_fn_rc(
-            scope.clone(),
-            receiver_type_name.clone(),
-            method_name.clone(),
-        )
+    if v1_rt::map_contains_key(&rt_functions(), method_name.clone()) {
+        false
+    } else {
+        {
+            let receiver_type = resolved_type(receiver.clone());
+            let receiver_type_name = authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                receiver_type.clone(),
+            );
+            rust_record_field_needs_fn_rc(
+                scope.clone(),
+                receiver_type_name.clone(),
+                method_name.clone(),
+            )
+        }
     }
 }
 
