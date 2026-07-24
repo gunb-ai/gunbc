@@ -8,10 +8,12 @@ import v2.compiler.trait_derive_completeness {
   ReprDeriveElemKernelString,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemUnknown,
+  TraitDeriveCompletenessIncomplete,
+  TraitDeriveCompletenessSatisfied,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_derive_elem_shape,
   repr_grounding_derive_trait_satisfied,
-  trait_derive_completeness_collection_witness_is_satisfied,
+  trait_derive_completeness_gate_for_collection_witness,
   trait_derive_int_kernel_type_node
 }
 import v2.extdeps.languages.rust {
@@ -19,6 +21,7 @@ import v2.extdeps.languages.rust {
   rust_trait_derive_surface_binding_for_record
 }
 import v2.std.compilers.target_model {
+  RequiredTraitWitness,
   TargetCollectionWitnessOrd,
   symbol_kernel_type_node
 }
@@ -118,6 +121,16 @@ fn tdc_elem_shape_is_kernel_string(elem: Node) -> Bool {
   }
 }
 
+fn tdc_collection_witness_gate_is_incomplete(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> Bool {
+  match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
+    TraitDeriveCompletenessIncomplete => true
+    TraitDeriveCompletenessSatisfied => false
+  }
+}
+
 fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
   binding == expected
 }
@@ -144,10 +157,10 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
   repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
-    && trait_derive_completeness_collection_witness_is_satisfied(
+    && tdc_collection_witness_gate_is_incomplete(
       witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t },
       elem: tdc_unknown_atom_node()
-    ) == false
+    )
 }
 
 test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {

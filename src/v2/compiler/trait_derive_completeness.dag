@@ -12,6 +12,7 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.std.compilers.target_model {
   RequiredTraitWitness,
   TargetCollectionWitnessEq,
@@ -65,31 +66,10 @@ fn trait_derive_unit_kernel_type_node() -> Node {
   }
 }
 
-fn trait_derive_variant_edge_has_payload(edge: Edge) -> Bool {
-  match edge.target.kind {
-    TypeNode { connective: Conj } =>
-      match edge.target.children {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    _ => false
-  }
-}
-
-fn trait_derive_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
-  fold_list(
-    xs: edges,
-    empty: true,
-    cons: fn(acc, edge) {
-      acc && !trait_derive_variant_edge_has_payload(edge: edge)
-    }
-  )
-}
-
 fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape {
   match elem.kind {
     TypeNode { connective: Disj } =>
-      if trait_derive_coproduct_all_variants_nullary(edges: elem.children) {
+      if coproduct_all_variants_nullary(edges: elem.children) {
         ReprDeriveElemNullaryEnumCopy
       } else {
         ReprDeriveElemUnknown
@@ -268,24 +248,4 @@ fn trait_derive_completeness_gate_for_collection_witness(
     required: repr_grounding_derive_traits_for_collection_witness(witness: witness),
     elem: elem
   )
-}
-
-fn trait_derive_completeness_collection_witness_is_satisfied(
-  witness: RequiredTraitWitness,
-  elem: Node
-) -> Bool {
-  match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
-    TraitDeriveCompletenessSatisfied => true
-    TraitDeriveCompletenessIncomplete => false
-  }
-}
-
-fn trait_derive_completeness_gate_is_satisfied(
-  required: List<ReprGroundingDeriveTrait>,
-  elem: Node
-) -> Bool {
-  match trait_derive_completeness_gate(required: required, elem: elem) {
-    TraitDeriveCompletenessSatisfied => true
-    TraitDeriveCompletenessIncomplete => false
-  }
 }
