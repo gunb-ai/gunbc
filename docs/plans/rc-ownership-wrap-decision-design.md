@@ -1,6 +1,6 @@
 # Rc-ownership wrap-decision predicate — design + deep-emitter gate derisk
 
-Status: LANDED (predicate + translate routing + UseSiteVerdict enrollment), 2026-07-20 verify-by-execution (valiant-dove-723). Original design: 2026-07-16 (bold-seal-166). Plan carrier (`v1_deletion_plan.dag` lane_state rows) is batched in #6909 — not this PR; the mark on the carrier is the plan file, this doc is the design receipt only.
+Status: LANDED (predicate + translate routing + UseSiteVerdict enrollment), 2026-07-20 verify-by-execution (valiant-dove-723). Re-verified 2026-07-23 (fierce-crab-777: claim_batch `wrap_decision_predicate_witness_holds` 8 sub-witnesses + gate smoke green on main). Original design: 2026-07-16 (bold-seal-166). Plan carrier (`v1_deletion_plan.dag` lane_state rows) is batched in #6909 — not this PR; the mark on the carrier is the plan file, this doc is the design receipt only.
 Parent: sharp-bee-290 (Weak → Strong Self Host, Wave 1→4).
 Displaced cost: unblocks self-emit for Rc-heavy core compiler modules (`04_infer`, `06_translate`, `05_emit*`, … — each seed-emitted with 100+ `Rc<` sites today) without the latent §5 fail-open that silently wraps every `shared_types` member in `Rc<T>`.
 
@@ -126,6 +126,8 @@ The gate does not alone flip these — Track B body emit and namespace resolutio
 |---|---|
 | `wrap_decision_diagnostics_return_is_rc` | catalog row `(Diagnostics, Return) → WrapByReference Rc` |
 | `wrap_decision_diagnostics_param_is_owned` | `(Diagnostics, Param) → WrapByValue` |
+| `wrap_decision_use_site_verdict_return_is_owned` | `(UseSiteVerdict, Return) → WrapByValue` |
+| `wrap_decision_node_struct_field_is_box` | catalog row `(Node, StructField) → WrapByReference Box` |
 | `wrap_decision_probe_heap_param_miss_rejects` | missing row → `Rejected` (fail-closed) |
 | `wrap_decision_bundle_absent_inapplicable` | target without SG-RC edges → `WrapGateInapplicable` |
 | `wrap_decision_bundle_partial_rejects` | catalog without tokens → `Rejected` |

@@ -24,17 +24,17 @@ use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportServi
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
+use crate::std_syntax::BinOp::Add;
+use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
+use crate::std_syntax::LiteralValue::LitStr;
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
-pub use crate::std_types::container_param_name;
+pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
 pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
@@ -169,17 +169,16 @@ pub use crate::v1_std_core::{
     foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
-    is_compiler_error, is_container_type, is_error_diagnostic, is_kernel_type,
-    is_property_contraction, is_tree_size_reducing, kernel_type_set, lambda_body,
-    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
-    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, module_node, no_span, node_name_span, none_type, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    string_type, type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
@@ -3334,30 +3333,51 @@ pub fn infer_expr(
                                             span.clone(),
                                         )),
                                         None => {
-                                            let err_texpr = make_named_expr_node(
-                                                name.clone(),
-                                                Rc::new(ExprData::ExprVar { binding_kind: None }),
-                                                Rc::new(vec![]),
-                                                Some(Rc::new(InferredNode::Resolved {
-                                                    node: error_type(),
-                                                })),
-                                                span.clone(),
-                                                span.clone(),
-                                            );
-                                            Rc::new(InferResult {
-                                                typed: err_texpr.clone(),
-                                                diagnostics: Rc::new(vec![inference_error(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "undefined variable '".to_string(),
-                                                            name.clone(),
-                                                        ),
-                                                        "'".to_string(),
-                                                    ),
+                                            let var_ambiguity_cands =
+                                                global_bare_strict_ambiguity_candidates(
+                                                    scope.type_env.clone(),
+                                                    name.clone(),
+                                                );
+                                            if ((var_ambiguity_cands.clone().len() as i64) > 0) {
+                                                ambiguous_reference_refusal(
+                                                    name.clone(),
+                                                    var_ambiguity_cands.clone(),
                                                     span.clone(),
-                                                    scope.module_name.clone(),
-                                                )]),
-                                            })
+                                                    scope.clone(),
+                                                )
+                                            } else {
+                                                {
+                                                    let err_texpr = make_named_expr_node(
+                                                        name.clone(),
+                                                        Rc::new(ExprData::ExprVar {
+                                                            binding_kind: None,
+                                                        }),
+                                                        Rc::new(vec![]),
+                                                        Some(Rc::new(InferredNode::Resolved {
+                                                            node: error_type(),
+                                                        })),
+                                                        span.clone(),
+                                                        span.clone(),
+                                                    );
+                                                    Rc::new(InferResult {
+                                                        typed: err_texpr.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            inference_error(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        "undefined variable '"
+                                                                            .to_string(),
+                                                                        name.clone(),
+                                                                    ),
+                                                                    "'".to_string(),
+                                                                ),
+                                                                span.clone(),
+                                                                scope.module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -4372,13 +4392,32 @@ match bare_s.clone() {
                                                                         }
                                                                     }
                                                                 };
-                                                                let call_diags = match type_match.clone() {
-    Some(_) => Rc::new(vec![]),
-    None => match global_bare_callable.clone() {
-    Some(_) => Rc::new(vec![]),
-    None => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())]),
-},
-};
+                                                                let call_diags = match type_match
+                                                                    .clone()
+                                                                {
+                                                                    Some(_) => Rc::new(vec![]),
+                                                                    None => {
+                                                                        match global_bare_callable
+                                                                            .clone()
+                                                                        {
+                                                                            Some(_) => {
+                                                                                Rc::new(vec![])
+                                                                            }
+                                                                            None => {
+                                                                                let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(scope.type_env.clone(), func_name.clone());
+                                                                                if ((call_ambiguity_cands.clone().len() as i64) > 0) {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousReference {
+    name: func_name.clone(),
+    candidates: call_ambiguity_cands.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
+                                                        }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                };
                                                                 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
