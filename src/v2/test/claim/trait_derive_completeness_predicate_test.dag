@@ -23,7 +23,7 @@ import v2.std.compilers.target_model {
   symbol_kernel_type_node
 }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
+import v2.std.collection { List, Symbol }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -32,7 +32,6 @@ import v2.std.node {
   Edge,
   Node,
   Positional,
-  Symbol,
   SyntheticOccurrence,
   TypeNode
 }
@@ -98,11 +97,36 @@ fn tdc_unknown_atom_node() -> Node {
   }
 }
 
+fn tdc_elem_shape_is_unknown(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemUnknown => true
+    _ => false
+  }
+}
+
+fn tdc_elem_shape_is_nullary_enum_copy(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemNullaryEnumCopy => true
+    _ => false
+  }
+}
+
+fn tdc_elem_shape_is_kernel_string(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemKernelString => true
+    _ => false
+  }
+}
+
+fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
+  binding == expected
+}
+
 test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
   repr_grounding_derive_trait_satisfied(trait: ReprDeriveClone, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
-    && !repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
 }
 
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
@@ -118,33 +142,41 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
 }
 
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
-  !repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node())
-    && repr_grounding_derive_elem_shape(elem: tdc_unknown_atom_node()) == ReprDeriveElemUnknown
-    && !trait_derive_completeness_gate_is_satisfied(
+  repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
+    && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
+    && trait_derive_completeness_gate_is_satisfied(
       required: repr_grounding_derive_traits_for_collection_witness(
         witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
       ),
       elem: tdc_unknown_atom_node()
-    )
+    ) == false
 }
 
 test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
-  repr_grounding_derive_elem_shape(elem: tdc_nullary_enum_node()) == ReprDeriveElemNullaryEnumCopy
-    && repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node())
-      == ^rust_decl_derive_enum_copy_binding
-    && repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node())
-      == ^rust_decl_derive_enum_binding
+  tdc_elem_shape_is_nullary_enum_copy(elem: tdc_nullary_enum_node())
+    && tdc_binding_is(
+      binding: repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node()),
+      expected: ^rust_decl_derive_enum_copy_binding
+    )
+    && tdc_binding_is(
+      binding: repr_grounding_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node()),
+      expected: ^rust_decl_derive_enum_binding
+    )
 }
 
 test fn tdc_symbol_kernel_string_shape() -> Bool {
-  repr_grounding_derive_elem_shape(elem: symbol_kernel_type_node()) == ReprDeriveElemKernelString
+  tdc_elem_shape_is_kernel_string(elem: symbol_kernel_type_node())
 }
 
 test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
-  repr_grounding_derive_surface_binding_for_record(heap_allocated: true)
-    == ^rust_decl_derive_struct_binding
-    && repr_grounding_derive_surface_binding_for_record(heap_allocated: false)
-      == ^rust_decl_derive_struct_copy_binding
+  tdc_binding_is(
+    binding: repr_grounding_derive_surface_binding_for_record(heap_allocated: true),
+    expected: ^rust_decl_derive_struct_binding
+  )
+    && tdc_binding_is(
+      binding: repr_grounding_derive_surface_binding_for_record(heap_allocated: false),
+      expected: ^rust_decl_derive_struct_copy_binding
+    )
 }
 
 test fn tdc_trait_derive_completeness_predicate_witness_holds() -> Bool {
