@@ -108,6 +108,10 @@ type BooleanAlgebra<T> {
   bottom: T
 }
 
+type PointwisePower<T> {
+  member: fn(T) -> Bool
+}
+
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
