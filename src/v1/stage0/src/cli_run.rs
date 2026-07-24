@@ -23420,6 +23420,26 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
     sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
 }
 
+#[cfg(test)]
+mod nfr_observation_roster_test {
+    use super::non_fold_residue_site_is_rostered;
+
+    // Green-by-execution for the one observation-stack wildcard site
+    // (ci_hold_cause_text over SchedulerHold, merged via #7168): the roster now
+    // carries it, so the corpus nfr witness's unrostered count no longer counts it.
+    // Reds if the roster row's key drifts from the scan's `{rel}::{fn}` key, or if
+    // the hand edit malformed the frontier list (the reader panics on a bad list).
+    #[test]
+    fn observation_hold_cause_wildcard_is_rostered() {
+        assert!(
+            non_fold_residue_site_is_rostered(
+                "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text"
+            ),
+            "the observation ci_hold_cause_text wildcard must be rostered after the fix"
+        );
+    }
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
