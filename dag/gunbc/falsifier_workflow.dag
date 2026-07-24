@@ -15,7 +15,8 @@ import gunbc.ci_workflow {
   gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.ci_spec { ci_repo_root_shell, plan_artifact_plan_function }
+import gunbc.ci_spec { plan_artifact_plan_function }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.cli_invoke {
   claim_executor_run_plan_shell
@@ -31,7 +32,7 @@ data falsifier_plan_function: String = "gunbc_falsifier_batches"
 
 fn falsifier_invoke() -> String {
   concat(
-    concat("ROOT=", concat(gunbc.ci_spec.ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
@@ -67,7 +68,7 @@ data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean wh
 
 fn compile_clean_cold_control_invoke() -> String {
   concat(
-    concat("ROOT=", concat(gunbc.ci_spec.ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",

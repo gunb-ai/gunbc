@@ -14,7 +14,6 @@ import gunbc.ci_spec {
   ci_release_features,
   scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_floor_build_verify_script,
-  ci_repo_root_shell,
   ci_documentation_only_floor_shortcut_retired_note,
 }
 import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }

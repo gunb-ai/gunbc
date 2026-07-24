@@ -1,5 +1,6 @@
 module std.render
 
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols { SemanticColor, SymbolId, Tier }
 import std.languages { CommentSyntax, ConfigFormat, Language }
 
@@ -91,18 +92,6 @@ fn language_format_header(lang: Language, generator: String, regen_command: Stri
 fn format_comment(syntax: CommentSyntax, text: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
   "\{prefix\} \{text\}"
-}
-
-fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
-  if remaining <= 0 {
-    acc
-  } else {
-    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 1)
-  }
-}
-
-fn repeat_string(s: String, n: Int) -> String {
-  repeat_string_loop(acc: "", s: s, remaining: n)
 }
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {

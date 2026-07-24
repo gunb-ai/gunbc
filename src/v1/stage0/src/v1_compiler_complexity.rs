@@ -37,7 +37,9 @@ pub use crate::std_induction::{
 pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
 pub use crate::std_measure::ByteSize;
 pub use crate::std_measure::{byte_size, byte_size_count};
+use crate::std_syntax::BinOp::*;
 use crate::std_syntax::BinOp::{Div, Sub};
+use crate::std_syntax::LiteralValue::*;
 use crate::std_syntax::LiteralValue::{LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};

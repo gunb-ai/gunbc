@@ -31,11 +31,11 @@ import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
   ci_floor_disposition_marker_init_script,
+  ci_repo_root_shell,
 }
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
-  git_toplevel_shell_subexpr_with_fallback,
 }
 import std.types { GitRef }
 import extdeps.github.actions { RunnerSpec }
@@ -179,10 +179,6 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "THE COST WALL (CI floor en
 data gunbc_ci_floor_batch_wall_budget_seconds: List<Int> = [240, 60, 1320, 420, 120, 600, 420]
 
 data ci_release_features: String = "text_lookup_work_counter"
-
-fn ci_repo_root_shell() -> String {
-  git_toplevel_shell_subexpr_with_fallback()
-}
 
 fn ci_release_build_line() -> String {
   concat(

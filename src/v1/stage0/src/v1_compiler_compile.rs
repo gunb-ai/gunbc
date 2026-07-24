@@ -11,6 +11,8 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
@@ -48,7 +50,6 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::BinOp::*;
 use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
@@ -58,7 +59,6 @@ use crate::v1_std_core::ExprErrorKind::*;
 use crate::v1_std_core::FieldAccessStyle::*;
 use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::LiteralValue::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
