@@ -218,10 +218,16 @@ the CI renderer's contract (§3a) and the sequencing:
   in #7162's own CI runs upfront. Ownership protocol: the #7162 worker owns the branch and
   performs the merge + the emit-family wiring (they own the emit sites); the observation
   worker reviews against their own REDs. Wiring order: the five rostered structured
-  families flip to stream projections NOW (visible immediately); the ~75 raw eprintln
-  residue flips after the remaining floor pieces land (it stays a counted frontier — the
-  census wall keeps it honest). #7168 closes as absorbed; commit authorship preserves the
-  record. Prior text (lands-after sequencing) superseded: The controlling rationale is **completeness as the merge bar**: the operator
+  families flip to stream projections NOW (visible immediately). **Cleanup ruling (operator,
+  2026-07-24): the OLD display machinery is deleted IN this PR — that is what atomic
+  means.** The integration dissolved the double-churn rationale that justified deferring
+  the eprintln/echo residue, so its dissolve-on is now: at merge, the census holds ZERO
+  frontier rows for in-repo display emit sites — every site Projection, its old print call
+  deleted (removed, never suppressed dead code). The census wall survives as the guard
+  against NEW bare prints. Exempt, deliberately: receipt FILES (floor-drain,
+  materialization, warm-cost TSV — data with consumers, §3c) and `gunbc.output_policy`'s
+  suppression tiers for legitimate instrumentation. #7168 closes as absorbed; commit
+  authorship preserves the record. Prior text (lands-after sequencing) superseded: The controlling rationale is **completeness as the merge bar**: the operator
   merges only finished work — a landed P0 with no renderer is vocabulary nobody can see,
   exactly the consumed-by-nothing state the consumption rule forbids. The shared-emit-site
   rationale is secondary (real for P1–P3, not P0) and is not the load-bearing reason; #7168
