@@ -1,0 +1,37 @@
+module gunbc.retained_shell_script
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import extdeps.shell.exec { TransportScript }
+
+data retained_shell_script_wall_note: String = "§5.E wall (operator ruling 2026-07-24): RetainedShellScript is the counted frontier for shell SCRIPT bodies not yet dissolved into typed argv/effects. It is a RECORD, not a brand — a bare String cannot fill a RetainedShellScript position, so the accidental 'build argv properly, then join it back into a string' relocation class (bit twice: #7064, vivid-wolf) fails to compile on the ShellOnHost realization edge. Every row carries a reason + a dissolve-on DeclarationRef; new rows are a counted review event. The genuine compile-wall is the List<String> distinction (typed argv edge); this record walls the residual script path. The surviving `as TransportScript` cast-mint below is deliberate and conspicuous — its full closure is filed on the node/subtree visibility-grants lane (the Reference verb governs who may cast base->brand)."
+
+# The counted frontier record. A migration cannot inject a hand-assembled String
+# here — the field is typed String but the ENCLOSING record cannot be produced
+# from a bare String, so `ShellOnHost { script: <join> }` is a type error.
+type RetainedShellScript {
+  body: String
+  reason: NonEmptyStr
+  dissolves_to: DeclarationRef
+}
+
+# The SINGLE sanctioned String -> TransportScript mint. Takes the record, so the
+# only route from a script body to a TransportScript is to author a counted
+# RetainedShellScript row. Replaces the deleted free minter
+# extdeps.shell.exec.transport_script_from_body(body: String).
+fn retained_shell_script_to_transport(rss: RetainedShellScript) -> TransportScript {
+  rss.body as TransportScript
+}
+
+# The roster-gated counted bridge for direct shell.Exec.Run foreign-executor
+# sites. String -> TransportScript, but every call must author a reason + a
+# dissolve-on ref, so a new call is a conspicuous, counted review event.
+fn retained_transport(
+  body: String,
+  reason: NonEmptyStr,
+  dissolves_to: DeclarationRef,
+) -> TransportScript {
+  retained_shell_script_to_transport(
+    rss: RetainedShellScript { body: body, reason: reason, dissolves_to: dissolves_to }
+  )
+}
