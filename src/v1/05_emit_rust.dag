@@ -884,13 +884,14 @@ fn rust_fold_rendered_type_has_spurious_generic_atom(type_str: String, atom: Str
 }
 
 fn rust_fold_rendered_type_has_any_spurious_generic(type_str: String, generic_param_names: List<String>) -> Bool {
-  fold_list(
-    xs: ["T", "C", "A", "B", "E", "K", "V", "R"],
-    empty: false,
-    cons: fn(acc, atom) {
-      acc || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: atom, generic_param_names: generic_param_names)
-    }
-  )
+  rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "T", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "C", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "A", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "B", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "E", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "K", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "V", generic_param_names: generic_param_names)
+  || rust_fold_rendered_type_has_spurious_generic_atom(type_str: type_str, atom: "R", generic_param_names: generic_param_names)
 }
 
 fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
