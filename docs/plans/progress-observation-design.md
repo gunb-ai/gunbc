@@ -201,6 +201,16 @@ the CI renderer's contract (§3a) and the sequencing:
   shell echoes are Ambient (invisible at arm's length, expandable up close); per-witness PASS
   lines collapse to counts. `[floor-memory]`'s current shape — 60+ identical
   context-free byte dumps per hour — is the named negative example the census wall reds.
+  **Selection prominence (operator, 2026-07-24): the diff→runs chain is the preamble's
+  centerpiece.** Users must see the causal chain from THEIR files to what CI actually runs:
+  a per-file attribution block (each touched file → the entries/witnesses it selected, docs
+  files → "nothing"), the skip count with its audit pointer ("1,738 of 2,316 skipped as
+  unaffected — audited cold every 4h"), the now-vs-later placement split, and — when
+  selection widens — the widening named in plain language WITH the file that caused it
+  ("cli_run.rs changes the compiler itself, so nothing can be skipped"). Per-file attribution
+  is the same selection authority projected per touched file, not new telemetry. A refusal
+  that traces to selection (a hub-file full-corpus run over budget) names the causing file in
+  its explanation.
   **Tone (operator, 2026-07-24):** arm's-length lines are plain sentences a human can read
   without decoding — "still in witness discovery: entry 214 of 602, pace 2.1s per entry
   (expected ~1s)" — never dense `key=value` chains; the dense form lives only in receipt
