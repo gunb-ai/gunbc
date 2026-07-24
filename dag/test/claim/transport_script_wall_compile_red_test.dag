@@ -1,0 +1,52 @@
+module test.claim.transport_script_wall_compile_red
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data transport_script_wall_compile_red_note: String = "§5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on any hard diagnostic; the tests assert refusal (!compile). The construction wall — ShellOnHost.script retyped to the RetainedShellScript RECORD, and the free minter extdeps.shell.exec.transport_script_from_body DELETED — is what makes both fakes non-compiling. The host_language_transport_script lens never caught these (a computed concat is ComputedApplication, deliberately green); only construction closes the class. If either wall is ever loosened (record widened back to String, or the free minter reintroduced), the corresponding fake starts compiling clean, compile_dag_rust_emit_check flips to true, and the RED goes red — the wall's regression alarm."
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data control_note: String = "Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness is discriminating — the two false results below are genuine refusals of the fakes, not a harness that always returns false."
+
+fn w_control_clean_shell_service() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallctl\n\nservice shell.Run {\n  operation Exec {\n    input { script: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",
+    "src/wallctl.rs",
+    ["Command::new(\"sh\")", ".arg(\"-lc\")"],
+    []
+  )
+}
+
+data red_a_note: String = "RED A — the #7064 / vivid-wolf 'build the argv properly, then join it back into a string and feed the realization edge' class. The fake hands a computed String (argv join + \" 2>/dev/null || true\") to retained_shell_script_to_transport, whose parameter is the RetainedShellScript RECORD. A String cannot fill a record position, so infer refuses (hard diagnostic) and the source does not compile. The only sanctioned route is to author a counted RetainedShellScript row (retained_srvn / retained_transport), which forces a reason + dissolve-on."
+
+fn w_red_a_string_join_into_retained_record() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallreda\n\nimport std.types { String }\nimport extdeps.shell.exec { TransportScript }\nimport gunbc.retained_shell_script { retained_shell_script_to_transport }\n\nfn argv_joined() -> String { concat(\"hostname\", concat(\" \", \"-s\")) }\n\nfn fake_join_into_record() -> TransportScript {\n  retained_shell_script_to_transport(rss: concat(argv_joined(), \" 2>/dev/null || true\"))\n}\n",
+    "src/wallreda.rs",
+    [],
+    []
+  )
+}
+
+data red_b_note: String = "RED B — #7064's exact textual pattern: transport_script_from_body(argv_join(...) + \" 2>/dev/null || true\"). The free minter is deleted from extdeps.shell.exec, so the import resolves nothing and the call is unresolved (hard diagnostic) — the source does not compile. Reintroducing the free minter would make this fake compile again and red this control."
+
+fn w_red_b_deleted_free_minter() -> Bool {
+  compile_dag_rust_emit_check(
+    "module wallredb\n\nimport std.types { String }\nimport extdeps.shell.exec { TransportScript, transport_script_from_body }\n\nfn argv_joined() -> String { concat(\"hostname\", concat(\" \", \"-s\")) }\n\nfn fake_deleted_minter() -> TransportScript {\n  transport_script_from_body(body: concat(argv_joined(), \" 2>/dev/null || true\"))\n}\n",
+    "src/wallredb.rs",
+    [],
+    []
+  )
+}
+
+test fn wall_control_clean_shell_service_compiles() -> Bool {
+  w_control_clean_shell_service()
+}
+
+test fn wall_red_string_join_into_retained_record_refuses() -> Bool {
+  !w_red_a_string_join_into_retained_record()
+}
+
+test fn wall_red_deleted_free_minter_refuses() -> Bool {
+  !w_red_b_deleted_free_minter()
+}
