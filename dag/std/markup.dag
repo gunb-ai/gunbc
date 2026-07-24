@@ -195,22 +195,6 @@ fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String 
   serialize_fragment_with(frag: markup_node_to_fragment(node: node), medium: medium)
 }
 
-fn txt(s: String) -> MarkupNode {
-  TextNode { text: s }
-}
-
-fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [], children: children }
-}
-
-fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode {
-    tag: tag,
-    attrs: [ MarkupAttr { name: "class", value: cls } ],
-    children: children,
-  }
-}
-
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }
