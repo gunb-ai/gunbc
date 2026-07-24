@@ -81,8 +81,8 @@ fn synthetic_unbacked_native_row() -> EmitCoverageFrontierRow {
     witness_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
     witness_function: "fabricated_all_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
-      backing_function: "emit_host_native_only_verdict_all_holds"
+      backing_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
+      backing_function: "fabricated_all_holds"
     }
   }
 }
