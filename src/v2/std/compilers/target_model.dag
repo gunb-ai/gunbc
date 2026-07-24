@@ -9386,49 +9386,32 @@ fn repr_grounding_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
 }
 
 fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape {
-  if content_hash(n: elem) == content_hash(n: symbol_kernel_type_node()) {
-    ReprDeriveElemKernelString
-  } else {
-    if content_hash(n: elem) == content_hash(n: int_kernel_type_node()) {
-      ReprDeriveElemKernelInt
-    } else {
-      if content_hash(n: elem) == content_hash(n: bool_kernel_type_node()) {
-        ReprDeriveElemKernelBool
+  match elem.kind {
+    TypeNode { connective: Disj } =>
+      if repr_grounding_coproduct_all_variants_nullary(edges: elem.children) {
+        ReprDeriveElemNullaryEnumCopy
       } else {
-        if content_hash(n: elem) == content_hash(n: unit_kernel_type_node()) {
-          ReprDeriveElemKernelUnit
+        ReprDeriveElemUnknown
+      }
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {
+        ReprDeriveElemKernelString
+      } else {
+        if id == ^target_collection_kernel_int || id == ^int_kernel_type_atom {
+          ReprDeriveElemKernelInt
         } else {
-          match elem.kind {
-            TypeNode { connective: Disj } =>
-              if repr_grounding_coproduct_all_variants_nullary(edges: elem.children) {
-                ReprDeriveElemNullaryEnumCopy
-              } else {
-                ReprDeriveElemUnknown
-              }
-            TypeNode { connective: Atom { identity: id } } =>
-              if id == ^target_collection_kernel_string
-                || id == ^symbol_kernel_type_atom {
-                ReprDeriveElemKernelString
-              } else {
-                if id == ^target_collection_kernel_int || id == ^int_kernel_type_atom {
-                  ReprDeriveElemKernelInt
-                } else {
-                  if id == ^target_collection_kernel_bool || id == ^bool_node_symbol {
-                    ReprDeriveElemKernelBool
-                  } else {
-                    if id == ^target_collection_kernel_unit || id == ^unit_kernel_type_atom {
-                      ReprDeriveElemKernelUnit
-                    } else {
-                      ReprDeriveElemUnknown
-                    }
-                  }
-                }
-              }
-            _ => ReprDeriveElemUnknown
+          if id == ^target_collection_kernel_bool || id == ^bool_node_symbol {
+            ReprDeriveElemKernelBool
+          } else {
+            if id == ^target_collection_kernel_unit || id == ^unit_kernel_type_atom {
+              ReprDeriveElemKernelUnit
+            } else {
+              ReprDeriveElemUnknown
+            }
           }
         }
       }
-    }
+    _ => ReprDeriveElemUnknown
   }
 }
 

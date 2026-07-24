@@ -2171,25 +2171,6 @@ fn rust_decl_shared_derive_productions() -> List<FormalProduction> {
   ]
 }
 
-fn rust_coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
-  match edge.target.kind {
-    TypeNode { connective: Conj } =>
-      match edge.target.children {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    _ => false
-  }
-}
-
-fn rust_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
-  fold_list(
-    xs: edges,
-    empty: true,
-    cons: fn(acc, edge) { acc && !rust_coproduct_variant_edge_has_payload(edge: edge) }
-  )
-}
-
 fn rust_decl_struct_derive_binding() -> Symbol {
   ^rust_decl_derive_struct_binding
 }
