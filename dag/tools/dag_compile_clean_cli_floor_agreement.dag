@@ -8,7 +8,7 @@ import gunbc.compile_clean_diagnostic_policy {
   Enforced
 }
 
-data cli_floor_agreement_note: String = "CLI-vs-floor compile-clean agreement witness (issue 11). Both realizations read gunbc.compile_clean_diagnostic_policy.compile_clean_unlisted_import_use_enforcement — the fork is a declared counted frontier (FloorNotYet), not two silent opposites. GREEN: current row is FloorNotYet (non-blocking) AND flipping the row to Enforced makes the predicate true (RED control — proves both consumers would move together on promotion). The whole-tree verdict-equivalence receipt lives in witness_compile_clean_cli_floor_verdicts_agree (host intrinsic, cargo test #[ignore])."
+data cli_floor_agreement_note: String = "CLI-vs-floor compile-clean agreement witness (issue 11). Both realizations read gunbc.compile_clean_diagnostic_policy.compile_clean_unlisted_import_use_enforcement — the fork is a declared counted frontier (FloorNotYet), not two silent opposites. GREEN: current row is FloorNotYet (non-blocking) AND flipping the row to Enforced makes the predicate true (RED control — proves both consumers would move together on promotion). The whole-tree verdict-equivalence receipt lives in witness_compile_clean_cli_floor_verdicts_agree (host intrinsic; run explicitly via claim_executor or cargo test on the registered builtin)."
 
 fn witness_policy_row_is_floor_not_yet() -> Bool {
   compile_clean_unlisted_import_use_enforcement == FloorNotYet
