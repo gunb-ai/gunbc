@@ -1645,7 +1645,7 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
 
 pub fn is_name_keyword(token: Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
-        match v1_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
+        match (dag_non_name_keywords().lookup)(token.text.clone()) {
             v1_rt::Witness::Holds { value: _, .. } => false,
             v1_rt::Witness::Violates { diagnostic: _, .. } => true,
         }
@@ -10920,8 +10920,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
         match sh.clone() {
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
-                let lit_val =
-                    v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
+                let lit_val = (dag_syntax_spec().keyword_literals.clone().lookup)(kw_text.clone());
                 match lit_val.clone() {
                     v1_rt::Witness::Holds { value: lv, .. } => Rc::new(ExprResult {
                         expr: make_expr_node(
@@ -12671,8 +12670,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
             }
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
-                let lit_val =
-                    v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
+                let lit_val = (dag_syntax_spec().keyword_literals.clone().lookup)(kw_text.clone());
                 match lit_val.clone() {
                     v1_rt::Witness::Holds { value: lv, .. } => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
