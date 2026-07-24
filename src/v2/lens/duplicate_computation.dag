@@ -1,7 +1,7 @@
 module v2.lens.duplicate_computation
 
 import std.disposition { RealizationDispatch }
-import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, SharedStateFrame }
+import std.materialization_ladder { LadderVerdict, AuthoredDuplication, LadderFrame, SharedStateFrame }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
@@ -180,8 +180,8 @@ fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bo
   }
 }
 
-fn authored_duplication_lca(key: String) -> List<Frame> {
-  [Frame { name: key, kind: SharedStateFrame }]
+fn authored_duplication_lca(key: String) -> List<LadderFrame> {
+  [LadderFrame { name: key, kind: SharedStateFrame }]
 }
 
 fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<LadderVerdict> {

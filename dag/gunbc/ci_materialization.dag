@@ -30,23 +30,23 @@ data ci_materialization_note: String = "The worked example the ladder was built 
 
 data ci_fleet_frame_note: String = "The fleet frame (recurring CI invocations over time) is DEFINED but not yet in live sites: UnboundedSiblingsFrame is declared-emergent, so enrolling it obligates a cross-run provider for EVERY pure step up front — exactly right, and exactly what the floor does not have yet (the affected-set / floor-memoization thread; the only cross-run providers live today are sccache and actions/cache, which cover the toolchain, not the floor). Enrolling ci_fleet_frame into ci_step_site is the ratchet flip that FORCES the cross-run floor provider — the typed dissolve-on trigger for the C2 census rows in docs/plans/duplicate-work-graph-lens-design.md section 10a. Until then the cross-run redundancy is state-4 unexpected-emergent only in the formal sense that the model has not yet declared it; the design doc names it, so it is prepared-for in prose and unprepared-for in the graph — the gap this note keeps countable."
 
-fn ci_fleet_frame() -> Frame {
-  Frame { name: "github-actions-ci-runs", kind: UnboundedSiblingsFrame }
+fn ci_fleet_frame() -> LadderFrame {
+  LadderFrame { name: "github-actions-ci-runs", kind: UnboundedSiblingsFrame }
 }
 
-fn ci_workflow_frame() -> Frame {
-  Frame { name: "gunbc-ci", kind: IsolatedChildrenFrame }
+fn ci_workflow_frame() -> LadderFrame {
+  LadderFrame { name: "gunbc-ci", kind: IsolatedChildrenFrame }
 }
 
-fn ci_job_frame(job_id: String) -> Frame {
-  Frame { name: job_id, kind: SharedStateFrame }
+fn ci_job_frame(job_id: String) -> LadderFrame {
+  LadderFrame { name: job_id, kind: SharedStateFrame }
 }
 
-fn ci_step_frame(step_name: String) -> Frame {
-  Frame { name: step_name, kind: SharedStateFrame }
+fn ci_step_frame(step_name: String) -> LadderFrame {
+  LadderFrame { name: step_name, kind: SharedStateFrame }
 }
 
-fn ci_step_site(job_id: String, step_name: String) -> List<Frame> {
+fn ci_step_site(job_id: String, step_name: String) -> List<LadderFrame> {
   [ci_workflow_frame(), ci_job_frame(job_id: job_id), ci_step_frame(step_name: step_name)]
 }
 

@@ -10,7 +10,7 @@ import std.cache_interface {
   PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
 }
 import std.materialization_ladder {
-  CacheProvider, CacheCoverage, Frame,
+  CacheProvider, CacheCoverage, LadderFrame,
   ProviderTier, MemoTier, ArtifactTier, CasTier,
   CacheKeying, ContentKeyed, ExistenceKeyed,
   provider_row, scope_exit_eviction, space_packed_eviction
@@ -64,7 +64,7 @@ fn catalog_tier(p: CacheInterfaceCatalogPlacement, keying: CacheKeying) -> Provi
 
 fn catalog_bounded_projection(
   facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
+  scope: List<LadderFrame>,
   coverage: CacheCoverage,
   tier: ProviderTier
 ) -> CatalogProviderProjection {
@@ -103,7 +103,7 @@ fn catalog_bounded_projection(
 
 fn provider_from_catalog(
   facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
+  scope: List<LadderFrame>,
   coverage: CacheCoverage
 ) -> CatalogProviderProjection {
   let keying = catalog_keying(kd: facts.key_derivation)

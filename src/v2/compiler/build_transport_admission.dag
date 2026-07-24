@@ -9,7 +9,7 @@ import std.effect_grant {
   EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
 }
 import std.filesystem_path_grant { rel_path_has_parent_segment }
-import std.materialization_ladder { Frame, SharedStateFrame }
+import std.materialization_ladder { LadderFrame, SharedStateFrame }
 import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
 import v2.std.host_transport {
   HostTransportDescriptor, WorkspaceFile, RelPath,

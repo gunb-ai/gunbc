@@ -50,11 +50,11 @@ fn materialization_allows_memo_store(m: Materialization) -> Bool {
   }
 }
 
-fn v2_compile_process_frame() -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: "v2-compile-ingest", kind: SharedStateFrame }
+fn v2_compile_process_frame() -> std.materialization_ladder.LadderFrame {
+  std.materialization_ladder.LadderLadderFrame { name: "v2-compile-ingest", kind: SharedStateFrame }
 }
 
-fn v2_compile_process_site() -> List<std.materialization_ladder.Frame> {
+fn v2_compile_process_site() -> List<std.materialization_ladder.LadderFrame> {
   [v2_compile_process_frame()]
 }
 
@@ -216,12 +216,12 @@ fn parse_table_carrier_grounded_on_catalog() -> Bool {
     && (parse_table_memo_materialization() == Memoize)
 }
 
-fn v2_compile_workflow_frame() -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: "v2-compile-workflow", kind: IsolatedChildrenFrame }
+fn v2_compile_workflow_frame() -> std.materialization_ladder.LadderFrame {
+  std.materialization_ladder.LadderLadderFrame { name: "v2-compile-workflow", kind: IsolatedChildrenFrame }
 }
 
-fn v2_compile_run_frame(name: String) -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: name, kind: SharedStateFrame }
+fn v2_compile_run_frame(name: String) -> std.materialization_ladder.LadderFrame {
+  std.materialization_ladder.LadderLadderFrame { name: name, kind: SharedStateFrame }
 }
 
 fn parse_table_memo_plural_demands() -> List<FrameDemand> {

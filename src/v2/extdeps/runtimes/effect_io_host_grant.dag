@@ -14,7 +14,7 @@ import std.effect_grant {
   Grant, Envelope,
   EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
 }
-import std.materialization_ladder { Frame, SharedStateFrame }
+import std.materialization_ladder { LadderFrame, SharedStateFrame }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoResourceBackend,
   EffectIoResourceLocator,

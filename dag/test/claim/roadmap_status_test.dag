@@ -45,7 +45,7 @@ fn is_underivable(v: DriftVerdict) -> Bool {
   match v { Underivable => true  Drifted => false  Clean => false }
 }
 
-fn derivable(prs: List<Int>, title: String) -> RoadmapItem {
+fn make_derivable_item(prs: List<Int>, title: String) -> RoadmapItem {
   DerivableLine { prs: prs, title: title, description: "" }
 }
 fn authored(done: Bool, content: String) -> RoadmapItem {
@@ -76,8 +76,8 @@ fn witness_empty_binding_derives_todo() -> Bool {
 }
 
 fn witness_derivable_done_from_merge() -> Bool {
-  item_is_done(item: derivable(prs: [5445], title: "bound + landed"), merged: [5445])
-    && !item_is_done(item: derivable(prs: [9999], title: "bound + open"), merged: [5445])
+  item_is_done(item: make_derivable_item(prs: [5445], title: "bound + landed"), merged: [5445])
+    && !item_is_done(item: make_derivable_item(prs: [9999], title: "bound + open"), merged: [5445])
 }
 
 fn witness_authored_done_is_authored() -> Bool {
@@ -97,34 +97,34 @@ fn witness_authored_done_underivable() -> Bool {
 }
 
 fn witness_derivable_merged_box_todo_drifts() -> Bool {
-  let item = derivable(prs: [5445], title: "bound + stale")
+  let item = make_derivable_item(prs: [5445], title: "bound + stale")
   is_drifted(v: status_drift(item: item, committed_box: false, merged: [5445]))
     && item_drifted(item: item, committed_box: false, merged: [5445])
 }
 
 fn witness_derivable_unmerged_box_done_drifts() -> Bool {
-  let item = derivable(prs: [9999], title: "bound + premature")
+  let item = make_derivable_item(prs: [9999], title: "bound + premature")
   is_drifted(v: status_drift(item: item, committed_box: true, merged: [5445]))
 }
 
 fn witness_derivable_merged_box_done_clean() -> Bool {
-  let item = derivable(prs: [5445], title: "bound + honest done")
+  let item = make_derivable_item(prs: [5445], title: "bound + honest done")
   is_clean(v: status_drift(item: item, committed_box: true, merged: [5445]))
     && !item_drifted(item: item, committed_box: true, merged: [5445])
 }
 
 fn witness_derivable_unmerged_box_todo_clean() -> Bool {
-  let item = derivable(prs: [9999], title: "bound + honest todo")
+  let item = make_derivable_item(prs: [9999], title: "bound + honest todo")
   is_clean(v: status_drift(item: item, committed_box: false, merged: [5445]))
 }
 
 fn witness_derivable_partial_multi_todo_clean() -> Bool {
-  let item = derivable(prs: [5445, 9999], title: "bound + multi partial")
+  let item = make_derivable_item(prs: [5445, 9999], title: "bound + multi partial")
   is_clean(v: status_drift(item: item, committed_box: false, merged: [5445]))
 }
 
 fn item_against_prs_drifts() -> Bool {
-  let item = derivable(prs: [5445], title: "live-edge stale")
+  let item = make_derivable_item(prs: [5445], title: "live-edge stale")
   item_drifts_against_prs(item: item, committed_box: false, prs: [pr_5445, pr_open_9999])
 }
 
@@ -142,7 +142,7 @@ fn witness_superseded_underivable_no_drift() -> Bool {
 
 fn witness_non_superseded_has_no_successor() -> Bool {
   item_superseded_by(item: authored(done: false, content: "live row")) == ""
-    && item_superseded_by(item: derivable(prs: [5445], title: "bound row")) == ""
+    && item_superseded_by(item: make_derivable_item(prs: [5445], title: "bound row")) == ""
     && item_superseded_by(item: PlainLine { content: "prose row" }) == ""
 }
 

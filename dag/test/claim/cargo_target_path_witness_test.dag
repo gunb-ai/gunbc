@@ -3,19 +3,19 @@ module test.claim.cargo_target_path
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn render(parts: FilePathParts) -> String {
+fn render_file_path_parts(parts: FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {
     if acc == "" { concat(acc, seg) } else { concat(acc, concat("/", seg)) }
   })
 }
 
 fn render_target(target: CargoTarget, package_name: String) -> String {
-  render(parts: cargo_target_source_path(target: target, package_name: package_name))
+  render_file_path_parts(parts: cargo_target_source_path(target: target, package_name: package_name))
 }
 
 fn render_candidates(stem: String) -> String {
   fold(rust_module_candidate_paths(stem: stem), init: "", f: fn(acc, parts) {
-    if acc == "" { render(parts: parts) } else { concat(acc, concat(";", render(parts: parts))) }
+    if acc == "" { render_file_path_parts(parts: parts) } else { concat(acc, concat(";", render_file_path_parts(parts: parts))) }
   })
 }
 
