@@ -96,6 +96,16 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv3_host_lan_endpoint_note: String = "srv3's HOST OS endpoint, absent from this topology until 2026-07-24 — only srv3_bmc_endpoint (192.168.1.192) was modeled, so the model could name srv3's out-of-band controller but not the machine itself. Observed live from the operator's DHCP table (192.168.1.221, MAC 48:21:0B:81:C7:1D) and confirmed addressable by probe (sshd answers on :22). NOT yet workflow-reachable: the fleet-automation-ssh-key is authorized for no user tried (briansrls / ubuntu / root / installserver all refuse publickey), which is the B2 runner-user + A1 secret-materialization gap in gunbc.plans.fleet_subsumption_manual_gaps, not a networking fact. LEASE HONESTY: this address is a DYNAMIC lease, as is srv4's host (192.168.1.196) and srv4's BMC (192.168.1.195); srv1/srv2 hosts and the srv1/srv2/srv3 BMCs are STATIC reservations. A literal address for a dynamically-leased host is only as stable as the lease, so this row is provisional until the operator converts srv3 to a static reservation — at which point the literal becomes a fact rather than an observation."
+
+data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-host-lan",
+  host: Present { value: operator_host_srv3 },
+  address: "192.168.1.221",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
@@ -131,6 +141,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     operator_lan_gateway_endpoint,
     srv1_host_lan_endpoint,
     srv2_host_lan_endpoint,
+    srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,

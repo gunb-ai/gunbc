@@ -28,6 +28,13 @@ data host_identity_srv4_access: DeployAccess = host_identity_ssh_access(
   ssh_host: operator_host_srv4 as NonEmptyStr,
 )
 
+data host_identity_srv3_access_note: String = "srv3 gains the same direct-SSH access shape as srv4 (operator, 2026-07-24: 'same access pattern as srv4'), now that its host OS is a modeled endpoint (gunbc.fleet_intent_network.srv3_host_lan_endpoint, 192.168.1.221) rather than BMC-only. DISTINCT from ci_deploy_srv1_operator_access, which host_toolchain_ensure_access still returns for srv3 — that one is correct for the OsInstallActuator kind, whose actuator legitimately runs FROM srv1 against srv3's BMC, and is NOT a substitute for reaching srv3's own OS. This row is the target-host access; wiring it into host_toolchain_ensure_access requires making that lookup kind-aware (BuildCache targets srv3 itself, OsInstallActuator targets the srv1 actuator host), which is deliberately left for the kind-aware pass rather than silently rewired here. LIVENESS: unproven — as of 2026-07-24 the fleet-automation-ssh-key is authorized on srv3 for no user probed (briansrls/ubuntu/root/installserver all refuse publickey), so this row declares the intended shape and its first live use must fail closed until key distribution lands (fleet_subsumption_manual_gaps A1/B2)."
+
+data host_identity_srv3_access: DeployAccess = host_identity_ssh_access(
+  host: srv3_host,
+  ssh_host: operator_host_srv3 as NonEmptyStr,
+)
+
 fn host_identity_operator_principal_name() -> NonEmptyStr {
   grounded_posix_principal_name(
     p: fleet_posix_principal(key: FleetAccountOperator)
