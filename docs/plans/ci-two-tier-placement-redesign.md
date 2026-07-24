@@ -204,27 +204,81 @@ the 2a native flip (deletes the interpreted-eval class).
 No staged drag-out: **measurements and decisions happen up front; the workflow changes land as
 one PR.** Structure:
 
-- **PR-0 — D0 close-out (routed to the #7129 worker, sequenced first).** The three P1 retention
-  fixes + the whole-schedule arming hoist. Sequenced first for two reasons: retention receipts
-  must be *true* before the redesign PR cites them, and both PRs edit the same `cli_run.rs`
-  retention machinery — parallel landings would conflict textually and semantically.
+- **DELIVERY RESTRUCTURE (operator, 2026-07-24): #7162 grows to hold everything.** The
+  PR-0/PR-1 split is dissolved — #7162 already carries D0 + D3 + D5 (including the parked
+  miscite fix) and absorbs every remaining piece; every "PR-1" reference in this doc now
+  denotes #7162. Consequences, restated honestly:
+  - **Build order inside the PR: Piece 3 (derived clamps) FIRST.** The floor reads `CiSpec`
+    from the PR's own tree, so landing the clamp model in-branch turns the PR's own
+    full-corpus runs green (they currently red on the 1320s wall) — self-greening, and every
+    later piece then develops against a trustworthy CI signal.
+  - **D4's gate restated:** the falsifier cannot green ON MAIN before the PR merges — its fix
+    (D0) is inside the PR. The deletion receipt becomes a **branch falsifier run**: dispatch
+    the falsifier workflow against the PR head (add `workflow_dispatch` to `falsifier.yml` if
+    absent). One green cold run post-D0 serves triple duty: D0's acceptance receipt, D4's
+    deletion receipt, and the probe's cold-side timings.
+  - **D5 completeness:** the hermetic `Env.Get` mock is the named second part of D5's own
+    five-part spec — the `floor_diff_observe` local-verification gap is that missing part,
+    finished in-PR, not a separate harness decision.
+  - The two stage collapses and the clamp constants (§9.8) are in scope per the blessings
+    below; the observation/UX lane stays a SEPARATE PR after this one (its own atomic ruling).
 - **Pre-PR probe (nothing lands).** The D2 measurement pass runs on a branch: a pooled
   warm-cost row for **every** gate (batches 2/4/5 rostered from `gunbc_ci_floor_gates`, not
   guessed), measured on **fleet-class hardware (srv)** — the Pi lesson: a warm win measured
-  only on the 125 GB build box is not evidence for the capped runners. Output: (a) the
-  placement roster, (b) the filled expectation sheet below. This is also where "well within
-  5s" gets its empirical check (operator: "we do some testing ourselves to see what is
-  acceptable").
-- **PR-1 — the single redesign PR.** `CiSpec` placement axis with the measured roster (D3) ·
-  gauntlet split · `DiffBaseline` (D5) · the probe TSV as the receipt basis. **D4 is excluded
-  — resolved 2026-07-24 (review finding: hidden serialization):** its falsifier-green
-  precondition requires PR-0 on main plus up to one 4h cadence window, which cannot sit
-  inside an atomic PR; D4 ships as a **fast-follow micro-PR** (one workflow-authority row +
-  `ci.yml` regen, citing the first green cadence run in its body). D1 needs nothing here
-  (already landed on main); D1b is explicitly excluded — #7129-lineage work in the same file
-  as D0's fixes, belongs to that owner (§9.6). Each piece carries its own witness battery so
-  review is per-piece, but the landing is atomic — and so is the revert: one `git revert`
-  restores today's process wholesale. The concentration is deliberate.
+  only on the 125 GB build box is not evidence for the capped runners. (The fleet IS
+  reachable: branch CI runs execute on the capped srv slots; a `workflow_dispatch` harness on
+  the probe branch is the instrument — no special access. Operator confirmation 2026-07-24:
+  "nothing should be external to you" — trigger freely; run probes serially; sample ≥2 hosts,
+  since the 1344–1629s envelope is ±20% host variance and the roster records value + host
+  basis; the cadence falsifier occupies slots at 0/4/8/12/16/20 UTC.) Output: (a) the placement roster,
+  (b) the filled expectation sheet below. This is also where "well within 5s" gets its
+  empirical check (operator: "we do some testing ourselves to see what is acceptable").
+  **Added 2026-07-24 (lens reintroduction rides PR-1):** the probe also runs the v2-door lens
+  audit over the corpus — route a non-blocking `validate_then_compile` pass and inventory
+  every violation the seed door has been silently stamping past (`empty_complexity_report`) —
+  so PR-1 flips the door knowing its red set in advance instead of discovering it on landing
+  day.
+- **PR-1 — the single ATOMIC redesign PR (operator ruling 2026-07-24: "CI entirely reworked
+  atomically — specifically so we don't have to deal with migrations").** Contents: `CiSpec`
+  placement axis with the measured roster (D3) · gauntlet split (D3b) · `DiffBaseline` (D5) ·
+  the **derived clamp model** replacing the hand-set budget rows (§9.8: per-unit hard max +
+  expected-average aggregate) · **the lens-door reintroduction (`ts-lens-door`)** — the
+  floor's three seed-path compile sites route through the v2 door so
+  `always_required_root_lenses` execute on CI, `empty_complexity_report` stamping deletes,
+  and `lens_contract_complexity` flips AuditOnly → Blocking with a planted-quadratic RED;
+  violations the probe's lens audit surfaced are fixed in-PR or landed as a counted typed
+  quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
+  skip). **D4 rides in-PR with the branch-falsifier receipt** (see the delivery restructure
+  above — a main-cadence green is impossible pre-merge by construction). D1 needs nothing
+  here (landed); D1b stays excluded (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
+  is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
+  concentration is deliberate and operator-chosen.
+  **Two stage collapses (operator-blessed 2026-07-24 — "too many stages" review):** (a) the
+  **regen job folds into the floor as a spec row** — it is already scoped by the same closure
+  authority, and the job boundary costs ~1 min of setup/transfer even when it skips; as a row
+  its skip decision is free, its cold control is a gauntlet row on main, and the serial chain
+  drops to **build → ci → deploy**. (b) the resolve + materialization **receipt gates fold
+  into merge admission** — three instant steps become one. The floor's 7 waves are emergent
+  (the scheduler derives them from the roster's edges), so the PrTier roster yields the
+  3-wave PR shape automatically: fast gates → compile → selected witnesses; waves 4–7 leave
+  the PR path with their gates.
+
+### Envelope: best and worst expected cases (end state)
+
+- **Leaf PR (typical):** build 2.4m warm + fast gates ~2m + small closure compile ~1m + a
+  handful of witnesses + admission ≈ **6–8 min**, every minute attributed to the diff in the
+  preamble.
+- **Worst expected case — a diff touching the entire repo** (hub file, compiler `.rs`, mass
+  plumbing): selection honestly widens to everything, so the PR pays the whole wall once:
+  build 2.4m (warm) + fast gates ~2m + whole-tree compile ~3.5m + full corpus witnesses
+  22–27m (the measured 1344–1629s fleet envelope) + regen row ~5.3m + admission ~0.5m ≈
+  **~35–41 min wall**, clamp ceiling ≈ 44 min on the witness batch, hard backstop the 55-min
+  step cap. This is the honest asymmetry the redesign buys: cost tracks the diff's true blast
+  radius — a whole-repo diff needs the whole wall, a leaf diff never pays it. Tail risks
+  outside the envelope, named: a cold toolchain build (~33m, sccache miss) and a
+  memory-pathology host (the clamp reds it in minutes rather than letting it crawl). The
+  worst case shrinks only via the store-econ/native-flip lane and the W3 pool-build residue —
+  the redesign bounds it, those lanes shrink it.
 
 ### The before/after expectation sheet (X filled by the probe; every row falsification-bounded)
 
@@ -280,13 +334,35 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    (`gunbc_ci_floor_batch_wall_budget_seconds[2]`). Attribution is clean: the same branch
    without the hub files ran green (0d54cdc340) hours earlier. So the honest full-corpus
    discovery wall on a capped slot is ~25 min today, above the 22-min budget — and PR-1
-   necessarily touches `CiSpec` (the placement axis lives there). Options: (a) receipt-noted
-   budget raise per `gunbc_ci_floor_batch_wall_budget_note`, sized by the D2 probe's measured
-   full-corpus wall — the run above is the first receipt; (b) PR-1 lands the discovery
-   improvements first so the full-corpus wall fits. Recommendation: (a), decided at sign-off —
-   the wall fired exactly as designed (a refusal, never a widen); this is calibration debt,
-   not a defect, and silently splitting every future hub-file PR to dodge it would be the
-   absorbing pattern in reverse.
+   necessarily touches `CiSpec` (the placement axis lives there). **Escalated fleet-wide
+   2026-07-24 (operator: "most CI runs are running into budget issues"):** seven observed
+   full-corpus batch-3 walls across five branches — 1344 · 1381 · 1499 · 1543 · 1564 · 1582 ·
+   1629 s — every one over the 1320s budget, every sampled failure with ALL witnesses passing
+   and memory healthy; meanwhile main is 12/12 green through and after #7129's merge (small
+   selected diffs). Verdict: **no regression — the budget is mis-denominated.** A scalar
+   wall-time budget conflates three axes: workload size (selection is diff-proportional BY
+   DESIGN, ~5× swing), host speed (±20% fleet envelope), and the quantity actually worth
+   bounding (per-entry cost creep — ~1.57–2.0 s/entry stable across all seven points). No
+   fixed value is right: tight enough to catch regressions on median runs = guaranteed red on
+   every legitimate plumbing PR; loose enough for full-corpus-on-slow-host = catches nothing.
+   **Durable fix (rides PR-1's CiSpec work): re-denominate** —
+   `budget = fixed_overhead + selected_units × per_unit_rate[host_class]`, with the per-unit
+   rate the operator-signed constant (it is the regression dial the humans already compute by
+   hand in every one of these triages) and the 55-min step timeout staying the absolute
+   backstop. **Operator ruling (2026-07-24): no interim raise — the clamp model lands with
+   PR-1 atomically.** The signed shape is TWO constants per unit class, with different jobs:
+   a **hard max per unit** (witness: 5s — the existing fast-lane authority, unchanged, typed
+   refusal per witness) and an **expected average** as the aggregate coefficient (witness:
+   1s). Batch clamp = overhead + units × average (full corpus ≈ 300s + 2,316 × 1s ≈ 44 min,
+   under the 55-min cap, ~1.6× the honest healthy wall — catches runaway quickly, never
+   refuses legitimate work); the per-unit max protects the tail the average can't see.
+   Changing either constant requires an appended operator-signed line (the existing
+   `budget_note` discipline re-pointed at these constants; the unit count needs no signature —
+   the schedule computes it). The hand-set `gunbc_ci_floor_batch_wall_budget_seconds` rows
+   delete. These clamps are declared interim mechanics: the structural wall is the complexity
+   lens (§8 — every clamp is `cost ≤ a + b·n`, the linearity assertion the lens makes
+   structurally at compile time), and the clamp demotes to host-pathology backstop when the
+   lens goes Blocking.
 
 Sign-offs recorded here with name + date once reviewed.
 
@@ -313,9 +389,15 @@ drops).
 | 12 | `.rs`-diff whole-tree widening | deliberate policy (§3.3, §9.5) | **UNCHANGED BY DESIGN** |
 | 13 | Serial chain ~10m (build 2.4 + regen 5.3 + deploy 2.2) | regen scoping exists; further work unpriced | **OUT-OF-SCOPE**, named residual |
 | 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses the threshold + refusal shape; the per-GATE quantity is the probe's to define (§9.1 caveat) |
-| 15 | Batch-3 budget under the honest full-corpus wall (hub-file PRs refuse) | §9.8 — receipt-noted raise sized by the D2 probe, or land discovery improvements first | **OPEN, priced live** — run 30063529282: 2,315 witnesses all PASS, wall 24m59s vs 22m budget; PR-1 touches CiSpec so it WILL face this; decided at sign-off |
+| 15 | Batch-3 budget under the honest full-corpus wall — fleet-wide, most PR runs red | §9.8 — interim: one signed raise to ~1680s on main; durable: re-denominated budget (overhead + units × rate[host]) in PR-1 | **OPEN, escalated** — 7 walls (1344–1629s) on 5 branches, all witnesses passing, main 12/12 green: no regression, mis-denominated budget |
 
-## 11. D5 — the DiffBaseline brief (in-tree copy)
+## 11. D5 — the DiffBaseline brief (in-tree copy) — **SUPERSEDED 2026-07-24**
+
+**This section is discharged:** #7146 landed the same purpose on main independently and
+more completely (`gunbc.diff_baseline`, a `CiDiffEvent`-modeled pure resolver that HALTS
+the floor with a typed AFFECTED-SET REFUSAL on an unrecognized event, 11 witnesses). #7162
+correctly dropped its own D5 wholesale in favor of it (§3 anti-fork) and carried only the
+parked miscite fix. Kept below as the design record.
 
 The brief was delivered in-chat 2026-07-24 with no in-tree artifact; the implementer could not
 find it. This section is the authoritative copy — self-contained so PR-1 needs no side-channel.

@@ -5,7 +5,7 @@ import std.access { AccessDecision, Permit, Deny }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.hostname_read { hostname_short_read_local }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
@@ -29,11 +29,9 @@ type DeployTargetHostObservation {
 }
 
 fn deploy_target_host_observed_hostname() -> String {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: "hostname -s 2>/dev/null || hostname"))
-  if result.success {
-    trim(result.stdout)
-  } else {
-    ""
+  match hostname_short_read_local() {
+    Present { value: name } => name
+    Absent => ""
   }
 }
 

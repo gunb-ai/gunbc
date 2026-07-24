@@ -624,10 +624,21 @@ pub fn emit_rust_dag_string_to_host_via_seam(
 
 pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
     if (name.clone() == "host_string_text_from_rust_host".to_string()) {
-        Some(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn host_string_text_from_rust_host(host: String) -> String {\n".to_string(), "    host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), ".to_string()), "|acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n".to_string()), "}\n".to_string()))
+        Some(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "pub fn host_string_text_from_rust_host(host: String) -> String {\n"
+                        .to_string(),
+                    "    host.chars().fold(v1_rt::freemonoid_empty::<i64>(), ".to_string(),
+                ),
+                "|acc, ch| v1_rt::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n"
+                    .to_string(),
+            ),
+            "}\n".to_string(),
+        ))
     } else {
         if (name.clone() == "host_string_text_to_rust_host".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat("pub fn host_string_text_to_rust_host(text: String) -> String {\n".to_string(), "    crate::v2_std_algebra::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n".to_string()), "}\n".to_string()))
+            Some(v1_rt::concat(v1_rt::concat("pub fn host_string_text_to_rust_host(text: String) -> String {\n".to_string(), "    v1_rt::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n".to_string()), "}\n".to_string()))
         } else {
             None
         }
@@ -22905,10 +22916,7 @@ pub fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> Option
         } else {
             if (type_name.clone() == "String".to_string()) {
                 if corpus_repr_is_faithful(corpus_repr.clone()) {
-                    Some(
-                        "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()"
-                            .to_string(),
-                    )
+                    Some("v1_rt::freemonoid_empty::<i64>()".to_string())
                 } else {
                     Some("\"\".to_string()".to_string())
                 }

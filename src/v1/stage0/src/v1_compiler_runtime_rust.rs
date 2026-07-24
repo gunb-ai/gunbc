@@ -53,6 +53,10 @@ pub fn rt_unicode_ops() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn code_point(c: String) -> i64 {\n".to_string(), "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n".to_string()), "}\n\n".to_string()), "pub fn from_code_point(cp: i64) -> String {\n".to_string()), "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_start(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_start).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_continue(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_continue).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_emoji_ident(cp: i64) -> bool {\n".to_string()), "    use unicode_properties::emoji::UnicodeEmoji;\n".to_string()), "    use unicode_properties::emoji::EmojiStatus;\n".to_string()), "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n".to_string()), "}\n\n".to_string())
 }
 
+pub fn rt_freemonoid_host_ops() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra\n".to_string(), "// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.\n".to_string()), "pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {\n".to_string()), "    Rc::new(Vec::new())\n".to_string()), "}\n\n".to_string()), "pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n".to_string()), "    let mut out = xs.as_ref().clone();\n".to_string()), "    out.push_back(item);\n".to_string()), "    Rc::new(out)\n".to_string()), "}\n\n".to_string()), "pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A\n".to_string()), "where\n".to_string()), "    F: Fn(A, T) -> A,\n".to_string()), "{\n".to_string()), "    let mut acc = init;\n".to_string()), "    for item in xs.iter() {\n".to_string()), "        acc = f(acc, item.clone());\n".to_string()), "    }\n".to_string()), "    acc\n".to_string()), "}\n\n".to_string())
+}
+
 pub fn rt_rc_container_ops() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// -- Rc-wrapped container operations (FF-8) ---------------------------------\n".to_string(), "// These mirror the bare Vec/HashMap functions above but operate on Rc-wrapped\n".to_string()), "// containers for O(1) clone cost. Generated code using Rc container templates\n".to_string()), "// will call these. Read-only functions (map_get, map_keys, map_values, lookup,\n".to_string()), "// map_contains_key, map_has) work with Rc<HashMap> via auto-deref.\n\n".to_string()), "// take_owned: move out of a uniquely-held Rc; clone when shared. With every\n".to_string()), "// container realized persistently (im), the shared-arm clone is cheap\n".to_string()), "// structural sharing — an ordinary designed path, not a degradation arm, so\n".to_string()), "// no counter and no refusal (the clone-fallback guard class was deleted with\n".to_string()), "// the Rc<std container> carriers it policed).\n".to_string()), "pub fn take_owned<T: Clone>(x: Rc<T>) -> T {\n".to_string()), "    match Rc::try_unwrap(x) {\n".to_string()), "        Ok(v) => v,\n".to_string()), "        Err(rc) => (*rc).clone(),\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n".to_string()), "    let mut v = list;\n".to_string()), "    Rc::make_mut(&mut v).push_back(item);\n".to_string()), "    v\n".to_string()), "}\n\n".to_string()), "pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {\n".to_string()), "    let mut result = a;\n".to_string()), "    Rc::make_mut(&mut result).extend(b.iter().cloned());\n".to_string()), "    result\n".to_string()), "}\n\n".to_string()), "// Every rc_* update here rides a persistent carrier (im HashMap/Vector/\n".to_string()), "// OrdSet — one realization with the interpreter's Value::Map/List/Set), so\n".to_string()), "// make_mut's clone arm is O(1) structural sharing and each update copies an\n".to_string()), "// O(log n) node path — a designed update, never a degradation arm.\n".to_string()), "pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(map: Rc<HashMap<K, V>>, key: K, value: V) -> Rc<HashMap<K, V>> {\n".to_string()), "    let mut m = map;\n".to_string()), "    Rc::make_mut(&mut m).insert(key, value);\n".to_string()), "    m\n".to_string()), "}\n\n".to_string()), "pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(base: Rc<HashMap<K, V>>, overlay: Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>> {\n".to_string()), "    let mut result = base;\n".to_string()), "    let inner = Rc::make_mut(&mut result);\n".to_string()), "    for (k, v) in overlay.iter() {\n".to_string()), "        inner.insert(k.clone(), v.clone());\n".to_string()), "    }\n".to_string()), "    result\n".to_string()), "}\n\n".to_string()), "pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> Rc<HashMap<String, V>> {\n".to_string()), "    Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())\n".to_string()), "}\n\n".to_string()), "pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> { Rc::new(HashMap::new()) }\n\n".to_string()), "impl<T: Clone> V2Concat for Rc<Vec<T>> {\n".to_string()), "    fn v1_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }\n".to_string()), "}\n\n".to_string())
 }
@@ -107,22 +111,25 @@ pub fn rust_runtime_source() -> String {
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                rt_header(),
-                                                rt_text_lookup_work_counter(),
+                                                v1_rt::concat(
+                                                    rt_header(),
+                                                    rt_text_lookup_work_counter(),
+                                                ),
+                                                rt_resolution_silent_pick_telemetry(),
                                             ),
-                                            rt_resolution_silent_pick_telemetry(),
+                                            rt_concat_trait(),
                                         ),
-                                        rt_concat_trait(),
+                                        rt_string_ops(),
                                     ),
-                                    rt_string_ops(),
+                                    rt_collection_ops(),
                                 ),
-                                rt_collection_ops(),
+                                rt_rc_container_ops(),
                             ),
-                            rt_rc_container_ops(),
+                            rt_scanner_ops(),
                         ),
-                        rt_scanner_ops(),
+                        rt_unicode_ops(),
                     ),
-                    rt_unicode_ops(),
+                    rt_freemonoid_host_ops(),
                 ),
                 rt_hash_ops(),
             ),

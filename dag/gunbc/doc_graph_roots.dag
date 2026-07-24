@@ -145,6 +145,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "roadmap-workspace-ux-plan",
+    work: DeclarationRef { module_path: "gunbc.roadmap_page", decl_name: "roadmap_page_for_authority", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the three pillars land on their carriers — P2's sessions surface on belt B's route model, P3's motion register in gunbc.design.*, P1b on the page — and the plan registers as a gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-two-tier-placement-redesign",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },

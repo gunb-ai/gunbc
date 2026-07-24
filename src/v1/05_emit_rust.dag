@@ -319,14 +319,14 @@ fn rust_host_string_seam_fn_emit(name: String) -> String? {
   if name == "host_string_text_from_rust_host" {
     Present { value: concat(
       "pub fn host_string_text_from_rust_host(host: String) -> String {\n",
-      "    host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), ",
-      "|acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n",
+      "    host.chars().fold(v1_rt::freemonoid_empty::<i64>(), ",
+      "|acc, ch| v1_rt::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n",
       "}\n"
     ) }
   } else if name == "host_string_text_to_rust_host" {
     Present { value: concat(
       "pub fn host_string_text_to_rust_host(text: String) -> String {\n",
-      "    crate::v2_std_algebra::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n",
+      "    v1_rt::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n",
       "}\n"
     ) }
   } else {
@@ -8057,7 +8057,7 @@ fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> String? {
   else if type_name == "Bool" { Present { value: "false" } }
   else if type_name == "String" {
     if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-      Present { value: "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()" }
+      Present { value: "v1_rt::freemonoid_empty::<i64>()" }
     } else {
       Present { value: "\"\".to_string()" }
     }

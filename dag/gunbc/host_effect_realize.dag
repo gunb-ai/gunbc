@@ -125,7 +125,7 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRefused,
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
-import gunbc.host_identity_observation_script { host_identity_short_hostname_script }
+import gunbc.hostname_read { hostname_short_read }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
   posix_effective_principal_read_argv,
@@ -156,6 +156,7 @@ type ResolvedHostEffectCell =
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
       node: ComputeHost,
       intent: NbdProxyServeTransportIntent,
@@ -262,7 +263,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
                 HostIdentityShortHostnameRead =>
-                  ShellOnHost { node: n, script: host_identity_short_hostname_script }
+                  HostnameReadOnHost { node: n }
                 DeployAccessPreflight {} =>
                   IncompatibleCell {
                     reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
@@ -1398,6 +1399,29 @@ fn realize_set_hostname_cas_on_host(
   )
 }
 
+fn realize_hostname_read_on_host(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match hostname_short_read(transport: transport) {
+    Present { value: name } =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
+        intent: intent,
+      )
+    Absent =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: HostIdentityShortHostnameRead hostname -s read failed; fail-closed",
+        },
+        intent: intent,
+      )
+  }
+}
+
 fn realize_nbd_proxy_session_on_host(
   intent: NbdProxyServeTransportIntent,
   lease_key: NonEmptyStr,
@@ -1454,6 +1478,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_provision_build_cache(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+    HostnameReadOnHost { node: _ } =>
+      realize_hostname_read_on_host(transport: transport, intent: intent)
     NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
       realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
     ReceiptEmitOnHost { node: _, lines: lines } =>
@@ -1610,6 +1636,8 @@ fn host_effect_apply_gated(
           realize_provision_build_cache(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+        HostnameReadOnHost { node: _ } =>
+          realize_hostname_read_on_host(transport: transport, intent: intent)
         NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
           realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
         ReceiptEmitOnHost { node: _, lines: lines } =>
@@ -1672,6 +1700,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
