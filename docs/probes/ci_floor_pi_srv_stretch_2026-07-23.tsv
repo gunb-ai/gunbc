@@ -1,0 +1,18 @@
+phase	ci_wall_anchor	mechanism_verified	srv1_probe	pi3_probe	pi_srv_stretch	shape
+preamble	1.9m	executor startup + plan resolve + naming hygiene	—	—	—	cpu
+compile_clean_receipt	3.6m	claim_executor internal whole-tree --target dag compile via shared index; gate consumes receipt (NOT the CLI transport)	3-root standalone CLI compile 3m29s/5.9GB (see stage rows)	2-root standalone pipeline completes in >4h	—	mixed
+batch1_cheap_gates	10.1m	12 cold gunbc claim children (layering 7=289.8s, extdeps 5=189.8s, drift in-process) + ~2.1m executor gate-entry cold resolve; children SERIAL, wall=sum	pooled 12 claims 93.4s	pooled 12 claims 4375s	46.8x	memory
+batch2_compile_gate_consume	0.5m	reads compile-clean receipt (27s)	—	—	—	cpu
+batch3_discovery	12.8m	resolve 643.5s / eval 18.4s; 1738/2206 rows skipped-without-resolve; 643s buys the 468-row affected closure	—	—	—	memory
+batch4_wet_corpora	1.3m	20+53 explicit witness rows; resolve 23s + eval 54s	—	—	—	cpu
+batch5_emit_host	0.1m	emit-host MVP smoke (7s)	—	—	—	cpu
+batch6_source_root_ingest	12.15m	discover_source_root_ingest bin = 0.008-20s (reads 2 fixture files); 12 cold gunbc claim children across 3 sub-gates = 702s	pooled 3 real_ingest claims 106.5s	pooled 3 real_ingest claims 2639s	24.8x	memory
+batch7_reads_real_bytes	3.3m	2 cold gunbc claim children (119.6s + 78.3s) = 100% of wall	—	—	—	memory
+floor_tail_teardown	2.6m	receipts ~1s; ~2.5m Drop of 16GB retained store (swap 5.5->9.4GB, high_events 2792->4785)	—	—	—	memory
+post_floor_selection_control	4m51s	floor_skip_discovery_witness per-PR control; NO audit ledger row	—	—	—	cpu
+single_child_clean_tree	49.8s (CI)	one gunbc run --claim-run cold process	47.2s	389s	8.2x	cpu
+whole_tree_strict_resolve	n/a	measure_whole_tree_resolve one-pass	23m48s / 31.4GB RSS	infeasible (>13GB total mem)	—	memory
+compile_clean_reconcile_share	n/a	reconcile stage as fraction of compile-clean wall (3-root: frontend 5.3s, normalize 0.9s, reconcile 175.7s, analyses 0.5s, emit 20.1s)	84% (175.7s of 209.5s, 3-root)	—	—	memory
+compile_emit_stage	n/a	emit stage (collect+serialize) of whole-tree compile; 2-root basis for the stretch	~29s (2-root) / 20.1s (3-root)	2.7h (2-root; dag-serialize 2.5h)	~337x	memory
+cli_compile_clean_verdict	n/a	standalone gunbc compile --target dag over the 3 witness-layer roots exits rc=1 with 2652 UnlistedImportUse errors (identical count 2-root and 3-root); CI floor gate greens via the executor receipt path, not this CLI transport	rc=1 / 2652 errors	rc=1 (same class)	—	side-finding
+

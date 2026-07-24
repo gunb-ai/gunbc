@@ -3,8 +3,22 @@ use std::rc::Rc;
 
 use v1_compiler::v1_compiler_emit_rust::{
     render_rust_text_carrier, rust_applied_type_base, rust_named_type_base,
+    rust_string_grounded_type_alias_decl_line,
 };
 use v1_compiler::v1_compiler_infer_emit_info::RustCorpusRepr;
+
+#[test]
+fn faithful_string_type_alias_decl_grounds_to_native_string() {
+    let decl = rust_string_grounded_type_alias_decl_line();
+    assert!(
+        decl.contains("String = std::string::String"),
+        "String type alias must ground to native std::string::String (Gate-1 text carrier), got {decl:?}"
+    );
+    assert!(
+        !decl.contains("FreeMonoid"),
+        "grounded String alias must not render FreeMonoid (got {decl:?})"
+    );
+}
 
 #[test]
 fn faithful_string_leaf_base_grounds_to_native_string() {
