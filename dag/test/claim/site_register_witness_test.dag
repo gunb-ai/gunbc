@@ -18,12 +18,10 @@ import gunbc.site.tokens {
 }
 import gunbc.design.interaction {
   BehaviorRow, InteractiveElement,
-  Approach, StarElement,
+  Approach, Enter, Receipt,
+  StarElement, HashElement,
   element_id_eq, element_id_key,
   coverage_gaps, coverage_complete, verb_key,
-}
-import gunbc.site.interaction {
-  Enter, Receipt, HashElement,
 }
 import gunbc.roadmap_style { roadmap_rules }
 import gunbc.site.mark {
