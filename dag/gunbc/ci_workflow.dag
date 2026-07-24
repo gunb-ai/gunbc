@@ -16,7 +16,6 @@ import gunbc.ci_spec {
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
-import gunbc.ci_diff_defaults { ci_default_branch_name }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
@@ -40,6 +39,7 @@ import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
+import gunbc.repo_identity { gunbc_default_branch_name }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
@@ -634,9 +634,9 @@ data ci_workflow: Workflow = {
   name: "ci",
   on: [
     WorkflowDispatch { inputs: [] },
-    Push { branches: [ci_default_branch_name], paths: [] },
+    Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
-      branches: [ci_default_branch_name],
+      branches: [gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
     },
     MergeGroup

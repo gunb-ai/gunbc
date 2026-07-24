@@ -1,21 +1,27 @@
 module gunbc.site.moodboard
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.site.markup { txt, el, el_class }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.css.properties { Cursor }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.site.register_principles {
+import gunbc.design.principles {
   RegisterPrinciple, register_principles, register_thesis, principle_id_key,
 }
-import gunbc.site.tokens {
+import gunbc.design.theme {
   Theme, ThemeRole, RoleAssignment, site_themes, theme_roles, night_theme, day_theme,
   themes_coherent, theme_root_css, assignment_paint, role_key, role_eq, role_var,
-  TimingToken, timing_scale,
-  BuildRule, StaticRule, ResponseRule, TriggerShape, SelfResponse, WithinSubject, ContainerHas,
-  MotionTrigger, OnHover, OnFocusVisible,
-  CssDecl, decl, role_decl, serialize_rules, reduced_motion_block,
-  CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
+  CanvasRole, role_decl,
+}
+import gunbc.design.material {
+  TimingToken, timing_scale, respond_fast, reveal_deliberate,
+  BuildRule, StaticRule, MotionTrigger, OnHover, SelfResponse,
+  TriggerShape, CssDecl, decl, serialize_rules, reduced_motion_block,
+}
+import gunbc.site.tokens {
+  ResponseRule, WithinSubject, ContainerHas, OnFocusVisible,
+  SurfaceRole, BorderRole, TextRole, TextDimRole,
   FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
 }
 import gunbc.design.interaction {
@@ -24,7 +30,6 @@ import gunbc.design.interaction {
   StarElement, HashElement, SwatchElement, element_id_eq,
   coverage_gaps, verb_key, response_key,
 }
-import gunbc.design.material { TimingToken, respond_fast, reveal_deliberate }
 import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
@@ -43,16 +48,6 @@ data moodboard_behaviors: List<BehaviorRow> = [
   BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
   BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
 ]
-
-fn txt(s: String) -> MarkupNode { TextNode { text: s } }
-
-fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [], children: children }
-}
-
-fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
-}
 
 fn approach_triggers() -> List<MotionTrigger> {
   [OnHover, OnFocusVisible]

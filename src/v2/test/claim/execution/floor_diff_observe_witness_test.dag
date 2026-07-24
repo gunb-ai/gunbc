@@ -1,8 +1,7 @@
 module v2.test.execution.floor_diff_observe_witness
 
 import std.logic { Bool }
-import gunbc.ci_spec { DiffPolicy, DiffMergeBase }
-import gunbc.ci_diff_defaults { OperatorOverride }
+import gunbc.ci_spec { DiffMergeBase }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
@@ -10,9 +9,9 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffOk,
   NameStatusDiffFail,
-  floor_observe_git_diff_unified,
+  floor_run_git_diff_unified,
+  floor_run_git_diff_name_status,
   floor_observe_git_diff_unified_for_ci,
-  floor_observe_git_diff_name_status,
   floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,13 +26,7 @@ fn witness_ci_policy_observation_succeeds() -> Bool {
 }
 
 fn witness_invalid_base_fails_closed() -> Bool {
-  match floor_observe_git_diff_unified(
-    policy: DiffPolicy {
-      base: OperatorOverride { ref: "__gunbc_invalid_diff_base__" },
-      head: "HEAD",
-      mode: DiffMergeBase
-    }
-  ) {
+  match floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     UnifiedDiffFail { reason: _ } => true
     UnifiedDiffOk { text: _ } => false
   }
@@ -47,13 +40,7 @@ fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
 }
 
 fn witness_invalid_base_name_status_fails_closed() -> Bool {
-  match floor_observe_git_diff_name_status(
-    policy: DiffPolicy {
-      base: OperatorOverride { ref: "__gunbc_invalid_diff_base__" },
-      head: "HEAD",
-      mode: DiffMergeBase
-    }
-  ) {
+  match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     NameStatusDiffFail { reason: _ } => true
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
   }

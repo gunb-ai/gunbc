@@ -28,8 +28,8 @@ import v2.std.dependency {
   EffectDependsOn,
   TypeDependsOn
 }
+import v2.lens.common.algebraic_composition { DataDependent }
 import v2.lens.parallelism {
-  DataDependent,
   EffectCoupled,
   ParallelismFact,
   parallelism_fact_eq,

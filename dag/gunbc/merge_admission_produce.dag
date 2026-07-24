@@ -3,7 +3,7 @@ module gunbc.merge_admission_produce
 import std.types { ContentHash, CommitSha, String, Int, List, Bool, GitRef }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.ci_diff_defaults { ci_default_baseline_ref }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 import extdeps.git
 import extdeps.github.checks {
   CheckConclusion,
@@ -20,7 +20,7 @@ import gunbc.merge_admission {
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
-data merge_admission_merge_base_ref: String = ci_default_baseline_ref as String
+data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
 
 data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
 

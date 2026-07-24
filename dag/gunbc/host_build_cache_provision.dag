@@ -16,7 +16,7 @@ import gunbc.host_effect { HostEffect, ProvisionBuildCache }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
 
-data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
+data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling the forbidden absorbing fallback (the -u RUSTC_WRAPPER cache-drop). The live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2): the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts — no cache-drop widen remains. This fixture stays as the RED control guarding the verdict fold against re-introduction; it must never ship as the authority."
 
 data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
 
@@ -37,16 +37,6 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_retry_escalation_level2",
-    field: WholeDeclaration,
-  }
-}
-
 type BuildCacheDaemonObservation
   = DaemonStatsOk { stats_line: String }
   | DaemonAbsent

@@ -3,6 +3,7 @@ module v2.test.manual.nominal_distinctness_cross_call
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {  compile_ingest_staging
 }
+import v2.std.verification { test_claim_input }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -10,7 +11,6 @@ import v2.compiler.eval {
   eval_context_with_semantics,
   eval_test_claim_subject,
   run_test_claim,
-  test_claim_input
 }
 import v2.compiler.infer {
   InferredFacts,
