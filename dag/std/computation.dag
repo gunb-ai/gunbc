@@ -10,6 +10,7 @@ import std.termination {
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  PointwisePowerCollectionProfile,
   FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
   PartialFunctionProfile,
   kernel_algebra_profile
@@ -147,6 +148,7 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
     FreeMonoidCollectionProfile     => Present { value: CollectionFold }
     FreeMonoidScalarProfile         => Present { value: CollectionFold }
     BooleanAlgebraCollectionProfile => Present { value: CollectionFold }
+    PointwisePowerCollectionProfile => none
     PartialFunctionProfile          => Present { value: CollectionFold }
     OrderedRingProfile              => Present { value: ArithmeticRepeat }
     ApproximateFieldProfile         => Present { value: ArithmeticRepeat }

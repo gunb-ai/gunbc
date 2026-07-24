@@ -18,7 +18,7 @@ data python_keywords: Map<String, String> = {
 }
 
 data python_container_templates: Map<String, String> = {
-  "list": "list[\{0\}]", "set": "set[\{0\}]",
+  "list": "list[\{0\}]", "set": "set[\{0\}]", "pointwise_power": "set[\{0\}]",
   "optional": "Optional[\{0\}]", "map": "dict[\{0\}, \{1\}]",
   "free_monoid": "list[\{0\}]", "partial_function": "dict[\{0\}, \{1\}]",
   "boolean_algebra": "bool"

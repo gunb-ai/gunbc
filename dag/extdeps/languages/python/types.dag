@@ -39,6 +39,13 @@ data python_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
+  { algebra: "PointwisePower",
+    template: "set[\{0\}]",
+    arity: 1,
+    identity_expr: "set()",
+    import_path: none,
+    is_copy: none },
+
   { algebra: "PartialFunction",
     template: "dict[\{0\}, \{1\}]",
     arity: 2,

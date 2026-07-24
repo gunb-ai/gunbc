@@ -8,7 +8,7 @@ use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
-pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
+pub use crate::std_algebra::{FreeMonoid, PartialFunction, PointwisePower};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -141,8 +141,8 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Set".to_string(), "PointwisePower".to_string());
+            __m.insert("set".to_string(), "PointwisePower".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
@@ -151,6 +151,8 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
+            __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
+            __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
             Rc::new(__m)
         };
     }
@@ -163,8 +165,8 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Set".to_string(), "PointwisePower".to_string());
+            __m.insert("set".to_string(), "PointwisePower".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
@@ -210,7 +212,7 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
+pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
 
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 

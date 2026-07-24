@@ -177,7 +177,7 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 fn inhabitant_test_names() -> List<String> {
-  canonical_container_names()
+  concat(canonical_container_names(), ["PointwisePower"])
 }
 
 fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
@@ -212,10 +212,17 @@ fn copy_tests() -> List<CoercionTestEntry> {
   }
 }
 
+fn unique_inhabitants_for_template_tests(inhs: List<InhabitantDecl>) -> List<InhabitantDecl> {
+  inhs |> fold(init: [], f: fn(acc, inh) {
+    if acc |> any(prev => prev.template == inh.template && prev.arity == inh.arity) { acc }
+    else { concat(acc, [inh]) }
+  })
+}
+
 fn template_application_tests() -> List<CoercionTestEntry> {
   let targets = [Rust, Python, Go]
   let assertions = targets |> flat_map(t =>
-    let inhs = target_inhabitants(target: t)
+    let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
     let int_target = coerce_primitive_type(target: t, dag_name: "Int")
     let str_target = coerce_primitive_type(target: t, dag_name: "String")
     inhs |> flat_map(inh =>
