@@ -67,6 +67,58 @@ already carries scale (dimensions) and theme (color roles). It gains:
   with a modeled mute state — staged after motion because motion carries zero
   annoyance/permission risk.
 
+## The exemplar — the dispatch button's story (operator-directed 2026-07-24: one example,
+end to end, perfect transitions, representing workflow stages)
+
+**The root principle (operator, 2026-07-24, for `gunbc.design.principles`): simulate real
+analog behavior in a digital space.** Real things move and make noise; websites never get
+that right. Every control is an individual physical instrument — the car-knob rule. The
+consequences are mechanical, not decorative: a control has **travel** (press = downward
+travel; release = spring return, which is why the settle curve overshoots), **mass**
+(durations derive from implied size — small control, short travel, fast but never 0ms),
+**detents** (the settle beat is the click catching), and **mechanical state** (a knob
+physically sits in its position — states are stable configurations, and an idle mechanism
+is STILL, which is why still-until-touched and the keyframes wall are analog honesty, not
+austerity). A control that can't engage gives blocked travel — the refusal dip. Operation
+sound is the mechanism's click, not a notification chime — the named later axis, now with
+its design language fixed in advance.
+
+What already exists (the register is ahead of the critique): `gunbc.design.interaction`
+models verbs × responses × timing tokens with a coverage law, and the button already has
+rows — Approach → border-brighten (hover+focus, 90ms) and Dispatch → press receipt
+(OnActive background flip). What's missing is physical motion (responses are color-only),
+an overshoot easing, and everything AFTER the click. The story:
+
+1. **rest** — quiet confidence: figure-role border, still. *Approach*: border brightens +
+   1px lift (extends the existing row with a transform response).
+2. **pressed** — acknowledgment on pointer-DOWN, action on UP (the video-game rule): scale
+   0.97, 90ms sharp. Extends the existing Receipt row with the transform.
+3. **requested** — the POST is in flight: label → `…`, dimmed, **still** (no pulse — the
+   register's keyframes wall is deliberate and stays; a looping pulse is ambient motion.
+   Distinctness carries the state, not movement). Re-clicks inert.
+4. **spawned** — the belt accepted: the settle beat — scale 1.0 → 1.04 → 1.0 on the new
+   `settle_spring` token (~250ms, back-out curve `cubic-bezier(0.34, 1.56, 0.64, 1)`) —
+   and the button MORPHS into the workflow-stage chip: `session · spawned`.
+5. **working** — live stages from the sessions surface (P2a): `working → quiet 4m → …`,
+   each stage CHANGE animating on `reveal` timing; each steady state still. This is where
+   the button becomes the workflow representation the operator asked for.
+6. **done** — settle beat + check, then the row's done-recede takes over; button returns
+   to rest, re-armed (the filed re-dispatch one-shot bug is in scope — "perfect lifecycle"
+   includes the second dispatch).
+7. **refused** — composed refusal: boundary border + a single sharp dip-and-return (scale
+   0.97 → 1.0, transition-only — no shake keyframes), typed reason surfaced inline.
+
+**Laws applied:** every edge in the state machine is a row (state × transition × timing
+token — total, censused like coverage_gaps; a state pair without a row is a wall
+violation); steady states are still, transitions animate (still-until-touched preserved —
+the keyframes wall is NOT breached); every rendered stage is a projection of belt/session
+fact (every response true). **Build order:** (a) `settle_spring` + transform-response
+vocabulary in the register; (b) the state-machine rows + CSS realization on today's states
+(rest/pressed/requested/ok/refused — landable now); (c) the P2a-mini sessions read + client
+poll for stages 5–6 + the re-dispatch fix. Acceptance: dispatch a real node on srv1 and
+watch the full arc; a planted refusal shows the refusal choreography; the state-machine
+totality witness reds on any un-tokenized edge.
+
 ## Sequencing
 
 P1b and P3a/P3b have no dependencies — land now. P2a/P2b are belt-B-lane work (the serve
