@@ -1,0 +1,90 @@
+module gunbc.host_authorized_keys_reconcile
+
+import std.types { String, List, Bool, NonEmptyStr }
+import extdeps.access.ssh { SshPublicKey, SshKeyAlgorithm, Ed25519 }
+import gunbc.fleet_ssh_access {
+  fleet_authorized_keys,
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+}
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+}
+
+data host_authorized_keys_reconcile_authority_note: String = "Instantiates the grain-agnostic gunbc.membership_reconcile spine for one host's ~/.ssh/authorized_keys, keyed by SSH key IDENTITY. This is the durable fix for the srv3 first-contact gap (fleet_subsumption_manual_gaps A1/B2) AND for every future key rotation, both instances of the same silent drift: authorized_keys is materialized once at install and never re-converged against fleet_ssh_access.fleet_authorized_keys, so a key added to the model after a host was installed never reaches that host. srv3 is the live proof: installed via the pre-#7027 lane before fleet_automation_ssh_key existed, so its ubuntu authorized_keys carries the operator macbook key (operator reach) but NOT fleet-automation (workflow reach) — observed 2026-07-24. This module does NOT fork the spine: member = SshPublicKey, and the (key_of, key_eq, value_eq, ownership_of) bundle below is passed to the ONE membership_reconcile fn (a Realization — one fn, N bundles; a forked reconcile would mean the genericity bought nothing). key_of returns the key MATERIAL (the cryptographic identity), never the whole line, so a comment-only drift is Modified (re-upsert the line), not Remove+Add (which would delete then re-add the key)."
+
+fn authorized_key_identity(k: SshPublicKey) -> NonEmptyStr {
+  k.material
+}
+
+fn authorized_key_identity_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn ssh_algorithm_eq(a: SshKeyAlgorithm, b: SshKeyAlgorithm) -> Bool {
+  match a {
+    Ed25519 => match b { Ed25519 => true }
+  }
+}
+
+fn authorized_key_value_eq(a: SshPublicKey, b: SshPublicKey) -> Bool {
+  ssh_algorithm_eq(a: a.algorithm, b: b.algorithm)
+    && (a.material as String == b.material as String)
+    && (a.comment == b.comment)
+}
+
+data fleet_owned_key_materials_note: String = "The registry of key materials the FLEET manages — the ownership authority the R5 teardown-owned-only wall reads for a Removed key. DERIVED from fleet_authorized_keys (single authority, never a hand-copied material list), so today it is exactly the two declared fleet keys. A key NOT in this registry (an out-of-band key like node-orch@srv2 or briansrls@srv1 hand-added in the node-orch bootstrap era) has NO ownership record -> ownership_of returns Absent -> OwnershipUnknown -> the spine REFUSES to tear it down (fail-closed; we never delete a key we did not place). ROTATION EXTENSION (dissolution trigger, not built here): when a fleet key rotates, its retired material must be appended to a retired-owned list so the Removed old key resolves Owned -> teardown-eligible; until that lands, a rotated-out fleet key drops out of this derived registry and is REFUSED rather than removed — a safe leak, not a silent delete. That extension is what makes the Owned teardown arm non-degenerate; today every teardown-refusal is OwnershipUnknown by construction, which is honest for the srv3 case (zero teardowns needed)."
+
+fn fleet_owned_key_materials() -> List<NonEmptyStr> {
+  map(fleet_authorized_keys, k => k.material)
+}
+
+fn authorized_key_ownership(k: SshPublicKey) -> Ownership? {
+  if any(fleet_owned_key_materials(), m => m as String == k.material as String) {
+    Present { value: Owned }
+  } else {
+    Absent
+  }
+}
+
+data host_authorized_keys_reconcile_note: String = "desired = fleet_authorized_keys (the model's declared key set); observed = a live read of the host's authorized_keys (an OBSERVATION effect, staged — the fixtures below are point-in-time reads, not the live provider). The apply-grain POLICY is deliberately NOT resolved in this module: authorized_keys is an EVERYTHING-ON-HOST observed scope (foreign keys are normal, not anomalies), which is exactly the scope where membership_reconcile's wholesale-refuse policy (membership_effects) would be wrong — a foreign key's refusal would block our owned upsert. That is the conscious wholesale-vs-siblings-continue call the spine reserves to a human (membership_effects_wholesale_refuse_policy_note); this module produces the PLAN grain only and leaves the apply projection to that decision."
+
+fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey> {
+  membership_reconcile(
+    desired: fleet_authorized_keys,
+    observed: observed,
+    key_of: authorized_key_identity,
+    key_eq: authorized_key_identity_eq,
+    value_eq: authorized_key_value_eq,
+    ownership_of: authorized_key_ownership,
+  )
+}
+
+data srv3_observed_authorized_keys_note: String = "OBSERVED, not intended: a point-in-time read of ubuntu@192.168.1.221 ~/.ssh/authorized_keys, run by the operator from the macbook 2026-07-24 (the macbook key is the one credential that reaches srv3 today). node-orch@srv2 and briansrls@srv1 are out-of-band keys the fleet does not own; macbook-m4 is reused from fleet_ssh_access (single authority) since it is byte-identical to the declared operator key. This is a fixture standing in for the staged live observation provider, marked so it is never mistaken for a desired/intent row."
+
+data srv3_observed_node_orch_srv2_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIIQp4ylHo8mQNGwvSg7ftW1LSXNFEPuwVjsDKvdqJnkj",
+  comment: "node-orch@srv2",
+}
+
+data srv3_observed_briansrls_srv1_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIL28hOj+Q0ddJuX7OUslZpJOuHMZGDxoXCR8MA6iWpdQ",
+  comment: "briansrls@srv1",
+}
+
+data srv3_observed_authorized_keys: List<SshPublicKey> = [
+  srv3_observed_node_orch_srv2_key,
+  srv3_observed_briansrls_srv1_key,
+  operator_macbook_ssh_key,
+]
+
+data srv4_observed_authorized_keys_note: String = "OBSERVED read of ubuntu@192.168.1.196 ~/.ssh/authorized_keys (operator, macbook, 2026-07-24). srv4 was installed via #7027 with fleet_authorized_keys in the seed, so it carries EXACTLY the two declared fleet keys and nothing foreign — the CONVERGED control: reconciling it against desired yields an empty plan (0 upsert / 0 teardown / 0 refusal). Both keys reused from fleet_ssh_access (single authority)."
+
+data srv4_observed_authorized_keys: List<SshPublicKey> = [
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+]
