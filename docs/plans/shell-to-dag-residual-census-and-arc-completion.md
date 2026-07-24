@@ -13,6 +13,19 @@ So srv1/srv2 subsumption and srv3 bringup are the **same** work seen twice: gene
 
 ---
 
+## 0b. Finding — modeled ops whose ONLY realization is a shell escape where a NATIVE handler is correct (transport-decomposition lane; filed 2026-07-24, do-not-fix-here)
+
+A distinct axis from §1's *emission* census: these are ops whose **interface shape is right** but whose **single hardwired transport is wrong** — the verbatim §3(b) "single hardwired transport is the N×M-adapter trap" tell. The shape belongs to the dependency; the transport is a Realization *handler, one of N* (§2). Each of these has exactly one handler — `shell` — where a **native in-process handler** is the correct realization when locality is `OnTarget`, and `shell`/`ssh` is the handler only when the target is another process on another host.
+
+| op (extdeps) | modeled transport | native handler that's missing | receipt |
+| --- | --- | --- | --- |
+| `shell.Env.Get` (`extdeps/shell/shell.dag:42`) | `shell { argv: ["printenv", "{name}"] }` | `std::env::var` — reading an env var **the process already holds in its own environment**. Realized today as `wet_env_var` spawning `printenv` (`v1_interpreter.rs:5096`). Reading your own environment isn't a host effect at all. | floor diff-observation spawns 5 `printenv` children per pass (compile-clean scope + discovery selection), repeated per floor pass — pure log clutter; ~ms each, **not a floor-time lever** |
+| `shell.Which.Check` (`extdeps/shell/shell.dag:57`) | `command -v` (and the ssh `command -v <tool>` ×2 at §3's `host_effect_realize`) | native path-search when `OnTarget`; ssh `command -v` only for a remote host | sibling flagged in the transport review (2026-07-24); same root |
+
+**One root, three lanes** (operator, 2026-07-24): these two, the transport review's `test -x`/`command -v` hand-strings for ssh, and the wall worker's fight are all *modeled operations whose only realization is a shell escape*. The dissolution is the transport-decomposition Realization: **same operation, two handlers, native chosen when locality is `OnTarget`** — `Env.Get`'s native read is the lane's **cheapest first consumer** (a pure in-process read, no `host_effect_apply` even). Not scheduled here; recorded so the deficit is counted and prioritizable (§6), never absorbed into "it's only a few ms."
+
+---
+
 ## 1. Residual-shell census (current tree)
 
 Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaffold" = `serialize_bash` retained only for a test.
