@@ -6,10 +6,13 @@ import extdeps.accessibility.wcag_contrast {
   hsl_contrast_ratio_x100, hsl_contrast_at_least,
   wcag_aa_normal_text_hundredths, wcag_aa_large_text_and_graphics_hundredths,
 }
-import gunbc.site.tokens {
+import gunbc.design.theme {
   Theme, assign, theme_contrast_ok,
   night_theme, day_theme, night_canvas,
-  CanvasRole, SurfaceRole, TextRole, TextDimRole, FigureRole, FocusRole,
+  CanvasRole,
+}
+import gunbc.site.tokens {
+  SurfaceRole, TextRole, TextDimRole, FigureRole, FocusRole,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

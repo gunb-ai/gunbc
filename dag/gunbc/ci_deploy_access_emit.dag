@@ -4,11 +4,11 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { fold_list, any }
+import gunbc.fleet_posix_accounts { grounded_posix_principal_name }
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
   deploy_access_refusal_prefix,
-  grounded_posix_principal_name,
 }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
