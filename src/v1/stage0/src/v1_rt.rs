@@ -161,7 +161,7 @@ pub fn resolution_silent_pick_record_global_bare_lcp_tie(
 // parent closure, with typed Ambiguous refusals. Host-side setter only; no .dag
 // surface can flip it (no escape hatch — a flip is an explicit host decision).
 thread_local! {
-    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(true) };
+    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn name_resolution_policy_set_namespace_only(enabled: bool) {
