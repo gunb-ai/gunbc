@@ -1695,6 +1695,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                         name_span: span
                       ))
                     Absent =>
+                      let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
+                      if (var_ambiguity_cands |> count) > 0 {
+                        ambiguous_reference_refusal(name: name, candidates: var_ambiguity_cands, span: span, scope: scope)
+                      } else {
                       let err_texpr = make_named_expr_node(
                         name: name,
                         expr_data: ExprVar { binding_kind: none },
@@ -1710,6 +1714,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                           span: span,
                           module_name: scope.module_name
                         )]
+                      }
                       }
                   }
               }
@@ -2195,11 +2200,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 Present { value: _ } => []
                 Absent => match global_bare_callable {
                   Present { value: _ } => []
-                  Absent => [inference_error(
-                    message: concat("function '", func_name, "' not found in scope"),
-                    span: span,
-                    module_name: scope.module_name
-                  )]
+                  Absent =>
+                    let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: func_name)
+                    if (call_ambiguity_cands |> count) > 0 {
+                      [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
+                    } else {
+                      [inference_error(
+                        message: concat("function '", func_name, "' not found in scope"),
+                        span: span,
+                        module_name: scope.module_name
+                      )]
+                    }
                 }
               }
               InferResult {

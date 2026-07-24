@@ -3334,58 +3334,50 @@ pub fn infer_expr(
                                             span.clone(),
                                         )),
                                         None => {
-                                            // §13 (NamespaceOnlyY): a bare variable whose name is a
-                                            // whole-pool homonym with no unique on-chain binder is a
-                                            // typed AmbiguousReference refusal, not an internal crash.
-                                            // Gated on the opt-in policy bool so the default
-                                            // ImportScoped path is byte-identical.
-                                            let strict_cands =
-                                                if (v1_rt::name_resolution_policy_is_namespace_only(
-                                                ) && global_bare_is_ambiguous(
+                                            let var_ambiguity_cands =
+                                                global_bare_strict_ambiguity_candidates(
                                                     scope.type_env.clone(),
                                                     name.clone(),
-                                                )) {
-                                                    global_bare_strict_ambiguity_candidates(
-                                                        scope.type_env.clone(),
-                                                        name.clone(),
-                                                    )
-                                                } else {
-                                                    Rc::new(vec![])
-                                                };
-                                            if ((strict_cands.clone().len() as i64) > 0) {
+                                                );
+                                            if ((var_ambiguity_cands.clone().len() as i64) > 0) {
                                                 ambiguous_reference_refusal(
                                                     name.clone(),
-                                                    strict_cands.clone(),
+                                                    var_ambiguity_cands.clone(),
                                                     span.clone(),
                                                     scope.clone(),
                                                 )
                                             } else {
-                                                let err_texpr = make_named_expr_node(
-                                                    name.clone(),
-                                                    Rc::new(ExprData::ExprVar {
-                                                        binding_kind: None,
-                                                    }),
-                                                    Rc::new(vec![]),
-                                                    Some(Rc::new(InferredNode::Resolved {
-                                                        node: error_type(),
-                                                    })),
-                                                    span.clone(),
-                                                    span.clone(),
-                                                );
-                                                Rc::new(InferResult {
-                                                    typed: err_texpr.clone(),
-                                                    diagnostics: Rc::new(vec![inference_error(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "undefined variable '".to_string(),
-                                                                name.clone(),
-                                                            ),
-                                                            "'".to_string(),
-                                                        ),
+                                                {
+                                                    let err_texpr = make_named_expr_node(
+                                                        name.clone(),
+                                                        Rc::new(ExprData::ExprVar {
+                                                            binding_kind: None,
+                                                        }),
+                                                        Rc::new(vec![]),
+                                                        Some(Rc::new(InferredNode::Resolved {
+                                                            node: error_type(),
+                                                        })),
                                                         span.clone(),
-                                                        scope.module_name.clone(),
-                                                    )]),
-                                                })
+                                                        span.clone(),
+                                                    );
+                                                    Rc::new(InferResult {
+                                                        typed: err_texpr.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            inference_error(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        "undefined variable '"
+                                                                            .to_string(),
+                                                                        name.clone(),
+                                                                    ),
+                                                                    "'".to_string(),
+                                                                ),
+                                                                span.clone(),
+                                                                scope.module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
+                                                }
                                             }
                                         }
                                     }
@@ -4413,34 +4405,16 @@ match bare_s.clone() {
                                                                                 Rc::new(vec![])
                                                                             }
                                                                             None => {
-                                                                                // §13 (NamespaceOnlyY): a bare call whose name is a whole-pool homonym with
-                                                                                // no unique on-chain binder is a typed AmbiguousReference refusal, not an
-                                                                                // internal compiler crash. Gated on the opt-in policy bool so the default
-                                                                                // ImportScoped path falls through to the unchanged inference_error (byte-identical).
-                                                                                let strict_cands = if (v1_rt::name_resolution_policy_is_namespace_only()
-            && global_bare_is_ambiguous(scope.type_env.clone(), func_name.clone()))
-        {
-            global_bare_strict_ambiguity_candidates(scope.type_env.clone(), func_name.clone())
-        } else {
-            Rc::new(vec![])
-        };
-                                                                                if ((strict_cands
-                                                                                    .clone()
-                                                                                    .len()
-                                                                                    as i64)
-                                                                                    > 0)
-                                                                                {
-                                                                                    Rc::new(vec![make_error_node(
-                Rc::new(CompilerDiagnostic::AmbiguousReference {
-                    name: func_name.clone(),
-                    candidates: strict_cands.clone(),
-                    span: span.clone(),
-                }),
-                scope.module_name.clone(),
-            )])
-                                                                                } else {
-                                                                                    Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
-                                                                                }
+                                                                                let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(scope.type_env.clone(), func_name.clone());
+                                                                                if ((call_ambiguity_cands.clone().len() as i64) > 0) {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousReference {
+    name: func_name.clone(),
+    candidates: call_ambiguity_cands.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
+                                                        }
                                                                             }
                                                                         }
                                                                     }
