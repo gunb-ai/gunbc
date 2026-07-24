@@ -7,6 +7,8 @@ data repo_identity_authority_note: String = "The single authority for this repo'
 
 data repo_identity_carrier_shape_note: String = "The composed ref is grounded on GitRemoteRefParts { remote, ref_name } — the exact structured subset git_remote_ref_parts already PRODUCES and git_fetch_no_tags_shell already CONSUMES — not on full extdeps.git GitBranch × GitRemote, which would force fabricated url / fetch_refspec / is_head / upstream fields no consumer reads (§2 anemic-inflation; §6 model just-in-time). git_remote_ref completes the §4 bidirectional parts↔ref relation (the forward reading of the same rows git_remote_ref_parts reads backward)."
 
+data repo_identity_section_3c_discharge_note: String = "DISCHARGED 2026-07-24: DESIGN §3(c)'s own flagship policy-as-literal tell — the forked origin/main merge-base String, gunbc.ci_diff_defaults deleted — was consolidated onto this single authority. The remaining origin/main literals in the tree are prose (this note, DESIGN §3(c)'s doctrinal example) and test oracles (roadmap_dispatch_actuator_witness / affected_set_floor_runner_test expected values), which are history and value-oracles, not carriers. The recorded mark IS the carrier per §6 (no parallel-ledger intake doc). Displaced cost: #7129's probe branch, cut off a PR head, could not get an ordinary-diff run because the base was a constant origin/main instead of the PR's true base; gunbc.diff_baseline's MergeTarget arm derives it from the CI event (this PR is the enabling dependency for that probe)."
+
 data gunbc_default_remote_name: String = default_remote
 
 data gunbc_default_branch_name: String = "main"

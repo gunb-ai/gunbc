@@ -23,7 +23,7 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.generated_artifact { committed_generated_artifact_paths }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
@@ -131,7 +131,7 @@ data gunbc_ci_spec: CiSpec = {
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
   diff_policy: {
-    base: ci_merge_base_ref,
+    base: gunbc_merge_target_ref as String,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -144,7 +144,7 @@ data gunbc_ci_regen_spec: CiSpec = {
   witness_entries: [],
   discovery_scan_dirs: [],
   diff_policy: {
-    base: ci_merge_base_ref,
+    base: gunbc_merge_target_ref as String,
     head: "HEAD",
     mode: DiffMergeBase
   },

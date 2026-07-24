@@ -7,7 +7,15 @@ import gunbc.ci_spec {
   DiffTwoDot,
   gunbc_ci_spec
 }
-import std.types { String, NonEmptyStr }
+import gunbc.diff_baseline {
+  CiDiffEvent,
+  DiffBaselineResolution,
+  BaselineSelected,
+  BaselineRefused,
+  resolve_diff_baseline,
+  diff_baseline_ref
+}
+import std.types { String, NonEmptyStr, GitRef }
 import std.logic { Bool }
 import extdeps.git
 import extdeps.git {
@@ -20,8 +28,10 @@ import extdeps.git {
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown,
-  git_diff_name_status_field_separator
+  git_diff_name_status_field_separator,
+  git_remote_ref_parts
 }
+import extdeps.github.actions { github_event_name_env, github_base_ref_env }
 import extdeps.shell
 
 type FloorUnifiedDiffResult
@@ -40,8 +50,27 @@ fn floor_env_override_or(env_name: NonEmptyStr, default: String) -> String {
   }
 }
 
-fn floor_resolved_base(policy: DiffPolicy) -> String {
-  floor_env_override_or(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr, default: policy.base)
+fn floor_env_optional(env_name: NonEmptyStr) -> String? {
+  shell.Env.Get(name: env_name).value
+}
+
+data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN §3(c)). floor_observe_ci_diff_event reads the three env facts — GUNBC_CI_DIFF_BASE (the gunbc OperatorOverride channel, e.g. the falsifier's HEAD~20 cold control), GITHUB_EVENT_NAME, GITHUB_BASE_REF (the GitHub surface extdeps.github.actions owns) — and resolve_diff_baseline (pure) maps them: pull_request → MergeTarget against the PR's ACTUAL base (was silently origin/main — the stacked-PR over-selection defect #7129 hit); push / workflow_dispatch / local-bootstrap → PushParent (today's DiffPolicy.base, origin/main); GUNBC_CI_DIFF_BASE → OperatorOverride. An unmappable event (merge_group, unknown) yields BaselineRefused → UnifiedDiffFail / NameStatusDiffFail → the runner's DiffObservationFailClosed → per-row-counted whole-tree, loud (DESIGN §5). The PushParent ref carries its own remote, so the MergeTarget remote is derived from it (git_remote_ref_parts) rather than re-imported."
+
+fn floor_observe_ci_diff_event() -> CiDiffEvent {
+  CiDiffEvent {
+    override_ref: floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr),
+    event_name: floor_env_override_or(env_name: github_event_name_env, default: ""),
+    base_ref: floor_env_optional(env_name: github_base_ref_env)
+  }
+}
+
+fn floor_resolve_baseline(policy: DiffPolicy) -> DiffBaselineResolution {
+  let push_parent = policy.base as GitRef
+  resolve_diff_baseline(
+    event: floor_observe_ci_diff_event(),
+    push_parent_ref: push_parent,
+    default_remote_name: git_remote_ref_parts(ref: push_parent).remote
+  )
 }
 
 fn floor_resolved_head(policy: DiffPolicy) -> String {
@@ -55,20 +84,29 @@ fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
   }
 }
 
+fn floor_run_git_diff_unified(base: String, head: String, mode: DiffMode) -> FloorUnifiedDiffResult {
+  let result = git.Core.DiffUnified0(base: base, head: head, range: floor_git_diff_range_of_mode(mode: mode))
+  if result.success {
+    UnifiedDiffOk { text: result.diff }
+  } else {
+    UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+  }
+}
+
 fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
   let unified_injection = shell.Env.Get(name: "GUNBC_CI_DIFF_UNIFIED" as NonEmptyStr)
   match unified_injection.value {
     Present { value: injected } => UnifiedDiffOk { text: injected }
-    Absent => {
-      let base = floor_resolved_base(policy: policy)
-      let head = floor_resolved_head(policy: policy)
-      let result = git.Core.DiffUnified0(base: base, head: head, range: floor_git_diff_range_of_mode(mode: policy.mode))
-      if result.success {
-        UnifiedDiffOk { text: result.diff }
-      } else {
-        UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+    Absent =>
+      match floor_resolve_baseline(policy: policy) {
+        BaselineRefused { reason: reason } => UnifiedDiffFail { reason: reason }
+        BaselineSelected { baseline: baseline } =>
+          floor_run_git_diff_unified(
+            base: diff_baseline_ref(b: baseline) as String,
+            head: floor_resolved_head(policy: policy),
+            mode: policy.mode
+          )
       }
-    }
   }
 }
 
@@ -96,25 +134,34 @@ fn floor_decode_injected_name_status(injected: String) -> String {
   join(split(s: injected, delimiter: "\\000"), git_diff_name_status_field_separator)
 }
 
+fn floor_run_git_diff_name_status(base: String, head: String, mode: DiffMode) -> FloorNameStatusDiffResult {
+  let result = git.Core.DiffNameStatus(
+    base: base,
+    head: head,
+    range: floor_git_diff_range_of_mode(mode: mode)
+  )
+  if !result.success {
+    NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
+  } else {
+    floor_name_status_from_raw(raw: result.raw)
+  }
+}
+
 fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiffResult {
   let name_status_injection = shell.Env.Get(name: "GUNBC_CI_DIFF_NAME_STATUS" as NonEmptyStr)
   match name_status_injection.value {
     Present { value: injected } =>
       floor_name_status_from_raw(raw: floor_decode_injected_name_status(injected: injected))
-    Absent => {
-      let base = floor_resolved_base(policy: policy)
-      let head = floor_resolved_head(policy: policy)
-      let result = git.Core.DiffNameStatus(
-        base: base,
-        head: head,
-        range: floor_git_diff_range_of_mode(mode: policy.mode)
-      )
-      if !result.success {
-        NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
-      } else {
-        floor_name_status_from_raw(raw: result.raw)
+    Absent =>
+      match floor_resolve_baseline(policy: policy) {
+        BaselineRefused { reason: reason } => NameStatusDiffFail { reason: reason }
+        BaselineSelected { baseline: baseline } =>
+          floor_run_git_diff_name_status(
+            base: diff_baseline_ref(b: baseline) as String,
+            head: floor_resolved_head(policy: policy),
+            mode: policy.mode
+          )
       }
-    }
   }
 }
 
