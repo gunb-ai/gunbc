@@ -1,6 +1,6 @@
 module v2.std.text
 
-import std.algebra { FreeMonoid, PointwisePower }
+import std.algebra { FreeMonoid }
 import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, list_head, list_tail }
 import v2.std.logic { Bool }
 import std.types { Char }

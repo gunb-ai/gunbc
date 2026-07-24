@@ -31,19 +31,19 @@ pub struct CallGraphAdjacencyViews {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<BTreeSet<String>>,
+    pub visited: Rc<set<String>>,
     pub order: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<BTreeSet<String>>,
+    pub visited: Rc<set<String>>,
     pub members: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<BTreeSet<String>>,
+    pub visited: Rc<set<String>>,
     pub has_cycle: bool,
 }
 

@@ -1345,7 +1345,7 @@ pub fn render_named_type_base(
 pub fn render_node_type(
     n: Rc<Node>,
     target: RenderTarget,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {

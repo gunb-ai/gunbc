@@ -224,13 +224,13 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
-    pub member_set: Rc<BTreeSet<String>>,
+    pub member_set: Rc<set<String>>,
     pub pattern: Rc<LoweringTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
-    pub assigned: Rc<BTreeSet<String>>,
+    pub assigned: Rc<set<String>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
 }
 

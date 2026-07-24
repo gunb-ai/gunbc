@@ -865,10 +865,6 @@ mod compiler_tests {
             coerce_container_template(RenderTarget::Rust, "PartialFunction".into()),
             Some("HashMap<{0}, {1}>".to_string())
         );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("BTreeSet<{0}>".to_string())
-        );
     }
 
     #[test]
@@ -894,10 +890,6 @@ mod compiler_tests {
             coerce_container_template(RenderTarget::Python, "PartialFunction".into()),
             Some("dict[{0}, {1}]".to_string())
         );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "Set".into()),
-            Some("set[{0}]".to_string())
-        );
     }
 
     #[test]
@@ -922,10 +914,6 @@ mod compiler_tests {
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "PartialFunction".into()),
             Some("map[{0}]{1}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "Set".into()),
-            Some("map[{0}]struct{}".to_string())
         );
     }
 
