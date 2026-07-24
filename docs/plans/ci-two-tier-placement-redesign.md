@@ -56,7 +56,9 @@ the machinery.
    only when it is the *last* control; here the surviving control is named, scheduled, and
    counted. Cost displaced: ~4–5 min on every PR and main run.
 3. **Rust seed PR signal stays execution-shaped.** The cargo suite is local-only per the
-   2026-07-11 ruling (`gunbc.commit_workflow.rust_tests_removed_disposition`); in CI the seed is
+   2026-07-11 ruling (`gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition` —
+   the exact decl name; DESIGN.md carried a miscite, fixed alongside. Its 2026-07-15 amendment
+   re-enrolled the fmt half: fmt rides CI, only the test suite is local-only); in CI the seed is
    tested by execution — release build + fmt gate + regen fixed-point + the selected floor
    running the binaries over the witness corpus (DESIGN §7: "its tests are data").
    Optional follow-on, decided by D2's measurements and not now: re-enroll a fast subset of the
@@ -87,8 +89,13 @@ D0 #7129 — MERGED (bd5afd6bc3), NOT closed: whole-schedule arming hoist
 D1 child-spawn dissolution — LANDED on main (#7122 one-child-per-call,
    #7128 cheap_gate_pool union): 26 cold children → 6 pooled children,
    verified by execution on run 30052571652 (floor 37m58s). Residue:
-   6 pool builds/run (one MultiEntryIndex build each) — dissolves on W3
-   (cross-process typed-module store) or on D1b.
+   6 pool builds/run = 1 cheap-gate union + 4 ingest overlay + 1
+   reads-real-bytes. The 4 ingest children are BY CONSTRUCTION
+   (ingest_pool_separation_note: root-set-keyed MultiEntryIndex over
+   per-run mktemp overlays, 414s on run 30009199696; dissolves on W3,
+   "never on merging the overlay roots" — D1b cannot touch them). The
+   →1 endgame is therefore owned in two parts: 2 children via D1b
+   (#7129 worker), 4 via W3 (store-econ lane).
   └─► D2 measurement pass — warm per-gate cost table (TSV receipt);
       also attributes discovery's 643s resolve fresh and the ~2.5m
       store-teardown cost (the unledgered rows)
@@ -134,7 +141,11 @@ executor is safe ONLY because schedule-derived eviction bounds retention — whi
 what D0's P1s show is not yet true. So D1b = D0 closes → the three fixes land → activate,
 with empty-list refusal behaviorally identical to `claim_batch`'s. Until then the pooled
 child (which dies and frees) stays the vehicle — per `run_gunbc_claims_pooled_note`'s
-recorded ruling.
+recorded ruling. **Scope refinement (implementer read, 2026-07-24):** the body calls the
+plain `resolve_entry_graph`, not the `_shared`/`_with_index` variants beside it — so
+activation as written removes the process spawns but NOT the per-entry index rebuild; the
+warm-index share ("resolve once, share by reference") is W3-class work either way. D1b is
+real surgery, not a switch-flip, and its displaced cost is the smaller share of the residue.
 
 Ordering is load-bearing twice: measuring before D1 measures startup, not gates; pooling before
 #7129 hits the memory wall on capped runners (the Pi bench: pooled 72.9m ≈ spawn-sum on a
@@ -152,11 +163,11 @@ the 2a native flip (deletes the interpreted-eval class).
 | fmt gate (`.rs` diffs) | seconds | PR tier |
 | regen fixed-point | 5.3m, skip-scoped | keep skip on PRs; cold control on main (gauntlet) |
 | batch 1 compile-clean | closure-scoped for `.dag`-only; whole-tree on widen | PR tier (diff-proportional by construction) |
-| batch 1 cheap gates (12 claims) | 479.6s cold-spawned | PR tier **after D1** (warm eval 19.2s total; per-claim ≪5s) |
+| batch 1 cheap gates (12 claims) | 1 pooled union child (was 479.6s across 12 cold spawns) | PR tier (warm eval 19.2s total; per-claim ≪5s) |
 | batch 3 discovery | ~13m, mostly resolve | PR tier (it IS the affected set); resolve cost owned by D2 attribution + store-econ |
 | batches 2/4/5 rows | measured in D2 | to be rostered from `gunbc_ci_floor_gates` with receipts — not assigned by guess here |
-| batch 6 source_root_ingest (3 claims) | 12.15m ≈ all child spawns | measure warm in D2; likely PR tier post-D1, else gauntlet |
-| batch 7 reads_real_bytes (2 claims) | 3.3m = 2 cold children | same as batch 6 |
+| batch 6 source_root_ingest | 4 pooled overlay children, 414s (run 30009199696; the 12.15m figure was pre-pooling) | children stay 4 by construction (`ingest_pool_separation_note`); tier from D2 warm measurement |
+| batch 7 reads_real_bytes | 1 pooled child (was 2 cold) | D1b-absorbable; tier from D2 |
 | resolve/materialization receipt gates | ~0s | PR tier |
 | **selection-control audit** | **4–5m every run** | **DELETE (D4)** — falsifier cadence is the surviving control |
 | merge-admission gate | 18s | PR tier |
@@ -203,10 +214,13 @@ one PR.** Structure:
   5s" gets its empirical check (operator: "we do some testing ourselves to see what is
   acceptable").
 - **PR-1 — the single redesign PR.** `CiSpec` placement axis with the measured roster (D3) ·
-  gauntlet split · audit-step deletion (D4, once its falsifier precondition holds) ·
-  `DiffBaseline` (D5) · the probe TSV as the receipt basis. D1 needs nothing here (already
-  landed on main); D1b is explicitly excluded — it is #7129-lineage work in the same file as
-  D0's fixes and belongs to that owner (§9.6). Each piece carries its own witness battery so
+  gauntlet split · `DiffBaseline` (D5) · the probe TSV as the receipt basis. **D4 is excluded
+  — resolved 2026-07-24 (review finding: hidden serialization):** its falsifier-green
+  precondition requires PR-0 on main plus up to one 4h cadence window, which cannot sit
+  inside an atomic PR; D4 ships as a **fast-follow micro-PR** (one workflow-authority row +
+  `ci.yml` regen, citing the first green cadence run in its body). D1 needs nothing here
+  (already landed on main); D1b is explicitly excluded — #7129-lineage work in the same file
+  as D0's fixes, belongs to that owner (§9.6). Each piece carries its own witness battery so
   review is per-piece, but the landing is atomic — and so is the revert: one `git revert`
   restores today's process wholesale. The concentration is deliberate.
 
@@ -217,7 +231,7 @@ one PR.** Structure:
 | trivial/docs-diff ci-job wall | re-anchor at probe time (attribution-era ~40m predates #7122/#7128) | ≤ X (single-digit-minutes target) | > 2X |
 | leaf `.dag`-diff floor step | 37m58s (run 30052571652) | ≤ X | > 2X |
 | `.rs`-diff floor step | ~38m (widened baseline) | ≤ before − audit − roster moves | any regression |
-| pooled claim_batch children / run | 6 (verified, run 30052571652; was 26 pre-#7122) | ≤ 6; 0 only via D1b/W3 | growth without a cap edit |
+| pooled claim_batch children / run | 6 (verified, run 30052571652; was 26 pre-#7122) | ≤ 6 after PR-1; →1 endgame owned: 2 via D1b (#7129 worker), 4 via W3 (store-econ) — never by merging overlay roots | growth without a cap edit |
 | selection-control step | 4–5m every run | **absent from ci.yml** | present |
 | per-gate warm cost | unmeasured | every `PrTier` row ≤5s, receipt attached | any row over |
 | peak floor RSS / cgroup | 9.2 GB / 10.7 GB | ≤ before + small margin (in-executor pooling is ~0 marginal) | clamp regime entered |
@@ -233,8 +247,13 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    "operator 5 s fast-lane law" (`run_claim_measured` / `budget_completion_outcome`,
    `cli_run.rs`, landed with #7129), measured in **thread-CPU time** with over-budget
    converting a silent Pass to a typed refusal. Recommendation: the placement threshold
-   REUSES this authority (§3 — same constant, same measurement discipline), never a second
+   REUSES this authority (§3 — same constant, same refusal discipline), never a second
    5s definition; the roster records the measured value, not a pass/fail bit.
+   **Caveat (implementer, 2026-07-24):** the carrier's quantity is per-WITNESS thread-CPU;
+   placement needs per-GATE warm cost (closure resolve + startup amortization + Σ witness
+   eval). Reuse the threshold and the typed-refusal shape — not the mechanism blindly: the
+   probe records BOTH wall and thread-CPU per gate on fleet-class slots, and the roster's
+   basis column names which quantity each row was placed on.
 2. **Gauntlet home** — recommendation: extend `falsifier.yml` (the cadence already exists) plus
    a post-merge main-push job for the wet set; alternative is cadence-only (cheaper; detection
    latency up to 4h).
@@ -248,7 +267,10 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    child (green today, dies-and-frees) and route `run_claims_in_process` activation to the
    #7129 worker after D0 closes; PR-1 takes no dependency on it. Rejecting this means PR-1
    inherits cross-owner `cli_run.rs` surgery — the drag the single-PR directive exists to
-   avoid.
+   avoid. (Weight shifted 2026-07-24 by the implementer's read: D1b absorbs only 2 of the 6
+   residual children and does not remove their per-entry resolves — §5.)
+7. **D4 delivery shape** — resolved per review finding 5: fast-follow micro-PR after the
+   first green falsifier cadence post-PR-0; PR-1 does not wait on it (§8).
 
 Sign-offs recorded here with name + date once reviewed.
 
@@ -261,8 +283,8 @@ drops).
 
 | # | Issue | Mechanism | Status · verified how (2026-07-24) |
 |---|---|---|---|
-| 1 | 26 cold child processes (~23 min, 47.5% of floor) | #7122 one-child-per-call + #7128 `cheap_gate_pool` union (K-chunked, cap 16/child) | **LANDED** — 6 pooled children counted in run 30052571652's ci log (readiness-probe quadruples at 6 distinct timestamps); floor 48.4m → 37m58s. Residue: 6 pool builds/run → W3 or D1b |
-| 2 | Selection-control audit (4m08s every run) | D4 deletion; falsifier cadence = surviving control | **BLOCKED — do not delete yet**: falsifier is red 5/5 scheduled runs (latest 30044928186: crawl regime, cgroup pinned 16.1G, swap 32G saturated, one module typecheck 3,171s, killed at the 170m cap). Today the per-PR audit is the only WORKING selection control; deleting it now would be the §5 fail-open. Expected unblock: #7129 eviction + PR-0's P1 fixes let the cold walk finish; D4's PR must cite a green cadence run |
+| 1 | 26 cold child processes (~23 min, 47.5% of floor) | #7122 one-child-per-call + #7128 `cheap_gate_pool` union (K-chunked, cap 16/child) | **LANDED** — 6 pooled children counted in run 30052571652's ci log (readiness-probe quadruples at 6 distinct timestamps); floor 48.4m → 37m58s. Residue 6 = 1 union + 4 ingest-overlay (by construction, W3-only) + 1 reads-class (D1b-absorbable; D1b removes spawns, not per-entry resolves) |
+| 2 | Selection-control audit (4m08s every run) | D4 deletion; falsifier cadence = surviving control | **BLOCKED — do not delete yet**: falsifier is red 5/5 scheduled runs (latest 30044928186: crawl regime, cgroup pinned 16.1G, swap 32G saturated, one module typecheck 3,171s, killed at the 170m cap). Today the per-PR audit is the only WORKING selection control; deleting it now would be the §5 fail-open. Expected unblock: #7129 eviction + PR-0's P1 fixes let the cold walk finish; D4 ships as a fast-follow micro-PR citing the first green cadence run (§9.7) |
 | 3 | Retention truth (compile-clean graph pinned · all-hit keys unregistered · arming≠loader closure) | PR-0, #7129 worker | **PLANNED/ROUTED** — empty-list fail-open + missing arming CONFIRMED by direct read of `run_claims_in_process` (cli_run.rs:9580); blocker 1 is also the falsifier-crawl mechanism (row 2) and part of the 9.2GB floor |
 | 4 | `run_claims_in_process` fail-open (empty→true) | D1b activation fixes, #7129 worker | **PLANNED/ROUTED** — must NOT activate in PR-1 (§9.6) |
 | 5 | Discovery ~643s resolve (eval 18.4s) | D2 fresh attribution → store-econ class | **OPEN, probe-owned** — stale "fixpoint" lever retired; no fix dispatched before attribution |
@@ -274,4 +296,38 @@ drops).
 | 11 | 2,652 `UnlistedImportUse` fork (CLI vs floor compile-clean policy) | needs an owner — namespace-lane promotion staging vs fail-open fork, undetermined | **UNOWNED — flagged to operator** (not this plan's scope; recorded so it cannot drop) |
 | 12 | `.rs`-diff whole-tree widening | deliberate policy (§3.3, §9.5) | **UNCHANGED BY DESIGN** |
 | 13 | Serial chain ~10m (build 2.4 + regen 5.3 + deploy 2.2) | regen scoping exists; further work unpriced | **OUT-OF-SCOPE**, named residual |
-| 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses it; no second authority |
+| 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses the threshold + refusal shape; the per-GATE quantity is the probe's to define (§9.1 caveat) |
+
+## 11. D5 — the DiffBaseline brief (in-tree copy)
+
+The brief was delivered in-chat 2026-07-24 with no in-tree artifact; the implementer could not
+find it. This section is the authoritative copy — self-contained so PR-1 needs no side-channel.
+
+**Defect.** `dag/gunbc/ci_diff_defaults.dag` holds `ci_merge_base_ref: String = "origin/main"` —
+a bare string literal standing where a typed ref belongs; DESIGN §3(c)'s own tell (an argv/row
+carrying a literal it should receive as a parameter) live in our own CI modeling. Four sites
+conflate three facts (which ref · which remote · which policy):
+
+1. `gunbc.ci_spec` `diff_policy` (base: `ci_merge_base_ref`, head `"HEAD"`, `DiffMergeBase`) —
+   the selection authority every affected-set decision flows through.
+2. `merge_admission_produce` — consumes the same literal.
+3. `dispatch_git_remote_ref` (`roadmap_dispatch_actuator.dag`) — a **forked second carrier** of
+   the same fact (§3 nickname).
+4. `Push { branches: ["main"] }` literals in `ci_workflow.dag` — the workflow-trigger copy.
+
+**Live consequence.** `GITHUB_BASE_REF` is consumed nowhere, so a **stacked PR** (base = another
+PR's branch) diffs against `origin/main` and mis-selects its affected set — selection
+correctness, not cosmetics.
+
+**Model.** One authority:
+`DiffBaseline = MergeTarget | PushParent | OperatorOverride { ref: GitRef }` —
+pull_request events resolve `MergeTarget` from the event's base ref; push events resolve
+`PushParent`; the override is a declared row, never an env toggle (§5 no escape hatches).
+Grounded on the existing extdeps git atoms (`GitRef`, `git_remote_ref_parts`,
+`git_diff_range_argv`) — no new string vocabulary. All four sites re-ground on it; the
+dispatch fork dissolves.
+
+**Witnesses.** RED: a synthetic stacked PR (base = a branch, not main) must select against
+that branch — today it selects against origin/main, so the RED is discriminating on arrival.
+Controls: push-event resolves PushParent; override row round-trips; `ci.yml` drift gate green
+after regen.
