@@ -1,0 +1,38 @@
+module extdeps.network.endpoint
+
+import std.types { String, Bool, NonEmptyStr, Port }
+import extdeps.dns.domain_name { HostName, DomainName, domain_name_wire }
+import extdeps.network.address { IpAddress, render_ip_address, ip_v4 }
+import extdeps.network.ipv4 { Ipv4Address }
+
+data network_host_note: String = "A reachable host reference is a NAME or a literal ADDRESS — the two ways ssh/connect targets are actually written (an ssh_host is exactly this, today a bare NonEmptyStr). Reuses the already-grounded authorities: extdeps.dns.domain_name.HostName (RFC 1123, with its real label constraints) for the name arm, extdeps.network.address.IpAddress for the address arm — no fresh nickname. This is the leaf the transport model's `ssh_host: NonEmptyStr` grounds onto, and the payload of a network Reach (extdeps.network.reach)."
+
+type NetworkHost =
+    HostByName { name: HostName }
+  | HostByAddress { address: IpAddress }
+
+fn host_by_name(name: HostName) -> NetworkHost {
+  HostByName { name: name }
+}
+
+fn host_by_ipv4(addr: Ipv4Address) -> NetworkHost {
+  HostByAddress { address: ip_v4(addr: addr) }
+}
+
+fn render_network_host(host: NetworkHost) -> NonEmptyStr? {
+  match host {
+    HostByName { name: n } => Present { value: domain_name_wire(name: n.name) as NonEmptyStr }
+    HostByAddress { address: a } => render_ip_address(addr: a)
+  }
+}
+
+data socket_address_note: String = "A transport endpoint: a host reference paired with a port. Reuses std.types.Port (the Int-where-range(1,65535) authority) verbatim — the port bound is not re-declared here. A SocketAddress is what a connect() targets; a bare NetworkHost (no port) is the ssh-config-style reference where the port is defaulted by the protocol."
+
+type SocketAddress {
+  host: NetworkHost
+  port: Port
+}
+
+fn socket_address(host: NetworkHost, port: Port) -> SocketAddress {
+  SocketAddress { host: host, port: port }
+}

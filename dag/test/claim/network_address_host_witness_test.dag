@@ -1,0 +1,63 @@
+module test.claim.network_address_host
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data network_address_host_witness_note: String = "Green-by-execution proof for the address+host leaves of extdeps/network: the IpAddress = V4 | V6 coproduct, NetworkHost = ByName | ByAddress (reusing the grounded HostName + IpAddress), and SocketAddress (reusing std.types.Port). The load-bearing control is ip_v6_render_refuses_not_fabricates: the v6 string codec is staged, so render_ip_address on a v6 value must return Absent — a parser/renderer that fabricated a v6 string would red this. Loopback is checked on both arms (127.0.0.1 and ::1) so the coproduct's two arms are both exercised."
+
+fn srv2_hostname() -> HostName {
+  HostName {
+    name: DomainName { labels: ["srv2" as DnsLabel] },
+    qualification: PartiallyQualified,
+  }
+}
+
+test fn ipv4_ipaddress_renders_dotted_decimal() -> Bool {
+  let a = ip_v4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221))
+  match render_ip_address(addr: a) {
+    Present { value: s } => s as String == "192.168.1.221"
+    Absent => false
+  }
+}
+
+test fn ip_v6_render_refuses_not_fabricates() -> Bool {
+  let a = ip_v6(addr: ipv6_address(
+    group1: 65152, group2: 0, group3: 0, group4: 0,
+    group5: 0, group6: 0, group7: 0, group8: 1,
+  ))
+  match render_ip_address(addr: a) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn ipv4_loopback_detected() -> Bool {
+  ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)))
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 10, octet2: 0, octet3: 0, octet4: 1))) == false
+}
+
+test fn ipv6_loopback_detected() -> Bool {
+  let lo = ip_v6(addr: ipv6_address(group1: 0, group2: 0, group3: 0, group4: 0, group5: 0, group6: 0, group7: 0, group8: 1))
+  let not_lo = ip_v6(addr: ipv6_address(group1: 65152, group2: 0, group3: 0, group4: 0, group5: 0, group6: 0, group7: 0, group8: 1))
+  ip_address_is_loopback(addr: lo) && ip_address_is_loopback(addr: not_lo) == false
+}
+
+test fn network_host_by_address_renders() -> Bool {
+  let h = host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188))
+  match render_network_host(host: h) {
+    Present { value: s } => s as String == "192.168.1.188"
+    Absent => false
+  }
+}
+
+test fn network_host_by_name_renders_wire() -> Bool {
+  match render_network_host(host: host_by_name(name: srv2_hostname())) {
+    Present { value: s } => s as String == "srv2"
+    Absent => false
+  }
+}
+
+test fn socket_address_pairs_host_and_port() -> Bool {
+  let sa = socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188)), port: 22)
+  sa.port == 22 && ip_address_is_v4(addr: match sa.host { HostByAddress { address: a } => a  HostByName { name: _ } => ip_v4(addr: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)) })
+}
