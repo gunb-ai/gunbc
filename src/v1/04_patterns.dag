@@ -2,6 +2,8 @@ module v1.compiler.infer_patterns
 
 import std.types { SourceSpan }
 
+import std.syntax { LiteralValue }
+
 import v1.std.core {
   Node,
   find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
@@ -13,7 +15,7 @@ import v1.std.core {
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
-  LiteralValue, LitBool,
+  LitBool,
   with_optional_cardinality,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment

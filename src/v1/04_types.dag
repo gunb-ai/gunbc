@@ -16,6 +16,8 @@ import std.algebra {
   algebra_templates_for_profile
 }
 
+import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
+
 import v1.std.core {
   Node, make_param_node, param_node_type_expr,
   find_child_named, NewlineIndex,
@@ -24,10 +26,10 @@ import v1.std.core {
   NoExprData, ExprLiteral, ExprError,
   ExprErrorKind, SemanticExprError, InternalExprError,
   make_expr_node, make_expr_error_node,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
+  LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   is_kernel_type,
-  BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,

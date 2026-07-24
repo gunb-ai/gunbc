@@ -2,6 +2,8 @@ module v1.compiler.infer_resolve
 
 import std.types { SourceSpan, container_param_name }
 
+import std.syntax { LiteralValue }
+
 import v1.std.core {
   Node,
   authored_name_at, NewlineIndex,
@@ -20,7 +22,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   ExprErrorKind, SemanticExprError,
-  LiteralValue, LitInt,
+  LitInt,
   make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
   expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
