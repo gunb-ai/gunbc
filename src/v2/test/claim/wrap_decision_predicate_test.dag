@@ -9,14 +9,18 @@ import v2.extdeps.languages.rust {
 import v2.std.compilers.target_model {
   TargetModel,
   TargetOwnershipUseSite,
+  TargetReferenceLayer,
   OwnershipAtFunctionParameter,
   OwnershipAtFunctionReturn,
+  OwnershipAtStructField,
+  ReferenceLayerBox,
   ReferenceLayerRc,
   WrapByReference,
   WrapByValue,
   WrapGateDecided,
   WrapGateInapplicable,
   target_carrier_diagnostics_node,
+  target_carrier_node_node,
   target_carrier_probe_heap_node,
   target_carrier_use_site_verdict_node,
   target_use_site_ownership_catalog_node
@@ -97,15 +101,42 @@ fn wrap_decision_gate_is_rc_reference(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> Bool {
+  wrap_decision_gate_is_reference_layer(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site,
+    layer: ReferenceLayerRc
+  )
+}
+
+fn wrap_decision_gate_is_box_reference(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Bool {
+  wrap_decision_gate_is_reference_layer(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site,
+    layer: ReferenceLayerBox
+  )
+}
+
+fn wrap_decision_gate_is_reference_layer(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite,
+  layer: TargetReferenceLayer
+) -> Bool {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
     Accepted {
-      value: WrapGateDecided { decision: WrapByReference { layer: ReferenceLayerRc } },
+      value: WrapGateDecided { decision: WrapByReference { layer: decided } },
       diagnostics: _
-    } => true
+    } => decided == layer
     _ => false
   }
 }
@@ -196,6 +227,14 @@ test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
   )
 }
 
+test fn wrap_decision_node_struct_field_is_box() -> Bool {
+  wrap_decision_gate_is_box_reference(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_node_node(),
+    use_site: OwnershipAtStructField
+  )
+}
+
 test fn wrap_decision_predicate_witness_holds() -> Bool {
   wrap_decision_diagnostics_return_is_rc()
     && wrap_decision_diagnostics_param_is_owned()
@@ -204,4 +243,5 @@ test fn wrap_decision_predicate_witness_holds() -> Bool {
     && wrap_decision_bundle_partial_rejects()
     && wrap_decision_use_site_verdict_param_is_owned()
     && wrap_decision_use_site_verdict_return_is_owned()
+    && wrap_decision_node_struct_field_is_box()
 }
