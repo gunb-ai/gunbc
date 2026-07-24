@@ -1,9 +1,8 @@
 module v2.std.symbol_index
 
 
+import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra {
-  Empty,
-  FreeMonoid,
   HeadAbsent,
   HeadFound,
   is_empty,
