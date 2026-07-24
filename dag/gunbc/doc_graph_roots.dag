@@ -119,6 +119,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
     dissolution: HasTrigger { text: "dissolves when realization_measurement_loop Phase-0 Gantt carrier supersedes prose receipts (same trigger as ci-floor-fractal-gantt)" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "progress-observation-design",
+    work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "P0 lands the observation laws + glyph authority as .dag data rows (roadmap 2d ts-obs-model) — the carriers become the authority and this doc stays as the design record" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
