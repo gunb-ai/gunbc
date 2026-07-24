@@ -76,6 +76,9 @@ regen cold control, divergence counting. A red is loud and blocks/reverts on mai
 
 ## 5. Dependency graph (exact)
 
+(Logical dependencies only — **delivery is compressed to one redesign PR**, §8; D0 is routed
+to the #7129 worker as its own close-out PR and sequenced first.)
+
 ```
 D0 #7129 footprint bound — merged, NOT closed: whole-schedule arming hoist
    + the three post-merge P1s (2026-07-24 review, below)
@@ -166,3 +169,59 @@ the 2a native flip (deletes the interpreted-eval class).
 - **Non-goals:** no witness-semantics changes; no corpus edits; receipt file formats unchanged;
   not gated on the effect-grants wall; gauntlet-deferral of non-selectable diffs deliberately
   NOT decided here.
+
+## 8. Delivery: one redesign PR (operator directive 2026-07-24)
+
+No staged drag-out: **measurements and decisions happen up front; the workflow changes land as
+one PR.** Structure:
+
+- **PR-0 — D0 close-out (routed to the #7129 worker, sequenced first).** The three P1 retention
+  fixes + the whole-schedule arming hoist. Sequenced first for two reasons: retention receipts
+  must be *true* before the redesign PR cites them, and both PRs edit the same `cli_run.rs`
+  retention machinery — parallel landings would conflict textually and semantically.
+- **Pre-PR probe (nothing lands).** The D2 measurement pass runs on a branch: a pooled
+  warm-cost row for **every** gate (batches 2/4/5 rostered from `gunbc_ci_floor_gates`, not
+  guessed), measured on **fleet-class hardware (srv)** — the Pi lesson: a warm win measured
+  only on the 125 GB build box is not evidence for the capped runners. Output: (a) the
+  placement roster, (b) the filled expectation sheet below. This is also where "well within
+  5s" gets its empirical check (operator: "we do some testing ourselves to see what is
+  acceptable").
+- **PR-1 — the single redesign PR.** `run_claims_in_process` activation fixes + in-executor
+  pooling (D1) · `CiSpec` placement axis with the measured roster (D3) · gauntlet split ·
+  audit-step deletion (D4) · `DiffBaseline` (D5) · the probe TSV as the receipt basis. Each
+  piece carries its own witness battery so review is per-piece, but the landing is atomic —
+  and so is the revert: one `git revert` restores today's process wholesale. The concentration
+  is deliberate.
+
+### The before/after expectation sheet (X filled by the probe; every row falsification-bounded)
+
+| Metric | Before (receipts) | After (expected) | Reworked if |
+|---|---|---|---|
+| trivial/docs-diff ci-job wall | ~40m (23m cold children + 4–5m audit + floor) | ≤ X (single-digit-minutes target) | > 2X |
+| leaf `.dag`-diff floor step | ~38m | ≤ X | > 2X |
+| `.rs`-diff floor step | ~38m (widened baseline) | ≤ before − children − audit | any regression |
+| cold child processes / run | 26 | **0** | any spawn observed |
+| selection-control step | 4–5m every run | **absent from ci.yml** | present |
+| per-gate warm cost | unmeasured | every `PrTier` row ≤5s, receipt attached | any row over |
+| peak floor RSS / cgroup | 9.2 GB / 10.7 GB | ≤ before + small margin (in-executor pooling is ~0 marginal) | clamp regime entered |
+| gauntlet safety | n/a | planted violation caught ≤ 1 cadence window (RED demonstrated in PR) | missed |
+| falsifier divergence classes | baseline | no new class | new class appears |
+
+A missed After bound means the placement model missed a cost class: **rework the roster — never
+widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our own plan).
+
+## 9. Pre-PR decisions (sign-off checklist for plan reviewers)
+
+1. **"Well within 5s" made crisp** — recommendation: warm p95 ≤ 5s per gate row, measured on
+   srv-class; the roster records the measured value, not a pass/fail bit.
+2. **Gauntlet home** — recommendation: extend `falsifier.yml` (the cadence already exists) plus
+   a post-merge main-push job for the wet set; alternative is cadence-only (cheaper; detection
+   latency up to 4h).
+3. **Red-on-main mechanics** — recommendation: auto-file a loud issue + operator-click revert;
+   no auto-revert in this iteration.
+4. **`DiffBaseline` (D5) placement** — recommendation: rides PR-1 with its own witnesses;
+   acceptable alternative: a tiny separate PR landed before PR-1.
+5. **Non-selectable diffs** — confirmed unchanged in PR-1 (loud widening stays; deferral is a
+   later, separate decision).
+
+Sign-offs recorded here with name + date once reviewed.
