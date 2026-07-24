@@ -23,6 +23,7 @@ import gunbc.roadmap_component {
   dispatch_reserved_width, dispatch_class_requested, dispatch_class_ok, dispatch_class_refused,
   dispatch_class_loud, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
+  disclosure_mark_class,
 }
 import extdeps.color.srgb { Srgb8 }
 import gunbc.design.palette { Swatch, SwatchSetForUse, swatch_filed, swatch_paint }
@@ -389,6 +390,17 @@ fn roadmap_instance_rules() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: disclosure_mark_class }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginRight, value: scale_var(t: space_2)),
     ] },
     StaticRule { selector: ClassSelector { name: "item-body" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),

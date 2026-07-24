@@ -36,6 +36,7 @@ type Response
   | Lift
   | Depress
   | Settle
+  | Turn
 
 type ElementId
   = StarElement
@@ -43,6 +44,7 @@ type ElementId
   | SwatchElement
   | DispatchBtnElement
   | SoundToggleElement
+  | DisclosureElement
 
 fn element_id_key(id: ElementId) -> String {
   match id {
@@ -51,6 +53,7 @@ fn element_id_key(id: ElementId) -> String {
     SwatchElement => "swatch"
     DispatchBtnElement => "dispatch-btn"
     SoundToggleElement => "sound-toggle"
+    DisclosureElement => "disclosure"
   }
 }
 
@@ -76,6 +79,7 @@ fn response_key(r: Response) -> String {
     Lift => "lift"
     Depress => "depress"
     Settle => "settle"
+    Turn => "turn"
   }
 }
 
@@ -145,24 +149,29 @@ type Detent {
   reach: DetentReach
   travel: DetentTravel
   scale_per_mille: Int
+  turn_deg: Int
 }
+
+data detent_turn_axis_note: String = "turn_deg is the ROTATION axis of a position (remodel W1e, 2026-07-24: the disclosure mark turns 90 degrees at its open detent). Zero emits nothing — the wire appends ' rotate(Ndeg)' only when the detent actually turns — so every pre-existing detent's emission is byte-identical and the site digests hold; a detent that turns is the only one that says so."
 
 data house_pointer_detents_note: String = "The three positions every control shares, so a second control cannot quietly invent its own throw. Rest at unity, hover risen by the lift token at unity scale, pressed travelling down and compressing. A surface adds only the positions that are ITS OWN — a latched in-flight state, a terminal — by extending this list rather than restating it."
 
 fn house_pointer_detents(rest_state: String, hover_state: String, pressed_state: String) -> List<Detent> {
   [
-    Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille },
+    Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
     Detent {
       state: hover_state,
       reach: ByTrigger { trigger: OnHover },
       travel: Travel { token: travel_lift },
       scale_per_mille: rest_scale_per_mille,
+      turn_deg: 0,
     },
     Detent {
       state: pressed_state,
       reach: ByTrigger { trigger: OnActive },
       travel: Travel { token: travel_press },
       scale_per_mille: press_scale_per_mille,
+      turn_deg: 0,
     },
   ]
 }
@@ -185,10 +194,15 @@ type DetentEdgeDefect {
 }
 
 fn detent_transform_wire(d: Detent) -> String {
-  match d.travel {
+  let base = match d.travel {
     NoTravel => scale_transform_wire(per_mille: d.scale_per_mille)
     Travel { token } =>
       travel_scale_transform_wire(travel_var: scale_var(t: token), per_mille: d.scale_per_mille)
+  }
+  if d.turn_deg == 0 {
+    base
+  } else {
+    join([base, " rotate(", to_string(d.turn_deg), "deg)"], "")
   }
 }
 

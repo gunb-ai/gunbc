@@ -143,6 +143,12 @@ data dispatch_caption_loud: String = "belt fault"
 
 data theme_toggle_note: String = "The day/night control (operator 2026-07-24, remodel W1g): a property of the whole surface like the mute, cycling auto -> day -> night. auto removes data-theme so the prefers-color-scheme projection governs; a named choice pins data-theme to the Theme's OWN name (derived from day_theme/night_theme, never a re-typed string), which the theme_root_css selector grammar already answers. Persisted in this browser's storage for the same reason the mute is: the preference belongs to these eyes."
 
+data disclosure_component_note: String = "The brief disclosure enters the register (remodel W1e, operator 2026-07-24: the UA triangle read as debug chrome — a ticket affordance, not a tree-widget default). The MARK is a real span inside the summary, never a UA marker or a pseudo-element: the client program mirrors the details element's open state onto the mark as a state class (the browser owns [open]; the state class belongs to the client program — the same split the dispatch button's OnStateClass note establishes), so the register's existing trigger + detent machinery drives the turn with no new trigger vocabulary and no descendant selector. The open detent is the first consumer of the detent model's rotation axis (turn_deg)."
+
+data disclosure_mark_class: String = "disclosure-mark"
+data disclosure_open_class: String = "disclosure-open"
+data disclosure_mark_glyph: String = "›"
+
 data theme_storage_key: String = "gunbc.theme"
 data theme_toggle_class: String = "theme-toggle"
 data theme_toggle_auto_value: String = "auto"
@@ -726,6 +732,40 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
+fn disclosure_bind_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: "details.item-detail")],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["d"], body: ts_block(stmts: [
+        ts_const(name: "m", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "d"), property: "querySelector"),
+          args: [ts_lit_str(value: join([".", disclosure_mark_class], ""))],
+        )),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "m")),
+          then: ts_block(stmts: [ts_return(expr: none)]),
+          else_stmt: none,
+        ),
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "m"), property: "classList"), property: "toggle"),
+          args: [ts_lit_str(value: disclosure_open_class), ts_member(object: ts_ident(name: "d"), property: "open")],
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "d"), property: "addEventListener"),
+          args: [ts_lit_str(value: "toggle"), ts_ident(name: "paint")],
+        )),
+      ]))],
+    )),
+  ]
+}
+
 fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
@@ -738,7 +778,9 @@ fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<
           dispatch_bind_statements(selector: selector, url_expr: url_expr),
           concat(
             sound_toggle_bind_statements(),
-            theme_toggle_bind_statements())))),
+            concat(
+              theme_toggle_bind_statements(),
+              disclosure_bind_statements()))))),
   }
 }
 

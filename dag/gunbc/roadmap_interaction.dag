@@ -9,10 +9,10 @@ import gunbc.design.material {
   rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
 }
 import gunbc.design.interaction {
-  InteractionVerb, Approach, Dispatch, Await, Accept,
-  Response, Brighten, Receipt, Lift, Depress, Settle,
+  InteractionVerb, Approach, Dispatch, Await, Accept, Enter,
+  Response, Brighten, Receipt, Lift, Depress, Settle, Turn,
   BehaviorRow, InteractiveElement,
-  ElementId, DispatchBtnElement, SoundToggleElement, element_id_key, element_id_eq,
+  ElementId, DispatchBtnElement, SoundToggleElement, DisclosureElement, element_id_key, element_id_eq,
   verb_key, response_key,
   coverage_gaps, coverage_complete, CoverageGap,
   Detent, DetentReach, AtRest, ByTrigger, DetentTravel, NoTravel, Travel,
@@ -23,6 +23,7 @@ import gunbc.design.interaction {
 import gunbc.design.scale { travel_lift, travel_press, scale_var }
 import gunbc.roadmap_component {
   dispatch_class_requested, dispatch_class_ok, sound_toggle_class,
+  disclosure_mark_class, disclosure_open_class,
 }
 import gunbc.site.moodboard {
   RealizedBehavior, RealizedRules, UnrealizedBehavior,
@@ -42,6 +43,7 @@ The sound toggle joins the roster because it is a control, and the register's co
 data roadmap_elements: List<InteractiveElement> = [
   InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch, Await, Accept] },
   InteractiveElement { element: SoundToggleElement, verbs: [Approach, Dispatch] },
+  InteractiveElement { element: DisclosureElement, verbs: [Approach, Enter] },
 ]
 
 data roadmap_timing_assignment_note: String = "Which clock each verb runs on, reusing the existing scale rather than minting near-misses (operator, 2026-07-24). APPROACH runs on reveal_deliberate (160 ms): an approach is a reveal — the control coming toward the hand — and the earlier 90 ms on the brighten row was the press clock borrowed for a gesture that is not a press. DISPATCH runs on respond_fast (90 ms), the press-acknowledge clock, because engagement must land under the finger and anything slower reads as lag. AWAIT also runs on respond_fast: the control latching down when the request leaves is an engagement, not a reveal. ACCEPT runs on settle_spring, which is restore_gentle's 240 ms carrying the overshoot curve — the only mint, and only on the easing axis."
@@ -53,6 +55,8 @@ data roadmap_behaviors: List<BehaviorRow> = [
   BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Depress, timing: respond_fast },
   BehaviorRow { element: DispatchBtnElement, verb: Await, response: Depress, timing: respond_fast },
   BehaviorRow { element: DispatchBtnElement, verb: Accept, response: Settle, timing: settle_spring },
+  BehaviorRow { element: DisclosureElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  BehaviorRow { element: DisclosureElement, verb: Enter, response: Turn, timing: respond_fast },
   BehaviorRow { element: SoundToggleElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
   BehaviorRow { element: SoundToggleElement, verb: Approach, response: Lift, timing: reveal_deliberate },
   BehaviorRow { element: SoundToggleElement, verb: Dispatch, response: Depress, timing: respond_fast },
@@ -78,14 +82,29 @@ data roadmap_dispatch_detents: List<Detent> = concat(
       reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_requested } },
       travel: NoTravel,
       scale_per_mille: hold_scale_per_mille,
+      turn_deg: 0,
     },
     Detent {
       state: detent_accepted,
       reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_ok } },
       travel: NoTravel,
       scale_per_mille: rest_scale_per_mille,
+      turn_deg: 0,
     },
   ])
+
+data disclosure_detent_rest: String = "disclosure-rest"
+
+data roadmap_disclosure_detents: List<Detent> = [
+  Detent { state: disclosure_detent_rest, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
+  Detent {
+    state: disclosure_open_class,
+    reach: ByTrigger { trigger: OnStateClass { class_name: disclosure_open_class } },
+    travel: NoTravel,
+    scale_per_mille: rest_scale_per_mille,
+    turn_deg: 90,
+  },
+]
 
 data roadmap_sound_toggle_detents: List<Detent> = house_pointer_detents(
   rest_state: detent_rest,
@@ -183,6 +202,25 @@ fn dispatch_btn_settle_rules(timing: TimingToken) -> List<BuildRule> {
     timing: timing)
 }
 
+fn disclosure_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ElementSelector { tag: "summary" },
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "color",
+      timing: timing,
+      base_decls: [],
+      response_decls: [ decl(prop: Color, value: "var(--text)") ],
+    })
+}
+
+fn disclosure_turn_rules(timing: TimingToken) -> List<BuildRule> {
+  concat(
+    detent_rules(class_name: disclosure_mark_class, detents: roadmap_disclosure_detents, state: disclosure_detent_rest, timing: timing),
+    detent_rules(class_name: disclosure_mark_class, detents: roadmap_disclosure_detents, state: disclosure_open_class, timing: timing))
+}
+
 fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
@@ -209,6 +247,10 @@ fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
     RealizedRules { rules: dispatch_btn_hold_rules(timing: row.timing) }
   } else if element_id_eq(a: e, b: DispatchBtnElement) && r == "settle" {
     RealizedRules { rules: dispatch_btn_settle_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: DisclosureElement) && r == "brighten" {
+    RealizedRules { rules: disclosure_brighten_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: DisclosureElement) && r == "turn" {
+    RealizedRules { rules: disclosure_turn_rules(timing: row.timing) }
   } else if element_id_eq(a: e, b: SoundToggleElement) && r == "brighten" {
     RealizedRules { rules: sound_toggle_brighten_rules(timing: row.timing) }
   } else if element_id_eq(a: e, b: SoundToggleElement) && r == "lift" {

@@ -19,7 +19,10 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class }
+import gunbc.roadmap_component {
+  roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  disclosure_mark_class, disclosure_mark_glyph,
+}
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -278,7 +281,14 @@ fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
         tag: "details",
         attrs: [ MarkupAttr { name: "class", value: "item-detail" } ],
         children: [
-          ElementNode { tag: "summary", attrs: [], children: [ txt("brief") ] },
+          ElementNode { tag: "summary", attrs: [], children: [
+            ElementNode {
+              tag: "span",
+              attrs: [ MarkupAttr { name: "class", value: disclosure_mark_class } ],
+              children: [ txt(disclosure_mark_glyph) ],
+            },
+            txt("brief"),
+          ] },
           el_class("div", "item-body", title_nodes(line: rn.line)),
         ],
       } ]

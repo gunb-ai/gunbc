@@ -41,7 +41,7 @@ data dashboard_archetype: SurfaceArchetype = SurfaceArchetype {
   posture: Operational,
   content_shape: LiveFacts,
   liveness: Live,
-  verbs: [Approach, Dispatch, Await, Accept],
+  verbs: [Approach, Dispatch, Await, Accept, Enter],
   role_demand: [
     CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
     FigureRole, FigureEdgeRole, FocusRole,
